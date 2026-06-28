@@ -1,0 +1,23 @@
+---
+export interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = "Ploy for gyms", description = "AI-built gym website" } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {
+description && <meta name="description" content={description} />
+}
+    <link rel="stylesheet" href="/styles/tokens.css" />
+  </head>
+  <body class="min-h-screen bg-white text-gray-900">
+    <slot />
+  </body>
+</html>

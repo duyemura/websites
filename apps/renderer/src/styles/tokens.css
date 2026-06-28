@@ -1,0 +1,8 @@
+:root {
+  --color-primary: #111827;
+  --color-primary-foreground: #ffffff;
+  --color-background: #ffffff;
+  --color-text: #111827;
+  --font-heading: system-ui, sans-serif;
+  --font-body: system-ui, sans-serif;
+}

@@ -1,0 +1,28 @@
+---
+export interface Props {
+  title: string;
+  subtitle: string;
+  cta?: { label: string; href: string };
+}
+
+const { title, subtitle, cta } = Astro.props;
+---
+
+<section class="relative bg-gray-900 py-24 px-6 text-center text-white">
+  <div class="mx-auto max-w-3xl">
+    <h1 class="text-4xl font-extrabold tracking-tight sm:text-6xl">{title}</h1>
+    {
+subtitle && <p class="mt-6 text-lg text-gray-300">{subtitle}</p>
+}
+    {
+cta && (
+      <a
+        href={cta.href}
+        class="mt-8 inline-flex items-center justify-center rounded-md bg-white px-6 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-100"
+      >
+        {cta.label}
+      </a>
+    )
+}
+  </div>
+</section>

@@ -1,0 +1,26 @@
+{
+  "name": "ploy-gyms",
+  "version": "0.0.1",
+  "description": "AI website builder for gyms and fitness studios",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "migrate": "cd apps/api && pnpm migrate",
+    "codegen:db": "cd apps/api && pnpm codegen:db",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "ioredis": "5.10.1"
+    }
+  }
+}
