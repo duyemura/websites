@@ -135,10 +135,21 @@ export interface UploadUrl {
   storageKey: string;
 }
 
+export interface ScrapeSiteResult {
+  site: Site;
+  docs: Doc[];
+  screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
+}
+
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   createSite: (body: { name: string; slug: string; templateKey?: string }) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
+  scrapeSite: (body: { url: string; name?: string }) =>
+    fetchJson<ScrapeSiteResult>("/sites/scrape", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
   getDoc: (key: string) => fetchJson<Doc>(`/docs/${encodeURIComponent(key)}`),

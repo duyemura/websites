@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Link2 } from "lucide-react";
 import { api, type Site } from "@/lib/api";
+import { useNavigate } from "react-router";
 
 type ViewMode = "grid" | "list";
 
@@ -47,13 +48,30 @@ function SiteThumbnail({ className }: { className?: string }) {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [showNewSite, setShowNewSite] = useState(false);
+  const [scrapeUrl, setScrapeUrl] = useState("");
+  const [scrapeName, setScrapeName] = useState("");
+  const [showScrape, setShowScrape] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: api.getSites,
+  });
+
+  const scrapeSite = useMutation({
+    mutationFn: api.scrapeSite,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["sites"] });
+      queryClient.invalidateQueries({ queryKey: ["docs"] });
+      setScrapeUrl("");
+      setScrapeName("");
+      setShowScrape(false);
+      navigate(`/docs?site=${result.site.uuid}`);
+    },
   });
 
   const filteredSites = useMemo(() => {
@@ -68,6 +86,11 @@ export function Dashboard() {
     }
     return list;
   }, [sites, search]);
+
+  const handleScrape = () => {
+    if (!scrapeUrl.trim()) return;
+    scrapeSite.mutate({ url: scrapeUrl.trim(), name: scrapeName.trim() || undefined });
+  };
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -108,6 +131,10 @@ export function Dashboard() {
               <List className="h-4 w-4" />
             </button>
           </div>
+          <Button size="sm" onClick={() => setShowScrape(true)}>
+            <Link2 className="h-4 w-4" />
+            Scrape URL
+          </Button>
           <Button size="sm" onClick={() => setShowNewSite(true)}>
             <Plus className="h-4 w-4" />
             New site
@@ -116,11 +143,71 @@ export function Dashboard() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
+        {showScrape && (
+          <div className="mb-6 rounded-lg border bg-card p-6">
+            <h2 className="mb-2 font-semibold">Scrape a website</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Enter a gym or studio URL. We will scrape the homepage, create a site record, and generate workspace docs you can inspect.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                type="url"
+                placeholder="https://example-gym.com"
+                value={scrapeUrl}
+                onChange={(e) => setScrapeUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleScrape();
+                }}
+              />
+              <Input
+                placeholder="Site name (optional)"
+                value={scrapeName}
+                onChange={(e) => setScrapeName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleScrape();
+                }}
+              />
+            </div>
+            <div className="mt-4 flex items-center gap-3">
+              <Button
+                size="sm"
+                onClick={handleScrape}
+                disabled={scrapeSite.isPending || !scrapeUrl.trim()}
+              >
+                {scrapeSite.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Link2 className="mr-2 h-4 w-4" />
+                )}
+                {scrapeSite.isPending ? "Scraping…" : "Scrape and create docs"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowScrape(false);
+                  setScrapeUrl("");
+                  setScrapeName("");
+                  scrapeSite.reset();
+                }}
+                disabled={scrapeSite.isPending}
+              >
+                Cancel
+              </Button>
+              {scrapeSite.isError && (
+                <p className="text-sm text-destructive">
+                  {scrapeSite.error?.message}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {showNewSite && (
           <div className="mb-6 rounded-lg border bg-card p-6">
             <p className="text-sm text-muted-foreground">
               Creating a new site from the dashboard is coming soon. Use the
-              "New play" flow to build a site with AI.
+              "Scrape URL" flow to import an existing site.
             </p>
             <Button
               variant="outline"
