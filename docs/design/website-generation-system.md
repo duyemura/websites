@@ -308,6 +308,53 @@ System components in `apps/renderer/src/components/` exist as starting templates
 
 This model is necessary because real-world sites will not all fit into a fixed set of shared templates.
 
+## 9. Component synthesis from scraped design signals
+
+The scraper and designer do not just dump raw data into the generator. They detect structural patterns from the source site and emit a `component_variant` / `layout_type` per section so the generator can create the right Astro shape.
+
+Example patterns detected from a scrape:
+
+| Detected pattern | Generated component shape |
+|------------------|----------------------------|
+| Hero with side-by-side image + text | `HeroSplit.astro` with left/right responsive stack |
+| Vertical rotated label beside hero | `HeroWithVerticalLabel.astro` |
+| Numbered step / timeline section | `StepsTimeline.astro` |
+| Testimonial carousel | `TestimonialCarousel.astro` |
+| Pricing cards with feature list | `PricingCards.astro` |
+| Class schedule embed | `ScheduleEmbed.astro` |
+| Trainer grid with bios | `TrainerGrid.astro` |
+
+The blueprint captures these as:
+
+```json
+{
+  "sections": [
+    {
+      "id": "hero",
+      "component_type": "HeroSection",
+      "component_variant": "split_with_vertical_label",
+      "order": 0,
+      "content": {},
+      "styles": {
+        "layout": "split",
+        "vertical_label": "Strength starts here",
+        "text_alignment": "left",
+        "padding": "py-24"
+      }
+    }
+  ]
+}
+```
+
+Rules:
+
+- Variants are descriptive, not from a closed enum. New variants can appear any time the generator invents a matching Astro component.
+- The generator creates the component file in the site's source tree; it is not required to exist in the system registry first.
+- System components act as reference implementations (markup patterns, Tailwind conventions, accessibility helpers) but are not forced on the site.
+- Shared infrastructure components (image lazy loading, SEO, navigation, links) still come from the system and live in `src/components/shared/`.
+
+This makes replication flexible: a bold, non-standard gym layout gets its own generated component instead of being crammed into a prebuilt template.
+
 ## 10. Blueprint persistence
 
 - One blueprint per site.
