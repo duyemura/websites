@@ -61,6 +61,8 @@ export interface Site {
   slug: string;
   name: string;
   status: "draft" | "published" | "archived";
+  subdomain?: string | null;
+  customDomain?: string | null;
   themeUuid?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
