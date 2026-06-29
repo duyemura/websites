@@ -55,7 +55,7 @@ We do **not** target literal 100% pixel-perfect automation. That is expensive, f
 ### Greenfield inputs
 
 - User brief (text prompt): business, audience, desired pages, tone, must-have sections.
-- Workspace docs: `workspace-memory`, `brand-guidelines`, `business-info`, `offerings`, `locations`, `team-bios`, `testimonials`, `voice-copy`.
+- Workspace docs: `workspace-memory`, `site-memory`, `brand-guidelines`, `business-info`, `site-structure`, `team-bios`, `testimonials`, `faqs`. `business-info` carries offerings and locations as subsections. `brand-guidelines` carries voice and copy examples.
 - PushPress data (via adapter): locations, classes, plans, coaches, real testimonials, pricing.
 - User-selected assets: logo, hero images, staff photos.
 
@@ -68,13 +68,15 @@ Output: a **structured brief** JSON with niche, audience, pages, sections, tone,
 Steps:
 
 1. **Site tree discovery.** Crawl the target origin and record every page reachable from the main nav, footer, and primary content links. Deduplicate by canonical URL; ignore external links, query-string variants, and file downloads.
-2. **Homepage first.** Capture the homepage, extract design tokens, DOM structure, typography, images, fonts, icons, and the global shell. Produce `brand-guidelines`, `business-info`, `site-structure`, `voice-copy`, `offerings`, `locations`.
+2. **Homepage first.** Capture the homepage, extract design tokens, DOM structure, typography, images, fonts, icons, and the global shell. Produce `brand-guidelines` (includes voice/copy examples), `business-info` (includes offerings and locations), and `site-structure`.
 3. **Approval gate.** Generate and QA the homepage. Present the preview URL. The user approves the homepage before we build the rest of the site.
 4. **Remaining pages.** After homepage approval, use the approved blueprint's design tokens, global shell, and QA notes to generate the other pages from the recorded site tree.
 
 ## 2. Blueprinting
 
 The blueprint is a validated JSON document. It is the contract between ingestion, assets, code generation, QA, and the editor.
+
+**Scope.** There is one blueprint per website. Each page is represented as an item in the `pages` array with its own `sections`, `meta`, and page-level `styles`. A page blueprint is not a separate file; it is a nested object inside the site blueprint. This keeps the single source of truth at the site level while still allowing per-page overrides.
 
 ```json
 {
@@ -227,6 +229,20 @@ The asset engine resolves every asset reference in the blueprint.
 - Build errors are captured and returned in the QA report.
 - For production, move to an isolated sandbox (E2B, Firecracker, or Docker) before running user-influenced code.
 
+### Source code retention
+
+The generated Astro source code is **persisted alongside the build artifact**. It is not thrown away after `astro build`.
+
+- Source code lives at `sites/{siteUuid}/source/{attemptId}/`.
+- Built `/dist` lives at `sites/{siteUuid}/dist/{attemptId}/`.
+- Keeping the source lets us:
+  - Re-run the build after doc updates without regenerating from scratch.
+  - Edit specific components directly when we add an editor.
+  - Diff versions between attempts.
+  - Feed the source back into the AI Assistant for targeted fixes.
+
+The source is a function of the blueprint; if the blueprint changes, the source is regenerated or patched. The blueprint remains the authoritative input, but the source is the editable working copy.
+
 ## 6. Automated QA
 
 QA is issue-based, not score-based.
@@ -276,6 +292,23 @@ A QA report:
 - If issues remain, stop and present the QA report + preview URL to the user for review.
 
 ## 7. Human review and publish
+
+### Incremental build transparency (UX phase)
+
+Before the final review gate, the user should be able to watch the generation process in a read-only view. This is not interactive control; it is a live log of the system's thinking and adjustments.
+
+The view shows:
+
+- Current phase: scrape, blueprint, assets, code, build, QA, review.
+- LLM reasoning summaries per phase (e.g. "Detected split hero with vertical label; chose component variant `split_with_vertical_label`").
+- QA issues found and the fixes applied in each iteration.
+- Screenshots after each build attempt.
+- Cost and token usage so far.
+- Final preview URL once QA passes or max iterations are reached.
+
+This log is also persisted to `ai_activity` and `site-memory` so users can revisit it later.
+
+### Final review gate
 
 After automated QA passes (or after max iterations):
 

@@ -42,7 +42,6 @@ export function generateWorkspaceMemory(
       "brand-guidelines",
       "business-info",
       "site-structure",
-      "voice-copy",
     ],
   };
 }

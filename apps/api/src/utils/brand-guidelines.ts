@@ -105,14 +105,27 @@ function renderTone(tone: ScrapedBrandInput): string {
     tone.toneKeywords.length > 0
       ? tone.toneKeywords.join(", ")
       : "direct, inclusive, action-oriented";
-  const examples =
-    tone.toneExamples.length > 0
-      ? tone.toneExamples.slice(0, 8).map((e) => `- "${e}"`).join("\n")
-      : "- No example copy captured.";
-  return `- **Keywords**: ${keywords}
 
-- **Examples**:
-${examples}`;
+  const allExamples = tone.toneExamples.slice(0, 12);
+  const ctas = allExamples.filter((e) => e.length <= 35).slice(0, 6);
+  const headlines = allExamples.filter((e) => e.length > 35).slice(0, 6);
+
+  const renderExamples = (title: string, items: string[]) => {
+    if (items.length === 0) return "";
+    return `### ${title}\n\n${items.map((e) => `- "${e}"`).join("\n")}`;
+  };
+
+  return `## Tone keywords
+
+- ${keywords}
+
+## Copy examples
+
+${renderExamples("Headlines", headlines)}
+
+${renderExamples("Calls to action", ctas)}
+
+${allExamples.length === 0 ? "- No example copy captured." : ""}`.trim();
 }
 
 function renderImagery(input: ScrapedBrandInput): string {

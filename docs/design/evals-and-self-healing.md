@@ -79,7 +79,7 @@ The system uses issues to propose doc updates. A human or an LLM reviewer applie
 Examples:
 
 - Color wrong? Update `brand-guidelines` color rules or add a pairing rule.
-- Copy too generic? Update `voice-copy` with better examples.
+- Copy too generic? Update `brand-guidelines` voice and copy examples with better samples.
 - Component layout off? Update `workspace-memory` with a locked decision about that component variant.
 - Fonts not matching? Update `brand-guidelines` typography section with explicit fallback rules.
 

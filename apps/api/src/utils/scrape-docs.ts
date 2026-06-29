@@ -224,7 +224,10 @@ export function buildBrandGuidelinesInput(data: ScrapedWebsiteData): ScrapedBran
     fonts: data.fonts,
     typeScale: data.fontSizes,
     toneKeywords: extractToneKeywords(data),
-    toneExamples: data.buttons.slice(0, 5).concat(data.headings.slice(0, 3)),
+    toneExamples: [
+      ...data.headings.slice(0, 8),
+      ...data.buttons.slice(0, 8),
+    ].filter((e, i, arr) => arr.indexOf(e) === i),
     imageryStrategy: buildImageryStrategy(data),
     imagePlacement: buildImagePlacement(data),
     promptKeywords: buildPromptKeywords(data),

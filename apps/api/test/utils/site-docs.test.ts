@@ -60,9 +60,6 @@ describe("generateSiteDocs", () => {
     expect(keys).toContain(BRAND_GUIDELINES_DOC_KEY);
     expect(keys).toContain("business-info");
     expect(keys).toContain("site-structure");
-    expect(keys).toContain("voice-copy");
-    expect(keys).toContain("offerings");
-    expect(keys).toContain("locations");
     expect(keys).toContain("team-bios");
     expect(keys).toContain("testimonials");
     expect(keys).toContain("faqs");
@@ -79,8 +76,6 @@ describe("generateSiteDocs", () => {
     };
     const docs = generateSiteDocs(minimal);
     const keys = docs.map((d) => d.key);
-    expect(keys).not.toContain("offerings");
-    expect(keys).not.toContain("locations");
     expect(keys).not.toContain("team-bios");
     expect(keys).not.toContain("testimonials");
     expect(keys).not.toContain("faqs");
@@ -106,7 +101,7 @@ describe("generateSiteDocs", () => {
     expect(memory.content).toContain("draft");
   });
 
-  test("business info doc includes contact and social links", () => {
+  test("business info doc includes contact, social links, offerings, and locations", () => {
     const docs = generateSiteDocs(baseScrape);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     expect(businessInfo.content).toContain("Beta Gym");
@@ -114,20 +109,25 @@ describe("generateSiteDocs", () => {
     expect(businessInfo.content).toContain("555-1234");
     expect(businessInfo.content).toContain("hi@example-gym.com");
     expect(businessInfo.content).toContain("Instagram");
+    expect(businessInfo.content).toContain("Group class");
+    expect(businessInfo.content).toContain("Downtown");
+    expect(businessInfo.content).toContain("123 Main St");
   });
 
-  test("site structure doc includes nav links and headings", () => {
+  test("site structure doc includes nav links only, not copy examples", () => {
     const docs = generateSiteDocs(baseScrape);
     const structure = docs.find((d) => d.key === "site-structure")!;
     expect(structure.content).toContain("https://example-gym.com");
     expect(structure.content).toContain("[Classes](/classes)");
-    expect(structure.content).toContain("Train with purpose");
+    expect(structure.content).not.toContain("Train with purpose");
   });
 
-  test("voice doc includes headlines and CTAs", () => {
+  test("brand guidelines include voice and copy examples", () => {
     const docs = generateSiteDocs(baseScrape);
-    const voice = docs.find((d) => d.key === "voice-copy")!;
-    expect(voice.content).toContain("Train with purpose");
-    expect(voice.content).toContain("Book a class");
+    const brand = docs.find((d) => d.key === BRAND_GUIDELINES_DOC_KEY)!;
+    expect(brand.content).toContain("Tone keywords");
+    expect(brand.content).toContain("Copy examples");
+    expect(brand.content).toContain("Train with purpose");
+    expect(brand.content).toContain("Book a class");
   });
 });

@@ -37,37 +37,33 @@ function makeBusinessInfoDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
     }
   }
 
+  if (data.offerings.length > 0) {
+    lines.push(
+      "",
+      "## Offerings",
+      "",
+      ...data.offerings.map((o) => {
+        const parts = [o.name, o.description, o.price].filter(Boolean);
+        return `- ${parts.join(" — ")}`;
+      }),
+    );
+  }
+
+  if (data.locations.length > 0) {
+    lines.push(
+      "",
+      "## Locations",
+      "",
+      ...data.locations.map((loc) => {
+        const parts = [loc.name, loc.address, loc.hours].filter(Boolean);
+        return `- ${parts.join(" — ")}`;
+      }),
+    );
+  }
+
   return {
     key: "business-info",
     title: "Business info",
-    content: lines.join("\n"),
-    source: "ai_extracted",
-  };
-}
-
-function makeOfferingsDoc(data: ScrapedWebsiteData): GeneratedSiteDoc | null {
-  if (data.offerings.length === 0) return null;
-  const lines = data.offerings.map((o) => {
-    const parts = [o.name, o.description, o.price].filter(Boolean);
-    return `- ${parts.join(" — ")}`;
-  });
-  return {
-    key: "offerings",
-    title: "Offerings",
-    content: lines.join("\n"),
-    source: "ai_extracted",
-  };
-}
-
-function makeLocationsDoc(data: ScrapedWebsiteData): GeneratedSiteDoc | null {
-  if (data.locations.length === 0) return null;
-  const lines = data.locations.map((loc) => {
-    const parts = [loc.name, loc.address, loc.hours].filter(Boolean);
-    return `- ${parts.join(" — ")}`;
-  });
-  return {
-    key: "locations",
-    title: "Locations",
     content: lines.join("\n"),
     source: "ai_extracted",
   };
@@ -121,34 +117,10 @@ function makeSiteStructureDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
     "## Navigation",
     "",
     ...data.navLinks.map((link) => `- [${link.label}](${link.href})`),
-    "",
-    "## Key headings",
-    "",
-    ...data.headings.slice(0, 20).map((h) => `- ${h}`),
   ];
   return {
     key: "site-structure",
     title: "Site structure",
-    content: lines.join("\n"),
-    source: "ai_extracted",
-  };
-}
-
-function makeVoiceDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
-  const lines = [
-    "# Voice & copy examples",
-    "",
-    "## Headlines",
-    "",
-    ...data.headings.slice(0, 10).map((h) => `- ${h}`),
-    "",
-    "## Calls to action",
-    "",
-    ...data.buttons.slice(0, 10).map((b) => `- ${b}`),
-  ];
-  return {
-    key: "voice-copy",
-    title: "Voice and copy examples",
     content: lines.join("\n"),
     source: "ai_extracted",
   };
@@ -180,12 +152,9 @@ export function generateSiteDocs(data: ScrapedWebsiteData): GeneratedSiteDoc[] {
     },
     makeBusinessInfoDoc(data),
     makeSiteStructureDoc(data),
-    makeVoiceDoc(data),
   ];
 
   const optionalDocs = [
-    makeOfferingsDoc(data),
-    makeLocationsDoc(data),
     makeTeamDoc(data),
     makeTestimonialsDoc(data),
     makeFaqsDoc(data),
