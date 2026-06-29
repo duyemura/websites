@@ -73,6 +73,7 @@ export interface Site {
 export interface Doc {
   uuid: string;
   workspaceUuid: string;
+  siteUuid?: string | null;
   key: string;
   title: string;
   content?: string | null;
@@ -143,6 +144,7 @@ export interface ScrapeSiteResult {
 
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
+  getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
   createSite: (body: { name: string; slug: string; templateKey?: string }) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
   scrapeSite: (body: { url: string; name?: string }) =>
@@ -152,6 +154,8 @@ export const api = {
     }),
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
+  getSiteDocs: (siteUuid: string) =>
+    fetchJson<Doc[]>(`/sites/${encodeURIComponent(siteUuid)}/docs`),
   getDoc: (key: string) => fetchJson<Doc>(`/docs/${encodeURIComponent(key)}`),
   saveDoc: (key: string, body: { title: string; content: string }) =>
     fetchJson<Doc>(`/docs/${encodeURIComponent(key)}`, {

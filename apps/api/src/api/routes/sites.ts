@@ -37,6 +37,7 @@ const ScrapeSiteSchema = z.object({
 const DocSchema = z.object({
   uuid: z.string(),
   workspaceUuid: z.string(),
+  siteUuid: z.string().nullable().optional(),
   key: z.string(),
   title: z.string(),
   content: z.string().nullable().optional(),
@@ -196,6 +197,60 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
+  fastify.get(
+    "/sites/:uuid",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: { 200: SiteSchema, 404: z.object({ error: z.string() }) },
+      },
+    },
+    async (request, reply) => {
+      const site = await fastify.db
+        .selectFrom("sites")
+        .selectAll()
+        .where("uuid", "=", request.params.uuid)
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .executeTakeFirst();
+
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      return {
+        ...site,
+        createdAt: site.createdAt.toISOString(),
+        updatedAt: site.updatedAt.toISOString(),
+      };
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/docs",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: { 200: z.array(DocSchema) },
+      },
+    },
+    async (request) => {
+      const docs = await fastify.db
+        .selectFrom("docs")
+        .selectAll()
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .where("siteUuid", "=", request.params.uuid)
+        .where("status", "!=", "archived")
+        .orderBy("createdAt", "desc")
+        .execute();
+
+      return docs.map((doc) => ({
+        ...doc,
+        createdAt: doc.createdAt.toISOString(),
+        updatedAt: doc.updatedAt.toISOString(),
+      }));
+    },
+  );
+
   fastify.post(
     "/sites/scrape",
     {
@@ -317,7 +372,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .returningAll()
           .executeTakeFirstOrThrow();
 
-        await saveSiteDocs(fastify.db, workspaceUuid, docs);
+        await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
 
         const savedDocs = await fastify.db
           .selectFrom("docs")

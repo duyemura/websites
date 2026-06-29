@@ -1,6 +1,10 @@
 import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
-import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY, BRAND_GUIDELINES_DOC_TITLE } from "./brand-guidelines";
+import {
+  generateBrandGuidelines,
+  BRAND_GUIDELINES_DOC_KEY,
+  BRAND_GUIDELINES_DOC_TITLE,
+} from "./brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
 import {
   generateSiteMemory,
@@ -126,6 +130,65 @@ function makeSiteStructureDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
   };
 }
 
+function makeGenerationPlanDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
+  return {
+    key: "generation-plan",
+    title: "Generation plan",
+    content: `# Generation plan for ${data.businessName ?? data.title}
+
+## Goal
+Replicate the source website as an Astro static site that matches the brand, content, and structure.
+
+## Source
+- URL: ${data.url}
+
+## Phases
+1. **Scrape** ✅ — completed. Extracted structure, brand tokens, copy, and assets.
+2. **Blueprint** — emit a JSON site blueprint with design tokens, pages, and sections.
+3. **Assets** — resolve/download/generate all images, fonts, and icons.
+4. **Code** — generate Astro + Tailwind source from the blueprint.
+5. **Build/QA** — run \`astro build\` and automated checks.
+6. **Review/Publish** — human review gate and publish.
+
+## Decisions to confirm
+- Which pages to build first (homepage is the gate).
+- Whether to reuse scraped images or generate replacements.
+- Any business details that need correction.
+
+## Next action
+Generate the homepage blueprint from the docs in this workspace and the screenshot asset.
+`,
+    source: "ai_extracted",
+  };
+}
+
+function makeBlueprintDraftDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
+  return {
+    key: "blueprint-draft",
+    title: "Blueprint draft",
+    content: `# Blueprint draft
+
+This doc will hold the validated JSON blueprint for the site once the generation phase runs.
+
+## Placeholder
+
+\`\`\`json
+{
+  "site_metadata": {
+    "framework": "astro",
+    "mode": "replication",
+    "target_url": "${data.url}"
+  },
+  "design_tokens": {},
+  "global_shell": {},
+  "pages": []
+}
+\`\`\`
+`,
+    source: "ai_extracted",
+  };
+}
+
 export function generateSiteDocs(data: ScrapedWebsiteData): GeneratedSiteDoc[] {
   const brandInput = buildBrandGuidelinesInput(data);
   const workspaceMemory = generateWorkspaceMemory(data);
@@ -152,13 +215,11 @@ export function generateSiteDocs(data: ScrapedWebsiteData): GeneratedSiteDoc[] {
     },
     makeBusinessInfoDoc(data),
     makeSiteStructureDoc(data),
+    makeGenerationPlanDoc(data),
+    makeBlueprintDraftDoc(data),
   ];
 
-  const optionalDocs = [
-    makeTeamDoc(data),
-    makeTestimonialsDoc(data),
-    makeFaqsDoc(data),
-  ];
+  const optionalDocs = [makeTeamDoc(data), makeTestimonialsDoc(data), makeFaqsDoc(data)];
 
   for (const doc of optionalDocs) {
     if (doc) docs.push(doc);
@@ -171,6 +232,7 @@ export async function saveSiteDocs(
   db: Kysely<DB>,
   workspaceUuid: string,
   docs: GeneratedSiteDoc[],
+  siteUuid?: string,
 ): Promise<void> {
   for (const doc of docs) {
     const existing = await db
@@ -189,6 +251,7 @@ export async function saveSiteDocs(
           source: doc.source,
           status: "active",
           updatedAt: new Date(),
+          siteUuid: siteUuid ?? null,
         })
         .where("uuid", "=", existing.uuid)
         .execute();
@@ -202,6 +265,7 @@ export async function saveSiteDocs(
           content: doc.content,
           source: doc.source,
           status: "active",
+          siteUuid: siteUuid ?? null,
         })
         .execute();
     }

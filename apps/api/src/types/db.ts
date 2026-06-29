@@ -117,6 +117,7 @@ export interface Docs {
   createdAt: Generated<Timestamp>;
   embedding: string | null;
   key: string;
+  siteUuid: string | null;
   source: Generated<DocSource>;
   status: Generated<DocStatus>;
   title: string;

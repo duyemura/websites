@@ -42,6 +42,8 @@ export function generateWorkspaceMemory(
       "brand-guidelines",
       "business-info",
       "site-structure",
+      "generation-plan",
+      "blueprint-draft",
     ],
   };
 }

@@ -5,6 +5,7 @@ import { makeDocKey } from "../../utils/docs";
 const DocSchema = z.object({
   uuid: z.string(),
   workspaceUuid: z.string(),
+  siteUuid: z.string().nullable().optional(),
   key: z.string(),
   title: z.string(),
   content: z.string().nullable().optional(),
