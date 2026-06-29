@@ -295,6 +295,106 @@ Future phases:
 - Asset uploads and copy tweaks flow back into the blueprint.
 - The Astro project itself is ephemeral; only the blueprint and the final `/dist` artifact are persisted.
 
+## 9. Component registry implementation
+
+Components are Astro source files in a system-wide registry.
+
+- **Location:** `apps/renderer/src/components/sections/` and `apps/renderer/src/components/shared/`.
+- **Variants:** a component can expose a `variant` prop (e.g. `HeroSection` with `variant: "solid" | "video"`). For larger layout differences, separate files are OK.
+- **Schema:** each component has a Zod schema for its props. The blueprint generator must emit props that match the schema.
+- **Overrides:** workspace-level component overrides are a future feature; not in phase 1.
+- **Build-time resolution:** the code generator copies the relevant system components into the temp build directory.
+
+## 10. Blueprint persistence
+
+- One blueprint per site.
+- When the homepage is approved, the blueprint is **locked as a baseline**.
+- Remaining pages are generated from the locked baseline.
+- Future generation attempts can overwrite the blueprint, but the approved baseline is preserved for rollback.
+
+## 11. Asset provenance and replacement
+
+- Scraped originals are stored directly in the workspace asset library.
+- Source URLs are **not** persisted.
+- Low-quality or broken images are flagged and replaced by AI-generated assets when possible.
+- Until an editor exists, the only way to replace an asset is via the AI Assistant.
+
+## 12. Multi-page job orchestration
+
+- **One job per page.**
+- The homepage job is the gate. Remaining page jobs are created after homepage approval.
+- Page failures do not block preview/publish of pages that succeeded.
+- For phase 1, focus only on the homepage.
+
+## 13. Build output lifecycle
+
+- Temp build directories live indefinitely for now. Cleanup is a future concern.
+- Store both the generated Astro source code and the `/dist` artifact.
+- Astro source is kept because it is easier to edit later than raw HTML.
+- Storage format is flexible; likely S3 under a workspace/site prefix.
+
+## 14. Font handling
+
+- Use Google Fonts as the primary free web-font source.
+- Proprietary or unavailable fonts are mapped to the closest free Google Font match.
+- System fallbacks are declared in `brand-guidelines` typography rules.
+
+## 15. Form handling and dynamic content
+
+- Phase 2.
+- We will eventually need a form-submission backend and possibly a database for dynamic content.
+
+## 16. Responsive breakpoints
+
+Target three breakpoints:
+
+- Desktop: 1440px
+- Tablet: 768px
+- Mobile: 375px
+
+Generated sites must work correctly at all three.
+
+## 17. Visual QA automation depth
+
+- Run QA on every generated page.
+- Use automated screenshot diff + vision model summaries to find issues.
+- Loop to fix issues up to the configured max iterations.
+- If the user rejects the result, they refine it through the AI Assistant.
+- QA is issue-based, not a single score. See `evals-and-self-healing.md`.
+
+## 18. LLM routing and prompt architecture
+
+- Break generation into small, precise prompts: blueprint, copy, assets, code, QA.
+- Use system prompts that users cannot edit.
+- Layer in relevant docs (workspace memory, brand guidelines, business info, voice copy) per prompt.
+- Prompts are versioned with code, not user-editable.
+- LLM provider is selected via the `LLM_PROVIDER` env config (`openrouter` or `ollama`).
+
+## 19. Error handling and partial success
+
+- Page-level failures are isolated.
+- A partial site can still be previewed and published.
+- Failed pages are surfaced in the job report.
+
+## 20. Cost attribution and workspace credits
+
+- Every pipeline phase is logged to `ai_activity` with model, tokens, cost, latency, and outcome.
+- Phases: `blueprint`, `copy`, `assets`, `code`, `qa`.
+- Workspaces have a monthly credit pool that refreshes with the SaaS subscription.
+- Out of credits = jobs pause until re-up.
+
+## 21. Site identity and URLs
+
+- Each site gets a preview domain and a publish domain.
+- Preview URLs are workspace-member-only.
+- Custom domains are phase 2.
+- Track deployment history; consider git-like history per site in the future.
+
+## 22. Security
+
+- Sandbox builds eventually. For phase 1, accept the risk while we prove the generation pipeline.
+- See security questions in the open questions list.
+
 ## Tech choices
 
 | Layer | Choice | Rationale |
@@ -354,16 +454,23 @@ The job progresses through pipeline states. Each state transition is logged to `
 
 ## Open questions
 
-1. **Replication scope.** ✅ **Decision: record the full site tree from nav/footer/main content, nail the homepage first, then use the approved homepage's brand guidelines and QA notes to generate the remaining pages in follow-up jobs.** This prevents random page caps and gives us a repeatable, approval-gated workflow.
-2. **Component registry ownership.** ✅ **Decision: system-wide components first, with workspace-level overrides later.** Components support variants (e.g. top nav vs. left nav, solid hero vs. video-background hero).
+1. **Replication scope.** ✅ **Decision: record the full site tree, generate homepage first with approval gate, then generate remaining pages from the locked baseline.**
+2. **Component registry ownership.** ✅ **Decision: system-wide components first, with workspace-level overrides later.** Components support variants.
 3. **Build sandbox.** ✅ **Decision: local temp directory for the PoC; E2B/Docker planned for production.**
-4. **PushPress data integration.** ✅ **Decision: phase 2.** Build the adapter interface later; do not block the initial generation/replication pipeline on it.
-5. **Asset rights for replication.** ✅ **Decision: scrape all images and assets directly into the workspace asset library and use them in the build without asking.** Assume the client owns their own creative materials.
-6. **Cost and timeout caps.** ✅ **Decision: default caps (max 3 QA iterations, 10 generated images, 5-minute job timeout, 30-second LLM timeout) are per-workspace configurable settings.**
-7. **Editor.** ✅ **Decision: no editor for the first phase.** The first goal is to generate and replicate high-quality sites. Editing the blueprint comes later.
+4. **PushPress data integration.** ✅ **Decision: phase 2.**
+5. **Asset rights for replication.** ✅ **Decision: scrape originals into the asset library and use them directly.**
+6. **Cost and timeout caps.** ✅ **Decision: defaults are per-workspace configurable settings.**
+7. **Editor.** ✅ **Decision: no editor in phase 1.**
 8. **Deployment hosting.** ✅ **Decision: S3 + CloudFront.**
 9. **Preview URL auth.** ✅ **Decision: workspace-member-only.**
 10. **Renderer app role.** ✅ **Decision: `apps/renderer` is a template/component library; `apps/api` spawns per-job builds.**
+11. **Astro source storage.** Where exactly do we store the generated Astro source code — S3 prefix, DB blob, or both? Suggest S3 under `sites/{siteUuid}/source/{attemptId}/`.
+12. **Credit system.** Do credits reset exactly on subscription renewal date, or on the first of the month? What happens to unused credits?
+13. **Preview/publish domain format.** Do we use `{site-slug}-{hash}.ploy.build`-style subdomains, or `{workspace}-{site}.preview.pushpress.com`?
+14. **Self-healing approval.** Can the system auto-apply doc updates from evals, or must a human approve every change?
+15. **Component variants vs. separate components.** At what point does a variant become its own component? Need a rule.
+16. **URL replication and third-party embeds.** Do we copy scripts like Mindbody/Stripe embeds during replication, or replace them with placeholder CTAs?
+17. **Sandbox now vs. later.** Accept temp-directory risk for the PoC, but define the migration trigger (e.g. first user-provided custom component, or production launch).
 
 ## Implementation sequence
 
