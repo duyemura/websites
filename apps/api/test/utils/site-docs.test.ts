@@ -42,7 +42,12 @@ describe("generateBrandGuidelines", () => {
     expect(markdown).toContain("| Primary text | `primary` | #111111 | headings |");
     expect(markdown).toContain("| Accent | `accent` | #ff4d00 | CTAs |");
     expect(markdown).toContain("**Tagline**: Stronger together.");
-    expect(markdown).toContain("![Original website screenshot](https://example-gym.com/screenshot.png)");
+    expect(markdown).toContain("![Asset ID: Original Website Screenshot](https://example-gym.com/screenshot.png)");
+    expect(markdown).toContain("**Color Strategy**");
+    expect(markdown).toContain("**Pairing Rule**");
+    expect(markdown).toContain("**Dark Mode Behavior**");
+    expect(markdown).toContain("**Imagery Style**");
+    expect(markdown).toContain("**Detected components**");
   });
 });
 
@@ -50,6 +55,8 @@ describe("generateSiteDocs", () => {
   test("generates required docs and optional docs from scraped data", () => {
     const docs = generateSiteDocs(baseScrape);
     const keys = docs.map((d) => d.key);
+    expect(keys).toContain("workspace-memory");
+    expect(keys).toContain("site-memory");
     expect(keys).toContain(BRAND_GUIDELINES_DOC_KEY);
     expect(keys).toContain("business-info");
     expect(keys).toContain("site-structure");
@@ -77,7 +84,26 @@ describe("generateSiteDocs", () => {
     expect(keys).not.toContain("team-bios");
     expect(keys).not.toContain("testimonials");
     expect(keys).not.toContain("faqs");
+    expect(keys).toContain("workspace-memory");
+    expect(keys).toContain("site-memory");
     expect(keys).toContain(BRAND_GUIDELINES_DOC_KEY);
+  });
+
+  test("workspace memory includes business snapshot and reference docs", () => {
+    const docs = generateSiteDocs(baseScrape);
+    const memory = docs.find((d) => d.key === "workspace-memory")!;
+    expect(memory.content).toContain("Beta Gym");
+    expect(memory.content).toContain("Current goal");
+    expect(memory.content).toContain("[[brand-guidelines]]");
+    expect(memory.content).toContain("[[business-info]]");
+  });
+
+  test("site memory includes source url and publish state", () => {
+    const docs = generateSiteDocs(baseScrape);
+    const memory = docs.find((d) => d.key === "site-memory")!;
+    expect(memory.content).toContain(baseScrape.url);
+    expect(memory.content).toContain("Publish state");
+    expect(memory.content).toContain("draft");
   });
 
   test("business info doc includes contact and social links", () => {

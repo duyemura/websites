@@ -2,6 +2,16 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY, BRAND_GUIDELINES_DOC_TITLE } from "./brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
+import {
+  generateSiteMemory,
+  generateWorkspaceMemory,
+  renderSiteMemory,
+  renderWorkspaceMemory,
+  SITE_MEMORY_DOC_KEY,
+  SITE_MEMORY_DOC_TITLE,
+  WORKSPACE_MEMORY_DOC_KEY,
+  WORKSPACE_MEMORY_DOC_TITLE,
+} from "./workspace-memory";
 
 export interface GeneratedSiteDoc {
   key: string;
@@ -146,7 +156,22 @@ function makeVoiceDoc(data: ScrapedWebsiteData): GeneratedSiteDoc {
 
 export function generateSiteDocs(data: ScrapedWebsiteData): GeneratedSiteDoc[] {
   const brandInput = buildBrandGuidelinesInput(data);
+  const workspaceMemory = generateWorkspaceMemory(data);
+  const siteMemory = generateSiteMemory(data);
+
   const docs: GeneratedSiteDoc[] = [
+    {
+      key: WORKSPACE_MEMORY_DOC_KEY,
+      title: WORKSPACE_MEMORY_DOC_TITLE,
+      content: renderWorkspaceMemory(workspaceMemory),
+      source: "ai_extracted",
+    },
+    {
+      key: SITE_MEMORY_DOC_KEY,
+      title: SITE_MEMORY_DOC_TITLE,
+      content: renderSiteMemory(siteMemory),
+      source: "ai_extracted",
+    },
     {
       key: BRAND_GUIDELINES_DOC_KEY,
       title: BRAND_GUIDELINES_DOC_TITLE,

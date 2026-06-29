@@ -1,4 +1,4 @@
-import type { ScrapedBrandInput, ScrapedColor } from "@ploy-gyms/shared-types";
+import type { ScrapedBrandInput, ScrapedColor, ScrapedDesignToken } from "@ploy-gyms/shared-types";
 
 function colorRoleName(role: ScrapedColor["role"]): string {
   const names: Record<ScrapedColor["role"], string> = {
@@ -14,7 +14,7 @@ function colorRoleName(role: ScrapedColor["role"]): string {
   return names[role];
 }
 
-function renderColorTable(colors: ScrapedColor[]): string {
+function renderColorTable(colors: ScrapedBrandInput["colors"]): string {
   if (colors.length === 0) return "- No dominant colors detected.";
   const rows = colors
     .map(
@@ -22,7 +22,21 @@ function renderColorTable(colors: ScrapedColor[]): string {
         `| ${colorRoleName(c.role)} | \`${c.token}\` | ${c.hex} | ${c.usage ?? ""} |`,
     )
     .join("\n");
-  return `| Role | Token | Hex | Usage |\n| --- | --- | --- | --- |\n${rows}`;
+  return `| Role | Token | Hex | Usage |
+| --- | --- | --- | --- |
+${rows}`;
+}
+
+function renderColorStrategy(input: ScrapedBrandInput): string {
+  const lines: string[] = [];
+  if (input.colorStrategy) lines.push(`- **Color Strategy**: ${input.colorStrategy}`);
+  for (const rule of input.pairingRules ?? []) lines.push(`- **Pairing Rule**: ${rule}`);
+  for (const rule of input.contextRules ?? []) lines.push(`- **Context Rule**: ${rule}`);
+  if (input.darkModeBehavior) lines.push(`- **Dark Mode Behavior**: ${input.darkModeBehavior}`);
+  if (lines.length === 0) {
+    lines.push("- No detailed color strategy captured; derive from the color table above.");
+  }
+  return lines.join("\n");
 }
 
 function renderFontTable(fonts: ScrapedBrandInput["fonts"]): string {
@@ -33,7 +47,9 @@ function renderFontTable(fonts: ScrapedBrandInput["fonts"]): string {
         `| ${f.role.charAt(0).toUpperCase() + f.role.slice(1)} | ${f.family} | ${f.weights?.join(", ") ?? "varies"} | ${f.usage ?? ""} |`,
     )
     .join("\n");
-  return `| Role | Font | Weights | Usage |\n| --- | --- | --- | --- |\n${rows}`;
+  return `| Role | Font | Weights | Usage |
+| --- | --- | --- | --- |
+${rows}`;
 }
 
 function renderTypeScale(scale: ScrapedBrandInput["typeScale"]): string {
@@ -44,26 +60,44 @@ function renderTypeScale(scale: ScrapedBrandInput["typeScale"]): string {
         `| ${s.element} | ${s.mobile ?? "—"} | ${s.tablet ?? "—"} | ${s.desktop ?? "—"} | ${s.notes ?? ""} |`,
     )
     .join("\n");
-  return `| Element | Mobile | Tablet | Desktop | Notes |\n| --- | --- | --- | --- | --- |\n${rows}`;
+  return `| Element | Base / Mobile | md / Tablet | lg / Desktop | Notes |
+| --- | --- | --- | --- | --- |
+${rows}`;
 }
 
-function renderLayoutRules(rules: ScrapedBrandInput["layoutRules"]): string {
-  if (rules.length === 0) return "- No layout rules detected.";
-  const rows = rules
-    .map(
-      (r) =>
-        `| ${r.element} | ${r.token ? `\`${r.token}\` | ` : ""}${r.value} |`,
-    )
-    .join("\n");
-  const header = rules.some((r) => r.token)
-    ? "| Element | Token | Rule |\n| --- | --- | --- |"
+function renderLayoutRules(rules: ScrapedBrandInput["layoutRules"], tokens?: ScrapedBrandInput["designTokens"]): string {
+  const rows: string[] = [];
+  for (const r of rules) {
+    rows.push(`| ${r.element} | ${r.token ? `\`${r.token}\` | ` : ""}${r.value} |`);
+  }
+  for (const t of tokens ?? []) {
+    if (t.token) {
+      rows.push(`| ${tokenCategoryLabel(t.category)} | \`${t.token}\` = ${t.value}${t.usage ? ` (${t.usage})` : ""} |`);
+    } else {
+      rows.push(`| ${tokenCategoryLabel(t.category)} | ${t.value}${t.usage ? ` (${t.usage})` : ""} |`);
+    }
+  }
+  if (rows.length === 0) return "- No layout or spacing rules detected.";
+  const hasToken = rules.some((r) => r.token) || (tokens ?? []).some((t) => t.token);
+  const header = hasToken
+    ? "| Element | Token / Rule |\n| --- | --- |"
     : "| Element | Rule |\n| --- | --- |";
-  return `${header}\n${rows}`;
+  return `${header}\n${rows.join("\n")}`;
 }
 
-function renderComponentPatterns(patterns: string[]): string {
-  if (patterns.length === 0) return "- No specific component patterns detected.";
-  return patterns.map((p) => `- ${p}`).join("\n");
+function tokenCategoryLabel(category: ScrapedDesignToken["category"]): string {
+  const labels: Record<ScrapedDesignToken["category"], string> = {
+    spacing: "Spacing",
+    radius: "Corner radius",
+    borderWidth: "Border width",
+    borderStyle: "Border style",
+    shadow: "Shadow",
+    grid: "Grid",
+    maxWidth: "Max width",
+    transition: "Transition",
+    opacity: "Opacity",
+  };
+  return labels[category];
 }
 
 function renderTone(tone: ScrapedBrandInput): string {
@@ -73,28 +107,65 @@ function renderTone(tone: ScrapedBrandInput): string {
       : "direct, inclusive, action-oriented";
   const examples =
     tone.toneExamples.length > 0
-      ? tone.toneExamples.map((e) => `- "${e}"`).join("\n")
+      ? tone.toneExamples.slice(0, 8).map((e) => `- "${e}"`).join("\n")
       : "- No example copy captured.";
-  return `**Keywords**: ${keywords}
+  return `- **Keywords**: ${keywords}
 
-**Examples**:
+- **Examples**:
 ${examples}`;
 }
 
-function renderImagery(images: ScrapedBrandInput["images"]): string {
-  if (images.length === 0) return "- No imagery detected.";
-  const byContext: Record<string, string[]> = {};
-  for (const img of images) {
-    const list = byContext[img.context] ?? [];
-    list.push(img.promptKeywords?.join(", ") ?? img.alt ?? "visual");
-    byContext[img.context] = list;
+function renderImagery(input: ScrapedBrandInput): string {
+  const lines: string[] = [];
+  if (input.imageryStrategy) lines.push(`- **Imagery Style**: ${input.imageryStrategy}`);
+  if (input.imagePlacement && input.imagePlacement.length > 0) {
+    lines.push("", "- **Placement Strategy**:");
+    for (const placement of input.imagePlacement) {
+      lines.push(`  - ${placement}`);
+    }
   }
-  return Object.entries(byContext)
-    .map(
-      ([context, keywords]) =>
-        `- **${context.charAt(0).toUpperCase() + context.slice(1)}**: ${keywords.slice(0, 3).join("; ")}`,
-    )
-    .join("\n");
+  if (input.promptKeywords && input.promptKeywords.length > 0) {
+    lines.push("", `- **Prompt Keywords**: ${input.promptKeywords.join(", ")}.`);
+  }
+  if (input.images.length > 0 && !input.imageryStrategy) {
+    const byContext: Record<string, string[]> = {};
+    for (const img of input.images) {
+      const list = byContext[img.context] ?? [];
+      list.push(img.promptKeywords?.join(", ") ?? img.alt ?? "visual");
+      byContext[img.context] = list;
+    }
+    for (const [context, keywords] of Object.entries(byContext)) {
+      lines.push(`- **${context.charAt(0).toUpperCase() + context.slice(1)}**: ${keywords.slice(0, 3).join("; ")}`);
+    }
+  }
+  if (lines.length === 0) lines.push("- No imagery detected.");
+  return lines.join("\n");
+}
+
+function renderApplicationExamples(
+  examples: string[],
+  patterns: string[],
+  screenshots: string[] = [],
+): string {
+  const parts: string[] = [];
+  if (screenshots.length > 0) {
+    parts.push(screenshots.map((url) => `![Asset ID: Original Website Screenshot](${url})`).join("\n\n"));
+    parts.push("");
+  }
+  if (examples.length > 0) {
+    parts.push(examples.map((e) => `- ${e}`).join("\n"));
+  }
+  if (patterns.length > 0) {
+    if (examples.length > 0) parts.push("");
+    parts.push("- **Detected components**:");
+    for (const p of patterns) {
+      parts.push(`  - ${p}`);
+    }
+  }
+  if (examples.length === 0 && patterns.length === 0) {
+    parts.push("- No application examples captured.");
+  }
+  return parts.join("\n");
 }
 
 export function generateBrandGuidelines(input: ScrapedBrandInput): string {
@@ -110,7 +181,11 @@ ${input.description ? `- **Description**: ${input.description}` : ""}
 
 ## Color System
 
+${renderColorStrategy(input)}
+
 ${renderColorTable(input.colors)}
+
+${input.screenshotUrls?.length ? `![Asset ID: Original Website Screenshot](${input.screenshotUrls[0]})` : ""}
 
 ## Typography
 
@@ -126,17 +201,15 @@ ${renderTone(input)}
 
 ## Imagery
 
-${renderImagery(input.images)}
+${renderImagery(input)}
 
 ## Layout & Spacing
 
-${renderLayoutRules(input.layoutRules)}
+${renderLayoutRules(input.layoutRules, input.designTokens)}
 
 ## Application Examples
 
-${renderComponentPatterns(input.componentPatterns)}
-
-${input.screenshotUrls?.length ? `\n## Reference Screenshots\n\n${input.screenshotUrls.map((url) => `![Original website screenshot](${url})`).join("\n\n")}` : ""}
+${renderApplicationExamples(input.applicationExamples ?? [], input.componentPatterns, input.screenshotUrls)}
 `;
 }
 

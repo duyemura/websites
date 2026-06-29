@@ -66,6 +66,7 @@
     "globals": "^16.0.0",
     "kysely-codegen": "^0.18.2",
     "kysely-ctl": "^0.12.1",
+    "playwright": "^1.61.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
     "typescript": "~5.8.2",

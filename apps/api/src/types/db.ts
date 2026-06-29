@@ -5,11 +5,15 @@
 
 import type { ColumnType } from "kysely";
 
+export type AiActivityAction = "apply_suggestion" | "edit" | "generate" | "memory_update" | "publish" | "qa" | "replicate" | "suggest";
+
+export type AiActivityOutcome = "failure" | "partial" | "rejected" | "success" | "user_edited";
+
 export type AiJobStatus = "cancelled" | "completed" | "failed" | "pending" | "running";
 
 export type AiJobType = "generate_assets" | "generate_page" | "replicate_site" | "run_playbook";
 
-export type AssetType = "audio" | "document" | "font" | "icon" | "image" | "logo" | "video";
+export type AssetType = "document" | "font" | "icon" | "image" | "logo" | "video";
 
 export type DeploymentStatus = "building" | "failed" | "pending" | "success";
 
@@ -35,6 +39,8 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export type MembershipRole = "admin" | "member" | "owner";
 
+export type Numeric = ColumnType<string, number | string, number | string>;
+
 export type PageStatus = "archived" | "draft" | "published";
 
 export type SiteStatus = "archived" | "draft" | "published";
@@ -44,6 +50,30 @@ export type ThemeSource = "ai_generated" | "replicated" | "system_preset" | "use
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type WorkspaceStatus = "active" | "cancelled" | "suspended" | "trial";
+
+export interface AiActivity {
+  actionType: AiActivityAction;
+  aiJobUuid: string | null;
+  costUsd: Numeric | null;
+  createdAt: Generated<Timestamp>;
+  errorMessage: string | null;
+  fidelityScore: Numeric | null;
+  inputDocKeys: string | null;
+  inputTokens: number | null;
+  latencyMs: number | null;
+  metadata: Json | null;
+  model: string | null;
+  outcome: AiActivityOutcome;
+  outputTokens: number | null;
+  promptTemplateKeys: string | null;
+  provider: string | null;
+  siteUuid: string | null;
+  summary: string;
+  userCorrection: string | null;
+  userUuid: string;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
 
 export interface AiJobs {
   createdAt: Generated<Timestamp>;
@@ -232,6 +262,7 @@ export interface Workspaces {
 }
 
 export interface DB {
+  aiActivity: AiActivity;
   aiJobs: AiJobs;
   assets: Assets;
   deployments: Deployments;

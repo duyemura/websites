@@ -4,7 +4,8 @@
     "outDir": "dist",
     "sourceMap": true,
     "noUncheckedIndexedAccess": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "lib": ["ESNext", "DOM"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

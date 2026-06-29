@@ -1,7 +1,7 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 
-const AssetType = z.enum(["image", "video", "audio", "font", "document", "logo", "icon"]);
+const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
 
 const AssetMetadataSchema = z.object({
   filename: z.string().optional(),

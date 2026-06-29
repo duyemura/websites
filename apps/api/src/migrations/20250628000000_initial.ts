@@ -123,7 +123,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // Assets
   await db.schema
     .createType("asset_type")
-    .asEnum(["image", "video", "audio", "font", "document", "logo", "icon"])
+    .asEnum(["image", "video", "font", "document", "logo", "icon"])
     .execute();
 
   await db.schema

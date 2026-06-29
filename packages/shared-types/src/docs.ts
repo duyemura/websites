@@ -69,19 +69,73 @@ export const ScrapedLayoutRuleSchema = z.object({
 });
 export type ScrapedLayoutRule = z.infer<typeof ScrapedLayoutRuleSchema>;
 
+export const ScrapedDesignTokenSchema = z.object({
+  category: z.enum([
+    "spacing",
+    "radius",
+    "borderWidth",
+    "borderStyle",
+    "shadow",
+    "grid",
+    "maxWidth",
+    "transition",
+    "opacity",
+  ]),
+  token: z.string().optional(),
+  value: z.string(),
+  usage: z.string().optional(),
+});
+export type ScrapedDesignToken = z.infer<typeof ScrapedDesignTokenSchema>;
+
 export const ScrapedBrandInputSchema = z.object({
   businessName: z.string(),
   tagline: z.string().optional(),
   industry: z.string().optional(),
   description: z.string().optional(),
   colors: z.array(ScrapedColorSchema),
+  colorStrategy: z.string().optional(),
+  pairingRules: z.array(z.string()).optional(),
+  contextRules: z.array(z.string()).optional(),
+  darkModeBehavior: z.string().optional(),
   fonts: z.array(ScrapedFontSchema),
   typeScale: z.array(ScrapedTextStyleSchema),
   toneKeywords: z.array(z.string()),
   toneExamples: z.array(z.string()),
+  imageryStrategy: z.string().optional(),
+  imagePlacement: z.array(z.string()).optional(),
+  promptKeywords: z.array(z.string()).optional(),
   images: z.array(ScrapedImageSchema),
   layoutRules: z.array(ScrapedLayoutRuleSchema),
+  designTokens: z.array(ScrapedDesignTokenSchema).optional(),
   componentPatterns: z.array(z.string()),
+  applicationExamples: z.array(z.string()).optional(),
   screenshotUrls: z.array(z.string()).optional(),
 });
 export type ScrapedBrandInput = z.infer<typeof ScrapedBrandInputSchema>;
+
+export const WorkspaceMemorySchema = z.object({
+  businessSnapshot: z.string(),
+  stakeholderName: z.string().optional(),
+  stakeholderRole: z.string().optional(),
+  stakeholderEmail: z.string().optional(),
+  stakeholderNotes: z.string().optional(),
+  currentGoal: z.string().optional(),
+  brandPositioning: z.string().optional(),
+  lockedDecisions: z.array(z.string()).default([]),
+  knownBlockers: z.array(z.string()).default([]),
+  followUpBacklog: z.array(z.string()).default([]),
+  referenceDocKeys: z.array(z.string()).default([]),
+});
+export type WorkspaceMemory = z.infer<typeof WorkspaceMemorySchema>;
+
+export const SiteMemorySchema = z.object({
+  sitePurpose: z.string().optional(),
+  sourceUrl: z.string().optional(),
+  replicationStatus: z.string().optional(),
+  recentEdits: z.array(z.string()).default([]),
+  qaIssues: z.array(z.string()).default([]),
+  publishState: z.string().optional(),
+  followUpBacklog: z.array(z.string()).default([]),
+  knownPlaceholders: z.array(z.string()).default([]),
+});
+export type SiteMemory = z.infer<typeof SiteMemorySchema>;
