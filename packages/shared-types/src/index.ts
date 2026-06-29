@@ -1,3 +1,4 @@
-export * from "./site";
-export * from "./page";
-export * from "./theme";
+export * from "./site.js";
+export * from "./page.js";
+export * from "./theme.js";
+export * from "./docs.js";
