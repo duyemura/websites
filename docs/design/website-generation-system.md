@@ -2,45 +2,85 @@
 
 ## Goal
 
-Build an API-invokable system that can generate or replicate static websites compiled with Astro. The output must be a deployable static bundle (`/dist`). When replicating an existing URL, the target is a pixel-perfect visual match.
+Build an API-invokable system that can generate or replicate static websites compiled with Astro. The output is a deployable static bundle (`/dist`).
 
-This is the foundational capability of the product. All other features (editor, playbooks, AI chat) feed into or consume this pipeline.
+- **Greenfield:** on-brand, content-complete, responsive, and functional.
+- **Replication:** visually faithful to the source site within an acceptable tolerance, with a human review gate for the final 10%.
+
+This is the foundational capability of the product. The editor, playbooks, AI chat, and PushPress integrations all feed into or consume this pipeline.
+
+## Success criteria
+
+| Mode | Success definition |
+|------|---------------------|
+| Greenfield | The generated site matches the brand guidelines, includes requested pages/sections, uses real business data where available, has no broken links or console errors, and looks professional on desktop and mobile. |
+| Replication | The generated site is visually faithful to the source: layout, color palette, typography, imagery, and navigation are recognizable and correct. A human review step catches remaining differences before publish. |
+
+We do **not** target literal 100% pixel-perfect automation. That is expensive, fragile, and rarely necessary. The system targets "good enough to preview" automatically and "good enough to publish" after review.
 
 ## Operating principles
 
-- **Blueprint first.** No code is written until the AI emits a validated JSON blueprint (pages, sections, tokens, assets). The blueprint is the single source of truth.
-- **Source of truth is the build artifact.** A component or page is not considered done until the static build succeeds and visual QA passes.
-- **No hallucinated dependencies.** Components use standard Astro patterns, Tailwind CSS, and workspace assets. No external UI libraries are installed unless explicitly configured.
-- **Linear pipeline with a correction loop.** Work through ingestion → blueprint → assets → code → visual QA. The last two steps loop until the site passes.
+- **Blueprint first.** No code is written until the AI emits a validated JSON blueprint. The blueprint is the single source of truth for pages, sections, design tokens, assets, and shared shell.
+- **Source of truth is the build artifact.** A generation step is not done until `astro build` succeeds and produces a valid `/dist`.
+- **No hallucinated dependencies.** Components use standard Astro patterns, Tailwind CSS, and workspace assets. External UI libraries are not installed unless explicitly configured.
+- **Human-in-the-loop for publish.** Automated QA catches obvious problems. Human review is required before a site goes live.
+- **Reproducible from blueprint.** The generated Astro project is a function of the blueprint and the component registry. Editing the blueprint and re-running the generator reproduces the site.
 
 ## High-level pipeline
 
 ```
-[Ingestion] → [Blueprinting] → [Asset Engine] → [Code Generation] → [Visual QA] → [Static Build]
-                                           ↑                                     │
-                                           └────────(loop on fail)──────────────┘
+[Ingestion]
+   │
+   ├── Greenfield: brief + workspace docs + PushPress data
+   └── Replication: URL crawler + scraper + screenshots
+   │
+   ▼
+[Blueprinting]
+   │
+   ▼
+[Asset Engine] ── images, fonts, icons, logos, favicons
+   │
+   ▼
+[Code Generation] ── Astro + Tailwind from blueprint
+   │
+   ▼
+[Automated QA]
+   │
+   ├─ pass ──► [Static Build]
+   └─ fail ──► [Code Generation] (loop until max iterations or human override)
 ```
 
-### 1. Ingestion
+## 1. Ingestion
 
-**Greenfield (text prompt):**
-- Inputs: business description, desired pages, tone, reference docs (workspace memory, brand guidelines, offerings).
-- Output: a structured brief: niche, audience, pages, sections, tone, must-use assets.
+### Greenfield inputs
 
-**Brownfield (URL replication):**
-- Launch Playwright.
-- Capture full-page screenshots at 1440px and 375px.
-- Extract DOM structure, computed CSS design tokens, typography, images.
-- Run the existing scraper to produce the structured site docs (brand guidelines, business info, site structure, voice copy, offerings, locations).
+- User brief (text prompt): business, audience, desired pages, tone, must-have sections.
+- Workspace docs: `workspace-memory`, `brand-guidelines`, `business-info`, `offerings`, `locations`, `team-bios`, `testimonials`, `voice-copy`.
+- PushPress data (via adapter): locations, classes, plans, coaches, real testimonials, pricing.
+- User-selected assets: logo, hero images, staff photos.
 
-### 2. Blueprinting
+Output: a **structured brief** JSON with niche, audience, pages, sections, tone, required data sources, and constraints.
 
-The AI produces a strict JSON blueprint. This is the contract between ingestion and code generation.
+### Replication inputs
+
+- Target URL.
+
+Steps:
+
+1. **Site tree discovery.** Crawl the target origin and record every page reachable from the main nav, footer, and primary content links. Deduplicate by canonical URL; ignore external links, query-string variants, and file downloads.
+2. **Homepage first.** Capture the homepage, extract design tokens, DOM structure, typography, images, fonts, icons, and the global shell. Produce `brand-guidelines`, `business-info`, `site-structure`, `voice-copy`, `offerings`, `locations`.
+3. **Approval gate.** Generate and QA the homepage. Present the preview URL. The user approves the homepage before we build the rest of the site.
+4. **Remaining pages.** After homepage approval, use the approved blueprint's design tokens, global shell, and QA notes to generate the other pages from the recorded site tree.
+
+## 2. Blueprinting
+
+The blueprint is a validated JSON document. It is the contract between ingestion, assets, code generation, QA, and the editor.
 
 ```json
 {
   "site_metadata": {
     "framework": "astro",
+    "mode": "replication",
     "target_url": "https://example.com/",
     "pages": ["index", "about", "programs", "locations"]
   },
@@ -55,7 +95,8 @@ The AI produces a strict JSON blueprint. This is the contract between ingestion 
     "fonts": {
       "heading": "Bebas Neue",
       "body": "Nourd Light Font",
-      "accent": "Rock Salt"
+      "accent": "Rock Salt",
+      "fallback": "sans-serif"
     },
     "spacing": {
       "max_width": "1280px",
@@ -64,9 +105,24 @@ The AI produces a strict JSON blueprint. This is the contract between ingestion 
     "radius": "4px",
     "border_width": "8px"
   },
+  "global_shell": {
+    "header": {
+      "component_type": "Header",
+      "logo_asset": "asset_uuid_or_url",
+      "nav_links": [
+        { "label": "Programs", "href": "/programs" }
+      ],
+      "cta": { "label": "Join now", "href": "/join" }
+    },
+    "footer": {
+      "component_type": "Footer",
+      "social_links": [],
+      "locations": []
+    }
+  },
   "global_assets": {
     "favicon": "asset_uuid",
-    "logo": "asset_uuid"
+    "og_image": "asset_uuid"
   },
   "pages": [
     {
@@ -91,7 +147,8 @@ The AI produces a strict JSON blueprint. This is the contract between ingestion 
             "background_image": {
               "placeholder_id": "hero_bg",
               "context": "athletes training in a gritty brooklyn gym, high contrast lighting",
-              "dimensions": [1440, 900]
+              "dimensions": [1440, 900],
+              "strategy": "generate"
             }
           },
           "styles": {
@@ -107,137 +164,217 @@ The AI produces a strict JSON blueprint. This is the contract between ingestion 
 }
 ```
 
-**Validation:**
-- JSON schema is validated by Zod.
-- The blueprint references only component types registered in the component registry.
-- All asset placeholders have a generation context or a source asset UUID.
+### Validation
 
-### 3. Asset Engine
+- JSON schema validated by Zod.
+- Every `component_type` exists in the component registry.
+- Every asset has a `strategy`: `workspace_asset`, `scrape_download`, or `generate`.
+- Every page has a valid slug, meta, and ordered sections.
 
-1. Walk the blueprint and collect every asset reference.
-2. For each reference:
-   - If it maps to an existing workspace asset (logo, uploaded photo), use it.
-   - If it is missing, a placeholder, or low quality, generate an image.
-   - For URL replication, prefer scraped images when legally/technically safe; otherwise generate replacements.
-3. Generate images using an image-generation API (e.g. Flux, Ideogram). Prompts are built from the asset context + brand guidelines.
-4. Save images to workspace-scoped storage with deterministic keys.
-5. Update the blueprint with final asset URLs/storage keys.
+## 3. Copy engine
 
-### 4. Code Generation
+A dedicated copy engine produces page content from inputs:
 
-1. Initialize a clean Astro project in a sandbox or ephemeral working directory.
-2. Scaffold:
-   - `src/layouts/Layout.astro` — global wrapper, fonts, meta, design tokens as CSS variables.
-   - `src/components/` — one Astro component per registered section type.
-   - `src/pages/[slug].astro` — one file per page, imports the layout and the ordered sections.
-3. Render each blueprint section to its registered Astro component, passing content + assets + styles as props.
-4. Use Tailwind CSS for all styling. Design tokens map to Tailwind config or CSS custom properties.
-5. Install dependencies and run `astro build`.
+- **Brand voice + business info** set the tone.
+- **PushPress data** provides real facts: class names, coach names, location addresses, pricing.
+- **Section type templates** provide structure (hero, features, pricing, testimonials).
+- **User brief** provides constraints and page list.
 
-**Component registry:**
-A registry maps `component_type` values to Astro component implementations and a Zod schema for the section props. Adding a new section type means adding one registry entry (component + schema) without changing the orchestrator.
+Output: section-level content JSON (headlines, body copy, CTAs, alt text, SEO titles/descriptions) that feeds into the blueprint.
 
-### 5. Visual QA / Correction Loop
+For replication, the copy engine extracts and reuses existing copy instead of generating it.
 
-1. Start a preview server for the built Astro site.
-2. Use Playwright to capture full-page screenshots at 1440px and 375px.
-3. For replications, compare against the reference screenshots.
-4. A vision-capable model or diff tool evaluates:
-   - layout alignment (element order, grid, spacing)
-   - typography (font, size, weight, line height)
-   - colors (backgrounds, text, accents)
-   - asset rendering and cropping
-   - responsive behavior
-5. If issues are found, emit a structured bug log:
-   ```json
-   {
-     "component_id": "hero",
-     "issue": "headline font size too small",
-     "required_change": "increase h1 from text-5xl to text-7xl",
-     "severity": "high"
-   }
-   ```
-6. Feed the bug log back into the code generation step and rebuild.
-7. After a configured number of failures, stop looping and surface the best attempt + the unresolved issues to the user.
+## 4. Asset engine
 
-### 6. Static Build Output
+The asset engine resolves every asset reference in the blueprint.
 
-- Run `astro build`.
-- Validate that `/dist` contains clean HTML, CSS, JS islands, and optimized images.
-- Upload `/dist` to the deployment artifact store.
-- Create a deployment record and return the preview URL.
+### Asset taxonomy and strategies
+
+| Type | Strategy | Notes |
+|------|----------|-------|
+| Images (hero, backgrounds, cards) | For replications: `scrape_download` all originals into the asset library. For greenfield: `workspace_asset` if uploaded; `generate` if missing. | Replications assume the client owns their own creative materials. |
+| Logos / wordmarks | `scrape_download` for replications; `workspace_asset` for greenfield. | SVG or PNG; preserve transparency. |
+| Favicon | `scrape_download` for replications; `workspace_asset` or `generate` for greenfield. | Standard sizes. |
+| OG / social image | `generate` from brand + hero context | 1200x630. |
+| Fonts | `web_font` (Google Fonts / Adobe Fonts) by name; `system_fallback` if unavailable | Scrape gives font names; map to closest hosted font. |
+| Icons | `icon_set` (Lucide, Heroicons, FontAwesome subset); `generate_svg` for custom | Prefer system icon set; avoid per-build icon downloads. |
+| SVGs / custom graphics | `scrape_download` for replications; `generate` for greenfield | Preserve as-is when replicating. |
+
+### Asset resolution steps
+
+1. Collect all asset references from `global_shell`, `global_assets`, and each page section.
+2. For each reference, choose the best available source.
+3. Download or generate assets into workspace-scoped storage.
+4. Update the blueprint with final asset URLs/storage keys.
+
+## 5. Code generation
+
+1. Create an ephemeral working directory for the build.
+2. Scaffold the Astro project:
+   - `src/layouts/Layout.astro` — global wrapper, fonts, meta, CSS variables from design tokens.
+   - `src/components/shared/Header.astro`, `Footer.astro`, `Nav.astro`, etc. from `global_shell`.
+   - `src/components/sections/*.astro` — one component per registered section type.
+   - `src/pages/[slug].astro` — one file per blueprint page.
+3. Render sections by mapping `component_type` to the registered Astro component and passing props from the blueprint.
+4. Use Tailwind CSS for styling. Design tokens map to Tailwind config + CSS custom properties.
+5. Install pinned dependencies (`astro`, `@astrojs/tailwind`, `tailwindcss`, etc.) and run `astro build`.
+
+### Build sandbox details
+
+- Local temp directory for the PoC.
+- Dependency versions pinned in a template `package.json` copied into each build.
+- Shared system components are copied into `src/components/system/` per build, not installed from npm.
+- Build errors are captured and returned in the QA report.
+- For production, move to an isolated sandbox (E2B, Firecracker, or Docker) before running user-influenced code.
+
+## 6. Automated QA
+
+QA is issue-based, not score-based.
+
+### Checks
+
+| Category | Checks |
+|----------|--------|
+| Build | `astro build` exits 0; `/dist` exists; no 404 assets. |
+| Links | All internal links resolve; external links have valid URLs. |
+| Console | No runtime errors or uncaught exceptions on load. |
+| Responsive | Screenshots at 1440px and 375px; no horizontal scroll or clipped content. |
+| Visual (replication only) | Diff summary against reference screenshots; flag large layout/color/typography deviations. |
+| Content | No placeholder text remains; SEO meta is present; alt text is present. |
+
+### Output
+
+A QA report:
+
+```json
+{
+  "passed": false,
+  "summary": "Hero heading too small on mobile; footer logo missing.",
+  "issues": [
+    {
+      "component_id": "hero",
+      "category": "typography",
+      "issue": "Hero heading is too small on mobile",
+      "severity": "high",
+      "suggested_fix": "Change mobile h1 from text-3xl to text-5xl"
+    },
+    {
+      "component_id": "footer",
+      "category": "assets",
+      "issue": "Footer logo asset is missing",
+      "severity": "medium",
+      "suggested_fix": "Generate a logo from the brand name or use uploaded logo"
+    }
+  ]
+}
+```
+
+### Correction loop
+
+- If issues are auto-fixable (style values, asset regeneration), feed the report back into code generation.
+- Loop up to `max_qa_iterations`.
+- If issues remain, stop and present the QA report + preview URL to the user for review.
+
+## 7. Human review and publish
+
+After automated QA passes (or after max iterations):
+
+1. Create a deployment artifact from `/dist`.
+2. Create a deployment record with status `ready_for_review`.
+3. Serve a preview URL scoped to workspace members.
+4. User can approve, request changes, or reject.
+5. On approval, promote to published and update DNS / CDN.
+
+## 8. Post-generation editing
+
+For the first phase, the **blueprint is read-only output** used by the generator. We are not building an editor yet.
+
+Future phases:
+- The blueprint becomes the editable source of truth.
+- Re-running the generator reproduces the Astro project from the updated blueprint.
+- Asset uploads and copy tweaks flow back into the blueprint.
+- The Astro project itself is ephemeral; only the blueprint and the final `/dist` artifact are persisted.
 
 ## Tech choices
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| Static site framework | Astro 5.x | Already chosen in the project plan; excellent static output, partial hydration, SEO-first. |
-| Styling | Tailwind CSS | Matches workspace/renderer stack; design tokens map cleanly to utilities. |
-| Component registry | Astro components + Zod props | Keeps code generation simple and type-safe; new section types are additive. |
-| Build sandbox | Local temp directory first; E2B or isolated container later | Fast iteration locally; isolate for untrusted/user-generated code in production. |
-| Screenshots / visual QA | Playwright | Already used for scraping; same tool can drive the QA loop. |
-| Image generation | Flux / Ideogram via API | Best quality for web imagery; fallback to a cheaper model for icons/backgrounds. |
-| LLM for code | Claude / Qwen2.5-Coder / GPT-4o | Generate Astro components from blueprints. Route by task. |
-| LLM for visual critic | Vision-capable model (Claude/GPT-4o/Qwen-VL) | Compare screenshots and emit bug logs. |
-| Orchestration | BullMQ jobs in `apps/api` | Each generation is an `ai_job` with step-level status, cost tracking, and retries. |
+| Static site framework | Astro 5.x | Existing renderer stack; excellent static output and partial hydration. |
+| Styling | Tailwind CSS | Matches renderer; tokens map to utilities. |
+| Component registry | Astro components + Zod props | Type-safe; new section types are additive. |
+| Build sandbox | Local temp directory for PoC; E2B/Docker for production | Fast iteration now; isolation later. |
+| Screenshots / QA | Playwright | Already used for scraping. |
+| Image generation | Flux / Ideogram via API; DALL-E fallback | Best web asset quality. |
+| LLM routing | Configurable via `LLM_PROVIDER` env (`openrouter` or `ollama`) | Already added to env schema. |
+| Default LLM | `anthropic/claude-3.5-sonnet` (OpenRouter) / `qwen2.5:32b` (Ollama) | Strong coding and JSON generation. |
+| Vision LLM | `openai/gpt-4o` (OpenRouter) / `llava:34b` (Ollama) | Screenshot QA and diff summaries. |
+| Cheap LLM | `google/gemini-flash-1.5` (OpenRouter) / `qwen2.5:7b` (Ollama) | Fast tasks like prompt cleanup. |
+| Orchestration | BullMQ jobs in `apps/api` | Step-level status, retries, cost tracking via `ai_activity`. |
 
 ## API entry point
 
-`POST /workspaces/:uuid/sites/:uuid/generate`
+`POST /workspaces/:workspaceUuid/sites/:siteUuid/generate`
 
 Body:
+
 ```json
 {
   "mode": "greenfield" | "replication",
   "input": {
-    "brief": "..." // or
+    "brief": "A Brooklyn gym...",
     "target_url": "https://example.com/"
   },
   "options": {
-    "pages": ["index", "about"],
-    "max_qa_iterations": 3
+    "pages": ["index", "about", "programs"],
+    "max_qa_iterations": 3,
+    "replication_scope": "homepage" | "all_linked_pages"
   }
 }
 ```
 
 Response:
+
 ```json
 {
   "aiJobUuid": "...",
   "status": "pending",
-  "estimatedDurationSeconds": 120
+  "estimatedDurationSeconds": 180
 }
 ```
 
-The job progresses through the pipeline states. Each state transition is logged to `ai_activity`.
+The job progresses through pipeline states. Each state transition is logged to `ai_activity`.
 
-## Data model updates needed
+## Data model updates
 
-- `ai_jobs` already exists; add a `state` or `steps` field to track pipeline progress.
-- Add an `ai_job_steps` table if we want per-step status, logs, and outputs.
-- `deployments` already exists; connect successful builds to deployments.
-- `components` registry table (optional): store system + workspace section types with schema and source code pointer.
+- `ai_jobs` — add `state` and `steps` JSON to track pipeline progress.
+- `ai_job_steps` — optional per-step table for status, logs, outputs, cost, latency.
+- `deployments` — connect successful builds; add `status: ready_for_review | published | rejected`.
+- `components` registry table — store system + workspace section types with schema and source code pointer.
+- `blueprints` table — store the generated blueprint per site so the editor can load and mutate it.
 
 ## Open questions
 
-1. **Perfect replication scope.** Is "pixel-perfect" judged on the homepage only, or every page? If every page, do we scrape all linked pages or only the provided URL?
-2. **Component registry ownership.** Should section types be system-wide, workspace-specific, or both? Can a workspace define custom components?
-3. **Build sandbox.** Do we need true sandboxing (E2B, Firecracker) for the build, or is a temp directory enough for the PoC?
-4. **Visual QA threshold.** What match score counts as "good enough"? 98% is aspirational; should we start with human review and automated QA as a helper?
-5. **Asset rights.** For URL replication, do we download and reuse the original images, always generate replacements, or let the user choose per asset?
-6. **Cost and timeouts.** Image generation and multiple QA loops are expensive. What are the budget/time caps per job?
-7. **Edit after generate.** Once a site is generated, does the user edit the blueprint JSON, the Astro code, or a visual editor? How do changes flow back?
-8. **Deployment hosting.** Is the static build served from S3 + CloudFront, or do we use a separate hosting integration?
-9. **Clerk / auth in generated sites.** Client sites are public, but preview URLs may need workspace auth. How do we handle that?
-10. **Renderer app role.** Does `apps/renderer` become the build sandbox, or does `apps/api` spawn Astro builds directly? Should the renderer be a long-lived service or a CLI invoked per job?
+1. **Replication scope.** ✅ **Decision: record the full site tree from nav/footer/main content, nail the homepage first, then use the approved homepage's brand guidelines and QA notes to generate the remaining pages in follow-up jobs.** This prevents random page caps and gives us a repeatable, approval-gated workflow.
+2. **Component registry ownership.** ✅ **Decision: system-wide components first, with workspace-level overrides later.** Components support variants (e.g. top nav vs. left nav, solid hero vs. video-background hero).
+3. **Build sandbox.** ✅ **Decision: local temp directory for the PoC; E2B/Docker planned for production.**
+4. **PushPress data integration.** ✅ **Decision: phase 2.** Build the adapter interface later; do not block the initial generation/replication pipeline on it.
+5. **Asset rights for replication.** ✅ **Decision: scrape all images and assets directly into the workspace asset library and use them in the build without asking.** Assume the client owns their own creative materials.
+6. **Cost and timeout caps.** ✅ **Decision: default caps (max 3 QA iterations, 10 generated images, 5-minute job timeout, 30-second LLM timeout) are per-workspace configurable settings.**
+7. **Editor.** ✅ **Decision: no editor for the first phase.** The first goal is to generate and replicate high-quality sites. Editing the blueprint comes later.
+8. **Deployment hosting.** ✅ **Decision: S3 + CloudFront.**
+9. **Preview URL auth.** ✅ **Decision: workspace-member-only.**
+10. **Renderer app role.** ✅ **Decision: `apps/renderer` is a template/component library; `apps/api` spawns per-job builds.**
 
-## Implementation sequence (suggested)
+## Implementation sequence
 
-1. Define the component registry and 5–8 core section types (Hero, Features, CTA, Testimonials, Pricing, Locations, Footer).
-2. Define the blueprint JSON schema in `packages/shared-types`.
-3. Build the code generator: from blueprint → Astro files → static build in a temp directory.
-4. Wire the generator to a BullMQ `ai_job` and an API endpoint.
-5. Add Playwright screenshot capture for generated output.
-6. Add visual QA loop with a vision model.
-7. Add asset generation for missing images.
-8. Add URL replication path using the existing scraper as the ingestion step.
+1. Component registry + 5–8 core section types.
+2. Blueprint JSON schema in `packages/shared-types`.
+3. Code generator: blueprint → Astro files → static build in temp directory.
+4. Wire generator to a BullMQ `ai_job` and API endpoint.
+5. Automated structural QA (build, links, console, responsive).
+6. Asset engine for images, logos, favicons.
+7. Copy engine for greenfield content.
+8. URL replication crawler + scraper integration.
+9. Visual QA diff loop (automated, issue-based).
+10. Human review gate and publish flow.
+11. Blueprint editor integration.
