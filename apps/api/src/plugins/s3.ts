@@ -12,10 +12,11 @@ export default fp(
       secretAccessKey: config.S3_SECRET_KEY,
     });
 
-    await ensureBuckets(s3, [
-      config.S3_ASSETS_BUCKET,
-      config.S3_DEPLOYMENTS_BUCKET ?? "ploygyms-dev-deployments",
-    ]);
+    const buckets = [config.S3_ASSETS_BUCKET];
+    if (config.S3_DEPLOYMENTS_BUCKET) {
+      buckets.push(config.S3_DEPLOYMENTS_BUCKET);
+    }
+    await ensureBuckets(s3, buckets);
 
     const storage = createS3StorageProvider({
       endpoint: config.S3_ENDPOINT,

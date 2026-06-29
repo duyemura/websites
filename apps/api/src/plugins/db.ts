@@ -32,6 +32,7 @@ export default fp(
 
         if (error) {
           fastify.log.error({ error }, "failed to run `migrateToLatest`");
+          throw error;
         }
       }
     });

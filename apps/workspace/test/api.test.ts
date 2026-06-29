@@ -1,10 +1,11 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { api } from "../src/lib/api";
+import { api, setAuthTokenGetter } from "../src/lib/api";
 
 describe("api client", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    setAuthTokenGetter(async () => "test-token");
     fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -25,7 +26,7 @@ describe("api client", () => {
       expect.objectContaining({
         headers: {
           "x-workspace-slug": "local",
-          Authorization: "Bearer local-dev-user",
+          Authorization: "Bearer test-token",
         },
       }),
     );

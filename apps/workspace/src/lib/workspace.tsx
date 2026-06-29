@@ -44,7 +44,10 @@ export function WorkspaceProvider({
     try {
       const list = await fetchWorkspaces();
       setWorkspaces(list);
-      if (list.length > 0 && !list.find((w) => w.slug === currentWorkspaceSlug)) {
+      if (
+        list.length > 0 &&
+        !list.find((w) => w.slug === currentWorkspaceSlug)
+      ) {
         const next = list[0].slug;
         setSlug(next);
         localStorage.setItem(STORAGE_KEY, next);
@@ -86,12 +89,13 @@ export function useWorkspace() {
   return context;
 }
 
-let activeWorkspaceSlug = "local";
-
 export function setActiveWorkspaceSlug(slug: string) {
-  activeWorkspaceSlug = slug;
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, slug);
+  }
 }
 
 export function getActiveWorkspaceSlug(): string {
-  return activeWorkspaceSlug;
+  if (typeof window === "undefined") return "local";
+  return localStorage.getItem(STORAGE_KEY) || "local";
 }

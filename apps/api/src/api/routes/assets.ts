@@ -178,7 +178,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     {
       schema: {
         params: z.object({ uuid: z.string().uuid() }),
-        response: { 204: z.object({}).openapi({ type: "object" }) },
+        response: {
+          204: z.object({}).openapi({ type: "object" }),
+          404: z.object({ error: z.string() }),
+        },
       },
     },
     async (request, reply) => {
@@ -189,13 +192,15 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .where("workspaceUuid", "=", request.workspace.uuid)
         .executeTakeFirst();
 
-      if (asset) {
-        await fastify.storage.deleteObject(asset.storageKey);
-        await fastify.db
-          .deleteFrom("assets")
-          .where("uuid", "=", request.params.uuid)
-          .execute();
+      if (!asset) {
+        return reply.code(404).send({ error: "Asset not found" });
       }
+
+      await fastify.storage.deleteObject(asset.storageKey);
+      await fastify.db
+        .deleteFrom("assets")
+        .where("uuid", "=", request.params.uuid)
+        .execute();
 
       return reply.code(204).send({});
     },

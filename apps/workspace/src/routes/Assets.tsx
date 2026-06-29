@@ -112,7 +112,7 @@ export function Assets() {
         </div>
         <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
           <Upload className="h-4 w-4" />
-          {uploading ? "Uploading..." : "Upload asset"}
+          {uploading ? "Uploading…" : "Upload asset"}
         </Button>
         <input
           ref={inputRef}
@@ -123,7 +123,7 @@ export function Assets() {
       </div>
 
       {isLoading ? (
-        <p className="mt-8 text-muted-foreground">Loading...</p>
+        <p className="mt-8 text-muted-foreground">Loading…</p>
       ) : assets && assets.length > 0 ? (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {assets.map((asset: Asset) => (

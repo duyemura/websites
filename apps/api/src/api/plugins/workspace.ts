@@ -1,4 +1,5 @@
 import fp from "fastify-plugin";
+import { verifyToken } from "@clerk/backend";
 import { MembershipRole } from "../../types/db";
 
 declare module "fastify" {
@@ -29,97 +30,115 @@ function extractToken(header: string | undefined): string | null {
   return header.trim();
 }
 
+async function verifyBearerToken(
+  token: string,
+  config: { secretKey?: string; verify: boolean },
+): Promise<string | null> {
+  if (!config.verify) {
+    return token;
+  }
+
+  if (!config.secretKey) {
+    return null;
+  }
+
+  try {
+    const result = await verifyToken(token, { secretKey: config.secretKey });
+    return result.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default fp(
-  (fastify, _, done) => {
-    fastify.addHook("onRequest", (request, reply, hookDone) => {
+  async (fastify) => {
+    const config = fastify.config;
+
+    fastify.addHook("onRequest", async (request, reply) => {
       const token = extractToken(request.headers.authorization as string | undefined);
 
       if (!token) {
-        reply.code(401).send({ error: "Missing authorization header" });
-        return hookDone();
+        return reply.code(401).send({ error: "Missing authorization header" });
       }
 
       const slug = request.headers["x-workspace-slug"] as string | undefined;
 
       if (!slug) {
-        reply.code(401).send({ error: "Missing x-workspace-slug header" });
-        return hookDone();
+        return reply.code(401).send({ error: "Missing x-workspace-slug header" });
       }
 
-      fastify.db
+      const externalUserId = await verifyBearerToken(token, {
+        secretKey: config.CLERK_SECRET_KEY,
+        verify: config.CLERK_VERIFY_TOKENS,
+      });
+
+      if (!externalUserId) {
+        return reply.code(401).send({ error: "Invalid authorization token" });
+      }
+
+      const user = await fastify.db
         .selectFrom("users")
         .select(["uuid", "email", "name"])
-        .where("externalUserId", "=", token)
-        .executeTakeFirst()
-        .then((user) => {
-          if (!user) {
-            reply.code(401).send({ error: "User not found" });
-            return hookDone();
-          }
+        .where("externalUserId", "=", externalUserId)
+        .executeTakeFirst();
 
-          request.user = user;
+      if (!user) {
+        return reply.code(401).send({ error: "User not found" });
+      }
 
-          return fastify.db
-            .selectFrom("workspaces")
-            .selectAll()
-            .where("slug", "=", slug)
-            .where("status", "!=", "cancelled")
-            .executeTakeFirst()
-            .then(async (workspace) => {
-              if (!workspace) {
-                reply.code(404).send({ error: "Workspace not found" });
-                return hookDone();
-              }
+      request.user = user;
 
-              const workspaceMembership = await fastify.db
-                .selectFrom("workspaceMemberships")
-                .select("role")
-                .where("workspaceUuid", "=", workspace.uuid)
-                .where("userUuid", "=", user.uuid)
-                .executeTakeFirst();
+      const workspace = await fastify.db
+        .selectFrom("workspaces")
+        .selectAll()
+        .where("slug", "=", slug)
+        .where("status", "!=", "cancelled")
+        .executeTakeFirst();
 
-              if (workspaceMembership) {
-                request.workspace = {
-                  uuid: workspace.uuid,
-                  slug: workspace.slug,
-                  name: workspace.name,
-                  organizationUuid: workspace.organizationUuid,
-                };
-                request.membership = { role: workspaceMembership.role, via: "workspace" };
-                return hookDone();
-              }
+      if (!workspace) {
+        return reply.code(404).send({ error: "Workspace not found" });
+      }
 
-              if (workspace.organizationUuid) {
-                const orgMembership = await fastify.db
-                  .selectFrom("organizationMemberships")
-                  .select("role")
-                  .where("organizationUuid", "=", workspace.organizationUuid)
-                  .where("userUuid", "=", user.uuid)
-                  .executeTakeFirst();
+      const workspaceMembership = await fastify.db
+        .selectFrom("workspaceMemberships")
+        .select("role")
+        .where("workspaceUuid", "=", workspace.uuid)
+        .where("userUuid", "=", user.uuid)
+        .executeTakeFirst();
 
-                if (orgMembership && ["owner", "admin"].includes(orgMembership.role)) {
-                  request.workspace = {
-                    uuid: workspace.uuid,
-                    slug: workspace.slug,
-                    name: workspace.name,
-                    organizationUuid: workspace.organizationUuid,
-                  };
-                  request.membership = { role: orgMembership.role, via: "organization" };
-                  return hookDone();
-                }
-              }
+      if (workspaceMembership) {
+        request.workspace = {
+          uuid: workspace.uuid,
+          slug: workspace.slug,
+          name: workspace.name,
+          organizationUuid: workspace.organizationUuid,
+        };
+        request.membership = { role: workspaceMembership.role, via: "workspace" };
+        return;
+      }
 
-              reply.code(403).send({ error: "Access denied to workspace" });
-              hookDone();
-            });
-        })
-        .catch((error) => {
-          reply.code(500).send({ error: "Failed to resolve workspace membership" });
-          hookDone(error);
-        });
+      if (workspace.organizationUuid) {
+        const orgMembership = await fastify.db
+          .selectFrom("organizationMemberships")
+          .select("role")
+          .where("organizationUuid", "=", workspace.organizationUuid)
+          .where("userUuid", "=", user.uuid)
+          .executeTakeFirst();
+
+        if (orgMembership && ["owner", "admin"].includes(orgMembership.role)) {
+          request.workspace = {
+            uuid: workspace.uuid,
+            slug: workspace.slug,
+            name: workspace.name,
+            organizationUuid: workspace.organizationUuid,
+          };
+          request.membership = { role: orgMembership.role, via: "organization" };
+          return;
+        }
+      }
+
+      return reply.code(403).send({ error: "Access denied to workspace" });
     });
-
-    done();
   },
   { name: "workspace", dependencies: ["db"] },
 );

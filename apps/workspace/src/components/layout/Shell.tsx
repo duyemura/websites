@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from "react-router";
 import { Dumbbell, FileText, Image, LayoutTemplate, BookOpen, Settings, Users } from "lucide-react";
-import { useWorkspace, setActiveWorkspaceSlug } from "@/lib/workspace";
+import { useWorkspace } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
@@ -17,7 +17,6 @@ export function Shell() {
 
   const selectWorkspace = (slug: string) => {
     setCurrentWorkspaceSlug(slug);
-    setActiveWorkspaceSlug(slug);
     window.location.reload();
   };
 
@@ -57,7 +56,7 @@ export function Shell() {
         </nav>
         <div className="border-t p-4">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading workspace...</p>
+            <p className="text-sm text-muted-foreground">Loading workspace…</p>
           ) : (
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Workspace</label>

@@ -51,7 +51,7 @@ export function Settings() {
       <p className="text-muted-foreground">Workspace and integration settings.</p>
 
       {isLoading ? (
-        <p className="mt-8 text-muted-foreground">Loading...</p>
+        <p className="mt-8 text-muted-foreground">Loading…</p>
       ) : workspace ? (
         <form
           onSubmit={handleSubmit}
@@ -104,7 +104,7 @@ export function Settings() {
             </div>
           </div>
           <Button type="submit" disabled={updateWorkspace.isPending}>
-            {updateWorkspace.isPending ? "Saving..." : "Save changes"}
+            {updateWorkspace.isPending ? "Saving…" : "Save changes"}
           </Button>
           {updateWorkspace.isError && (
             <p className="text-sm text-destructive">

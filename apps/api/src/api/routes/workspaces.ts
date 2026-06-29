@@ -1,4 +1,5 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 const WorkspaceSchema = z.object({
@@ -47,6 +48,32 @@ const AddMemberSchema = z.object({
   name: z.string().optional(),
   role: z.enum(["owner", "admin", "member"]).default("member"),
 });
+
+const ROLE_RANK: Record<"owner" | "admin" | "member", number> = {
+  owner: 3,
+  admin: 2,
+  member: 1,
+};
+
+async function requireWorkspaceRole(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  workspaceUuid: string,
+  minRole: "owner" | "admin" | "member",
+): Promise<boolean> {
+  const membership = await request.server.db
+    .selectFrom("workspaceMemberships")
+    .select("role")
+    .where("workspaceUuid", "=", workspaceUuid)
+    .where("userUuid", "=", request.user.uuid)
+    .executeTakeFirst();
+
+  if (!membership || ROLE_RANK[membership.role] < ROLE_RANK[minRole]) {
+    reply.code(403).send({ error: "Access denied" });
+    return false;
+  }
+  return true;
+}
 
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   fastify.get(
@@ -155,6 +182,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       },
     },
     async (request, reply) => {
+      if (
+        !(await requireWorkspaceRole(request, reply, request.params.uuid, "member"))
+      ) {
+        return reply;
+      }
+
       const workspace = await fastify.db
         .selectFrom("workspaces")
         .selectAll()
@@ -183,6 +216,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       },
     },
     async (request, reply) => {
+      if (
+        !(await requireWorkspaceRole(request, reply, request.params.uuid, "admin"))
+      ) {
+        return reply;
+      }
+
       const update = request.body;
       const workspace = await fastify.db
         .updateTable("workspaces")
@@ -212,7 +251,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         response: { 200: z.array(MembershipSchema) },
       },
     },
-    async (request) => {
+    async (request, reply) => {
+      if (
+        !(await requireWorkspaceRole(request, reply, request.params.uuid, "member"))
+      ) {
+        return reply;
+      }
+
       const memberships = await fastify.db
         .selectFrom("workspaceMemberships")
         .innerJoin("users", "users.uuid", "workspaceMemberships.userUuid")
@@ -252,6 +297,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       },
     },
     async (request, reply) => {
+      if (
+        !(await requireWorkspaceRole(request, reply, request.params.uuid, "admin"))
+      ) {
+        return reply;
+      }
+
       const workspace = await fastify.db
         .selectFrom("workspaces")
         .select("uuid")
@@ -316,6 +367,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       },
     },
     async (request, reply) => {
+      if (
+        !(await requireWorkspaceRole(request, reply, request.params.uuid, "admin"))
+      ) {
+        return reply;
+      }
+
       await fastify.db
         .deleteFrom("workspaceMemberships")
         .where("workspaceUuid", "=", request.params.uuid)

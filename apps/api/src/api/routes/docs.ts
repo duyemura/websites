@@ -85,10 +85,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       schema: {
         params: z.object({ key: z.string() }),
         body: UpsertDocSchema,
-        response: { 200: DocSchema },
+        response: { 200: DocSchema, 201: DocSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const { title, content } = request.body;
       const workspaceUuid = request.workspace.uuid;
       const key = request.params.key;
@@ -108,11 +108,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .returningAll()
           .executeTakeFirstOrThrow();
 
-        return {
+        return reply.code(200).send({
           ...updated,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
-        };
+        });
       }
 
       const created = await fastify.db
@@ -128,11 +128,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      return {
+      return reply.code(201).send({
         ...created,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
-      };
+      });
     },
   );
 

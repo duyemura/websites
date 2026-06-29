@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "migrate:test": "DOTENV_CONFIG_PATH=./.env.test node -r dotenv/config ./node_modules/kysely-ctl/dist/bin.cjs migrate",
-    "pretest": "pnpm build && pnpm migrate:test latest",
+    "pretest": "pnpm migrate:test latest",
     "test": "DOTENV_CONFIG_PATH=./.env.test node -r dotenv/config ./node_modules/vitest/vitest.mjs --no-file-parallelism",
     "test:coverage": "vitest --coverage --watch=false --no-file-parallelism",
     "lint": "eslint .",
@@ -27,6 +27,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1075.0",
     "@bull-board/api": "^6.7.10",
     "@bull-board/fastify": "^6.7.10",
+    "@clerk/backend": "^3.8.4",
     "@fastify/autoload": "^6.1.0",
     "@fastify/cors": "^11.0.0",
     "@fastify/env": "^5.0.2",
@@ -66,6 +67,7 @@
     "kysely-codegen": "^0.18.2",
     "kysely-ctl": "^0.12.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typescript": "~5.8.2",
     "typescript-eslint": "^8.26.0",
     "vitest": "^3.0.8"

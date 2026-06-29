@@ -16,6 +16,7 @@
     "@blocknote/core": "^0.51.4",
     "@blocknote/mantine": "^0.51.4",
     "@blocknote/react": "^0.51.4",
+    "@clerk/react": "^6.11.1",
     "@hey-api/client-fetch": "^0.8.0",
     "@ploy-gyms/shared-types": "workspace:*",
     "@radix-ui/react-slot": "^1.1.1",

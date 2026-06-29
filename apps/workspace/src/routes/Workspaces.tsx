@@ -56,7 +56,6 @@ export function Workspaces() {
 
   const switchTo = (slug: string) => {
     setActiveWorkspaceSlug(slug);
-    localStorage.setItem("ploy-gyms:workspace-slug", slug);
     window.location.href = "/";
   };
 
@@ -71,7 +70,7 @@ export function Workspaces() {
         </div>
         <Button onClick={() => setCreating(true)} disabled={creating}>
           <Plus className="h-4 w-4" />
-          New workspace
+          Create workspace
         </Button>
       </div>
 
@@ -109,7 +108,7 @@ export function Workspaces() {
           </div>
           <div className="flex gap-2">
             <Button type="submit" disabled={createWorkspace.isPending}>
-              {createWorkspace.isPending ? "Creating..." : "Create workspace"}
+              {createWorkspace.isPending ? "Creating…" : "Create workspace"}
             </Button>
             <Button
               type="button"
@@ -185,7 +184,7 @@ export function Workspaces() {
                     variant="outline"
                     onClick={() => switchTo(workspace.slug)}
                   >
-                    Switch
+                    Switch workspace
                   </Button>
                 </div>
               </div>

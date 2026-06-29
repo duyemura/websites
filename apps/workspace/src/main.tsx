@@ -7,18 +7,24 @@ import App from "./App";
 import "./index.css";
 import { WorkspaceProvider } from "./lib/workspace";
 import { api } from "./lib/api";
+import { ConditionalClerkProvider } from "./components/ConditionalClerkProvider";
 
 const queryClient = new QueryClient();
+const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
+  | string
+  | undefined;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <WorkspaceProvider fetchWorkspaces={api.getWorkspaces}>
-          <App />
-        </WorkspaceProvider>
-      </BrowserRouter>
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+    <ConditionalClerkProvider publishableKey={publishableKey}>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <WorkspaceProvider fetchWorkspaces={api.getWorkspaces}>
+            <App />
+          </WorkspaceProvider>
+        </BrowserRouter>
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </ConditionalClerkProvider>
   </StrictMode>,
 );

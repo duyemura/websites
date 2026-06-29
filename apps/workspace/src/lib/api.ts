@@ -1,7 +1,27 @@
 import { getActiveWorkspaceSlug } from "./workspace";
 
 const API_BASE = "/api";
-const DEV_TOKEN = "local-dev-user";
+
+let authTokenGetter: (() => Promise<string | null | undefined>) | null = null;
+
+export function setAuthTokenGetter(
+  getter: () => Promise<string | null | undefined>,
+) {
+  authTokenGetter = getter;
+}
+
+async function getAuthToken(): Promise<string | null> {
+  if (authTokenGetter) {
+    const token = await authTokenGetter();
+    if (token) return token;
+  }
+
+  if (import.meta.env.DEV) {
+    return "local-dev-user";
+  }
+
+  return null;
+}
 
 async function fetchWithBase(
   path: string,
@@ -9,14 +29,17 @@ async function fetchWithBase(
 ): Promise<Response> {
   const url = `${API_BASE}${path}`;
   const hasBody = options.body !== undefined;
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {
+    "x-workspace-slug": getActiveWorkspaceSlug(),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...((options.headers as Record<string, string>) ?? {}),
+  };
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      "x-workspace-slug": getActiveWorkspaceSlug(),
-      Authorization: `Bearer ${DEV_TOKEN}`,
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -114,18 +137,27 @@ export const api = {
     }),
   createDoc: (body: { title: string; content?: string; key?: string }) =>
     fetchJson<Doc>("/docs", { method: "POST", body: JSON.stringify(body) }),
-  deleteDoc: (key: string) => fetchWithBase(`/docs/${encodeURIComponent(key)}`, { method: "DELETE" }),
+  deleteDoc: (key: string) =>
+    fetchWithBase(`/docs/${encodeURIComponent(key)}`, { method: "DELETE" }),
   archiveDoc: (key: string) =>
-    fetchJson<Doc>(`/docs/${encodeURIComponent(key)}/archive`, { method: "POST" }),
+    fetchJson<Doc>(`/docs/${encodeURIComponent(key)}/archive`, {
+      method: "POST",
+    }),
   restoreDoc: (key: string) =>
-    fetchJson<Doc>(`/docs/${encodeURIComponent(key)}/restore`, { method: "POST" }),
+    fetchJson<Doc>(`/docs/${encodeURIComponent(key)}/restore`, {
+      method: "POST",
+    }),
 
   getAssets: () => fetchJson<Asset[]>("/assets"),
   createAsset: (body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt">) =>
     fetchJson<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
   updateAsset: (uuid: string, body: { name?: string; type?: Asset["type"] }) =>
-    fetchJson<Asset>(`/assets/${uuid}`, { method: "PUT", body: JSON.stringify(body) }),
-  deleteAsset: (uuid: string) => fetchWithBase(`/assets/${uuid}`, { method: "DELETE" }),
+    fetchJson<Asset>(`/assets/${uuid}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteAsset: (uuid: string) =>
+    fetchWithBase(`/assets/${uuid}`, { method: "DELETE" }),
   getUploadUrl: (filename: string, contentType?: string) =>
     fetchJson<UploadUrl>(
       `/assets/upload-url?filename=${encodeURIComponent(filename)}${contentType ? `&contentType=${encodeURIComponent(contentType)}` : ""}`,
@@ -135,7 +167,9 @@ export const api = {
   getPlaybooks: () => fetchJson<Playbook[]>("/playbooks"),
 
   getOrganizations: () =>
-    fetchJson<{ uuid: string; slug: string; name: string }[]>("/organizations"),
+    fetchJson<{ uuid: string; slug: string; name: string }[]>(
+      "/organizations",
+    ),
   createOrganization: (body: { name: string; slug: string }) =>
     fetchJson<{ uuid: string; slug: string; name: string }>("/organizations", {
       method: "POST",
@@ -151,23 +185,25 @@ export const api = {
         status: string;
       }[]
     >("/workspaces"),
-  createWorkspace: (body: { name: string; slug: string; organizationUuid?: string }) =>
+  createWorkspace: (body: {
+    name: string;
+    slug: string;
+    organizationUuid?: string;
+  }) =>
     fetchJson<{ uuid: string; slug: string; name: string }>("/workspaces", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   getWorkspace: () =>
-    fetchJson<
-      {
-        uuid: string;
-        slug: string;
-        name: string;
-        organizationUuid: string | null;
-        brandPrimaryColor?: string | null;
-        brandFontHeading?: string | null;
-        brandFontBody?: string | null;
-      }
-    >("/workspaces/me"),
+    fetchJson<{
+      uuid: string;
+      slug: string;
+      name: string;
+      organizationUuid: string | null;
+      brandPrimaryColor?: string | null;
+      brandFontHeading?: string | null;
+      brandFontBody?: string | null;
+    }>("/workspaces/me"),
   updateWorkspace: (uuid: string, body: object) =>
     fetchJson<{ uuid: string; name: string }>(`/workspaces/${uuid}`, {
       method: "PUT",

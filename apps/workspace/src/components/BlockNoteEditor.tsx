@@ -4,7 +4,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/core/style.css";
 import "@blocknote/react/style.css";
 import "@blocknote/mantine/style.css";
-import { markdownToBlocks, blocksToMarkdown } from "@blocknote/core";
+import { markdownToBlocks } from "@blocknote/core";
 import type {
   BlockNoteEditor as BlockNoteEditorType,
   PartialBlock,
@@ -220,14 +220,9 @@ export function BlockNoteEditor({ content, onChange }: BlockNoteEditorProps) {
       <div className="flex-1 overflow-auto">
         <BlockNoteView
           editor={editor}
-          onChange={async () => {
+          onChange={() => {
             refreshToolbar();
-            const markdown = blocksToMarkdown(
-              editor.document,
-              editor.pmSchema,
-              editor as unknown as BlockNoteEditorType,
-              { document },
-            );
+            const markdown = editor.blocksToMarkdownLossy(editor.document);
             onChange(markdown);
           }}
         />

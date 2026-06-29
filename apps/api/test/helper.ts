@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import fp from "fastify-plugin";
-import App, { AppOptions } from "../dist/app";
-import { Service } from "../dist/manifest";
+import App, { AppOptions } from "../src/app";
+import { Service } from "../src/manifest";
 import { db } from "../src/database";
 
 export async function build(opts?: AppOptions) {

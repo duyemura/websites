@@ -26,6 +26,7 @@ const ConfigSchema = z.object({
   REDIS_CLUSTER: booleanFromEnv(false),
   CLERK_SECRET_KEY: z.string().optional(),
   CLERK_PUBLISHABLE_KEY: z.string().optional(),
+  CLERK_VERIFY_TOKENS: booleanFromEnv(true),
   S3_ENDPOINT: z.string(),
   S3_ACCESS_KEY: z.string(),
   S3_SECRET_KEY: z.string(),

@@ -85,7 +85,7 @@ export function Docs() {
           <h2 className="font-semibold">Docs</h2>
           <Button size="sm" variant="outline" onClick={() => setIsAdding(true)} disabled={isAdding}>
             <Plus className="h-4 w-4" />
-            New doc
+            Create doc
           </Button>
         </div>
         {isAdding && (
@@ -120,7 +120,7 @@ export function Docs() {
           </div>
         )}
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <div className="space-y-1">
             {docs?.length === 0 && !isAdding && (
@@ -158,14 +158,13 @@ export function Docs() {
                   size="sm"
                   onClick={() => archiveDoc.mutate(selectedKey)}
                   disabled={archiveDoc.isPending}
-                  title="Archive doc"
                 >
                   <Archive className="h-4 w-4" />
-                  Archive
+                  Archive doc
                 </Button>
                 <Button onClick={handleSave} disabled={saveDoc.isPending}>
                   <Save className="h-4 w-4" />
-                  {saveDoc.isPending ? "Saving..." : "Save changes"}
+                  {saveDoc.isPending ? "Saving…" : "Save changes"}
                 </Button>
               </div>
             </div>
