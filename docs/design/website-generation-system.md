@@ -295,15 +295,18 @@ Future phases:
 - Asset uploads and copy tweaks flow back into the blueprint.
 - The Astro project itself is ephemeral; only the blueprint and the final `/dist` artifact are persisted.
 
-## 9. Component registry implementation
+## 9. Component model
 
-Components are Astro source files in a system-wide registry.
+**Decision: Model B — each generated site owns its full Astro component tree.**
 
-- **Location:** `apps/renderer/src/components/sections/` and `apps/renderer/src/components/shared/`.
-- **Variants:** a component can expose a `variant` prop (e.g. `HeroSection` with `variant: "solid" | "video"`). For larger layout differences, separate files are OK.
-- **Schema:** each component has a Zod schema for its props. The blueprint generator must emit props that match the schema.
-- **Overrides:** workspace-level component overrides are a future feature; not in phase 1.
-- **Build-time resolution:** the code generator copies the relevant system components into the temp build directory.
+System components in `apps/renderer/src/components/` exist as starting templates and reusable examples, but every generated site gets its own fork of the components it uses.
+
+- The generator may copy a system component into the site's source directory as a starting point.
+- It may then customize that component for the specific site.
+- All components in a generated site are owned by that site.
+- Improvements to system components do not auto-update existing sites. A future "refresh from template" operation can be built separately.
+
+This model is necessary because real-world sites will not all fit into a fixed set of shared templates.
 
 ## 10. Blueprint persistence
 
@@ -331,7 +334,7 @@ Components are Astro source files in a system-wide registry.
 - Temp build directories live indefinitely for now. Cleanup is a future concern.
 - Store both the generated Astro source code and the `/dist` artifact.
 - Astro source is kept because it is easier to edit later than raw HTML.
-- Storage format is flexible; likely S3 under a workspace/site prefix.
+- **Storage location:** S3 prefix `sites/{siteUuid}/source/{attemptId}/` for source, and `sites/{siteUuid}/dist/{attemptId}/` for the built artifact.
 
 ## 14. Font handling
 
@@ -380,20 +383,23 @@ Generated sites must work correctly at all three.
 
 - Every pipeline phase is logged to `ai_activity` with model, tokens, cost, latency, and outcome.
 - Phases: `blueprint`, `copy`, `assets`, `code`, `qa`.
-- Workspaces have a monthly credit pool that refreshes with the SaaS subscription.
+- Workspaces have a monthly credit pool.
+- Credits refresh on the workspace's Stripe subscription renewal date (successful rebill).
 - Out of credits = jobs pause until re-up.
 
 ## 21. Site identity and URLs
 
 - Each site gets a preview domain and a publish domain.
 - Preview URLs are workspace-member-only.
+- For phase 1, use a simple subdomain format (e.g. `{site-slug}-{hash}.yourdomain.com` or similar). For local dev, use `/etc/hosts` entries like `pushpress.site`.
+- Target branded domain format for production (e.g. `{site-slug}.pushpress.site` for publish, `preview-{hash}.pushpress.site` for preview).
 - Custom domains are phase 2.
 - Track deployment history; consider git-like history per site in the future.
 
 ## 22. Security
 
-- Sandbox builds eventually. For phase 1, accept the risk while we prove the generation pipeline.
-- See security questions in the open questions list.
+- **Phase 1:** use local temp directories for builds. Accept the sandbox risk until the website builder is proven.
+- **Phase 2:** move to isolated sandboxes (Docker/E2B/Firecracker) before production or before supporting user-provided custom code.
 
 ## Tech choices
 
@@ -464,13 +470,13 @@ The job progresses through pipeline states. Each state transition is logged to `
 8. **Deployment hosting.** ✅ **Decision: S3 + CloudFront.**
 9. **Preview URL auth.** ✅ **Decision: workspace-member-only.**
 10. **Renderer app role.** ✅ **Decision: `apps/renderer` is a template/component library; `apps/api` spawns per-job builds.**
-11. **Astro source storage.** Where exactly do we store the generated Astro source code — S3 prefix, DB blob, or both? Suggest S3 under `sites/{siteUuid}/source/{attemptId}/`.
-12. **Credit system.** Do credits reset exactly on subscription renewal date, or on the first of the month? What happens to unused credits?
-13. **Preview/publish domain format.** Do we use `{site-slug}-{hash}.ploy.build`-style subdomains, or `{workspace}-{site}.preview.pushpress.com`?
-14. **Self-healing approval.** Can the system auto-apply doc updates from evals, or must a human approve every change?
-15. **Component variants vs. separate components.** At what point does a variant become its own component? Need a rule.
-16. **URL replication and third-party embeds.** Do we copy scripts like Mindbody/Stripe embeds during replication, or replace them with placeholder CTAs?
-17. **Sandbox now vs. later.** Accept temp-directory risk for the PoC, but define the migration trigger (e.g. first user-provided custom component, or production launch).
+11. **Astro source storage.** ✅ **Decision: S3 prefix. Source at `sites/{siteUuid}/source/{attemptId}/`, built `/dist` at `sites/{siteUuid}/dist/{attemptId}/`.**
+12. **Credit system.** ✅ **Decision: credits refresh on Stripe subscription renewal date after successful rebill.**
+13. **Preview/publish domain format.** ✅ **Decision: phase 1 uses any simple subdomain; target `{site-slug}.pushpress.site` / `preview-{hash}.pushpress.site` for production; use `/etc/hosts` for local dev.**
+14. **Self-healing approval.** ✅ **Decision: auto-apply during build/self-healing; confirm with user only when AI Assistant changes site-wide styles.**
+15. **Component model.** ✅ **Decision: Model B — each generated site owns its full Astro component tree. System components are starting templates only.**
+16. **URL replication and third-party embeds.** ✅ **Decision: not for now; phase 2.**
+17. **Sandbox now vs. later.** ✅ **Decision: temp directories for phase 1; isolated sandboxes once the website builder is proven.**
 
 ## Implementation sequence
 

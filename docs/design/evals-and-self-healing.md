@@ -134,7 +134,7 @@ After running, it produces:
 ## Open questions
 
 1. Do evals run automatically after every generation, or only in explicit eval batches?
-2. Who approves doc updates proposed by self-healing — AI only, human only, or hybrid?
+2. **Self-healing approval.** ✅ **Decision: during build and self-healing processes, doc updates are auto-applied without human approval. When a user changes site-wide styles through the AI Assistant, confirm the change and write it to the relevant doc, logging the activity.**
 3. How do we prevent the `lessons-learned` doc from growing too large and polluting context?
 4. Should we keep a separate "eval workspace" for testing so production docs don't get polluted?
 5. How do we measure "copy quality" without a reference URL?
