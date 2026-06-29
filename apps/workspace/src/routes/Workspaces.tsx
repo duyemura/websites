@@ -1,14 +1,43 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Check, X, Pencil } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  ArrowDownUp,
+  ArrowUpDown,
+  Check,
+  LayoutGrid,
+  List,
+  Pencil,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { useWorkspace, setActiveWorkspaceSlug } from "@/lib/workspace";
+
+type ViewMode = "grid" | "list";
+type SortField = "name" | "slug" | "status";
+type SortDirection = "asc" | "desc";
 
 export function Workspaces() {
   const queryClient = useQueryClient();
   const { workspaces, refresh } = useWorkspace();
+  const [view, setView] = useState<ViewMode>("list");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<{ field: SortField; dir: SortDirection }>({
+    field: "name",
+    dir: "asc",
+  });
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -59,126 +88,325 @@ export function Workspaces() {
     window.location.href = "/";
   };
 
+  const filteredWorkspaces = useMemo(() => {
+    let list = workspaces.slice();
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (w) =>
+          w.name.toLowerCase().includes(q) ||
+          w.slug.toLowerCase().includes(q),
+      );
+    }
+    list.sort((a, b) => {
+      const dir = sort.dir === "asc" ? 1 : -1;
+      if (sort.field === "status") {
+        return a.status.localeCompare(b.status) * dir;
+      }
+      return a[sort.field].localeCompare(b[sort.field]) * dir;
+    });
+    return list;
+  }, [workspaces, search, sort]);
+
+  const toggleSort = (field: SortField) => {
+    setSort((prev) =>
+      prev.field === field
+        ? { field, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { field, dir: "asc" },
+    );
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sort.field !== field) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground" />;
+    return <ArrowDownUp className="ml-1 h-3.5 w-3.5" />;
+  };
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Workspaces</h1>
-          <p className="text-muted-foreground">
-            Gyms and clients. Each workspace can have multiple sites.
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)} disabled={creating}>
-          <Plus className="h-4 w-4" />
-          Create workspace
-        </Button>
-      </div>
-
-      {creating && (
-        <form onSubmit={handleSubmit} className="mt-6 max-w-md space-y-4 rounded-lg border bg-card p-6">
-          <div className="space-y-2">
-            <label htmlFor="workspace-name" className="text-sm font-medium">Workspace name</label>
+    <div className="flex h-[calc(100vh-4rem)] flex-col">
+      <header className="flex items-center justify-between border-b px-6 py-4">
+        <h1 className="text-2xl font-bold tracking-tight">Workspaces</h1>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              id="workspace-name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (!slug) {
-                  setSlug(
-                    e.target.value
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]+/g, "-")
-                      .replace(/^-|-$/g, ""),
-                  );
-                }
-              }}
-              placeholder="Acme Fitness"
-              required
+              type="search"
+              placeholder="Search workspaces…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 w-64 pl-9"
             />
           </div>
-          <div className="space-y-2">
-            <label htmlFor="workspace-slug" className="text-sm font-medium">Slug</label>
-            <Input
-              id="workspace-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="acme-fitness"
-              required
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={createWorkspace.isPending}>
-              {createWorkspace.isPending ? "Creating…" : "Create workspace"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setCreating(false);
-                setName("");
-                setSlug("");
-              }}
+          <div className="flex items-center rounded-md border">
+            <button
+              onClick={() => setView("grid")}
+              className={`rounded-l-md p-2 ${
+                view === "grid"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent"
+              }`}
+              title="Grid view"
             >
-              Cancel
-            </Button>
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setView("list")}
+              className={`rounded-r-md p-2 ${
+                view === "list"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent"
+              }`}
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </button>
           </div>
-          {createWorkspace.isError && (
-            <p className="text-sm text-destructive">{createWorkspace.error?.message}</p>
-          )}
-        </form>
-      )}
+          <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
+            <Plus className="h-4 w-4" />
+            Create workspace
+          </Button>
+        </div>
+      </header>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {workspaces.map((workspace) => (
-          <div key={workspace.uuid} className="rounded-lg border bg-card p-6">
-            {editingUuid === workspace.uuid ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveName(workspace.uuid);
-                    if (e.key === "Escape") setEditingUuid(null);
-                  }}
-                  className="h-8 flex-1"
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => saveName(workspace.uuid)}
-                  disabled={updateWorkspace.isPending}
-                >
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => setEditingUuid(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">{workspace.name}</h3>
-                  <p className="text-sm text-muted-foreground">/{workspace.slug}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={() => {
-                      setEditingUuid(workspace.uuid);
-                      setEditName(workspace.name);
-                    }}
-                    title="Rename workspace"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+      <div className="flex-1 overflow-auto p-6">
+        {creating && (
+          <form
+            onSubmit={handleSubmit}
+            className="mb-6 max-w-md space-y-4 rounded-lg border bg-card p-6"
+          >
+            <div className="space-y-2">
+              <label htmlFor="workspace-name" className="text-sm font-medium">
+                Workspace name
+              </label>
+              <Input
+                id="workspace-name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (!slug) {
+                    setSlug(
+                      e.target.value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/^-|-$/g, ""),
+                    );
+                  }
+                }}
+                placeholder="Acme Fitness"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="workspace-slug" className="text-sm font-medium">
+                Slug
+              </label>
+              <Input
+                id="workspace-slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="acme-fitness"
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={createWorkspace.isPending}>
+                {createWorkspace.isPending ? "Creating…" : "Create workspace"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreating(false);
+                  setName("");
+                  setSlug("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+            {createWorkspace.isError && (
+              <p className="text-sm text-destructive">
+                {createWorkspace.error?.message}
+              </p>
+            )}
+          </form>
+        )}
+
+        {filteredWorkspaces.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+            <p className="text-muted-foreground">
+              No workspaces yet. Create one to get started.
+            </p>
+          </div>
+        ) : view === "list" ? (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[40%]">
+                    <button
+                      className="flex items-center"
+                      onClick={() => toggleSort("name")}
+                    >
+                      Name
+                      <SortIcon field="name" />
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      className="flex items-center"
+                      onClick={() => toggleSort("slug")}
+                    >
+                      Slug
+                      <SortIcon field="slug" />
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      className="flex items-center"
+                      onClick={() => toggleSort("status")}
+                    >
+                      Status
+                      <SortIcon field="status" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredWorkspaces.map((workspace) => (
+                  <TableRow key={workspace.uuid}>
+                    <TableCell>
+                      {editingUuid === workspace.uuid ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveName(workspace.uuid);
+                              if (e.key === "Escape") setEditingUuid(null);
+                            }}
+                            className="h-8 flex-1"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveName(workspace.uuid)}
+                            className="rounded p-1 hover:bg-accent"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingUuid(null)}
+                            className="rounded p-1 hover:bg-accent"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-sm font-semibold">
+                            {workspace.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-medium">{workspace.name}</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      /{workspace.slug}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="capitalize">
+                        {workspace.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingUuid(workspace.uuid);
+                            setEditName(workspace.name);
+                          }}
+                          className="rounded p-1 hover:bg-accent"
+                          title="Rename workspace"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => switchTo(workspace.slug)}
+                        >
+                          Switch workspace
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredWorkspaces.map((workspace) => (
+              <div
+                key={workspace.uuid}
+                className="rounded-lg border bg-card p-6"
+              >
+                {editingUuid === workspace.uuid ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveName(workspace.uuid);
+                        if (e.key === "Escape") setEditingUuid(null);
+                      }}
+                      className="h-8 flex-1"
+                      autoFocus
+                    />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => saveName(workspace.uuid)}
+                      disabled={updateWorkspace.isPending}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => setEditingUuid(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">{workspace.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        /{workspace.slug}
+                      </p>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setEditingUuid(workspace.uuid);
+                        setEditName(workspace.name);
+                      }}
+                      title="Rename workspace"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+                <div className="mt-4 flex items-center justify-between">
+                  <Badge variant="secondary" className="capitalize">
+                    {workspace.status}
+                  </Badge>
                   <Button
                     size="sm"
                     variant="outline"
@@ -188,14 +416,9 @@ export function Workspaces() {
                   </Button>
                 </div>
               </div>
-            )}
-            <div className="mt-4 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium capitalize">
-                {workspace.status}
-              </span>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
