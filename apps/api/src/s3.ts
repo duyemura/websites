@@ -93,6 +93,13 @@ export function createS3StorageProvider(config: {
       return getSignedUrl(s3, command, { expiresIn: 300 });
     },
 
+    async getObjectStream(storageKey: string): Promise<NodeJS.ReadableStream> {
+      const response = await s3.send(
+        new GetObjectCommand({ Bucket: config.bucket, Key: storageKey }),
+      );
+      return response.Body as NodeJS.ReadableStream;
+    },
+
     async deleteObject(storageKey: string): Promise<void> {
       await s3.send(
         new DeleteObjectCommand({ Bucket: config.bucket, Key: storageKey }),

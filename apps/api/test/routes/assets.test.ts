@@ -8,6 +8,14 @@ const mockStorage = {
     storageKey: "workspaces/test/assets/123-test.png",
   }),
   getDownloadUrl: vi.fn().mockResolvedValue("https://s3.test/download-signed"),
+  getObjectStream: vi.fn().mockResolvedValue(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(Buffer.from("test-image-data"));
+        controller.close();
+      },
+    }),
+  ),
   deleteObject: vi.fn().mockResolvedValue(undefined),
 };
 
@@ -21,6 +29,7 @@ describe("asset routes", () => {
   beforeEach(() => {
     mockStorage.getUploadUrl.mockClear();
     mockStorage.getDownloadUrl.mockClear();
+    mockStorage.getObjectStream.mockClear();
     mockStorage.deleteObject.mockClear();
   });
 
@@ -212,7 +221,7 @@ describe("asset routes", () => {
     await app.close();
   });
 
-  test("GET /assets/:uuid/raw redirects to a signed download URL", async () => {
+  test("GET /assets/:uuid/raw streams the object", async () => {
     const app = await buildWithMockStorage();
     const workspaceUuid = await getTestWorkspaceUuid();
 
@@ -235,9 +244,9 @@ describe("asset routes", () => {
       headers: authHeaders(),
     });
 
-    expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe("https://s3.test/download-signed");
-    expect(mockStorage.getDownloadUrl).toHaveBeenCalledWith(
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe("test-image-data");
+    expect(mockStorage.getObjectStream).toHaveBeenCalledWith(
       `workspaces/${workspaceUuid}/assets/raw.png`,
     );
 

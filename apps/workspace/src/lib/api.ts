@@ -80,6 +80,14 @@ export interface Doc {
   updatedAt: string;
 }
 
+export interface AssetMetadata {
+  filename?: string;
+  description?: string;
+  tags?: string[];
+  size?: number;
+  dimensions?: { width: number; height: number };
+}
+
 export interface Asset {
   uuid: string;
   workspaceUuid: string;
@@ -87,7 +95,9 @@ export interface Asset {
   type: "image" | "video" | "audio" | "font" | "document" | "logo" | "icon";
   mimeType?: string | null;
   url: string;
+  signedUrl: string;
   storageKey: string;
+  metadata?: AssetMetadata | null;
   createdAt: string;
 }
 
@@ -149,9 +159,14 @@ export const api = {
     }),
 
   getAssets: () => fetchJson<Asset[]>("/assets"),
-  createAsset: (body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt">) =>
+  createAsset: (
+    body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt" | "signedUrl">,
+  ) =>
     fetchJson<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
-  updateAsset: (uuid: string, body: { name?: string; type?: Asset["type"] }) =>
+  updateAsset: (
+    uuid: string,
+    body: { name?: string; type?: Asset["type"]; metadata?: AssetMetadata },
+  ) =>
     fetchJson<Asset>(`/assets/${uuid}`, {
       method: "PUT",
       body: JSON.stringify(body),

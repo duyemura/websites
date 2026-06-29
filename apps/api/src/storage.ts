@@ -11,5 +11,6 @@ export interface StorageProvider {
     contentType?: string,
   ): Promise<UploadUrl>;
   getDownloadUrl(storageKey: string): Promise<string>;
+  getObjectStream(storageKey: string): Promise<NodeJS.ReadableStream>;
   deleteObject(storageKey: string): Promise<void>;
 }
