@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, FileText, Image, ExternalLink, Clock, Save, RefreshCw, Loader2 } from "lucide-react";
+import { ArrowLeft, FileText, Image, ExternalLink, Clock, Save, RefreshCw, Loader2, Activity } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -207,6 +207,14 @@ export function SiteDetail() {
             </p>
           </div>
         </div>
+        {import.meta.env.DEV && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link to={`/settings/ai-activity?siteUuid=${site.uuid}`} className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              AI activity
+            </Link>
+          </Button>
+        )}
       </header>
 
       <div className="flex-1 overflow-auto p-6">

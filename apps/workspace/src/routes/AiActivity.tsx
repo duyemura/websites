@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -80,10 +81,13 @@ function formatDuration(ms: number | null): string {
 }
 
 export function AiActivity() {
+  const [searchParams] = useSearchParams();
+  const siteUuid = searchParams.get("siteUuid");
   const [limit] = useState(100);
+  const filters = useMemo(() => ({ siteUuid: siteUuid ?? undefined, limit }), [siteUuid, limit]);
   const { data, isLoading, error } = useQuery<AiActivityResponse>({
-    queryKey: ["ai-activity", limit],
-    queryFn: () => api.getAiActivity(limit),
+    queryKey: ["ai-activity", filters],
+    queryFn: () => api.getAiActivity(filters.limit, filters.siteUuid),
   });
 
   return (
@@ -91,7 +95,11 @@ export function AiActivity() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">AI activity</h1>
-          <p className="text-muted-foreground">Token usage and cost history for this workspace.</p>
+          <p className="text-muted-foreground">
+            {siteUuid
+              ? "Token usage and cost history for this site."
+              : "Token usage and cost history for this workspace."}
+          </p>
         </div>
       </div>
 

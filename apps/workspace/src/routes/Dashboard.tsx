@@ -11,9 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search, Loader2, Link2 } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Link2, Activity } from "lucide-react";
 import { api, type Site } from "@/lib/api";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 
 type ViewMode = "grid" | "list";
 
@@ -122,6 +122,14 @@ export function Dashboard() {
       <header className="flex items-center justify-between border-b px-6 py-4">
         <h1 className="text-2xl font-bold tracking-tight">Sites</h1>
         <div className="flex items-center gap-3">
+          {import.meta.env.DEV && (
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/settings/ai-activity" className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                AI activity
+              </Link>
+            </Button>
+          )}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input

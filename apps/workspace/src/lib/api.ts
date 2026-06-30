@@ -222,8 +222,10 @@ export const api = {
     }),
   getPlaybooks: () => fetchJson<Playbook[]>("/playbooks"),
 
-  getAiActivity: (limit = 100) =>
-    fetchJson<{
+  getAiActivity: (limit = 100, siteUuid?: string) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (siteUuid) params.set("siteUuid", siteUuid);
+    return fetchJson<{
       activities: {
         uuid: string;
         workspaceUuid: string;
@@ -248,7 +250,8 @@ export const api = {
         createdAt: string;
       }[];
       summary: { totalCostUsd: number; totalTokens: number; count: number };
-    }>(`/ai-activity?limit=${limit}`),
+    }>(`/ai-activity?${params.toString()}`);
+  },
 
   getOrganizations: () =>
     fetchJson<{ uuid: string; slug: string; name: string }[]>(
