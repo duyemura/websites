@@ -45,7 +45,8 @@ function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
   const text = data.colors.find((c) => c.role === "text")?.hex;
   const bg = data.colors.find((c) => c.role === "background")?.hex;
   const accent = data.colors.find((c) => c.role === "accent")?.hex;
-  const muted = data.colors.find((c) => c.role === "textMuted")?.hex;
+  const surface = data.colors.find((c) => c.role === "surface")?.hex;
+  const textMuted = data.colors.find((c) => c.role === "textMuted")?.hex;
   const border = data.colors.find((c) => c.role === "border")?.hex;
   const headingFont = data.fonts.find((f) => f.role === "heading")?.family;
   const bodyFont = data.fonts.find((f) => f.role === "body")?.family;
@@ -59,8 +60,8 @@ function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
       primaryForeground: bg ?? NEUTRAL_TOKENS.colors.primaryForeground,
       background: bg ?? NEUTRAL_TOKENS.colors.background,
       foreground: text ?? NEUTRAL_TOKENS.colors.foreground,
-      muted: muted ?? NEUTRAL_TOKENS.colors.muted,
-      mutedForeground: muted ?? NEUTRAL_TOKENS.colors.mutedForeground,
+      muted: surface ?? NEUTRAL_TOKENS.colors.muted,
+      mutedForeground: textMuted ?? NEUTRAL_TOKENS.colors.mutedForeground,
       border: border ?? NEUTRAL_TOKENS.colors.border,
     },
     fonts: {
@@ -137,9 +138,77 @@ function makeReviewsSection(
   };
 }
 
-function makeLocationSection(
-  locations: { name?: string; address?: string }[],
+function makeHeroSection(
+  data: ScrapedWebsiteData,
   sectionId: string,
+): SiteSection {
+  return {
+    id: sectionId,
+    type: "Hero",
+    props: {
+      title: data.headings[0] ?? "",
+      subtitle: data.paragraphs[0] ?? "",
+      cta: { label: data.buttons[0] ?? "", href: "#cta" },
+      backgroundImage: data.images.find((i) => i.context === "hero")?.url ?? null,
+      layout: "center",
+    },
+  };
+}
+
+function buildHomePage(data: ScrapedWebsiteData): TemplateShellPage {
+  const sections: SiteSection[] = [];
+  const sectionId = (prefix: string) => `home-${prefix}`;
+
+  if (data.headings.length > 0 || data.paragraphs.length > 0 || data.buttons.length > 0) {
+    sections.push(makeHeroSection(data, sectionId("hero")));
+  }
+
+  const aboutBody = data.description || data.paragraphs[1] || "";
+  if (aboutBody.length > 20) {
+    sections.push(makeTextSection("About us", aboutBody, sectionId("about")));
+  }
+
+  if (data.offerings.length > 0) {
+    sections.push(
+      makeCardGroupSection(
+        "What we offer",
+        data.offerings.map((o) => ({
+          title: o.name,
+          description: o.description,
+        })),
+        sectionId("offerings"),
+      ),
+    );
+  }
+
+  if (data.testimonials.length > 0) {
+    sections.push(makeReviewsSection(data.testimonials, sectionId("reviews")));
+  }
+
+  if (data.locations.length > 0) {
+    sections.push(
+      makeLocationSection(
+        data.locations,
+        sectionId("location"),
+        data.contact?.phone,
+      ),
+    );
+  }
+
+  return {
+    slug: "index",
+    isHomePage: true,
+    title: data.title,
+    metaTitle: data.title,
+    metaDescription: data.description ?? "",
+    sections,
+  };
+}
+
+function makeLocationSection(
+  locations: { name?: string; address?: string; hours?: string }[],
+  sectionId: string,
+  phone?: string,
 ): SiteSection {
   return {
     id: sectionId,
@@ -149,8 +218,8 @@ function makeLocationSection(
       address: locations
         .map((loc) => [loc.name, loc.address].filter(Boolean).join(" — "))
         .join("\n"),
-      hours: "",
-      phone: "",
+      hours: locations[0]?.hours ?? "",
+      phone: phone ?? "",
       mapLink: "#map",
     },
   };
@@ -159,7 +228,7 @@ function makeLocationSection(
 function inferSecondaryPage(
   link: { label: string; href: string },
   data: ScrapedWebsiteData,
-): TemplateShellPage {
+): TemplateShellPage | null {
   const slug = deriveSlug(link.href, link.label);
   const title = link.label;
   const label = link.label.toLowerCase();
@@ -175,7 +244,14 @@ function inferSecondaryPage(
   ) {
     if (data.offerings.length > 0) {
       sections.push(
-        makeCardGroupSection(title, data.offerings, sectionId("offerings")),
+        makeCardGroupSection(
+          title,
+          data.offerings.map((o) => ({
+            title: o.name,
+            description: o.description,
+          })),
+          sectionId("offerings"),
+        ),
       );
     }
   } else if (
@@ -215,7 +291,13 @@ function inferSecondaryPage(
     label.includes("find us")
   ) {
     if (data.locations.length > 0) {
-      sections.push(makeLocationSection(data.locations, sectionId("location")));
+      sections.push(
+        makeLocationSection(
+          data.locations,
+          sectionId("location"),
+          data.contact?.phone,
+        ),
+      );
     }
   } else if (
     label.includes("testimonial") ||
@@ -228,10 +310,14 @@ function inferSecondaryPage(
   }
 
   if (sections.length === 0) {
-    const body = data.description || data.paragraphs[0] || "";
+    const body = data.description ?? data.paragraphs[0] ?? "";
     if (body) {
       sections.push(makeTextSection(title, body, sectionId("content")));
     }
+  }
+
+  if (sections.length === 0) {
+    return null;
   }
 
   return {
@@ -249,12 +335,7 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
   const header = homeShell.page.sections.find((s) => s.type === "SiteHeader");
   const footer = homeShell.page.sections.find((s) => s.type === "SiteFooter");
 
-  const homePage: TemplateShellPage = {
-    ...homeShell.page,
-    sections: homeShell.page.sections.filter(
-      (s) => s.type !== "SiteHeader" && s.type !== "SiteFooter",
-    ),
-  };
+  const homePage = buildHomePage(data);
 
   const secondaryPages = data.navLinks
     .filter(
@@ -263,7 +344,8 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
         !link.href.startsWith("#") &&
         link.href !== "/",
     )
-    .map((link) => inferSecondaryPage(link, data));
+    .map((link) => inferSecondaryPage(link, data))
+    .filter((page): page is TemplateShellPage => page !== null);
 
   return {
     site_metadata: {
