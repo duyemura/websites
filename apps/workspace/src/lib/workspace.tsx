@@ -59,6 +59,7 @@ export function WorkspaceProvider({
 
   useEffect(() => {
     void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setCurrentWorkspaceSlug = (slug: string) => {
@@ -81,6 +82,7 @@ export function WorkspaceProvider({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useWorkspace() {
   const context = useContext(WorkspaceContext);
   if (!context) {
@@ -89,12 +91,14 @@ export function useWorkspace() {
   return context;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function setActiveWorkspaceSlug(slug: string) {
   if (typeof window !== "undefined") {
     localStorage.setItem(STORAGE_KEY, slug);
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getActiveWorkspaceSlug(): string {
   if (typeof window === "undefined") return "local";
   return localStorage.getItem(STORAGE_KEY) || "local";

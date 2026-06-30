@@ -21,7 +21,13 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { BlockNoteEditor } from "@/components/BlockNoteEditor";
-import { api, type Doc } from "@/lib/api";
+import {
+  api,
+  type Doc,
+  type Deployment,
+  type GenerateSiteResult,
+  type ApprovePageResult,
+} from "@/lib/api";
 
 const DOC_CATEGORY_ORDER = [
   "workspace-memory",
@@ -82,6 +88,7 @@ export function SiteDetail() {
   const [screenshotOpen, setScreenshotOpen] = useState(false);
   const [rescanError, setRescanError] = useState<string | null>(null);
   const [rescanConfirm, setRescanConfirm] = useState(false);
+  const [approvedMessage, setApprovedMessage] = useState<string | null>(null);
 
   const { data: site, isLoading: siteLoading } = useQuery({
     queryKey: ["sites", uuid],
@@ -98,6 +105,20 @@ export function SiteDetail() {
   const { data: workspaceDocs, isLoading: workspaceDocsLoading } = useQuery({
     queryKey: ["docs"],
     queryFn: () => api.getDocs(),
+  });
+
+  const { data: deployments } = useQuery({
+    queryKey: ["sites", uuid, "deployments"],
+    queryFn: () => api.listDeployments(uuid!),
+    enabled: !!uuid,
+    refetchInterval: 5000,
+  });
+
+  const { data: buildActivity } = useQuery({
+    queryKey: ["sites", uuid, "ai-activity", "generate"],
+    queryFn: () =>
+      api.getSiteAiActivity(uuid!, { actionType: "generate", limit: 20 }),
+    enabled: !!uuid,
   });
 
   const saveDoc = useMutation({
@@ -136,6 +157,31 @@ export function SiteDetail() {
     },
   });
 
+  const generateSite = useMutation<GenerateSiteResult, Error, void>({
+    mutationFn: () =>
+      api.generateSite(uuid!, { mode: "replication", accuracy: "accurate" }),
+    onSuccess: () => {
+      setApprovedMessage(null);
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "deployments"],
+      });
+    },
+  });
+
+  const approveHomepage = useMutation<ApprovePageResult, Error, void>({
+    mutationFn: () => api.approvePage(site!.uuid, "index"),
+    onSuccess: () => {
+      setApprovedMessage("Approved — remaining pages queued.");
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "deployments"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "docs"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["sites", uuid] });
+    },
+  });
+
   const screenshotDoc = useMemo(() => {
     const docs = [...(siteDocs ?? []), ...(workspaceDocs ?? [])];
     const brand = docs.find((d) => d.key === "brand-guidelines");
@@ -158,6 +204,13 @@ export function SiteDetail() {
       .sort((a, b) => getDocCategoryRank(a.key) - getDocCategoryRank(b.key));
   }, [siteDocs, uuid]);
 
+  const latestDeployment = useMemo<Deployment | null>(() => {
+    if (!deployments?.length) return null;
+    return [...deployments].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )[0];
+  }, [deployments]);
 
   const isLoading = siteLoading || siteDocsLoading || workspaceDocsLoading;
 
@@ -312,6 +365,115 @@ export function SiteDetail() {
                     )}
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {(site.mode === "replication" || site.sourceUrl) && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="h-4 w-4" />
+                Site build
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={() => generateSite.mutate()}
+                    disabled={generateSite.isPending}
+                  >
+                    {generateSite.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Build homepage
+                  </Button>
+                  {approvedMessage && (
+                    <p className="text-sm text-muted-foreground">
+                      {approvedMessage}
+                    </p>
+                  )}
+                </div>
+
+                {latestDeployment && (
+                  <div className="rounded-md border bg-muted/50 p-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Badge variant="outline" className="capitalize">
+                        {latestDeployment.status}
+                      </Badge>
+                      {latestDeployment.previewUrl && (
+                        <a
+                          href={api.previewUrl(
+                            site.uuid,
+                            latestDeployment.buildId,
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        >
+                          Open preview
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {(latestDeployment.status === "ready" ||
+                        latestDeployment.status === "success") &&
+                        !approvedMessage && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => approveHomepage.mutate()}
+                            disabled={approveHomepage.isPending}
+                          >
+                            {approveHomepage.isPending && (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Approve homepage
+                          </Button>
+                        )}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Build {latestDeployment.buildId} ·{" "}
+                      {formatRelativeDate(latestDeployment.createdAt)}
+                    </p>
+                  </div>
+                )}
+
+                {deployments && deployments.length > 1 && (
+                  <div>
+                    <h4 className="mb-2 text-sm font-medium">Deployments</h4>
+                    <ul className="space-y-1 text-sm">
+                      {deployments.map((deployment) => (
+                        <li
+                          key={deployment.uuid}
+                          className="flex items-center justify-between rounded-md border px-3 py-2"
+                        >
+                          <span className="font-mono text-xs">
+                            {deployment.buildId}
+                          </span>
+                          <Badge variant="outline" className="capitalize">
+                            {deployment.status}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {buildActivity && (
+                  <div className="rounded-md border bg-muted/50 p-3">
+                    <p className="text-sm font-medium">
+                      Latest build cost/activity
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {buildActivity.summary.count} activities · $
+                      {buildActivity.summary.totalCostUsd.toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
