@@ -1,4 +1,4 @@
-import type { ScrapedWebsiteData } from "./scrape-docs";
+import { inferIndustry, type ScrapedWebsiteData } from "./scrape-docs";
 import type {
   TemplateShell,
   TemplateShellPlaceholder,
@@ -410,6 +410,82 @@ function buildMetaTitle(data: ScrapedWebsiteData): string {
   return base.replace(data.businessName || "", "{{business_name}}").trim() || "{{page_title}}";
 }
 
+function sectionPurpose(section: SiteSection): string {
+  switch (section.type) {
+    case "SiteHeader":
+      return "top navigation bar";
+    case "Hero":
+      return "homepage hero with headline, subheadline, and primary CTA";
+    case "Text":
+      return "text section for editorial or about content";
+    case "SiteCardGroup":
+      return "card grid for offerings, services, or team profiles";
+    case "SiteReviews":
+      return "social proof / testimonials section";
+    case "SiteLocation":
+      return "location and hours section";
+    case "SiteBlock":
+      return "call-to-action block";
+    case "SiteFooter":
+      return "footer with business name and links";
+    default:
+      return "content section";
+  }
+}
+
+function generateInstructions(
+  data: ScrapedWebsiteData,
+  placeholders: TemplateShellPlaceholder[],
+  sections: SiteSection[],
+): string {
+  const lines = [
+    `# Template instructions: ${data.title || "Imported website"}`,
+    "",
+    `This template was generated from ${data.url} on ${new Date().toLocaleDateString()}.`,
+    "It preserves the source site's structure, spacing, and section order, with all brand-specific copy, colors, and images replaced by placeholders.",
+    "",
+    "## Page structure",
+    "",
+  ];
+
+  for (const [index, section] of sections.entries()) {
+    lines.push(`${index + 1}. **${section.type}** (${section.id}) — ${sectionPurpose(section)}`);
+  }
+
+  lines.push(
+    "",
+    "## Placeholders to fill",
+    "",
+    "When building a site from this template, replace every `{{placeholder-###: label}}` token using the workspace docs and brand guidelines.",
+    "",
+  );
+
+  for (const p of placeholders) {
+    const original = p.originalValue ? ` (original: "${p.originalValue.slice(0, 80)}")` : "";
+    lines.push(`- **${p.key}** — ${p.label}${original}`);
+  }
+
+  lines.push(
+    "",
+    "## Source signals",
+    "",
+    `- **Industry hint**: ${data.industry || inferIndustry(`${data.title ?? ""} ${data.description ?? ""}`)}`,
+    `- **Detected headings**: ${data.headings.slice(0, 3).join(" / ") || "none"}`,
+    `- **Detected offerings**: ${data.offerings.map((o) => o.name).slice(0, 3).join(" / ") || "none"}`,
+    `- **Detected locations**: ${data.locations.map((l) => l.name).slice(0, 2).join(" / ") || "none"}`,
+    "",
+    "## AI guidance",
+    "",
+    "1. Read [[workspace-memory]] and [[brand-guidelines]] before generating any copy.",
+    "2. Preserve the section order above; do not add or remove sections unless the user asks.",
+    "3. Match the tone of the workspace brand, not the source website's brand.",
+    "4. Replace every placeholder with real, specific copy from the gym's business info.",
+    "5. Leave `{{placeholder-...}}` tokens in place if the required information is missing, and prompt the user to fill them.",
+  );
+
+  return lines.join("\n");
+}
+
 export function buildTemplateShell(data: ScrapedWebsiteData): TemplateShell {
   const gen = createPlaceholderGenerator();
   const { sections, placeholders } = buildSections(data, gen);
@@ -432,5 +508,6 @@ export function buildTemplateShell(data: ScrapedWebsiteData): TemplateShell {
       sections,
     },
     placeholders,
+    instructions: generateInstructions(data, placeholders, sections),
   };
 }

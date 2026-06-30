@@ -89,10 +89,15 @@ export function SiteDetail() {
     enabled: !!uuid,
   });
 
-  const { data: docs, isLoading: docsLoading } = useQuery({
+  const { data: siteDocs, isLoading: siteDocsLoading } = useQuery({
     queryKey: ["sites", uuid, "docs"],
     queryFn: () => api.getSiteDocs(uuid!),
     enabled: !!uuid,
+  });
+
+  const { data: workspaceDocs, isLoading: workspaceDocsLoading } = useQuery({
+    queryKey: ["docs"],
+    queryFn: () => api.getDocs(),
   });
 
   const saveDoc = useMutation({
@@ -101,6 +106,7 @@ export function SiteDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sites", uuid, "docs"] });
       queryClient.invalidateQueries({ queryKey: ["docs"] });
+      queryClient.invalidateQueries({ queryKey: ["sites", uuid] });
     },
   });
 
@@ -131,20 +137,31 @@ export function SiteDetail() {
   });
 
   const screenshotDoc = useMemo(() => {
-    if (!docs) return null;
+    const docs = [...(siteDocs ?? []), ...(workspaceDocs ?? [])];
     const brand = docs.find((d) => d.key === "brand-guidelines");
     if (!brand?.content) return null;
     const match = brand.content.match(/!\[.*?\]\(([^)]+)\)/);
     return match?.[1] ?? null;
-  }, [docs]);
+  }, [siteDocs, workspaceDocs]);
 
-  const sortedDocs = useMemo(() => {
-    if (!docs) return [];
-    return [...docs].sort((a, b) => getDocCategoryRank(a.key) - getDocCategoryRank(b.key));
-  }, [docs]);
+  const sortedWorkspaceDocs = useMemo(() => {
+    if (!workspaceDocs || !uuid) return [];
+    return [...workspaceDocs]
+      .filter((d) => !d.siteUuid)
+      .sort((a, b) => getDocCategoryRank(a.key) - getDocCategoryRank(b.key));
+  }, [workspaceDocs, uuid]);
+
+  const sortedSiteDocs = useMemo(() => {
+    if (!siteDocs) return [];
+    return [...siteDocs]
+      .filter((d) => d.siteUuid === uuid)
+      .sort((a, b) => getDocCategoryRank(a.key) - getDocCategoryRank(b.key));
+  }, [siteDocs, uuid]);
 
 
-  if (siteLoading || docsLoading) {
+  const isLoading = siteLoading || siteDocsLoading || workspaceDocsLoading;
+
+  if (isLoading) {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col p-6">
         <Skeleton className="mb-4 h-8 w-48" />
@@ -158,7 +175,7 @@ export function SiteDetail() {
     );
   }
 
-  if (!site || !docs) {
+  if (!site) {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center p-6">
         <p className="text-muted-foreground">Site not found.</p>
@@ -292,58 +309,70 @@ export function SiteDetail() {
           </Card>
         )}
 
-        <h2 className="mb-4 text-lg font-semibold">Generated docs</h2>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[35%]">Doc</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedDocs.map((doc) => (
-                <TableRow
-                  key={doc.key}
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setEditingDoc(doc);
-                    setEditTitle(doc.title);
-                    setEditContent(doc.content ?? "");
-                  }}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{getDocCategory(doc.key)}</p>
-                        <p className="line-clamp-1 text-sm text-muted-foreground">
-                          {doc.content?.slice(0, 80).replace(/#|>/g, "") ?? "No content yet."}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {doc.source.replace("_", " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <span className="flex items-center gap-1.5 text-sm">
-                      <Clock className="h-3.5 w-3.5" />
-                      {formatRelativeDate(doc.updatedAt)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">{/* actions go here */}</TableCell>
+        {(sortedWorkspaceDocs.length > 0 || sortedSiteDocs.length > 0) && (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[35%]">Doc</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Scope</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {sortedWorkspaceDocs.length > 0 && (
+                  <>
+                    <TableRow className="bg-muted/50">
+                      <TableCell colSpan={4}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">Workspace docs</span>
+                          <Badge variant="outline" className="text-xs">Workspace scope</Badge>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {sortedWorkspaceDocs.map((doc) => (
+                      <DocTableRow
+                        key={doc.key}
+                        doc={doc}
+                        scope="workspace"
+                        onClick={() => {
+                          setEditingDoc(doc);
+                          setEditTitle(doc.title);
+                          setEditContent(doc.content ?? "");
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                {sortedSiteDocs.length > 0 && (
+                  <>
+                    <TableRow className="bg-muted/50">
+                      <TableCell colSpan={4}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">Site docs</span>
+                          <Badge variant="secondary" className="text-xs">Site scope</Badge>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {sortedSiteDocs.map((doc) => (
+                      <DocTableRow
+                        key={doc.key}
+                        doc={doc}
+                        scope="site"
+                        onClick={() => {
+                          setEditingDoc(doc);
+                          setEditTitle(doc.title);
+                          setEditContent(doc.content ?? "");
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
         {screenshotOpen && (
           <Dialog open onOpenChange={setScreenshotOpen}>
@@ -427,6 +456,11 @@ export function SiteDetail() {
                   {saveDoc.error?.message}
                 </p>
               )}
+              {editingDoc.key === "brand-guidelines" && (
+                <div className="px-6 pt-4">
+                  <BrandGuidelinesSwatches content={editContent} />
+                </div>
+              )}
               <div className="flex-1 overflow-hidden p-6">
                 <div className="flex h-full flex-col rounded-md border">
                   <BlockNoteEditor
@@ -440,5 +474,113 @@ export function SiteDetail() {
         )}
       </div>
     </div>
+  );
+}
+
+interface BrandColor {
+  role: string;
+  token: string;
+  hex: string;
+  usage: string;
+}
+
+function parseBrandColors(content: string): BrandColor[] {
+  const lines = content.split("\n");
+  const colors: BrandColor[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed
+      .split("|")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cells.length < 3) continue;
+    const hexCell = cells.find((c) => /^#?[0-9A-Fa-f]{6}$/.test(c.replace(/`/g, "")));
+    if (!hexCell) continue;
+    const hex = hexCell.replace(/`/g, "").startsWith("#")
+      ? hexCell.replace(/`/g, "")
+      : `#${hexCell.replace(/`/g, "")}`;
+    const role = cells[0]?.replace(/\*\*/g, "").trim() ?? "";
+    const token = cells[1]?.replace(/`/g, "").trim() ?? "";
+    const usage = cells[3]?.replace(/\*\*/g, "").trim() ?? "";
+    colors.push({ role, token, hex, usage });
+  }
+  return colors;
+}
+
+function BrandGuidelinesSwatches({ content }: { content: string }) {
+  const colors = useMemo(() => parseBrandColors(content), [content]);
+  if (colors.length === 0) return null;
+
+  return (
+    <div className="rounded-md border p-4">
+      <h3 className="mb-3 text-sm font-semibold">Color palette</h3>
+      <div className="flex flex-wrap gap-4">
+        {colors.map((color, index) => (
+          <div key={`${color.token}-${index}`} className="flex items-center gap-3">
+            <div
+              className="h-10 w-10 rounded-md border shadow-sm"
+              style={{ backgroundColor: color.hex }}
+              title={color.hex}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{color.role || color.token}</p>
+              <p className="text-xs text-muted-foreground">
+                {color.token} · {color.hex}
+              </p>
+              {color.usage && (
+                <p className="max-w-[200px] truncate text-xs text-muted-foreground">
+                  {color.usage}
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DocTableRow({
+  doc,
+  scope,
+  onClick,
+}: {
+  doc: Doc;
+  scope: "workspace" | "site";
+  onClick: () => void;
+}) {
+  return (
+    <TableRow className="cursor-pointer" onClick={onClick}>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="font-medium">{getDocCategory(doc.key)}</p>
+            <p className="line-clamp-1 text-sm text-muted-foreground">
+              {doc.content?.slice(0, 80).replace(/#|>/g, "") ?? "No content yet."}
+            </p>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline" className="text-xs capitalize">
+          {doc.source.replace("_", " ")}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-sm">
+          <Clock className="h-3.5 w-3.5" />
+          {formatRelativeDate(doc.updatedAt)}
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
+        <Badge variant={scope === "workspace" ? "outline" : "secondary"} className="text-xs">
+          {scope === "workspace" ? "Workspace" : "Site"}
+        </Badge>
+      </TableCell>
+    </TableRow>
   );
 }

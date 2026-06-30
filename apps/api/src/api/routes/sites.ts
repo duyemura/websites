@@ -11,6 +11,8 @@ import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
+import { TemplateShellSchema } from "@ploy-gyms/shared-types";
+import type { TemplateShell } from "@ploy-gyms/shared-types";
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -95,6 +97,84 @@ function deriveSiteName(url: string, fallback?: string): string {
   }
 }
 
+function generateSiteDocsFromTemplate(
+  siteName: string,
+  template: { key: string; name: string; instructions: string | null },
+  shell: TemplateShell,
+): import("../../utils/site-docs").GeneratedSiteDoc[] {
+  const now = new Date().toISOString();
+  const instructions = template.instructions ?? "No template instructions provided.";
+
+  const siteMemory = [
+    `# Site memory: ${siteName}`,
+    "",
+    `- **Created from template**: ${template.name} (${template.key})`,
+    `- **Created at**: ${now}`,
+    `- **Source URL**: ${shell.source.url}`,
+    "",
+    "## Template structure",
+    "",
+    shell.page.sections.map((s) => `- ${s.type} (${s.id})`).join("\n"),
+    "",
+    "## Placeholders",
+    "",
+    shell.placeholders.length > 0
+      ? shell.placeholders.map((p) => `- **${p.key}** — ${p.label}`).join("\n")
+      : "- No placeholders defined.",
+  ].join("\n");
+
+  const siteStrategy = [
+    `# Site strategy: ${siteName}`,
+    "",
+    `Build a site using the **${template.name}** template. The template's structure and spacing were extracted from ${shell.source.url}.`,
+    "",
+    "## AI instructions from template",
+    "",
+    instructions,
+    "",
+    "## Build plan",
+    "",
+    "1. Read [[workspace-memory]] and [[brand-guidelines]].",
+    "2. Use the business info below to replace every placeholder in the template.",
+    "3. Preserve section order from the template unless the user asks otherwise.",
+    "4. Generate real copy that matches the gym's tone, not the source website's brand.",
+    "",
+    "## Next action",
+    "",
+    "Fill out [[business-info]] with the gym's real details, then generate the homepage.",
+  ].join("\n");
+
+  const businessInfo = [
+    `# Business info: ${siteName}`,
+    "",
+    "Fill in the details below so the AI can replace the template placeholders with real copy.",
+    "",
+    "## Required information",
+    "",
+    "- **Business name**:",
+    "- **Tagline / one-liner**:",
+    "- **Address**:",
+    "- **Hours**:",
+    "- **Phone**:",
+    "- **Email**:",
+    "- **Primary offerings / classes**:",
+    "- **Coaches / team members**:",
+    "- **Member testimonials**:",
+    "",
+    "## Brand notes",
+    "",
+    "- **Tone**: (e.g., energetic, welcoming, elite, community-focused)",
+    "- **Colors**: (the template uses a neutral shell; apply brand colors from [[brand-guidelines]])",
+    "- **Hero image direction**: (describe the desired main photo)",
+  ].join("\n");
+
+  return [
+    { key: "site-memory", title: "Site memory", content: siteMemory, source: "ai_extracted" },
+    { key: "site-strategy", title: "Site strategy", content: siteStrategy, source: "ai_extracted" },
+    { key: "business-info", title: "Business info", content: businessInfo, source: "ai_extracted" },
+  ];
+}
+
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   fastify.get(
     "/sites",
@@ -123,8 +203,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/sites",
     {
       schema: {
+        operationId: "createSite",
+        tags: ["Sites"],
+        summary: "Create a site",
+        description: "Creates a new site in the workspace, optionally seeded from a template.",
         body: CreateSiteSchema,
-        response: { 201: SiteSchema, 409: z.object({ error: z.string() }) },
+        response: {
+          201: SiteSchema,
+          409: z.object({ error: z.string() }),
+          500: z.object({ error: z.string() }),
+        },
       },
     },
     async (request, reply) => {
@@ -144,11 +232,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       let themeUuid: string | null = null;
       let homepageSections: unknown[] = [];
+      let templateShell: TemplateShell | undefined;
+      let templateRecord: { key: string; name: string; instructions: string | null } | undefined;
 
       if (templateKey) {
         const template = await fastify.db
           .selectFrom("templates")
-          .select(["theme", "page"])
+          .select(["key", "name", "instructions", "sourceUrl", "placeholders", "theme", "page"])
           .where("key", "=", templateKey)
           .where((eb) =>
             eb.or([
@@ -158,24 +248,46 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           )
           .executeTakeFirst();
 
-        if (template?.theme) {
-          const theme = await fastify.db
-            .insertInto("themes")
-            .values({
-              workspaceUuid,
-              name: `${name} theme`,
-              source: "system_preset",
-              templateKey,
-              tokens: template.theme as never,
-            })
-            .returning("uuid")
-            .executeTakeFirstOrThrow();
-          themeUuid = theme.uuid;
-        }
+        if (template) {
+          templateRecord = template;
+          const shellResult = TemplateShellSchema.safeParse({
+            source: {
+              type: "url",
+              url: template.sourceUrl ?? "",
+              scrapedAt: new Date().toISOString(),
+            },
+            theme: template.theme,
+            page: template.page,
+            placeholders: template.placeholders ?? [],
+            instructions: template.instructions ?? "",
+          });
+          if (!shellResult.success) {
+            fastify.log.error(
+              { errors: shellResult.error.issues },
+              `Stored template shell for ${templateKey} is invalid`,
+            );
+            return reply.code(500).send({ error: "Stored template shell is invalid" });
+          }
+          templateShell = shellResult.data;
 
-        if (template?.page && typeof template.page === "object") {
-          const page = template.page as Record<string, unknown>;
-          homepageSections = Array.isArray(page.sections) ? page.sections : [];
+          if (templateShell.theme) {
+            const theme = await fastify.db
+              .insertInto("themes")
+              .values({
+                workspaceUuid,
+                name: `${name} theme`,
+                source: "system_preset",
+                templateKey,
+                tokens: templateShell.theme as never,
+              })
+              .returning("uuid")
+              .executeTakeFirstOrThrow();
+            themeUuid = theme.uuid;
+          }
+
+          homepageSections = Array.isArray(templateShell.page.sections)
+            ? templateShell.page.sections
+            : [];
         }
       }
 
@@ -202,6 +314,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           status: "draft",
         })
         .execute();
+
+      if (templateRecord && templateShell) {
+        const templateDocs = generateSiteDocsFromTemplate(name, templateRecord, templateShell);
+        await saveSiteDocs(fastify.db, workspaceUuid, templateDocs, site.uuid);
+      }
 
       return reply.code(201).send({
         ...site,

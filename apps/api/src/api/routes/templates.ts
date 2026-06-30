@@ -20,6 +20,9 @@ const TemplateSchema = z.object({
   tags: z.array(z.string()).nullable().optional(),
   theme: TemplateShellSchema.shape.theme.nullable().optional(),
   page: TemplateShellSchema.shape.page.nullable().optional(),
+  placeholders: TemplateShellSchema.shape.placeholders.nullable().optional(),
+  instructions: z.string().nullable().optional(),
+  sourceUrl: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -86,9 +89,50 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         ...template,
         theme: template.theme as z.infer<typeof TemplateSchema>["theme"],
         page: template.page as z.infer<typeof TemplateSchema>["page"],
+        placeholders: template.placeholders as z.infer<typeof TemplateSchema>["placeholders"],
         createdAt: template.createdAt.toISOString(),
         updatedAt: template.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.get(
+    "/templates/:uuid",
+    {
+      schema: {
+        operationId: "getTemplate",
+        tags: ["Templates"],
+        summary: "Get a template",
+        description: "Return a single workspace or system template including its shell.",
+        params: z.object({ uuid: z.string().uuid() }),
+        response: { 200: TemplateSchema, 404: z.object({ error: z.string() }) },
+      },
+    },
+    async (request, reply) => {
+      const template = await fastify.db
+        .selectFrom("templates")
+        .selectAll()
+        .where("uuid", "=", request.params.uuid)
+        .where((eb) =>
+          eb.or([
+            eb("workspaceUuid", "=", request.workspace.uuid),
+            eb("isSystem", "=", true),
+          ]),
+        )
+        .executeTakeFirst();
+
+      if (!template) {
+        return reply.code(404).send({ error: "Template not found" });
+      }
+
+      return {
+        ...template,
+        theme: template.theme as z.infer<typeof TemplateSchema>["theme"],
+        page: template.page as z.infer<typeof TemplateSchema>["page"],
+        placeholders: template.placeholders as z.infer<typeof TemplateSchema>["placeholders"],
+        createdAt: template.createdAt.toISOString(),
+        updatedAt: template.updatedAt.toISOString(),
+      };
     },
   );
 
@@ -96,8 +140,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/templates/from-url",
     {
       schema: {
+        operationId: "createTemplateFromUrl",
+        tags: ["Templates"],
+        summary: "Create a template from a URL",
+        description: "Scrapes a homepage and stores its anonymized shell as a workspace template.",
         body: CreateTemplateFromUrlSchema,
-        response: { 201: TemplateSchema, 400: z.object({ error: z.string() }) },
+        response: {
+          201: TemplateSchema,
+          400: z.object({ error: z.string() }),
+          500: z.object({ error: z.string() }),
+        },
       },
     },
     async (request, reply) => {
@@ -145,6 +197,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             tags: ["imported", "url-template", "shell"],
             theme: shell.theme as never,
             page: shell.page as never,
+            placeholders: shell.placeholders as never,
+            instructions: shell.instructions,
+            sourceUrl: shell.source.url,
           })
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -153,6 +208,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           ...template,
           theme: template.theme as z.infer<typeof TemplateSchema>["theme"],
           page: template.page as z.infer<typeof TemplateSchema>["page"],
+          placeholders: template.placeholders as z.infer<typeof TemplateSchema>["placeholders"],
           createdAt: template.createdAt.toISOString(),
           updatedAt: template.updatedAt.toISOString(),
         });

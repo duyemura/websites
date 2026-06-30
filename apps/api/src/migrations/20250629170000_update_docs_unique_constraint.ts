@@ -1,4 +1,4 @@
-import { Kysely, sql } from "kysely";
+import { Kysely, sql, type Expression, type SqlBool } from "kysely";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -14,7 +14,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .on("docs")
     .columns(["workspace_uuid", "key"])
     .unique()
-    .where(sql`site_uuid IS NULL`)
+    .where(sql`site_uuid IS NULL` as Expression<SqlBool>)
     .execute();
 
   await db.schema
@@ -22,7 +22,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .on("docs")
     .columns(["workspace_uuid", "site_uuid", "key"])
     .unique()
-    .where(sql`site_uuid IS NOT NULL`)
+    .where(sql`site_uuid IS NOT NULL` as Expression<SqlBool>)
     .execute();
 }
 

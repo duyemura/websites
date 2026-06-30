@@ -1,4 +1,9 @@
 import { getActiveWorkspaceSlug } from "./workspace";
+import type {
+  TemplateShellPage,
+  TemplateShellPlaceholder,
+  ThemeTokens,
+} from "@ploy-gyms/shared-types";
 
 const API_BASE = "/api";
 
@@ -114,6 +119,11 @@ export interface Template {
   thumbnailUrl?: string | null;
   isSystem: boolean;
   tags?: string[] | null;
+  instructions?: string | null;
+  sourceUrl?: string | null;
+  theme?: ThemeTokens | null;
+  page?: TemplateShellPage | null;
+  placeholders?: TemplateShellPlaceholder[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -198,10 +208,17 @@ export const api = {
 
   getTemplates: (systemOnly?: boolean) =>
     fetchJson<Template[]>(`/templates${systemOnly != null ? `?systemOnly=${systemOnly}` : ""}`),
+  getTemplate: (uuid: string) =>
+    fetchJson<Template>(`/templates/${encodeURIComponent(uuid)}`),
   createTemplateFromUrl: (body: { url: string; name?: string; category?: string }) =>
     fetchJson<Template>("/templates/from-url", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  createSiteFromTemplate: (templateKey: string, body: { name: string; slug: string }) =>
+    fetchJson<Site>("/sites", {
+      method: "POST",
+      body: JSON.stringify({ ...body, templateKey }),
     }),
   getPlaybooks: () => fetchJson<Playbook[]>("/playbooks"),
 

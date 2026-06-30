@@ -33,5 +33,6 @@ export const TemplateShellSchema = z.object({
   theme: ThemeTokensSchema,
   page: TemplateShellPageSchema,
   placeholders: z.array(TemplateShellPlaceholderSchema),
+  instructions: z.string(),
 });
 export type TemplateShell = z.infer<typeof TemplateShellSchema>;

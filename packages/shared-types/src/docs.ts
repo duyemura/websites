@@ -115,6 +115,13 @@ export type ScrapedBrandInput = z.infer<typeof ScrapedBrandInputSchema>;
 
 export const WorkspaceMemorySchema = z.object({
   businessSnapshot: z.string(),
+  elevatorPitch: z.string().optional(),
+  industry: z.string().optional(),
+  targetMember: z.string().optional(),
+  differentiators: z.array(z.string()).default([]),
+  brandVoice: z.string().optional(),
+  businessPriorities: z.array(z.string()).default([]),
+  keyConstraints: z.array(z.string()).default([]),
   stakeholderName: z.string().optional(),
   stakeholderRole: z.string().optional(),
   stakeholderEmail: z.string().optional(),

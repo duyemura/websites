@@ -35,7 +35,7 @@ export interface ScrapedWebsiteData {
   rawHtml?: string;
 }
 
-function inferIndustry(text: string): string {
+export function inferIndustry(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes("gym") || lower.includes("fitness") || lower.includes("crossfit")) {
     return "fitness / gym";

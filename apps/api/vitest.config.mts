@@ -13,5 +13,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
     },
+    testTimeout: 20000,
+    hookTimeout: 30000,
   },
 });

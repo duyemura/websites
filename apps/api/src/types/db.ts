@@ -203,10 +203,13 @@ export interface Sites {
 export interface Templates {
   category: string | null;
   createdAt: Generated<Timestamp>;
+  instructions: string | null;
   isSystem: Generated<boolean>;
   key: string;
   name: string;
   page: Json | null;
+  placeholders: Json | null;
+  sourceUrl: string | null;
   tags: string[] | null;
   theme: Json | null;
   thumbnailUrl: string | null;

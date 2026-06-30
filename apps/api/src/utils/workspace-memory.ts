@@ -15,10 +15,45 @@ export function generateWorkspaceMemory(
     data.industry ? `— ${data.industry}` : "",
     data.tagline ? `| ${data.tagline}` : "",
     data.locations.length > 0 ? `| ${data.locations.length} location(s)` : "",
-    data.offerings.length > 0 ? `| offers ${data.offerings.map((o: { name?: string }) => o.name).filter(Boolean).join(", ")}` : "",
+    data.offerings.length > 0
+      ? `| offers ${data.offerings.map((o: { name?: string }) => o.name).filter(Boolean).join(", ")}`
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const elevatorPitch = data.description
+    ? `${data.businessName ?? data.title} — ${data.description}`
+    : (data.tagline
+      ? `${data.businessName ?? data.title} — ${data.tagline}`
+      : data.title);
+
+  const industry = data.industry;
+
+  const targetMember = data.offerings.length > 0
+    ? `People interested in ${data.offerings.map((o) => o.name).filter(Boolean).join(", ").toLowerCase()}`
+    : "Prospects researching the gym online";
+
+  const differentiators: string[] = [];
+  if (data.offerings.length > 0) {
+    differentiators.push(`Offers ${data.offerings.map((o) => o.name).filter(Boolean).join(", ")}`);
+  }
+  if (data.locations.length > 0) {
+    differentiators.push(`Local presence at ${data.locations.length} location(s)`);
+  }
+  if (data.testimonials.length > 0) {
+    differentiators.push("Social proof from member testimonials");
+  }
+  if (data.team.length > 0) {
+    differentiators.push(`Coaches/team highlighted: ${data.team.map((t) => t.name).filter(Boolean).slice(0, 3).join(", ")}`);
+  }
+  if (differentiators.length === 0) {
+    differentiators.push("Unique positioning not yet captured");
+  }
+
+  const brandVoice = data.description
+    ? `Inferred from source copy: ${data.description.slice(0, 120).replace(/\.$/, "")}`
+    : "Tone to be defined by user";
 
   const firstOffering = data.offerings[0]?.name?.toLowerCase() ?? "";
   const ctaGoal = firstOffering.includes("trial")
@@ -27,8 +62,23 @@ export function generateWorkspaceMemory(
       ? "Book intro sessions with prospects"
       : "Drive membership inquiries";
 
+  const businessPriorities = [ctaGoal];
+  if (data.locations.length > 0) businessPriorities.push("Make location and hours easy to find");
+  if (data.contact?.phone) businessPriorities.push("Encourage phone contact for prospective members");
+
+  const keyConstraints: string[] = [];
+  if (data.offerings.length === 0) keyConstraints.push("No offerings detected; user should confirm classes/services");
+  if (data.locations.length === 0) keyConstraints.push("No locations detected; verify address before publishing");
+
   return {
     businessSnapshot,
+    elevatorPitch: overrides.elevatorPitch ?? elevatorPitch,
+    industry: overrides.industry ?? industry,
+    targetMember: overrides.targetMember ?? targetMember,
+    differentiators: overrides.differentiators ?? differentiators,
+    brandVoice: overrides.brandVoice ?? brandVoice,
+    businessPriorities: overrides.businessPriorities ?? businessPriorities,
+    keyConstraints: overrides.keyConstraints ?? keyConstraints,
     stakeholderName: overrides.stakeholderName,
     stakeholderRole: overrides.stakeholderRole,
     stakeholderEmail: overrides.stakeholderEmail,
@@ -89,9 +139,30 @@ export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
     "",
     "## About the business",
     "",
-    `- ${memory.businessSnapshot}`,
-    "",
+    `- **Business snapshot**: ${memory.businessSnapshot}`,
   ];
+
+  if (memory.elevatorPitch) {
+    parts.push("", "### Elevator pitch", "", memory.elevatorPitch, "");
+  }
+  if (memory.industry) {
+    parts.push("### Industry", "", `- ${memory.industry}`, "");
+  }
+  if (memory.targetMember) {
+    parts.push("### Target member", "", `- ${memory.targetMember}`, "");
+  }
+  if (memory.differentiators.length > 0) {
+    parts.push("### What makes this gym different", "", ...memory.differentiators.map((d) => `- ${d}`), "");
+  }
+  if (memory.brandVoice) {
+    parts.push("### Brand voice", "", `- ${memory.brandVoice}`, "");
+  }
+  if (memory.businessPriorities.length > 0) {
+    parts.push("### Business priorities", "", ...memory.businessPriorities.map((p) => `- ${p}`), "");
+  }
+  if (memory.keyConstraints.length > 0) {
+    parts.push("### Key constraints", "", ...memory.keyConstraints.map((c) => `- ${c}`), "");
+  }
 
   if (memory.stakeholderName) {
     parts.push(
