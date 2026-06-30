@@ -23,10 +23,11 @@ describe("detectSocialPlatform", () => {
     expect(detectSocialPlatform("https://vimeo.com/betagym")).toBe("Vimeo");
   });
 
-  test("returns null for non-social urls", () => {
+  test("returns null for non-social or malformed urls", () => {
     expect(detectSocialPlatform("https://example-gym.com/classes")).toBeNull();
     expect(detectSocialPlatform("mailto:hi@example.com")).toBeNull();
     expect(detectSocialPlatform("tel:5551234")).toBeNull();
+    expect(detectSocialPlatform("not-a-url")).toBeNull();
   });
 });
 
@@ -43,5 +44,35 @@ describe("extractSocialProfiles", () => {
       { platform: "Instagram", url: "https://instagram.com/betagym" },
       { platform: "Facebook", url: "https://facebook.com/betagym" },
     ]);
+  });
+
+  test("normalizes case and trailing slash for dedup", () => {
+    const urls = [
+      "https://instagram.com/BetaGym",
+      "https://www.instagram.com/betagym/",
+      "https://instagram.com/betagym",
+    ];
+    const profiles = extractSocialProfiles(urls);
+    expect(profiles).toEqual([{ platform: "Instagram", url: "https://instagram.com/BetaGym" }]);
+  });
+
+  test("skips content and event urls and keeps one profile per platform", () => {
+    const urls = [
+      "https://instagram.com/p/abc123",
+      "https://instagram.com/betagym",
+      "https://youtu.be/abc123",
+      "https://facebook.com/events/123",
+      "https://facebook.com/betagym",
+      "https://instagram.com/reels/xyz",
+    ];
+    const profiles = extractSocialProfiles(urls);
+    expect(profiles).toEqual([
+      { platform: "Instagram", url: "https://instagram.com/betagym" },
+      { platform: "Facebook", url: "https://facebook.com/betagym" },
+    ]);
+  });
+
+  test("returns empty array for empty input", () => {
+    expect(extractSocialProfiles([])).toEqual([]);
   });
 });

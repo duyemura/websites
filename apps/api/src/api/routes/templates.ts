@@ -4,19 +4,9 @@ import { chromium } from "playwright";
 import path from "node:path";
 import os from "node:os";
 import { mkdir } from "node:fs/promises";
+import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { buildTemplateShell } from "../../utils/template-shell";
-
-const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
-  z.union([
-    z.null(),
-    z.boolean(),
-    z.number(),
-    z.string(),
-    z.array(JsonValueSchema),
-    z.record(JsonValueSchema),
-  ]),
-);
 
 const TemplateSchema = z.object({
   uuid: z.string(),
@@ -27,8 +17,8 @@ const TemplateSchema = z.object({
   thumbnailUrl: z.string().nullable().optional(),
   isSystem: z.boolean(),
   tags: z.array(z.string()).nullable().optional(),
-  theme: JsonValueSchema.nullable().optional(),
-  page: JsonValueSchema.nullable().optional(),
+  theme: TemplateShellSchema.shape.theme,
+  page: TemplateShellSchema.shape.page,
   createdAt: z.string(),
   updatedAt: z.string(),
 });
