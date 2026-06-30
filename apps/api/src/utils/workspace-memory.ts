@@ -273,15 +273,31 @@ function renderAntiIcpProfile(profile: IcpProfile, index: number): string {
 }
 
 export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
+  // Keep the "About the business" header only when there is substantive
+  // content beyond the snapshot. Industry and the heuristic targetMember
+  // line are already reflected in the snapshot, so they don't justify a
+  // separate section.
+  const hasBusinessDetails =
+    memory.positioning ||
+    memory.targetMembers.length > 0 ||
+    memory.antiTargetMembers.length > 0 ||
+    memory.differentiators.length > 0 ||
+    memory.brandVoice ||
+    memory.businessPriorities.length > 0 ||
+    memory.keyConstraints.length > 0;
+
   const parts = [
     "# Workspace Memory",
     "",
     "Workspace-specific context to maintain continuity across sessions. AI-maintained; user-editable.",
     "",
-    "## About the business",
-    "",
-    `- **Business snapshot**: ${memory.businessSnapshot}`,
   ];
+
+  if (hasBusinessDetails) {
+    parts.push("## About the business", "", `- **Business snapshot**: ${memory.businessSnapshot}`);
+  } else {
+    parts.push(`- **Business snapshot**: ${memory.businessSnapshot}`);
+  }
 
   if (memory.positioning) {
     parts.push("", "### Positioning", "", memory.positioning, "");

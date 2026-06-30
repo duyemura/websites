@@ -145,6 +145,27 @@ describe("generateWorkspaceMemory", () => {
     expect(rendered).toContain("Discount hopper");
   });
 
+  test("omits About the business header when only business snapshot is present", () => {
+    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+      businessSnapshot: "Beta Gym — fitness / gym",
+      industry: "fitness / gym",
+      targetMember: "",
+      targetMembers: [],
+      antiTargetMembers: [],
+      differentiators: [],
+      brandVoice: null,
+      businessPriorities: [],
+      keyConstraints: [],
+      lockedDecisions: [],
+      knownBlockers: [],
+      followUpBacklog: [],
+      referenceDocKeys: ["brand-guidelines"],
+    };
+    const rendered = renderWorkspaceMemory(memory);
+    expect(rendered).not.toContain("## About the business");
+    expect(rendered).toContain("- **Business snapshot**: Beta Gym — fitness / gym");
+  });
+
   test("does not render elevator pitch or brand positioning sections", () => {
     const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym",
