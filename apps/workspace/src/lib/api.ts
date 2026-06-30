@@ -72,6 +72,7 @@ export interface Site {
   sourceUrl?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
+  mode?: "greenfield" | "replication" | "template" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -151,6 +152,28 @@ export interface ScrapeSiteResult {
   site: Site;
   docs: Doc[];
   screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
+}
+
+export interface Deployment {
+  uuid: string;
+  buildId: string;
+  status: string;
+  previewUrl: string | null;
+  artifactUrl: string | null;
+  metadata?: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateSiteResult {
+  aiJobUuid: string;
+  attemptId: string;
+  status: string;
+}
+
+export interface ApprovePageResult {
+  approved: string;
+  remainingPagesEnqueued: string[];
 }
 
 export const api = {

@@ -535,6 +535,19 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             if (local) {
               image.url = local.url;
               image.assetUuid = local.assetUuid;
+              fastify.queues.classifyAssets.queue
+                .add("classify_assets", {
+                  workspaceUuid,
+                  assetUuid: local.assetUuid,
+                  userUuid: request.user.uuid,
+                  siteUuid: match?.uuid ?? newSiteUuid,
+                })
+                .catch((err) => {
+                  fastify.log.warn(
+                    { err, assetUuid: local.assetUuid },
+                    "Failed to enqueue scraped asset classification",
+                  );
+                });
             }
           }
         } catch {
