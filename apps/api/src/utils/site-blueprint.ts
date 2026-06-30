@@ -4,7 +4,6 @@ import type {
   TemplateShellPage,
   ThemeTokens,
 } from "@ploy-gyms/shared-types";
-import { buildTemplateShell } from "./template-shell";
 
 const NEUTRAL_TOKENS: ThemeTokens = {
   colors: {
@@ -72,10 +71,11 @@ function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
   };
 }
 
-function deriveSlug(href: string, fallback: string): string {
+export function deriveSlug(href: string, fallback: string): string {
   try {
     if (href.startsWith("/")) {
-      const slug = href.replace(/^\/+/, "").split("/")[0];
+      const rawSlug = href.replace(/^\/+/, "").split("/")[0];
+      const slug = rawSlug?.split(/[?#]/)[0];
       if (slug) return slug;
     }
     const url = new URL(href);
@@ -155,11 +155,39 @@ function makeHeroSection(
   };
 }
 
+function makeHeaderSection(data: ScrapedWebsiteData): SiteSection {
+  return {
+    id: "header",
+    type: "SiteHeader",
+    props: {
+      logo: { type: "text", value: data.businessName ?? data.title },
+      navLinks: data.navLinks,
+      ctaLabel: data.buttons[0] ?? "Contact",
+      ctaHref: "#cta",
+    },
+  };
+}
+
+function makeFooterSection(data: ScrapedWebsiteData): SiteSection {
+  const businessName = data.businessName ?? data.title;
+  const year = new Date().getFullYear();
+  return {
+    id: "footer",
+    type: "SiteFooter",
+    props: {
+      businessName,
+      navLinks: data.navLinks,
+      socialLinks: data.contact?.social ?? [],
+      copyright: `© ${year} ${businessName}. All rights reserved.`,
+    },
+  };
+}
+
 function buildHomePage(data: ScrapedWebsiteData): TemplateShellPage {
   const sections: SiteSection[] = [];
   const sectionId = (prefix: string) => `home-${prefix}`;
 
-  if (data.headings.length > 0 || data.paragraphs.length > 0 || data.buttons.length > 0) {
+  if (data.headings.length > 0 || data.paragraphs.length > 0) {
     sections.push(makeHeroSection(data, sectionId("hero")));
   }
 
@@ -331,9 +359,8 @@ function inferSecondaryPage(
 
 export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
   const tokens = buildDesignTokens(data);
-  const homeShell = buildTemplateShell(data);
-  const header = homeShell.page.sections.find((s) => s.type === "SiteHeader");
-  const footer = homeShell.page.sections.find((s) => s.type === "SiteFooter");
+  const header = makeHeaderSection(data);
+  const footer = makeFooterSection(data);
 
   const homePage = buildHomePage(data);
 

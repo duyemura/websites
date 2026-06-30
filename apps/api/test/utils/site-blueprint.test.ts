@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { buildSiteBlueprint } from "../../src/utils/site-blueprint";
+import { buildSiteBlueprint, deriveSlug } from "../../src/utils/site-blueprint";
 import type { ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 
 const baseScrape: ScrapedWebsiteData = {
@@ -27,7 +27,7 @@ const baseScrape: ScrapedWebsiteData = {
   layoutRules: [{ element: "section", value: "max-width 1200px, padding 80px vertical" }],
   faqs: [{ question: "Do you offer drop-ins?", answer: "Yes, $25 per class." }],
   testimonials: [{ quote: "Best gym in town.", author: "Jane D.", role: "Member" }],
-  locations: [{ name: "Downtown", address: "123 Main St" }],
+  locations: [{ name: "Downtown", address: "123 Main St", hours: "Mon-Fri 5am-10pm" }],
   team: [{ name: "Coach Alex", role: "Head coach", bio: "CSCS certified." }],
   offerings: [{ name: "Group class", description: "One hour", price: "$30" }],
   contact: { phone: "555-1234", email: "hi@example-gym.com", social: [] },
@@ -52,10 +52,22 @@ describe("buildSiteBlueprint", () => {
     expect(bp.design_tokens.radius).toBe("0.5rem");
   });
 
-  test("extracts global header and footer from homepage shell", () => {
+  test("builds global header and footer from real scraped values", () => {
     const bp = buildSiteBlueprint(baseScrape);
     expect(bp.global_shell.header?.type).toBe("SiteHeader");
+    expect(bp.global_shell.header?.props.logo).toEqual({
+      type: "text",
+      value: baseScrape.businessName,
+    });
+    expect(bp.global_shell.header?.props.navLinks).toEqual(baseScrape.navLinks);
+    expect(bp.global_shell.header?.props.ctaLabel).toBe(baseScrape.buttons[0]);
     expect(bp.global_shell.footer?.type).toBe("SiteFooter");
+    expect(bp.global_shell.footer?.props.businessName).toBe(baseScrape.businessName);
+    expect(bp.global_shell.footer?.props.navLinks).toEqual(baseScrape.navLinks);
+    expect(bp.global_shell.footer?.props.socialLinks).toEqual(baseScrape.contact.social);
+    expect(bp.global_shell.footer?.props.copyright).toMatch(
+      new RegExp(`© ${new Date().getFullYear()} ${baseScrape.businessName}\\. All rights reserved\\.`),
+    );
     expect(bp.global_shell.navLinks).toEqual(baseScrape.navLinks);
     expect(bp.global_shell.theme).toEqual(bp.design_tokens);
   });
@@ -149,5 +161,62 @@ describe("buildSiteBlueprint", () => {
       paragraphs: [],
     });
     expect(bp.pages.find((p) => p.slug === "pricing")).toBeUndefined();
+  });
+
+  test("blueprint contains no template placeholders", () => {
+    const bp = buildSiteBlueprint(baseScrape);
+    const json = JSON.stringify(bp);
+    expect(json).not.toContain("{{placeholder-");
+  });
+
+  test("filters external nav links and does not create secondary pages for them", () => {
+    const bp = buildSiteBlueprint({
+      ...baseScrape,
+      navLinks: [
+        { label: "External", href: "https://external.com" },
+        { label: "Anchor", href: "#features" },
+        { label: "Home", href: "/" },
+        { label: "Classes", href: "/classes" },
+      ],
+    });
+    const slugs = bp.pages.map((p) => p.slug);
+    expect(slugs).toContain("index");
+    expect(slugs).toContain("classes");
+    expect(slugs).not.toContain("external");
+    expect(slugs).not.toContain("anchor");
+    expect(slugs).not.toContain("home");
+  });
+
+  test("deriveSlug strips query strings from relative paths", () => {
+    expect(deriveSlug("/classes?plan=monthly", "classes")).toBe("classes");
+    expect(deriveSlug("/classes#schedule", "classes")).toBe("classes");
+    expect(deriveSlug("/membership?plan=monthly#faq", "membership")).toBe("membership");
+  });
+
+  test("coaches page maps team members to card title and description", () => {
+    const bp = buildSiteBlueprint({
+      ...baseScrape,
+      navLinks: [{ label: "Coaches", href: "/coaches" }],
+      team: [
+        { name: "Coach Alex", role: "Head coach", bio: "CSCS certified." },
+        { name: "Coach Sam", role: "Trainer", bio: "Yoga specialist." },
+      ],
+    });
+    const coaches = bp.pages.find((p) => p.slug === "coaches")!;
+    const teamSection = coaches.sections.find((s) => s.type === "SiteCardGroup")!;
+    expect(teamSection.props.cards).toEqual([
+      { title: "Coach Alex", description: "CSCS certified." },
+      { title: "Coach Sam", description: "Yoga specialist." },
+    ]);
+  });
+
+  test("location section includes hours and phone when available", () => {
+    const bp = buildSiteBlueprint(baseScrape);
+    const home = bp.pages.find((p) => p.isHomePage)!;
+    const location = home.sections.find((s) => s.type === "SiteLocation")!;
+    expect(location.props.hours).toBe("Mon-Fri 5am-10pm");
+    expect(location.props.phone).toBe(baseScrape.contact.phone);
+    expect(location.props.address).toContain("Downtown");
+    expect(location.props.address).toContain("123 Main St");
   });
 });
