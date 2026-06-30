@@ -222,6 +222,34 @@ export const api = {
     }),
   getPlaybooks: () => fetchJson<Playbook[]>("/playbooks"),
 
+  getAiActivity: (limit = 100) =>
+    fetchJson<{
+      activities: {
+        uuid: string;
+        workspaceUuid: string;
+        siteUuid: string | null;
+        userUuid: string;
+        aiJobUuid: string | null;
+        actionType: string;
+        model: string | null;
+        provider: string | null;
+        promptTemplateKeys: string | null;
+        inputDocKeys: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        costUsd: number | null;
+        latencyMs: number | null;
+        outcome: string;
+        fidelityScore: number | null;
+        summary: string;
+        errorMessage: string | null;
+        userCorrection: string | null;
+        metadata: unknown;
+        createdAt: string;
+      }[];
+      summary: { totalCostUsd: number; totalTokens: number; count: number };
+    }>(`/ai-activity?limit=${limit}`),
+
   getOrganizations: () =>
     fetchJson<{ uuid: string; slug: string; name: string }[]>(
       "/organizations",

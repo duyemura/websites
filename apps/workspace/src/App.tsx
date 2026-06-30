@@ -8,6 +8,7 @@ import { Playbooks } from "@/routes/Playbooks";
 import { Templates } from "@/routes/Templates";
 import { Settings } from "@/routes/Settings";
 import { Workspaces } from "@/routes/Workspaces";
+import { AiActivity } from "@/routes/AiActivity";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/playbooks" element={<Playbooks />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/ai-activity" element={<AiActivity />} />
         <Route path="/workspaces" element={<Workspaces />} />
       </Route>
     </Routes>

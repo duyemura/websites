@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router";
-import { Dumbbell, FileText, Image, LayoutTemplate, BookOpen, Settings, Users } from "lucide-react";
+import { Dumbbell, FileText, Image, LayoutTemplate, BookOpen, Settings, Users, Activity } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,10 @@ const navItems = [
   { to: "/assets", icon: Image, label: "Assets" },
   { to: "/playbooks", icon: BookOpen, label: "Playbooks" },
   { to: "/settings", icon: Settings, label: "Settings" },
+];
+
+const devNavItems = [
+  { to: "/settings/ai-activity", icon: Activity, label: "AI activity" },
 ];
 
 export function Shell() {
@@ -32,7 +36,7 @@ export function Shell() {
           </div>
           <span className="font-semibold">Ploy for gyms</span>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -54,6 +58,32 @@ export function Shell() {
               </NavLink>
             );
           })}
+          {import.meta.env.DEV && (
+            <>
+              <div className="my-3 border-t" />
+              <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Developer</p>
+              {devNavItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                      )
+                    }
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </NavLink>
+                );
+              })}
+            </>
+          )}
         </nav>
         <div className="border-t p-4">
           {isLoading ? (
