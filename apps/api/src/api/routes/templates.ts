@@ -83,6 +83,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       return templates.map((template) => ({
         ...template,
+        theme: template.theme as z.infer<typeof TemplateSchema>["theme"],
+        page: template.page as z.infer<typeof TemplateSchema>["page"],
         createdAt: template.createdAt.toISOString(),
         updatedAt: template.updatedAt.toISOString(),
       }));
@@ -148,6 +150,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
         return reply.code(201).send({
           ...template,
+          theme: template.theme as z.infer<typeof TemplateSchema>["theme"],
+          page: template.page as z.infer<typeof TemplateSchema>["page"],
           createdAt: template.createdAt.toISOString(),
           updatedAt: template.updatedAt.toISOString(),
         });
