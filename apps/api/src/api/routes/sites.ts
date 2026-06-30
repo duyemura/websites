@@ -517,7 +517,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           gmbListing = gmbResult.listing;
         }
 
-        const docs = generateSiteDocs(data, gmbListing);
+        const docs = await generateSiteDocs(data, gmbListing, fastify.config);
 
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);

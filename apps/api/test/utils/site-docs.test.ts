@@ -4,8 +4,8 @@ import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/uti
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { generateSiteDocs } from "../../src/utils/site-docs";
 
-function docKeys(docs: ReturnType<typeof generateSiteDocs>): string[] {
-  return docs.map((d) => d.key);
+async function docKeys(docs: Promise<ReturnType<typeof generateSiteDocs>>): Promise<string[]> {
+  return (await docs).map((d) => d.key);
 }
 
 const baseScrape: ScrapedWebsiteData = {
@@ -93,8 +93,8 @@ describe("generateBrandGuidelines", () => {
 });
 
 describe("generateSiteDocs", () => {
-  test("generates core docs from scraped data", () => {
-    const keys = docKeys(generateSiteDocs(baseScrape));
+  test("generates core docs from scraped data", async () => {
+    const keys = await docKeys(generateSiteDocs(baseScrape));
     expect(keys).toEqual([
       "workspace-memory",
       "site-memory",
@@ -105,16 +105,16 @@ describe("generateSiteDocs", () => {
     ]);
   });
 
-  test("does not generate removed standalone docs", () => {
-    const keys = docKeys(generateSiteDocs(baseScrape));
+  test("does not generate removed standalone docs", async () => {
+    const keys = await docKeys(generateSiteDocs(baseScrape));
     expect(keys).not.toContain("site-structure");
     expect(keys).not.toContain("team-bios");
     expect(keys).not.toContain("testimonials");
     expect(keys).not.toContain("faqs");
   });
 
-  test("workspace memory includes business snapshot and reference docs", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("workspace memory includes business snapshot and reference docs", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const memory = docs.find((d) => d.key === "workspace-memory")!;
     expect(memory.content).toContain("Beta Gym");
     expect(memory.content).toContain("Current goal");
@@ -124,16 +124,34 @@ describe("generateSiteDocs", () => {
     expect(memory.content).not.toContain("[[site-structure]]");
   });
 
-  test("site memory includes source url and publish state", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("workspace memory includes niche industry and target member summary", async () => {
+    const crossfitScrape = {
+      ...baseScrape,
+      headings: ["CrossFit for everyone", "Our coaches", "Join the community"],
+      offerings: [{ name: "CrossFit class", description: "One hour", price: "$30" }],
+    };
+    const docs = await generateSiteDocs(crossfitScrape);
+    const memory = docs.find((d) => d.key === "workspace-memory")!;
+    expect(memory.content).toContain("fitness / gym: CrossFit");
+    expect(memory.content).toContain("Target member");
+  });
+
+  test("workspace memory does not render a brand positioning section", async () => {
+    const docs = await generateSiteDocs(baseScrape);
+    const memory = docs.find((d) => d.key === "workspace-memory")!;
+    expect(memory.content).not.toContain("## Brand positioning");
+  });
+
+  test("site memory includes source url and publish state", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const memory = docs.find((d) => d.key === "site-memory")!;
     expect(memory.content).toContain(baseScrape.url);
     expect(memory.content).toContain("Publish state");
     expect(memory.content).toContain("draft");
   });
 
-  test("business info doc includes contact, social links, offerings, locations, team, testimonials, and faqs", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("business info doc includes contact, social links, offerings, locations, team, testimonials, and faqs", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     expect(businessInfo.content).toContain("Beta Gym");
     expect(businessInfo.content).toContain("Stronger together.");
@@ -152,8 +170,8 @@ describe("generateSiteDocs", () => {
     expect(businessInfo.content).toContain("Do you offer drop-ins?");
   });
 
-  test("business info doc emits phone and email only under the Contact section", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("business info doc emits phone and email only under the Contact section", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     const [, afterContact] = businessInfo.content.split("## Contact");
     expect(afterContact).toContain("**Phone**: 555-1234");
@@ -162,8 +180,8 @@ describe("generateSiteDocs", () => {
     expect(businessInfo.content.match(/\*\*Email\*\*:/g)).toHaveLength(1);
   });
 
-  test("business info doc includes gmb-only fields when provided", () => {
-    const docs = generateSiteDocs(baseScrape, baseGmb);
+  test("business info doc includes gmb-only fields when provided", async () => {
+    const docs = await generateSiteDocs(baseScrape, baseGmb);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     expect(businessInfo.content).toContain("# Beta Gym GMB");
     expect(businessInfo.content).toContain("**Tagline**: Top-rated functional fitness gym.");
@@ -180,15 +198,15 @@ describe("generateSiteDocs", () => {
     expect(businessInfo.content).toContain("**Phone**: 555-9999");
   });
 
-  test("business info doc falls back to gmb reviews when scraped testimonials are missing", () => {
-    const docs = generateSiteDocs({ ...baseScrape, testimonials: [] }, baseGmb);
+  test("business info doc falls back to gmb reviews when scraped testimonials are missing", async () => {
+    const docs = await generateSiteDocs({ ...baseScrape, testimonials: [] }, baseGmb);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     expect(businessInfo.content).toContain("## Testimonials");
     expect(businessInfo.content).toContain('"Great gym" — Sam');
   });
 
-  test("site strategy includes gmb source facts", () => {
-    const docs = generateSiteDocs(baseScrape, baseGmb);
+  test("site strategy includes gmb source facts", async () => {
+    const docs = await generateSiteDocs(baseScrape, baseGmb);
     const plan = docs.find((d) => d.key === "site-strategy")!;
     expect(plan.content).toContain("Google Business Profile verified as Beta Gym GMB.");
     expect(plan.content).toContain("Primary category: fitness_center.");
@@ -196,8 +214,8 @@ describe("generateSiteDocs", () => {
     expect(plan.content).toContain("1 GMB photos available for asset curation.");
   });
 
-  test("site strategy includes site structure, phases, decisions, and next action", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("site strategy includes site structure, phases, decisions, and next action", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const plan = docs.find((d) => d.key === "site-strategy")!;
     expect(plan.content).toContain("https://example-gym.com");
     expect(plan.content).toContain("## Site structure");
@@ -208,8 +226,8 @@ describe("generateSiteDocs", () => {
     expect(plan.content).not.toContain("Train with purpose");
   });
 
-  test("brand guidelines include voice and copy examples", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("brand guidelines include voice and copy examples", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const brand = docs.find((d) => d.key === BRAND_GUIDELINES_DOC_KEY)!;
     expect(brand.content).toContain("Tone keywords");
     expect(brand.content).toContain("Copy examples");
@@ -217,8 +235,8 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("Book a class");
   });
 
-  test("brand guidelines include substantive tone of voice guidance", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("brand guidelines include substantive tone of voice guidance", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const brand = docs.find((d) => d.key === BRAND_GUIDELINES_DOC_KEY)!;
     expect(brand.content).toContain("Voice attributes");
     expect(brand.content).toContain("Do");
@@ -227,8 +245,8 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("inclusive");
   });
 
-  test("blueprint draft doc contains a populated site blueprint, not an empty placeholder", () => {
-    const docs = generateSiteDocs(baseScrape);
+  test("blueprint draft doc contains a populated site blueprint, not an empty placeholder", async () => {
+    const docs = await generateSiteDocs(baseScrape);
     const blueprint = docs.find((d) => d.key === "blueprint-draft")!;
     expect(blueprint.content).toContain("## Site blueprint");
     expect(blueprint.content).toContain('"site_metadata"');

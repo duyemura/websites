@@ -9,6 +9,7 @@ import { assertAllowedDocKey } from "./doc-registry";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
 import { buildSiteBlueprint } from "./site-blueprint";
+import type { Config } from "../plugins/env";
 import {
   generateSiteMemory,
   generateWorkspaceMemory,
@@ -275,13 +276,14 @@ ${JSON.stringify(blueprint, null, 2)}
   };
 }
 
-export function generateSiteDocs(
+export async function generateSiteDocs(
   data: ScrapedWebsiteData,
   gmb?: GmbListing,
-): GeneratedSiteDoc[] {
+  config?: Config,
+): Promise<GeneratedSiteDoc[]> {
   const ctx: DocGenerationContext = { scraped: data, gmb };
   const brandInput = buildBrandGuidelinesInput(ctx);
-  const workspaceMemory = generateWorkspaceMemory(data);
+  const workspaceMemory = await generateWorkspaceMemory(data, gmb, config);
   const siteMemory = generateSiteMemory(data);
 
   const docs: GeneratedSiteDoc[] = [

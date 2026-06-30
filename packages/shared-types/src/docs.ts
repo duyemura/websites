@@ -113,11 +113,23 @@ export const ScrapedBrandInputSchema = z.object({
 });
 export type ScrapedBrandInput = z.infer<typeof ScrapedBrandInputSchema>;
 
+export const IcpProfileSchema = z.object({
+  name: z.string(),
+  summary: z.string(),
+  demographics: z.string().optional(),
+  psychographics: z.string().optional(),
+  jobsToBeDone: z.array(z.string()).default([]),
+  commonObjections: z.array(z.string()).default([]),
+  entrySignals: z.array(z.string()).default([]),
+});
+export type IcpProfile = z.infer<typeof IcpProfileSchema>;
+
 export const WorkspaceMemorySchema = z.object({
   businessSnapshot: z.string(),
   elevatorPitch: z.string().optional(),
   industry: z.string().optional(),
   targetMember: z.string().optional(),
+  targetMembers: z.array(IcpProfileSchema).default([]),
   differentiators: z.array(z.string()).default([]),
   brandVoice: z.string().optional(),
   businessPriorities: z.array(z.string()).default([]),
@@ -127,7 +139,6 @@ export const WorkspaceMemorySchema = z.object({
   stakeholderEmail: z.string().optional(),
   stakeholderNotes: z.string().optional(),
   currentGoal: z.string().optional(),
-  brandPositioning: z.string().optional(),
   lockedDecisions: z.array(z.string()).default([]),
   knownBlockers: z.array(z.string()).default([]),
   followUpBacklog: z.array(z.string()).default([]),

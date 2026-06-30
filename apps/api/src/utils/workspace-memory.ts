@@ -1,18 +1,122 @@
 import type { WorkspaceMemory, SiteMemory } from "@ploy-gyms/shared-types";
+import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { Config } from "../plugins/env";
 import type { ScrapedWebsiteData } from "./scrape-docs";
+import { inferIndustry } from "./scrape-docs";
+import { extractWorkspaceMemoryFields } from "../ai/prompts/workspace-memory-extraction";
 
 export const WORKSPACE_MEMORY_DOC_KEY = "workspace-memory";
 export const WORKSPACE_MEMORY_DOC_TITLE = "Workspace memory";
 export const SITE_MEMORY_DOC_KEY = "site-memory";
 export const SITE_MEMORY_DOC_TITLE = "Site memory";
 
-export function generateWorkspaceMemory(
+function extractNicheKeywords(text: string): string[] {
+  const lower = text.toLowerCase();
+  const checks: Record<string, string[]> = {
+    crossfit: ["crossfit"],
+    bjj: ["brazilian jiu-jitsu", "bjj", "jiu jitsu", "grappling"],
+    "strike training": ["muay thai", "kickboxing", "boxing"],
+    yoga: ["yoga"],
+    pilates: ["pilates"],
+    barre: ["barre"],
+    "spin / indoor cycling": ["spin", "indoor cycling"],
+    powerlifting: ["powerlifting"],
+    "olympic weightlifting": ["olympic weightlifting", "weightlifting"],
+  };
+  return Object.entries(checks)
+    .filter(([, kws]) => kws.some((kw) => lower.includes(kw)))
+    .map(([niche]) => niche);
+}
+
+function inferIndustryWithGmb(data: ScrapedWebsiteData, gmb?: GmbListing): string {
+  const corpus = [
+    gmb?.primaryType ?? "",
+    gmb?.editorialSummary ?? "",
+    data.description ?? "",
+    data.tagline ?? "",
+    ...data.headings.slice(0, 10),
+    ...data.paragraphs.slice(0, 5),
+    ...data.offerings.map((o) => `${o.name ?? ""} ${o.description ?? ""}`),
+  ].join(" ");
+  return inferIndustry(corpus);
+}
+
+function heuristicTargetMember(data: ScrapedWebsiteData): string {
+  const offerings = data.offerings.map((o) => o.name).filter(Boolean);
+  const nicheKeywords = extractNicheKeywords(
+    [
+      data.description ?? "",
+      data.tagline ?? "",
+      ...data.headings,
+      ...data.paragraphs,
+      ...offerings,
+    ].join(" "),
+  );
+  if (nicheKeywords.length > 0) {
+    return `People seeking ${nicheKeywords.join(", ")} training and community`;
+  }
+  if (offerings.length > 0) {
+    return `People interested in ${offerings.join(", ").toLowerCase()}`;
+  }
+  return "Prospects researching the gym online";
+}
+
+function heuristicDifferentiators(data: ScrapedWebsiteData, gmb?: GmbListing): string[] {
+  const differentiators: string[] = [];
+  const nicheKeywords = extractNicheKeywords(
+    [
+      data.description ?? "",
+      data.tagline ?? "",
+      ...data.headings,
+      ...data.paragraphs,
+      ...data.offerings.map((o) => o.name ?? ""),
+    ].join(" "),
+  );
+  if (nicheKeywords.length > 0) {
+    differentiators.push(`Specialized focus: ${nicheKeywords.join(", ")}`);
+  }
+  if (data.locations.length > 0) {
+    differentiators.push(`Local presence at ${data.locations.length} location(s)`);
+  }
+  if (data.team.length > 0) {
+    differentiators.push(
+      `Coach-led environment: ${data.team
+        .map((t) => t.name)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(", ")}`,
+    );
+  }
+  if (data.testimonials.length > 0) {
+    differentiators.push("Social proof from member testimonials");
+  }
+  if (gmb?.reviews && gmb.reviews.length > 0) {
+    differentiators.push(`${gmb.reviews.length} Google review(s) available for insight`);
+  }
+  if (differentiators.length === 0) {
+    differentiators.push("Unique positioning not yet captured");
+  }
+  return differentiators;
+}
+
+function heuristicBrandVoice(data: ScrapedWebsiteData): string | undefined {
+  if (data.description) {
+    return `Inferred from source copy: ${data.description.slice(0, 120).replace(/\.$/, "")}`;
+  }
+  return undefined;
+}
+
+export async function generateWorkspaceMemory(
   data: ScrapedWebsiteData,
+  gmb?: GmbListing,
+  config?: Config,
   overrides: Partial<WorkspaceMemory> = {},
-): WorkspaceMemory {
+): Promise<WorkspaceMemory> {
+  const industry = inferIndustryWithGmb(data, gmb);
+
   const businessSnapshot = [
     data.businessName ?? data.title,
-    data.industry ? `— ${data.industry}` : "",
+    industry ? `— ${industry}` : "",
     data.tagline ? `| ${data.tagline}` : "",
     data.locations.length > 0 ? `| ${data.locations.length} location(s)` : "",
     data.offerings.length > 0
@@ -24,36 +128,13 @@ export function generateWorkspaceMemory(
 
   const elevatorPitch = data.description
     ? `${data.businessName ?? data.title} — ${data.description}`
-    : (data.tagline
+    : data.tagline
       ? `${data.businessName ?? data.title} — ${data.tagline}`
-      : data.title);
+      : data.title;
 
-  const industry = data.industry;
-
-  const targetMember = data.offerings.length > 0
-    ? `People interested in ${data.offerings.map((o) => o.name).filter(Boolean).join(", ").toLowerCase()}`
-    : "Prospects researching the gym online";
-
-  const differentiators: string[] = [];
-  if (data.offerings.length > 0) {
-    differentiators.push(`Offers ${data.offerings.map((o) => o.name).filter(Boolean).join(", ")}`);
-  }
-  if (data.locations.length > 0) {
-    differentiators.push(`Local presence at ${data.locations.length} location(s)`);
-  }
-  if (data.testimonials.length > 0) {
-    differentiators.push("Social proof from member testimonials");
-  }
-  if (data.team.length > 0) {
-    differentiators.push(`Coaches/team highlighted: ${data.team.map((t) => t.name).filter(Boolean).slice(0, 3).join(", ")}`);
-  }
-  if (differentiators.length === 0) {
-    differentiators.push("Unique positioning not yet captured");
-  }
-
-  const brandVoice = data.description
-    ? `Inferred from source copy: ${data.description.slice(0, 120).replace(/\.$/, "")}`
-    : "Tone to be defined by user";
+  const targetMember = heuristicTargetMember(data);
+  const differentiators = heuristicDifferentiators(data, gmb);
+  const brandVoice = heuristicBrandVoice(data);
 
   const firstOffering = data.offerings[0]?.name?.toLowerCase() ?? "";
   const ctaGoal = firstOffering.includes("trial")
@@ -70,21 +151,21 @@ export function generateWorkspaceMemory(
   if (data.offerings.length === 0) keyConstraints.push("No offerings detected; user should confirm classes/services");
   if (data.locations.length === 0) keyConstraints.push("No locations detected; verify address before publishing");
 
-  return {
+  const memory: WorkspaceMemory = {
     businessSnapshot,
-    elevatorPitch: overrides.elevatorPitch ?? elevatorPitch,
-    industry: overrides.industry ?? industry,
-    targetMember: overrides.targetMember ?? targetMember,
-    differentiators: overrides.differentiators ?? differentiators,
-    brandVoice: overrides.brandVoice ?? brandVoice,
-    businessPriorities: overrides.businessPriorities ?? businessPriorities,
-    keyConstraints: overrides.keyConstraints ?? keyConstraints,
+    elevatorPitch,
+    industry,
+    targetMember,
+    targetMembers: [],
+    differentiators,
+    brandVoice,
+    businessPriorities,
+    keyConstraints,
     stakeholderName: overrides.stakeholderName,
     stakeholderRole: overrides.stakeholderRole,
     stakeholderEmail: overrides.stakeholderEmail,
     stakeholderNotes: overrides.stakeholderNotes,
     currentGoal: overrides.currentGoal ?? ctaGoal,
-    brandPositioning: overrides.brandPositioning ?? data.tagline,
     lockedDecisions: overrides.lockedDecisions ?? [],
     knownBlockers: overrides.knownBlockers ?? [],
     followUpBacklog: overrides.followUpBacklog ?? [],
@@ -95,6 +176,25 @@ export function generateWorkspaceMemory(
       "blueprint-draft",
     ],
   };
+
+  if (config) {
+    const extracted = await extractWorkspaceMemoryFields(data, gmb, industry, config);
+    if (extracted) {
+      if (extracted.industry) memory.industry = extracted.industry;
+      if (extracted.targetMembers && extracted.targetMembers.length > 0) {
+        memory.targetMembers = extracted.targetMembers;
+        memory.targetMember = `${extracted.targetMembers.length} ICP${
+          extracted.targetMembers.length === 1 ? "" : "s"
+        }: ${extracted.targetMembers.map((t) => t.name).join(", ")}`;
+      }
+      if (extracted.differentiators && extracted.differentiators.length > 0) {
+        memory.differentiators = extracted.differentiators;
+      }
+      if (extracted.brandVoice) memory.brandVoice = extracted.brandVoice;
+    }
+  }
+
+  return memory;
 }
 
 export function generateSiteMemory(
@@ -131,6 +231,27 @@ function renderList(title: string, items: string[]): string {
   return `## ${title}\n\n${items.map((i) => `- ${i}`).join("\n")}\n`;
 }
 
+function renderIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile, index: number): string {
+  const lines = [
+    `#### ${index + 1}. ${profile.name}`,
+    "",
+    profile.summary,
+    "",
+  ];
+  if (profile.demographics) lines.push(`- **Demographics**: ${profile.demographics}`);
+  if (profile.psychographics) lines.push(`- **Psychographics**: ${profile.psychographics}`);
+  if (profile.jobsToBeDone.length > 0) {
+    lines.push("- **Jobs to be done**:", ...profile.jobsToBeDone.map((j) => `  - ${j}`));
+  }
+  if (profile.commonObjections.length > 0) {
+    lines.push("- **Common objections**:", ...profile.commonObjections.map((o) => `  - ${o}`));
+  }
+  if (profile.entrySignals.length > 0) {
+    lines.push(`- **Entry signals**: ${profile.entrySignals.join("; ")}`);
+  }
+  return lines.join("\n");
+}
+
 export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
   const parts = [
     "# Workspace Memory",
@@ -150,6 +271,14 @@ export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
   }
   if (memory.targetMember) {
     parts.push("### Target member", "", `- ${memory.targetMember}`, "");
+  }
+  if (memory.targetMembers.length > 0) {
+    parts.push(
+      "### Ideal customer profiles",
+      "",
+      ...memory.targetMembers.map((p, i) => renderIcpProfile(p, i)),
+      "",
+    );
   }
   if (memory.differentiators.length > 0) {
     parts.push("### What makes this gym different", "", ...memory.differentiators.map((d) => `- ${d}`), "");
@@ -178,9 +307,6 @@ export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
 
   if (memory.currentGoal) {
     parts.push("## Current goal", "", `- ${memory.currentGoal}`, "");
-  }
-  if (memory.brandPositioning) {
-    parts.push("## Brand positioning", "", `- ${memory.brandPositioning}`, "");
   }
 
   parts.push(

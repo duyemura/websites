@@ -35,7 +35,38 @@ export interface ScrapedWebsiteData {
   rawHtml?: string;
 }
 
-export function inferIndustry(text: string): string {
+type NicheRule = {
+  keywords: string[];
+  base: string;
+  niche: string;
+};
+
+const NICHE_RULES: NicheRule[] = [
+  { keywords: ["crossfit"], base: "fitness / gym", niche: "CrossFit" },
+  { keywords: ["brazilian jiu-jitsu", "bjj", "jiu jitsu", "grappling"], base: "fitness / gym", niche: "BJJ" },
+  { keywords: ["muay thai", "kickboxing", "boxing"], base: "fitness / gym", niche: "Strike training" },
+  { keywords: ["powerlifting", "strength training"], base: "fitness / gym", niche: "Strength training" },
+  { keywords: ["olympic weightlifting", "oly"], base: "fitness / gym", niche: "Olympic weightlifting" },
+  { keywords: ["personal training", "1-on-1"], base: "fitness / gym", niche: "Personal training" },
+  { keywords: ["yoga"], base: "fitness studio", niche: "Yoga" },
+  { keywords: ["pilates"], base: "fitness studio", niche: "Pilates" },
+  { keywords: ["barre"], base: "fitness studio", niche: "Barre" },
+  { keywords: ["cycling", "spin"], base: "fitness studio", niche: "Spin / indoor cycling" },
+  { keywords: ["coffee", "cafe"], base: "restaurant", niche: "Coffee" },
+  { keywords: ["restaurant"], base: "restaurant", niche: "Restaurant" },
+];
+
+function detectNiche(text: string): { base: string; niche: string } | undefined {
+  const lower = text.toLowerCase();
+  for (const rule of NICHE_RULES) {
+    if (rule.keywords.some((kw) => lower.includes(kw))) {
+      return { base: rule.base, niche: rule.niche };
+    }
+  }
+  return undefined;
+}
+
+function detectBaseIndustry(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes("gym") || lower.includes("fitness") || lower.includes("crossfit")) {
     return "fitness / gym";
@@ -46,7 +77,18 @@ export function inferIndustry(text: string): string {
   if (lower.includes("salon") || lower.includes("spa") || lower.includes("beauty")) {
     return "beauty / wellness";
   }
+  if (lower.includes("restaurant") || lower.includes("cafe") || lower.includes("coffee")) {
+    return "restaurant";
+  }
   return "local business";
+}
+
+export function inferIndustry(text: string): string {
+  const niche = detectNiche(text);
+  if (niche) {
+    return `${niche.base}: ${niche.niche}`;
+  }
+  return detectBaseIndustry(text);
 }
 
 function inferComponentPatterns(data: ScrapedWebsiteData): string[] {
