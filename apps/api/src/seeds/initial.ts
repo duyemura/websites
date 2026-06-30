@@ -63,56 +63,6 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     .execute();
 
   await db
-    .insertInto("templates")
-    .values([
-      {
-        key: "gym-homepage-v1",
-        name: "Gym homepage v1",
-        category: "Homepage",
-        isSystem: true,
-        tags: ["gym", "fitness", "homepage"],
-        theme: {
-          colors: {
-            primary: "#2563eb",
-            primaryForeground: "#ffffff",
-            background: "#ffffff",
-            foreground: "#0f172a",
-            muted: "#f1f5f9",
-            mutedForeground: "#64748b",
-            border: "#e2e8f0",
-          },
-          fonts: { heading: "Inter", body: "Inter" },
-          radius: "0.5rem",
-        },
-        page: {
-          title: "Homepage",
-          slug: "index",
-          isHomePage: true,
-          sections: [
-            {
-              id: "hero-1",
-              type: "Hero",
-              props: {
-                title: "Train with purpose",
-                subtitle: "Group classes, personal training, and a community that keeps you coming back.",
-                ctaLabel: "Book a free session",
-                ctaHref: "#book",
-              },
-            },
-          ],
-        },
-      },
-      {
-        key: "yoga-studio-homepage",
-        name: "Yoga studio homepage",
-        category: "Homepage",
-        isSystem: true,
-        tags: ["yoga", "wellness", "homepage"],
-      },
-    ])
-    .execute();
-
-  await db
     .insertInto("playbooks")
     .values([
       {

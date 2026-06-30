@@ -96,25 +96,27 @@ export function Templates() {
       {isLoading ? (
         <p className="mt-8 text-muted-foreground">Loading templates…</p>
       ) : templates && templates.length > 0 ? (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 flex flex-col gap-3">
           {templates.map((template: Template) => (
-            <div key={template.uuid} className="rounded-lg border bg-card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
-                  <LayoutTemplate className="h-5 w-5 text-muted-foreground" />
-                </div>
-                {isUrlTemplate(template) && (
-                  <Badge variant="outline" className="text-xs">
-                    URL shell
-                  </Badge>
-                )}
+            <div key={template.uuid} className="flex items-center gap-4 rounded-lg border bg-card p-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-muted">
+                <LayoutTemplate className="h-5 w-5 text-muted-foreground" />
               </div>
-              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {template.category ?? "General"}
-              </p>
-              <h3 className="mt-1 font-semibold">{template.name}</h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">{template.name}</h3>
+                  {isUrlTemplate(template) && (
+                    <Badge variant="outline" className="text-xs">
+                      URL shell
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {template.category ?? "General"}
+                </p>
+              </div>
               {template.tags && template.tags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1">
+                <div className="hidden flex-wrap gap-1 sm:flex">
                   {template.tags.map((tag) => (
                     <Badge key={tag} variant="secondary" className="text-xs capitalize">
                       {tag}
@@ -127,7 +129,7 @@ export function Templates() {
                   href={template.thumbnailUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <ExternalLink className="h-3 w-3" />
                   View thumbnail
