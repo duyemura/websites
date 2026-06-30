@@ -17,8 +17,8 @@ const TemplateSchema = z.object({
   thumbnailUrl: z.string().nullable().optional(),
   isSystem: z.boolean(),
   tags: z.array(z.string()).nullable().optional(),
-  theme: TemplateShellSchema.shape.theme,
-  page: TemplateShellSchema.shape.page,
+  theme: TemplateShellSchema.shape.theme.nullable().optional(),
+  page: TemplateShellSchema.shape.page.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
