@@ -89,9 +89,13 @@ export async function getAiActivityCostSummary(
   db: Kysely<DB>,
   workspaceUuid: string,
 ): Promise<{ totalCostUsd: number; totalTokens: number; count: number }> {
+  // Rollup rows (actionType = 'generate' for scrape summaries) duplicate child
+  // costs already represented by their underlying LLM calls. Exclude them so
+  // totals reflect actual LLM invocations, not summary rows.
   const result = await db
     .selectFrom("aiActivity")
     .where("workspaceUuid", "=", workspaceUuid)
+    .where("actionType", "!=", "generate")
     .select((eb) => [
       eb.fn.sum("costUsd").as("totalCostUsd"),
       eb.fn.sum(eb.fn.coalesce("inputTokens", eb.val(0))).as("inputTokens"),

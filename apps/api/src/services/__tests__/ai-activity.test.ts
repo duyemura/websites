@@ -82,7 +82,7 @@ describe("ai-activity service", () => {
     expect(failures[0]?.summary).toBe("Generate failure");
   });
 
-  test("summarizes cost and token usage", async () => {
+  test("summarizes cost and token usage excluding parent rollups", async () => {
     await logAiActivity(db, {
       workspaceUuid,
       userUuid: TEST_USER,
@@ -103,10 +103,21 @@ describe("ai-activity service", () => {
       outcome: "partial",
       summary: "Replication pass",
     });
+    // A rollup row for a scrape should not double-count child costs.
+    await logAiActivity(db, {
+      workspaceUuid,
+      userUuid: TEST_USER,
+      actionType: "generate",
+      inputTokens: 3000,
+      outputTokens: 2000,
+      costUsd: 0.037,
+      outcome: "success",
+      summary: "Scraped site and generated docs",
+    });
 
     const summary = await getAiActivityCostSummary(db, workspaceUuid);
-    expect(summary.totalCostUsd).toBeCloseTo(0.037, 3);
-    expect(summary.totalTokens).toBe(5000);
-    expect(summary.count).toBe(2);
+    expect(summary.totalCostUsd).toBeCloseTo(0.025, 3);
+    expect(summary.totalTokens).toBe(3500);
+    expect(summary.count).toBe(1);
   });
 });
