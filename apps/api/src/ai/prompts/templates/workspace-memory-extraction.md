@@ -20,7 +20,7 @@ You will receive:
 
 ## Task
 
-Return a JSON object matching this schema:
+Return **only** a raw JSON object matching this schema. Do not wrap the JSON in Markdown fences or add explanations.
 
 ```json
 {
@@ -45,6 +45,48 @@ Return a JSON object matching this schema:
   ],
   "differentiators": ["string"],
   "brandVoice": "string | null"
+}
+```
+
+## Example
+
+For a CrossFit gym whose corpus mentions small group classes, beginner-friendly onboarding, and Games-level coaches, a good response looks like:
+
+```json
+{
+  "industry": "fitness / gym: CrossFit",
+  "positioning": "Community-driven CrossFit for busy South Bay professionals who want coached, scalable workouts without the intimidating big-gym atmosphere.",
+  "targetMembers": [
+    {
+      "name": "Busy parent needing efficiency",
+      "summary": "Working parent fitting fitness into a tight schedule and prioritizing community accountability.",
+      "demographics": "Ages 30-45, lives or works within 15 minutes, early morning or lunch class preference.",
+      "psychographics": "Wants scalable workouts, personal attention, and a welcoming culture rather than competition.",
+      "jobsToBeDone": ["Stay active without spending hours at the gym", "Find a supportive fitness community"],
+      "commonObjections": ["I do not have time for long classes"],
+      "entrySignals": ["asks about class times", "mentions busy schedule"]
+    },
+    {
+      "name": "Former athlete seeking structure",
+      "summary": "Ex-team athlete who misses coached training and wants structured programming to get back in shape.",
+      "demographics": "Ages 25-40, previous competitive or team sport background.",
+      "psychographics": "Misses locker-room camaraderie and craves measurable progress and coaching feedback.",
+      "jobsToBeDone": ["Regain athletic conditioning", "Train with like-minded people"],
+      "commonObjections": ["Worries CrossFit is too intense"],
+      "entrySignals": ["mentions past sport experience", "asks about scaling"]
+    }
+  ],
+  "antiTargetMembers": [
+    {
+      "name": "Discount hopper",
+      "summary": "Negotiates on price, ignores onboarding, and churns quickly; drains staff and disrupts community."
+    }
+  ],
+  "differentiators": [
+    "Elite coaching credibility from a CrossFit Games athlete owner.",
+    "Small group classes designed for personal attention and friendships."
+  ],
+  "brandVoice": "Warm, inclusive, and elite-credible."
 }
 ```
 

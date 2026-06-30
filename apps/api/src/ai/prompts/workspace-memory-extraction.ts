@@ -104,15 +104,17 @@ export async function extractWorkspaceMemoryFields(
       config,
     );
 
-    const parsed = JSON.parse(content);
+    const cleaned = content
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+    const parsed = JSON.parse(cleaned);
     const result = WorkspaceMemoryExtractionSchema.safeParse(parsed);
     if (!result.success) {
       return null;
     }
     return result.data;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn("[workspace-memory-extraction] failed", err);
+  } catch {
     return null;
   }
 }
