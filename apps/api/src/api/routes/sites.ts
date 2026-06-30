@@ -13,6 +13,7 @@ import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
+import { logAiActivity } from "../../services/ai-activity";
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -600,6 +601,42 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               .executeTakeFirstOrThrow();
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
+
+        const childActivities = await fastify.db
+          .selectFrom("aiActivity")
+          .select((eb) => [
+            eb.fn.sum("costUsd").as("totalCostUsd"),
+            eb.fn.sum(eb.fn.coalesce("inputTokens", eb.val(0))).as("inputTokens"),
+            eb.fn.sum(eb.fn.coalesce("outputTokens", eb.val(0))).as("outputTokens"),
+            eb.fn.count("uuid").as("count"),
+          ])
+          .where("workspaceUuid", "=", workspaceUuid)
+          .where("siteUuid", "=", site.uuid)
+          .where("createdAt", ">=", sql`now() - interval '5 minutes'`)
+          .executeTakeFirst();
+
+        await logAiActivity(fastify.db, {
+          workspaceUuid,
+          userUuid: request.user.uuid,
+          siteUuid: site.uuid,
+          actionType: "generate",
+          provider: fastify.config.LLM_PROVIDER,
+          promptTemplateKeys: ["site-scrape", "workspace-memory-extraction", "brand-guidelines", "business-info", "site-strategy", "blueprint-draft"],
+          inputDocKeys: [],
+          inputTokens: childActivities?.inputTokens != null ? Number(childActivities.inputTokens) : null,
+          outputTokens: childActivities?.outputTokens != null ? Number(childActivities.outputTokens) : null,
+          costUsd: childActivities?.totalCostUsd != null ? Number(childActivities.totalCostUsd) : null,
+          outcome: "success",
+          summary: `Scraped ${url} and generated ${docs.length} docs for ${siteName}`,
+          metadata: {
+            sourceUrl: url,
+            normalizedUrl: normalized,
+            docCount: docs.length,
+            childAiActivityCount: childActivities?.count != null ? Number(childActivities.count) : 0,
+            hasScreenshot: screenshotAsset != null,
+            hasGmb: gmbListing != null,
+          },
+        });
 
         const savedDocs = await fastify.db
           .selectFrom("docs")

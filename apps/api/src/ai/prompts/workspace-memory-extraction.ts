@@ -4,13 +4,9 @@ import { z } from "zod";
 import type { Kysely } from "kysely";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { IcpProfileSchema } from "@ploy-gyms/shared-types";
-import { chatCompletion, sanitizeRawResponse } from "../llm-client";
-import { modelForAgent } from "../model-picker";
+import { callLlmAndLog } from "../llm-with-logging";
 import type { Config } from "../../plugins/env";
 import type { ScrapedWebsiteData } from "../../utils/scrape-docs";
-import type { DB } from "../../types/db";
-import { logAiActivity } from "../../services/ai-activity";
-import { getLlmPricing, calculateLlmCost, estimateLlmCostFromTotal } from "../../services/llm-pricing";
 
 const PROMPT_PATH = path.resolve(__dirname, "./templates/workspace-memory-extraction.md");
 const ICP_STANDARD_PATH = path.resolve(__dirname, "./templates/icp-standard.md");
@@ -102,136 +98,69 @@ export async function extractWorkspaceMemoryFields(
   const template = loadWorkspaceMemoryExtractionTemplate();
   const icpStandard = loadIcpStandard();
 
-  const model = modelForAgent("memory-keeper", config);
-  const provider = config.LLM_PROVIDER;
-  const start = Date.now();
-  let outcome: "success" | "partial" | "failure" = "failure";
-  let errorMessage: string | null = null;
-  let responseContent = "";
-  let promptTokens: number | null = null;
-  let completionTokens: number | null = null;
-  let totalTokens: number | null = null;
-  let latencyMs: number | null = null;
-  let rawResponse: Record<string, unknown> | null = null;
+  if (!ctx) {
+    return null;
+  }
+
+  const { response, outcome } = await callLlmAndLog(
+    ctx,
+    {
+      agent: "memory-keeper",
+      actionType: "memory_update",
+      promptTemplateKeys: ["workspace-memory-extraction", "icp-standard"],
+      summary: "Extract workspace memory fields from scraped website corpus",
+      messages: [
+        { role: "system", content: `${template}\n\n## ICP Standard\n\n${icpStandard}` },
+        { role: "user", content: buildCorpusInput(data, gmb, heuristicIndustry) },
+      ],
+      temperature: 0.5,
+      maxTokens: 2500,
+      jsonMode: true,
+      postCall: (response) => {
+        const cleaned = response.content
+          .replace(/^\s*```(?:json)?\s*/i, "")
+          .replace(/\s*```\s*$/i, "")
+          .trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          const result = WorkspaceMemoryExtractionSchema.safeParse(parsed);
+          if (!result.success) {
+            return {
+              outcome: "partial",
+              errorMessage: `Parsed JSON did not match schema: ${result.error.message}`,
+              summary: "LLM returned a response but it did not match the expected schema",
+            };
+          }
+          return undefined;
+        } catch (err) {
+          return {
+            outcome: "partial",
+            errorMessage: err instanceof Error ? err.message : String(err),
+            summary: "Failed to parse JSON from LLM response",
+          };
+        }
+      },
+    },
+    config,
+  );
+
+  if (outcome === "failure") {
+    return null;
+  }
+
+  const cleaned = response.content
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
 
   try {
-    const response = await chatCompletion(
-      {
-        model,
-        messages: [
-          { role: "system", content: `${template}\n\n## ICP Standard\n\n${icpStandard}` },
-          { role: "user", content: buildCorpusInput(data, gmb, heuristicIndustry) },
-        ],
-        temperature: 0.5,
-        maxTokens: 2500,
-        jsonMode: true,
-      },
-      config,
-    );
-
-    responseContent = response.content;
-    latencyMs = response.latencyMs ?? null;
-    rawResponse = response.raw ?? null;
-    promptTokens = response.usage?.promptTokens ?? null;
-    completionTokens = response.usage?.completionTokens ?? null;
-    totalTokens = response.usage?.totalTokens ?? null;
-
-    const cleaned = responseContent
-      .replace(/^\s*```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
     const parsed = JSON.parse(cleaned);
     const result = WorkspaceMemoryExtractionSchema.safeParse(parsed);
     if (!result.success) {
-      outcome = "partial";
-      errorMessage = `Parsed JSON did not match schema: ${result.error.message}`;
       return null;
     }
-    outcome = "success";
     return result.data;
-  } catch (err) {
-    outcome = "failure";
-    errorMessage = err instanceof Error ? err.message : String(err);
-    return null;
-  } finally {
-    if (ctx) {
-      await logWorkspaceMemoryExtraction(ctx, {
-        provider,
-        model,
-        start,
-        outcome,
-        errorMessage,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        latencyMs,
-        rawResponse,
-      });
-    }
-  }
-}
-
-async function logWorkspaceMemoryExtraction(
-  ctx: WorkspaceMemoryExtractionContext,
-  params: {
-    provider: string;
-    model: string;
-    start: number;
-    outcome: "success" | "partial" | "failure";
-    errorMessage: string | null;
-    promptTokens: number | null;
-    completionTokens: number | null;
-    totalTokens: number | null;
-    latencyMs: number | null;
-    rawResponse: Record<string, unknown> | null;
-  },
-): Promise<void> {
-  // Logging is best-effort; a failure here must never break extraction.
-  try {
-    const pricing = await getLlmPricing(ctx.db, params.provider, params.model);
-    let costUsd: number | null = null;
-
-    if (pricing) {
-      if (params.promptTokens != null && params.completionTokens != null) {
-        costUsd = calculateLlmCost(pricing, params.promptTokens, params.completionTokens);
-      } else if (params.totalTokens != null) {
-        costUsd = estimateLlmCostFromTotal(pricing, params.totalTokens);
-      }
-    }
-
-    const sanitizedMetadata = sanitizeRawResponse(params.rawResponse ?? undefined);
-
-    let summary: string;
-    if (params.outcome === "success") {
-      summary = "Extracted workspace memory fields from scraped website corpus";
-    } else if (params.outcome === "partial") {
-      summary = "LLM returned a response but it did not match the expected schema";
-    } else {
-      summary = "Failed to extract workspace memory fields from LLM response";
-    }
-
-    await logAiActivity(ctx.db, {
-      workspaceUuid: ctx.workspaceUuid,
-      userUuid: ctx.userUuid,
-      siteUuid: ctx.siteUuid,
-      actionType: "memory_update",
-      model: params.model,
-      provider: params.provider,
-      promptTemplateKeys: ["workspace-memory-extraction", "icp-standard"],
-      inputTokens: params.promptTokens,
-      outputTokens: params.completionTokens,
-      costUsd,
-      latencyMs: params.latencyMs,
-      outcome: params.outcome,
-      summary,
-      errorMessage: params.errorMessage,
-      metadata: {
-        totalTokens: params.totalTokens,
-        responseMetadata: sanitizedMetadata,
-        startedAt: new Date(params.start).toISOString(),
-      },
-    });
   } catch {
-    // Swallow logging errors to keep extraction on the happy path.
+    return null;
   }
 }
