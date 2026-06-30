@@ -1,6 +1,6 @@
 # Workspace Memory Extraction
 
-You are analyzing a local-business website corpus to produce structured memory for a gym/studio website builder.
+You are analyzing a local-business website corpus to produce structured marketing memory for a gym/studio website builder. The goal is to answer two questions: who is this business for, who should it avoid, and why should the right person choose it?
 
 ## Input
 
@@ -25,6 +25,7 @@ Return a JSON object matching this schema:
 ```json
 {
   "industry": "string | null",
+  "positioning": "string | null",
   "targetMembers": [
     {
       "name": "string",
@@ -36,6 +37,12 @@ Return a JSON object matching this schema:
       "entrySignals": ["string"]
     }
   ],
+  "antiTargetMembers": [
+    {
+      "name": "string",
+      "summary": "string"
+    }
+  ],
   "differentiators": ["string"],
   "brandVoice": "string | null"
 }
@@ -43,8 +50,10 @@ Return a JSON object matching this schema:
 
 ## Rules
 
-1. `industry`: refine the heuristic value only if the corpus clearly points to a more specific or different niche. Otherwise return the heuristic value unchanged. Use `base: niche` format.
-2. `targetMembers`: follow the ICP standard. Produce 2-4 named profiles. Each must cite specific evidence from the corpus. Drop profiles that cannot be evidenced. Do not turn taglines like "every body is unique" into a profile.
-3. `differentiators`: produce 3-5 analytical bullets that explain what makes this business stand out. Each bullet should describe a point of view, an outcome, or a refusal (what the business is not). Cite supporting evidence from testimonials, reviews, team bios, or distinctive copy. Return an empty array if the corpus is too thin to make claims.
-4. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Return `null` if the corpus is too thin.
-5. Return `null` for any field where you cannot produce a confident answer rather than fabricating.
+1. `positioning`: one-line business positioning that names the audience and the unique outcome or alternative the business offers. Example: "Semi-private personal training for busy South Bay professionals who want accountability without a big-box gym." Reject generic descriptions like "your premier personal training facility" or copy that merely restates the category. Return `null` if you cannot write a substantive positioning line.
+2. `industry`: refine the heuristic value only if the corpus clearly points to a more specific or different niche. Otherwise return the heuristic value unchanged. Use `base: niche` format.
+3. `targetMembers`: follow the ICP standard. Produce 2-4 named profiles. Each profile must be someone a marketing campaign could target, with direct evidence from the corpus. Keep every field to 1-2 short sentences. Do not turn taglines like "every body is unique" into a profile. Do not list offerings as profiles.
+4. `antiTargetMembers`: 1-2 profiles the business should actively avoid. Keep each to a short name and a one-sentence summary.
+5. `differentiators`: produce 3-5 analytical bullets that explain what makes this business stand out. Each bullet should describe a point of view, an outcome, or a refusal (what the business is not). Cite supporting evidence from testimonials, reviews, team bios, or distinctive copy. Return an empty array if the corpus is too thin to make claims.
+6. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Return `null` if the corpus is too thin.
+7. Return `null` for any field where you cannot produce a confident answer rather than fabricating.

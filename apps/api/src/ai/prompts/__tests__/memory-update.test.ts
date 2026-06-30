@@ -4,6 +4,7 @@ import type { WorkspaceMemory, SiteMemory } from "@ploy-gyms/shared-types";
 
 const workspaceMemory: WorkspaceMemory = {
   businessSnapshot: "Beta Gym — fitness / gym | Stronger together.",
+  positioning: "Personal training for busy parents who need efficient, coached workouts.",
   stakeholderName: "Chris McConachie",
   stakeholderRole: "Co-founder",
   stakeholderEmail: "chris@pushpress.com",
@@ -12,6 +13,7 @@ const workspaceMemory: WorkspaceMemory = {
   businessPriorities: [],
   keyConstraints: [],
   targetMembers: [],
+  antiTargetMembers: [],
   lockedDecisions: ["Keep dark mode globally"],
   knownBlockers: [],
   followUpBacklog: [],

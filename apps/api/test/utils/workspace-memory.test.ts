@@ -38,6 +38,12 @@ describe("generateWorkspaceMemory", () => {
     expect(memory.targetMember).toBeDefined();
     expect(memory.differentiators.length).toBeGreaterThan(0);
     expect(memory.targetMembers).toEqual([]);
+    expect(memory.positioning).toBeUndefined();
+  });
+
+  test("does not generate a heuristic positioning from description", async () => {
+    const memory = await generateWorkspaceMemory(baseScrape);
+    expect(memory.positioning).toBeUndefined();
   });
 
   test("detects CrossFit niche", async () => {
@@ -70,13 +76,14 @@ describe("generateWorkspaceMemory", () => {
     expect(memory.targetMember).not.toContain("Every body is unique");
   });
 
-  test("renders without brand positioning section", () => {
+  test("renders positioning when present", () => {
     const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym",
-      elevatorPitch: "Beta Gym — A community gym for functional fitness.",
+      positioning: "Personal training for busy parents who need efficient, coached workouts.",
       industry: "fitness / gym",
-      targetMember: "People interested in group class",
+      targetMember: "1 ICP: Busy parents",
       targetMembers: [],
+      antiTargetMembers: [],
       differentiators: ["Coach-led environment"],
       brandVoice: "Direct and inclusive",
       businessPriorities: ["Drive membership inquiries"],
@@ -88,13 +95,13 @@ describe("generateWorkspaceMemory", () => {
       referenceDocKeys: ["brand-guidelines"],
     };
     const rendered = renderWorkspaceMemory(memory);
-    expect(rendered).not.toContain("## Brand positioning");
+    expect(rendered).toContain("### Positioning");
+    expect(rendered).toContain("Personal training for busy parents");
   });
 
-  test("renders ICP profiles when present", () => {
+  test("renders ICP(s) heading and profiles when present", () => {
     const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym: CrossFit",
-      elevatorPitch: "Beta Gym — CrossFit for everyone.",
       industry: "fitness / gym: CrossFit",
       targetMember: "2 ICPs: Busy parents, Former athletes",
       targetMembers: [
@@ -102,10 +109,16 @@ describe("generateWorkspaceMemory", () => {
           name: "Busy parents",
           summary: "Parents fitting fitness into a packed schedule.",
           demographics: "Ages 30-45, early mornings or lunch hours",
-          psychographics: "Wants efficiency, community accountability, and scalable workouts",
+          psychographics: "Wants efficiency and community accountability",
           jobsToBeDone: ["Stay active without spending hours at the gym"],
           commonObjections: ["I don't have time"],
           entrySignals: ["mentions 'busy schedule'", "asks about class times"],
+        },
+      ],
+      antiTargetMembers: [
+        {
+          name: "Discount hopper",
+          summary: "Negotiates on price and churns within 60 days.",
         },
       ],
       differentiators: ["Coach-led classes every session"],
@@ -119,8 +132,33 @@ describe("generateWorkspaceMemory", () => {
       referenceDocKeys: ["brand-guidelines"],
     };
     const rendered = renderWorkspaceMemory(memory);
-    expect(rendered).toContain("### Ideal customer profiles");
+    expect(rendered).toContain("### ICP(s)");
+    expect(rendered).toContain("#### Ideal customer profiles");
     expect(rendered).toContain("Busy parents");
-    expect(rendered).toContain("Jobs to be done");
+    expect(rendered).toContain("*Hires the gym for:*");
+    expect(rendered).toContain("#### Not a fit");
+    expect(rendered).toContain("Discount hopper");
+  });
+
+  test("does not render elevator pitch or brand positioning sections", () => {
+    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+      businessSnapshot: "Beta Gym — fitness / gym",
+      industry: "fitness / gym",
+      targetMember: "People interested in group class",
+      targetMembers: [],
+      antiTargetMembers: [],
+      differentiators: ["Coach-led environment"],
+      brandVoice: "Direct and inclusive",
+      businessPriorities: ["Drive membership inquiries"],
+      keyConstraints: [],
+      currentGoal: "Drive membership inquiries",
+      lockedDecisions: [],
+      knownBlockers: [],
+      followUpBacklog: [],
+      referenceDocKeys: ["brand-guidelines"],
+    };
+    const rendered = renderWorkspaceMemory(memory);
+    expect(rendered).not.toContain("### Elevator pitch");
+    expect(rendered).not.toContain("## Brand positioning");
   });
 });

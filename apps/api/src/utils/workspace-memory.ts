@@ -126,12 +126,6 @@ export async function generateWorkspaceMemory(
     .filter(Boolean)
     .join(" ");
 
-  const elevatorPitch = data.description
-    ? `${data.businessName ?? data.title} — ${data.description}`
-    : data.tagline
-      ? `${data.businessName ?? data.title} — ${data.tagline}`
-      : data.title;
-
   const targetMember = heuristicTargetMember(data);
   const differentiators = heuristicDifferentiators(data, gmb);
   const brandVoice = heuristicBrandVoice(data);
@@ -153,10 +147,11 @@ export async function generateWorkspaceMemory(
 
   const memory: WorkspaceMemory = {
     businessSnapshot,
-    elevatorPitch,
+    positioning: overrides.positioning,
     industry,
     targetMember,
     targetMembers: [],
+    antiTargetMembers: [],
     differentiators,
     brandVoice,
     businessPriorities,
@@ -181,11 +176,15 @@ export async function generateWorkspaceMemory(
     const extracted = await extractWorkspaceMemoryFields(data, gmb, industry, config);
     if (extracted) {
       if (extracted.industry) memory.industry = extracted.industry;
+      if (extracted.positioning) memory.positioning = extracted.positioning;
       if (extracted.targetMembers && extracted.targetMembers.length > 0) {
         memory.targetMembers = extracted.targetMembers;
         memory.targetMember = `${extracted.targetMembers.length} ICP${
           extracted.targetMembers.length === 1 ? "" : "s"
         }: ${extracted.targetMembers.map((t) => t.name).join(", ")}`;
+      }
+      if (extracted.antiTargetMembers && extracted.antiTargetMembers.length > 0) {
+        memory.antiTargetMembers = extracted.antiTargetMembers;
       }
       if (extracted.differentiators && extracted.differentiators.length > 0) {
         memory.differentiators = extracted.differentiators;
@@ -232,24 +231,23 @@ function renderList(title: string, items: string[]): string {
 }
 
 function renderIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile, index: number): string {
-  const lines = [
-    `#### ${index + 1}. ${profile.name}`,
-    "",
-    profile.summary,
-    "",
-  ];
-  if (profile.demographics) lines.push(`- **Demographics**: ${profile.demographics}`);
-  if (profile.psychographics) lines.push(`- **Psychographics**: ${profile.psychographics}`);
-  if (profile.jobsToBeDone.length > 0) {
-    lines.push("- **Jobs to be done**:", ...profile.jobsToBeDone.map((j) => `  - ${j}`));
-  }
-  if (profile.commonObjections.length > 0) {
-    lines.push("- **Common objections**:", ...profile.commonObjections.map((o) => `  - ${o}`));
-  }
-  if (profile.entrySignals.length > 0) {
-    lines.push(`- **Entry signals**: ${profile.entrySignals.join("; ")}`);
+  const details = [
+    profile.demographics ? `*Demographics:* ${profile.demographics}` : "",
+    profile.psychographics ? `*Motivation:* ${profile.psychographics}` : "",
+    profile.jobsToBeDone.length > 0 ? `*Hires the gym for:* ${profile.jobsToBeDone.join("; ")}` : "",
+    profile.commonObjections.length > 0 ? `*Hesitates because:* ${profile.commonObjections.join("; ")}` : "",
+    profile.entrySignals.length > 0 ? `*Signals in corpus:* ${profile.entrySignals.join("; ")}` : "",
+  ].filter(Boolean);
+
+  const lines = [`**${index + 1}. ${profile.name}** — ${profile.summary}`];
+  if (details.length > 0) {
+    lines.push(details.map((d) => `  - ${d}`).join("\n"));
   }
   return lines.join("\n");
+}
+
+function renderAntiIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile, index: number): string {
+  return `**${index + 1}. ${profile.name}** — ${profile.summary}`;
 }
 
 export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
@@ -263,20 +261,28 @@ export function renderWorkspaceMemory(memory: WorkspaceMemory): string {
     `- **Business snapshot**: ${memory.businessSnapshot}`,
   ];
 
-  if (memory.elevatorPitch) {
-    parts.push("", "### Elevator pitch", "", memory.elevatorPitch, "");
+  if (memory.positioning) {
+    parts.push("", "### Positioning", "", memory.positioning, "");
   }
   if (memory.industry) {
     parts.push("### Industry", "", `- ${memory.industry}`, "");
   }
   if (memory.targetMember) {
-    parts.push("### Target member", "", `- ${memory.targetMember}`, "");
+    parts.push("### ICP(s)", "", `- ${memory.targetMember}`, "");
   }
   if (memory.targetMembers.length > 0) {
     parts.push(
-      "### Ideal customer profiles",
+      "#### Ideal customer profiles",
       "",
-      ...memory.targetMembers.map((p, i) => renderIcpProfile(p, i)),
+      memory.targetMembers.map((p, i) => renderIcpProfile(p, i)).join("\n\n"),
+      "",
+    );
+  }
+  if (memory.antiTargetMembers.length > 0) {
+    parts.push(
+      "#### Not a fit",
+      "",
+      memory.antiTargetMembers.map((p, i) => renderAntiIcpProfile(p, i)).join("\n\n"),
       "",
     );
   }

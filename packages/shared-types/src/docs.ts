@@ -126,10 +126,11 @@ export type IcpProfile = z.infer<typeof IcpProfileSchema>;
 
 export const WorkspaceMemorySchema = z.object({
   businessSnapshot: z.string(),
-  elevatorPitch: z.string().optional(),
+  positioning: z.string().optional(),
   industry: z.string().optional(),
   targetMember: z.string().optional(),
   targetMembers: z.array(IcpProfileSchema).default([]),
+  antiTargetMembers: z.array(IcpProfileSchema).default([]),
   differentiators: z.array(z.string()).default([]),
   brandVoice: z.string().optional(),
   businessPriorities: z.array(z.string()).default([]),

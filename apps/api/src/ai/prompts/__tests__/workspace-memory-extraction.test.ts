@@ -35,6 +35,7 @@ describe("workspace-memory-extraction prompts", () => {
     expect(template).toContain("Workspace Memory Extraction");
     expect(template).toContain("industry");
     expect(template).toContain("targetMembers");
+    expect(template).toContain("antiTargetMembers");
     expect(template).toContain("differentiators");
   });
 
@@ -43,6 +44,7 @@ describe("workspace-memory-extraction prompts", () => {
     expect(standard).toContain("ICP Standard");
     expect(standard).toContain("jobsToBeDone");
     expect(standard).toContain("entrySignals");
+    expect(standard).toContain("Anti-ICP");
   });
 
   test("corpus input includes all source fields", () => {

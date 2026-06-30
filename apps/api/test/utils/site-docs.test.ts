@@ -124,7 +124,7 @@ describe("generateSiteDocs", () => {
     expect(memory.content).not.toContain("[[site-structure]]");
   });
 
-  test("workspace memory includes niche industry and target member summary", async () => {
+  test("workspace memory includes niche industry and ICP summary", async () => {
     const crossfitScrape = {
       ...baseScrape,
       headings: ["CrossFit for everyone", "Our coaches", "Join the community"],
@@ -133,12 +133,14 @@ describe("generateSiteDocs", () => {
     const docs = await generateSiteDocs(crossfitScrape);
     const memory = docs.find((d) => d.key === "workspace-memory")!;
     expect(memory.content).toContain("fitness / gym: CrossFit");
-    expect(memory.content).toContain("Target member");
+    expect(memory.content).toContain("ICP(s)");
   });
 
-  test("workspace memory does not render a brand positioning section", async () => {
+  test("workspace memory does not render elevator pitch or brand positioning sections", async () => {
     const docs = await generateSiteDocs(baseScrape);
     const memory = docs.find((d) => d.key === "workspace-memory")!;
+    expect(memory.content).not.toContain("## Elevator pitch");
+    expect(memory.content).not.toContain("### Elevator pitch");
     expect(memory.content).not.toContain("## Brand positioning");
   });
 
