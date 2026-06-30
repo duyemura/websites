@@ -126,6 +126,20 @@ export interface Docs {
   workspaceUuid: string;
 }
 
+export interface LlmModelPricing {
+  createdAt: Generated<Timestamp>;
+  currency: Generated<string>;
+  effectiveFrom: Generated<Timestamp>;
+  effectiveUntil: Timestamp | null;
+  inputPricePer1kTokens: Numeric;
+  metadata: Json | null;
+  model: string;
+  outputPricePer1kTokens: Numeric;
+  provider: string;
+  updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+}
+
 export interface OrganizationMemberships {
   createdAt: Generated<Timestamp>;
   organizationUuid: string;
@@ -272,6 +286,7 @@ export interface DB {
   assets: Assets;
   deployments: Deployments;
   docs: Docs;
+  llmModelPricing: LlmModelPricing;
   organizationMemberships: OrganizationMemberships;
   organizations: Organizations;
   pages: Pages;

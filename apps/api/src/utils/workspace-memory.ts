@@ -1,9 +1,11 @@
-import type { WorkspaceMemory, SiteMemory } from "@ploy-gyms/shared-types";
+import type { WorkspaceMemory, SiteMemory, IcpProfile } from "@ploy-gyms/shared-types";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { Kysely } from "kysely";
 import type { Config } from "../plugins/env";
 import type { ScrapedWebsiteData } from "./scrape-docs";
 import { inferIndustry } from "./scrape-docs";
 import { extractWorkspaceMemoryFields } from "../ai/prompts/workspace-memory-extraction";
+import type { DB } from "../types/db";
 
 export const WORKSPACE_MEMORY_DOC_KEY = "workspace-memory";
 export const WORKSPACE_MEMORY_DOC_TITLE = "Workspace memory";
@@ -106,10 +108,18 @@ function heuristicBrandVoice(data: ScrapedWebsiteData): string | undefined {
   return undefined;
 }
 
+export interface WorkspaceMemoryContext {
+  db: Kysely<DB>;
+  workspaceUuid: string;
+  userUuid: string;
+  siteUuid?: string;
+}
+
 export async function generateWorkspaceMemory(
   data: ScrapedWebsiteData,
   gmb?: GmbListing,
   config?: Config,
+  ctx?: WorkspaceMemoryContext,
   overrides: Partial<WorkspaceMemory> = {},
 ): Promise<WorkspaceMemory> {
   const industry = inferIndustryWithGmb(data, gmb);
@@ -131,11 +141,12 @@ export async function generateWorkspaceMemory(
   const brandVoice = heuristicBrandVoice(data);
 
   const firstOffering = data.offerings[0]?.name?.toLowerCase() ?? "";
-  const ctaGoal = firstOffering.includes("trial")
-    ? "Convert visitors into free-trial signups"
-    : firstOffering.includes("intro")
-      ? "Book intro sessions with prospects"
-      : "Drive membership inquiries";
+  let ctaGoal = "Drive membership inquiries";
+  if (firstOffering.includes("trial")) {
+    ctaGoal = "Convert visitors into free-trial signups";
+  } else if (firstOffering.includes("intro")) {
+    ctaGoal = "Book intro sessions with prospects";
+  }
 
   const businessPriorities = [ctaGoal];
   if (data.locations.length > 0) businessPriorities.push("Make location and hours easy to find");
@@ -160,7 +171,7 @@ export async function generateWorkspaceMemory(
     stakeholderRole: overrides.stakeholderRole,
     stakeholderEmail: overrides.stakeholderEmail,
     stakeholderNotes: overrides.stakeholderNotes,
-    currentGoal: overrides.currentGoal ?? ctaGoal,
+    currentGoal: overrides.currentGoal,
     lockedDecisions: overrides.lockedDecisions ?? [],
     knownBlockers: overrides.knownBlockers ?? [],
     followUpBacklog: overrides.followUpBacklog ?? [],
@@ -173,7 +184,15 @@ export async function generateWorkspaceMemory(
   };
 
   if (config) {
-    const extracted = await extractWorkspaceMemoryFields(data, gmb, industry, config);
+    const extractionCtx = ctx
+      ? {
+          db: ctx.db,
+          workspaceUuid: ctx.workspaceUuid,
+          userUuid: ctx.userUuid,
+          siteUuid: ctx.siteUuid,
+        }
+      : undefined;
+    const extracted = await extractWorkspaceMemoryFields(data, gmb, industry, config, extractionCtx);
     if (extracted) {
       if (extracted.industry) memory.industry = extracted.industry;
       if (extracted.positioning) memory.positioning = extracted.positioning;
@@ -190,6 +209,9 @@ export async function generateWorkspaceMemory(
         memory.differentiators = extracted.differentiators;
       }
       if (extracted.brandVoice) memory.brandVoice = extracted.brandVoice;
+      if (extracted.businessPriorities && extracted.businessPriorities.length > 0) {
+        memory.businessPriorities = extracted.businessPriorities;
+      }
     }
   }
 
@@ -230,7 +252,7 @@ function renderList(title: string, items: string[]): string {
   return `## ${title}\n\n${items.map((i) => `- ${i}`).join("\n")}\n`;
 }
 
-function renderIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile, index: number): string {
+function renderIcpProfile(profile: IcpProfile, index: number): string {
   const details = [
     profile.demographics ? `*Demographics:* ${profile.demographics}` : "",
     profile.psychographics ? `*Motivation:* ${profile.psychographics}` : "",
@@ -246,7 +268,7 @@ function renderIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile,
   return lines.join("\n");
 }
 
-function renderAntiIcpProfile(profile: import("@ploy-gyms/shared-types").IcpProfile, index: number): string {
+function renderAntiIcpProfile(profile: IcpProfile, index: number): string {
   return `**${index + 1}. ${profile.name}** — ${profile.summary}`;
 }
 

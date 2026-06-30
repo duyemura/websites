@@ -1,6 +1,6 @@
 # Workspace Memory Extraction
 
-You are analyzing a local-business website corpus to produce structured marketing memory for a gym/studio website builder. The goal is to answer two questions: who is this business for, who should it avoid, and why should the right person choose it?
+You are analyzing a local-business website corpus to produce structured marketing memory for a gym/studio website builder. Keep every output field concise; this memory is injected into LLM prompts, so brevity directly improves generation quality.
 
 ## Input
 
@@ -44,7 +44,8 @@ Return **only** a raw JSON object matching this schema. Do not wrap the JSON in 
     }
   ],
   "differentiators": ["string"],
-  "brandVoice": "string | null"
+  "brandVoice": "string | null",
+  "businessPriorities": ["string"]
 }
 ```
 
@@ -86,7 +87,11 @@ For a CrossFit gym whose corpus mentions small group classes, beginner-friendly 
     "Elite coaching credibility from a CrossFit Games athlete owner.",
     "Small group classes designed for personal attention and friendships."
   ],
-  "brandVoice": "Warm, inclusive, and elite-credible."
+  "brandVoice": "Warm, inclusive, and elite-credible.",
+  "businessPriorities": [
+    "Drive free-trial signups through small-group credibility.",
+    "Emphasize beginner-friendly scaling in hero copy."
+  ]
 }
 ```
 
@@ -96,6 +101,7 @@ For a CrossFit gym whose corpus mentions small group classes, beginner-friendly 
 2. `industry`: refine the heuristic value only if the corpus clearly points to a more specific or different niche. Otherwise return the heuristic value unchanged. Use `base: niche` format.
 3. `targetMembers`: follow the ICP standard. Produce 2-4 named profiles. Each profile must be someone a marketing campaign could target, with direct evidence from the corpus. Keep every field to 1-2 short sentences. Do not turn taglines like "every body is unique" into a profile. Do not list offerings as profiles.
 4. `antiTargetMembers`: 1-2 profiles the business should actively avoid. Keep each to a short name and a one-sentence summary.
-5. `differentiators`: produce 3-5 analytical bullets that explain what makes this business stand out. Each bullet should describe a point of view, an outcome, or a refusal (what the business is not). Cite supporting evidence from testimonials, reviews, team bios, or distinctive copy. Return an empty array if the corpus is too thin to make claims.
-6. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Return `null` if the corpus is too thin.
-7. Return `null` for any field where you cannot produce a confident answer rather than fabricating.
+5. `differentiators`: produce 3-5 concise bullets that describe what this gym should emphasize in **website copy, blog content, ads, and other marketing materials**. Each bullet should be a focused marketing angle: a point of view, an outcome, a refusal (what the business is not), or a proof point from testimonials, reviews, team bios, or distinctive copy. Keep each bullet to one short sentence. Return an empty array if the corpus is too thin to make claims.
+6. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Keep it to 10 words or fewer. Return `null` if the corpus is too thin.
+7. `businessPriorities`: produce 3-5 concise priorities that should guide the gym's website and marketing. Each should be a single, actionable sentence describing a conversion or messaging goal, e.g. "Drive intro-session bookings by highlighting small-group coaching." Return an empty array if the corpus is too thin.
+8. Return `null` for any field where you cannot produce a confident answer rather than fabricating.

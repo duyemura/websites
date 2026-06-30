@@ -46,6 +46,11 @@ describe("generateWorkspaceMemory", () => {
     expect(memory.positioning).toBeUndefined();
   });
 
+  test("does not auto-populate currentGoal", async () => {
+    const memory = await generateWorkspaceMemory(baseScrape);
+    expect(memory.currentGoal).toBeUndefined();
+  });
+
   test("detects CrossFit niche", async () => {
     const data: ScrapedWebsiteData = {
       ...baseScrape,

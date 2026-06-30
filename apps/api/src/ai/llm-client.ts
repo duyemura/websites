@@ -13,12 +13,63 @@ export interface ChatOptions {
   jsonMode?: boolean;
 }
 
+export interface LlmUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ChatResponse {
   content: string;
-  usage?: {
-    promptTokens?: number;
-    completionTokens?: number;
-    totalTokens?: number;
+  usage?: LlmUsage;
+  latencyMs?: number;
+  raw?: Record<string, unknown>;
+}
+
+export interface SanitizedLlmMetadata {
+  providerResponseId?: string;
+  responseModel?: string;
+  finishReason?: string;
+  usage?: LlmUsage;
+  createdAt?: number;
+}
+
+export function sanitizeRawResponse(
+  raw: Record<string, unknown> | undefined,
+): SanitizedLlmMetadata | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+
+  const usage = raw.usage as
+    | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_eval_count?: number;
+        eval_count?: number;
+      }
+    | undefined;
+
+  const normalizedUsage: LlmUsage | undefined = usage
+    ? {
+        promptTokens:
+          usage.prompt_tokens ?? usage.prompt_eval_count ?? undefined,
+        completionTokens:
+          usage.completion_tokens ?? usage.eval_count ?? undefined,
+        totalTokens: usage.total_tokens,
+      }
+    : undefined;
+
+  const firstChoice = (raw.choices as Array<Record<string, unknown>> | undefined)?.[0];
+  const finishReason =
+    (firstChoice?.finish_reason as string | undefined) ??
+    (raw.done_reason as string | undefined);
+
+  return {
+    providerResponseId: raw.id as string | undefined,
+    responseModel: raw.model as string | undefined,
+    finishReason,
+    usage: normalizedUsage,
+    createdAt: raw.created as number | undefined,
   };
 }
 
@@ -65,6 +116,7 @@ async function parseResponse(response: Response): Promise<ChatResponse> {
               ((body.eval_count as number | undefined) ?? 0),
           }
         : undefined,
+      raw: body,
     };
   }
 
@@ -86,6 +138,7 @@ async function parseResponse(response: Response): Promise<ChatResponse> {
             totalTokens: usage.total_tokens,
           }
         : undefined,
+      raw: body,
     };
   }
 
@@ -104,10 +157,13 @@ export async function chatCompletion(
   options: ChatOptions,
   config: Config,
 ): Promise<ChatResponse> {
+  const start = performance.now();
   const provider = config.LLM_PROVIDER;
 
+  let response: ChatResponse;
+
   if (provider === "ollama") {
-    const response = await fetch(buildOllamaUrl(config.OLLAMA_BASE_URL), {
+    const fetchResponse = await fetch(buildOllamaUrl(config.OLLAMA_BASE_URL), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -127,24 +183,29 @@ export async function chatCompletion(
       }),
     });
 
-    return parseResponse(response);
+    response = await parseResponse(fetchResponse);
+  } else {
+    // OpenRouter / OpenAI-compatible path
+    const fetchResponse = await fetch(buildOpenRouterUrl(config.OPENROUTER_BASE_URL), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.OPENROUTER_API_KEY ?? ""}`,
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens,
+        ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+    });
+
+    response = await parseResponse(fetchResponse);
   }
 
-  // OpenRouter / OpenAI-compatible path
-  const response = await fetch(buildOpenRouterUrl(config.OPENROUTER_BASE_URL), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.OPENROUTER_API_KEY ?? ""}`,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens,
-      ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
-
-  return parseResponse(response);
+  return {
+    ...response,
+    latencyMs: Math.round(performance.now() - start),
+  };
 }

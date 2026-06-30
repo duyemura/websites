@@ -117,7 +117,7 @@ describe("generateSiteDocs", () => {
     const docs = await generateSiteDocs(baseScrape);
     const memory = docs.find((d) => d.key === "workspace-memory")!;
     expect(memory.content).toContain("Beta Gym");
-    expect(memory.content).toContain("Current goal");
+    expect(memory.content).toContain("Business priorities");
     expect(memory.content).toContain("[[brand-guidelines]]");
     expect(memory.content).toContain("[[business-info]]");
     expect(memory.content).toContain("[[site-strategy]]");

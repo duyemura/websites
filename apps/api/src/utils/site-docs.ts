@@ -19,6 +19,7 @@ import {
   SITE_MEMORY_DOC_TITLE,
   WORKSPACE_MEMORY_DOC_KEY,
   WORKSPACE_MEMORY_DOC_TITLE,
+  type WorkspaceMemoryContext,
 } from "./workspace-memory";
 
 export interface GeneratedSiteDoc {
@@ -280,10 +281,11 @@ export async function generateSiteDocs(
   data: ScrapedWebsiteData,
   gmb?: GmbListing,
   config?: Config,
+  memoryCtx?: WorkspaceMemoryContext,
 ): Promise<GeneratedSiteDoc[]> {
   const ctx: DocGenerationContext = { scraped: data, gmb };
   const brandInput = buildBrandGuidelinesInput(ctx);
-  const workspaceMemory = await generateWorkspaceMemory(data, gmb, config);
+  const workspaceMemory = await generateWorkspaceMemory(data, gmb, config, memoryCtx);
   const siteMemory = generateSiteMemory(data);
 
   const docs: GeneratedSiteDoc[] = [

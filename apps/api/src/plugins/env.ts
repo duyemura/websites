@@ -53,6 +53,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 export default fp(
   async (fastify) => {
     const config = ConfigSchema.parse(process.env);
+    fastify.log.info({ defaultModel: config.DEFAULT_LLM_MODEL, provider: config.LLM_PROVIDER }, "Loaded LLM config");
     fastify.decorate("config", config);
   },
   { name: "env", dependencies: [] },

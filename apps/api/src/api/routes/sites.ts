@@ -517,11 +517,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           gmbListing = gmbResult.listing;
         }
 
-        const docs = await generateSiteDocs(data, gmbListing, fastify.config);
-
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
 
+        // Clean up old site-derived state before generating new docs so the
+        // new ai_activity entries for this scrape are preserved.
         if (match) {
           await fastify.db
             .deleteFrom("aiActivity")
@@ -544,6 +544,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             .where("siteUuid", "=", match.uuid)
             .execute();
         }
+
+        const docs = await generateSiteDocs(data, gmbListing, fastify.config, {
+          db: fastify.db,
+          workspaceUuid: request.workspace.uuid,
+          userUuid: request.user.uuid,
+          siteUuid: match?.uuid,
+        });
 
         // For rescans, reuse the existing slug. For new sites, find a unique slug.
         let uniqueSlug = match ? match.slug : baseSlug;
