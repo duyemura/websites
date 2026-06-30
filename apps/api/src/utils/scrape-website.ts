@@ -69,6 +69,7 @@ interface BrowserExtractionResult {
 
 // Browser-side extraction as a string so esbuild/tsx function-name transforms
 // (e.g. __name) do not leak into the browser context.
+/* eslint-disable no-useless-escape */
 const BROWSER_EXTRACTION_SCRIPT = `
 (function() {
   function colorToHex(color) {
@@ -598,6 +599,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
   };
 })()
 `;
+/* eslint-enable no-useless-escape */
 
 async function runBrowserExtraction(page: Page): Promise<BrowserExtractionResult> {
   return page.evaluate(BROWSER_EXTRACTION_SCRIPT as unknown as () => BrowserExtractionResult);

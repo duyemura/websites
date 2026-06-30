@@ -91,14 +91,12 @@ describe("workspace routes", () => {
   test("workspace scoping applies to sites and assets", async () => {
     const app = await build();
 
-    const workspace = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/workspaces",
       headers: authHeaders(),
       payload: { name: "Acme Gym", slug: "acme-gym" },
     });
-    const workspaceUuid = workspace.json().uuid;
-
     await app.inject({
       method: "POST",
       url: "/api/sites",
