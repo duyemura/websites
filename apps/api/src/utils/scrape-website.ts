@@ -7,6 +7,8 @@ import type {
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
 import type { ScrapedWebsiteData } from "./scrape-docs";
+import { dedupeFaqs } from "./faqs";
+import { extractSocialProfiles } from "./social-links";
 
 export interface ScrapeOptions {
   url: string;
@@ -62,6 +64,7 @@ interface BrowserExtractionResult {
   testimonials: { quote: string; author?: string; role?: string }[];
   grids: { columns: number; element: string; className: string }[];
   distinctiveComponents: { type: string; label: string }[];
+  externalLinks: string[];
 }
 
 // Browser-side extraction as a string so esbuild/tsx function-name transforms
@@ -246,8 +249,134 @@ const BROWSER_EXTRACTION_SCRIPT = `
     })
     .slice(0, 8);
 
-  const title = document.title.replace(/\\s*\\|.*/g, "").trim();
-  const businessName = title || headings[0] || "";
+  function titleCase(words) {
+    return words.map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }).join(" ");
+  }
+
+  function nameFromDomain() {
+    try {
+      const host = document.location.hostname.replace(/^www\./, "").toLowerCase();
+      const namePart = host.replace(/\.(com|org|net|co\.[a-z]+|io|app|ai|us|ca|fitness|gym)$/, "");
+      // Split on hyphens/underscores and camelCase boundaries for names like "torranceTrainingLab"
+      const splitCamel = namePart.replace(/([a-z])([A-Z])/g, "$1 $2");
+      const words = splitCamel.split(/[-_\s]/).filter(function(w) { return w.length > 1; });
+      if (words.length === 0) return "";
+      return titleCase(words);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function scoreName(name, allText, source) {
+    if (!name || name.length < 3 || name.length > 120) return 0;
+    const lower = name.toLowerCase();
+    const stop = new Set(["the","of","in","and","for","to","on","a","an","home","official","website","site","logo","welcome","welcome to"]);
+    const words = lower.split(/\s+/).filter(function(w) { return w.length > 1 && !stop.has(w); });
+    const unique = new Set(words);
+    let score = Math.min(unique.size, 5);
+
+    // Source trust tiers
+    if (source === "jsonld") score += 4; // schema.org is the canonical business source
+    if (source === "og") score += 3;   // og:site_name is usually editorially set
+    if (source === "logo" || source === "domain") score += 2;
+    if (source === "title") score += 0; // title is often SEO-stuffed, trust it least
+
+    // Bonus if the candidate appears in visible page text (headings, paragraphs)
+    if (allText.includes(lower)) score += 2;
+
+    // Penalty for vague location-only names like "Torrance Gym"
+    const genericSuffixes = ["gym","fitness","training","studio","club","center","health","wellness","sports"];
+    const lastWord = lower.split(/\s+/).pop() || "";
+    if (genericSuffixes.includes(lastWord) && unique.size <= 2) score -= 1;
+
+    // Slight penalty for very long names
+    if (name.length > 60) score -= 1;
+
+    return score;
+  }
+
+  function pickBestName(candidates, allText) {
+    let best = "";
+    let bestScore = -Infinity;
+    for (const c of candidates) {
+      if (!c || !c.name) continue;
+      const s = scoreName(c.name, allText, c.source);
+      if (s > bestScore) {
+        bestScore = s;
+        best = c.name;
+      }
+    }
+    return best;
+  }
+
+  function cleanTitle(raw) {
+    return raw.replace(/\s*[-|—].*$/g, "").trim();
+  }
+
+  const rawTitle = document.title;
+  const title = cleanTitle(rawTitle);
+
+  const nameCandidates = [];
+
+  // 1. Schema.org structured data is the canonical source for business identity.
+  document.querySelectorAll('script[type="application/ld+json"]').forEach(function(el) {
+    try {
+      const data = JSON.parse(el.textContent || "");
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        const type = (item["@type"] || "").toLowerCase();
+        if (type.includes("organization") || type.includes("localbusiness") || type.includes("website") || type.includes("place")) {
+          if (item.name && typeof item.name === "string") nameCandidates.push({ name: item.name.trim(), source: "jsonld" });
+          // Some gyms nest the business under "mainEntityOfPage" or a parent org
+          if (item.parentOrganization?.name && typeof item.parentOrganization.name === "string") {
+            nameCandidates.push({ name: item.parentOrganization.name.trim(), source: "jsonld" });
+          }
+        }
+      }
+    } catch (e) {}
+  });
+
+  // 2. Open Graph site name is usually editorially set.
+  const ogSiteName = document.querySelector('meta[property="og:site_name"]')?.getAttribute('content');
+  if (ogSiteName) nameCandidates.push({ name: cleanTitle(ogSiteName.trim()), source: "og" });
+
+  // 3. Logo/brand image alt text.
+  const logoSelectors = [
+    'a[href="/"] img[alt]',
+    'a[href="./"] img[alt]',
+    'header img[alt]',
+    'nav img[alt]',
+    '.logo img[alt]',
+    '.brand img[alt]',
+    '.navbar img[alt]',
+    '[class*="logo"] img[alt]',
+    '[class*="brand"] img[alt]',
+    'footer img[alt]',
+    'img[alt*="logo" i]',
+    'img[alt]',
+  ];
+  const seenAlts = new Set();
+  for (const sel of logoSelectors) {
+    for (const img of Array.from(document.querySelectorAll(sel)).slice(0, 5)) {
+      const alt = (img.getAttribute('alt') || '').trim();
+      if (!alt || alt.length < 3 || alt.length > 80) continue;
+      if (/\b(image|photo|picture|icon|svg|banner|hero|background)\b/i.test(alt)) continue;
+      if (!seenAlts.has(alt.toLowerCase())) {
+        seenAlts.add(alt.toLowerCase());
+        nameCandidates.push({ name: alt, source: "logo" });
+      }
+    }
+  }
+
+  // 4. Domain-derived name.
+  const domainName = nameFromDomain();
+  if (domainName) nameCandidates.push({ name: domainName, source: "domain" });
+
+  // 5. Title is last because it is often SEO-optimized and may not match the real brand name.
+  nameCandidates.push({ name: title, source: "title" });
+
+  const visibleText = [rawTitle, ...headings, ...paragraphs].join(" ").toLowerCase();
+  const businessName = pickBestName(nameCandidates, visibleText) || title || headings[0] || "";
   const metaDescription = document.querySelector('meta[name="description"]')?.getAttribute("content") || "";
   const ogDescription = document.querySelector('meta[property="og:description"]')?.getAttribute("content") || "";
   const tagline = metaDescription || ogDescription || paragraphs[0] || "";
@@ -438,6 +567,16 @@ const BROWSER_EXTRACTION_SCRIPT = `
     if (quote) testimonials.push({ quote: quote, author: author, role: role });
   }
 
+  const seenExternal = new Set();
+  const externalLinks = [];
+  for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+    const href = a.href;
+    if (!href || !href.startsWith("http")) continue;
+    if (seenExternal.has(href)) continue;
+    seenExternal.add(href);
+    externalLinks.push(href);
+  }
+
   return {
     samples: samples,
     extraColors: extraColors,
@@ -455,6 +594,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
     testimonials: testimonials,
     grids: grids,
     distinctiveComponents: distinctiveComponents,
+    externalLinks: externalLinks,
   };
 })()
 `;
@@ -1035,12 +1175,14 @@ export async function scrapeWebsite(browser: Browser, options: ScrapeOptions): P
         { element: "Container", value: "max-width centered layout" },
       ],
       designTokens,
-      faqs: extracted.faqs,
+      faqs: dedupeFaqs(extracted.faqs),
       testimonials: extracted.testimonials,
       locations: extracted.locations,
       team: extracted.team,
       offerings: extracted.offerings,
-      contact: {},
+      contact: {
+        social: extractSocialProfiles(extracted.externalLinks),
+      },
       screenshotUrls,
       rawHtml,
     };

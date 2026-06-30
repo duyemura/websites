@@ -1,5 +1,22 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
+import { chromium } from "playwright";
+import path from "node:path";
+import os from "node:os";
+import { mkdir } from "node:fs/promises";
+import { scrapeWebsite } from "../../utils/scrape-website";
+import { buildTemplateShell } from "../../utils/template-shell";
+
+const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.array(JsonValueSchema),
+    z.record(JsonValueSchema),
+  ]),
+);
 
 const TemplateSchema = z.object({
   uuid: z.string(),
@@ -10,9 +27,38 @@ const TemplateSchema = z.object({
   thumbnailUrl: z.string().nullable().optional(),
   isSystem: z.boolean(),
   tags: z.array(z.string()).nullable().optional(),
+  theme: JsonValueSchema.nullable().optional(),
+  page: JsonValueSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+const CreateTemplateFromUrlSchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1).optional(),
+  category: z.string().optional(),
+});
+
+function deriveTemplateKey(url: string): string {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const base = hostname.split(".")[0]?.replace(/[^a-z0-9]+/g, "-") ?? "template";
+    return `${base.replace(/^-|-$/g, "")}-shell`.toLowerCase() || "template-shell";
+  } catch {
+    return "template-shell";
+  }
+}
+
+function deriveTemplateName(url: string, provided?: string): string {
+  if (provided?.trim()) return provided.trim();
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const name = hostname.split(".")[0] ?? "Imported template";
+    return `${name.charAt(0).toUpperCase() + name.slice(1)} template`;
+  } catch {
+    return "Imported template";
+  }
+}
 
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   fastify.get(
@@ -50,6 +96,78 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         createdAt: template.createdAt.toISOString(),
         updatedAt: template.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.post(
+    "/templates/from-url",
+    {
+      schema: {
+        body: CreateTemplateFromUrlSchema,
+        response: { 201: TemplateSchema, 400: z.object({ error: z.string() }) },
+      },
+    },
+    async (request, reply) => {
+      const { url, name, category } = request.body;
+      const workspaceUuid = request.workspace.uuid;
+      const templateKey = deriveTemplateKey(url);
+
+      const existing = await fastify.db
+        .selectFrom("templates")
+        .select("uuid")
+        .where("workspaceUuid", "=", workspaceUuid)
+        .where("key", "=", templateKey)
+        .executeTakeFirst();
+
+      if (existing) {
+        return reply
+          .code(400)
+          .send({ error: "A template for this URL already exists in this workspace." });
+      }
+
+      let browser;
+      try {
+        browser = await chromium.launch({ headless: true });
+        const tmpDir = path.join(os.tmpdir(), "ploy-gyms-template-shells");
+        await mkdir(tmpDir, { recursive: true });
+        const screenshotPath = path.join(tmpDir, `template-shell-${Date.now()}.png`);
+
+        const data = await scrapeWebsite(browser, {
+          url,
+          takeScreenshot: true,
+          screenshotPath,
+          captureHtml: false,
+        });
+
+        const shell = buildTemplateShell(data);
+
+        const template = await fastify.db
+          .insertInto("templates")
+          .values({
+            workspaceUuid,
+            key: templateKey,
+            name: deriveTemplateName(url, name),
+            category: category ?? "Imported",
+            isSystem: false,
+            tags: ["imported", "url-template", "shell"],
+            theme: shell.theme as never,
+            page: shell.page as never,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        return reply.code(201).send({
+          ...template,
+          createdAt: template.createdAt.toISOString(),
+          updatedAt: template.updatedAt.toISOString(),
+        });
+      } catch (err) {
+        fastify.log.error(err);
+        const message = err instanceof Error ? err.message : "Failed to create template from URL";
+        return reply.code(400).send({ error: message });
+      } finally {
+        await browser?.close();
+      }
     },
   );
 

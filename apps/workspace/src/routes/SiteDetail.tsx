@@ -1,11 +1,26 @@
-import { useMemo } from "react";
-import { useParams, Link, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useParams, Link } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, FileText, Image, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, FileText, Image, ExternalLink, Clock, Save, RefreshCw, Loader2 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { BlockNoteEditor } from "@/components/BlockNoteEditor";
 import { api, type Doc } from "@/lib/api";
 
 const DOC_CATEGORY_ORDER = [
@@ -13,12 +28,8 @@ const DOC_CATEGORY_ORDER = [
   "site-memory",
   "brand-guidelines",
   "business-info",
-  "site-structure",
-  "generation-plan",
+  "site-strategy",
   "blueprint-draft",
-  "team-bios",
-  "testimonials",
-  "faqs",
 ];
 
 const DOC_CATEGORY_LABELS: Record<string, string> = {
@@ -26,12 +37,8 @@ const DOC_CATEGORY_LABELS: Record<string, string> = {
   "site-memory": "Site memory",
   "brand-guidelines": "Brand guidelines",
   "business-info": "Business info",
-  "site-structure": "Site structure",
-  "generation-plan": "Generation plan",
+  "site-strategy": "Site strategy",
   "blueprint-draft": "Blueprint draft",
-  "team-bios": "Team bios",
-  testimonials: "Testimonials",
-  faqs: "FAQs",
 };
 
 function getDocCategory(key: string): string {
@@ -43,10 +50,38 @@ function getDocCategoryRank(key: string): number {
   return index === -1 ? 999 : index;
 }
 
+function formatRelativeDate(date: string | Date): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffSec < 5) return "just now";
+  if (diffMin < 1) return `${diffSec}s ago`;
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 0) {
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return `today at ${time}`;
+  }
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
+}
+
 export function SiteDetail() {
   const { uuid } = useParams<{ uuid: string }>();
-  const [searchParams] = useSearchParams();
-  const openDocKey = searchParams.get("doc") ?? undefined;
+  const queryClient = useQueryClient();
+  const [editingDoc, setEditingDoc] = useState<Doc | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [screenshotOpen, setScreenshotOpen] = useState(false);
+  const [rescanError, setRescanError] = useState<string | null>(null);
+  const [rescanConfirm, setRescanConfirm] = useState(false);
 
   const { data: site, isLoading: siteLoading } = useQuery({
     queryKey: ["sites", uuid],
@@ -58,6 +93,41 @@ export function SiteDetail() {
     queryKey: ["sites", uuid, "docs"],
     queryFn: () => api.getSiteDocs(uuid!),
     enabled: !!uuid,
+  });
+
+  const saveDoc = useMutation({
+    mutationFn: ({ key, body }: { key: string; body: { title: string; content: string } }) =>
+      api.saveDoc(key, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sites", uuid, "docs"] });
+      queryClient.invalidateQueries({ queryKey: ["docs"] });
+    },
+  });
+
+  const rescanSite = useMutation({
+    mutationFn: ({ url, force }: { url: string; force?: boolean }) => api.scrapeSite({ url, force }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sites"] });
+      queryClient.invalidateQueries({ queryKey: ["sites", uuid, "docs"] });
+      queryClient.invalidateQueries({ queryKey: ["docs"] });
+      setRescanError(null);
+      setRescanConfirm(false);
+    },
+    onError: (error) => {
+      try {
+        const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        if (body.requiresConfirmation) {
+          setRescanConfirm(true);
+          setRescanError(null);
+          return;
+        }
+        setRescanError(body.error || error.message);
+        setRescanConfirm(false);
+      } catch {
+        setRescanError(error.message);
+        setRescanConfirm(false);
+      }
+    },
   });
 
   const screenshotDoc = useMemo(() => {
@@ -73,10 +143,6 @@ export function SiteDetail() {
     return [...docs].sort((a, b) => getDocCategoryRank(a.key) - getDocCategoryRank(b.key));
   }, [docs]);
 
-  const openDoc = useMemo(() => {
-    if (!openDocKey || !docs) return null;
-    return docs.find((d) => d.key === openDocKey) ?? null;
-  }, [openDocKey, docs]);
 
   if (siteLoading || docsLoading) {
     return (
@@ -136,78 +202,243 @@ export function SiteDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <a
-                href={screenshotDoc}
-                target="_blank"
-                rel="noreferrer"
-                className="group relative block aspect-video overflow-hidden rounded-md border bg-muted"
-              >
-                <img
-                  src={screenshotDoc}
-                  alt={`Screenshot of ${site.name}`}
-                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                />
-                <div className="absolute right-2 top-2 rounded-md bg-background/90 p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <ExternalLink className="h-4 w-4" />
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setScreenshotOpen(true)}
+                  className="group relative block h-64 w-full overflow-hidden rounded-md border bg-muted text-left sm:w-[300px]"
+                >
+                  <img
+                    src={screenshotDoc}
+                    alt={`Screenshot of ${site.name}`}
+                    className="h-full w-full object-cover object-top"
+                  />
+                  <div className="absolute inset-0 flex items-start justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="rounded-md bg-background/90 p-1.5 shadow-sm">
+                      <ExternalLink className="h-4 w-4" />
+                    </div>
+                  </div>
+                </button>
+                <div className="flex min-h-64 flex-1 flex-col justify-between rounded-md border bg-muted/50 p-4">
+                  <div className="text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Rescan source site</p>
+                    <p className="mt-1">
+                      Re-scrape {site.sourceUrl || site.slug} to regenerate docs from the latest source.
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    {rescanError && !rescanConfirm && (
+                      <p className="mb-3 text-sm text-destructive">{rescanError}</p>
+                    )}
+                    {rescanConfirm ? (
+                      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+                        <p className="text-sm text-destructive">
+                          This will replace all docs, pages, and assets for this site.
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() =>
+                              rescanSite.mutate({
+                                url: `https://${site.sourceUrl || `${site.slug}.pushpress.build`}`,
+                                force: true,
+                              })
+                            }
+                            disabled={rescanSite.isPending}
+                          >
+                            {rescanSite.isPending ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Rescan and replace
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setRescanConfirm(false);
+                              setRescanError(null);
+                            }}
+                            disabled={rescanSite.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          rescanSite.mutate({
+                            url: `https://${site.sourceUrl || `${site.slug}.pushpress.build`}`,
+                          })
+                        }
+                        disabled={rescanSite.isPending || !site.sourceUrl}
+                      >
+                        {rescanSite.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                        )}
+                        Rescan site
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </a>
+              </div>
             </CardContent>
           </Card>
         )}
 
         <h2 className="mb-4 text-lg font-semibold">Generated docs</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {sortedDocs.map((doc) => (
-            <DocCard key={doc.key} doc={doc} />
-          ))}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[35%]">Doc</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedDocs.map((doc) => (
+                <TableRow
+                  key={doc.key}
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setEditingDoc(doc);
+                    setEditTitle(doc.title);
+                    setEditContent(doc.content ?? "");
+                  }}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{getDocCategory(doc.key)}</p>
+                        <p className="line-clamp-1 text-sm text-muted-foreground">
+                          {doc.content?.slice(0, 80).replace(/#|>/g, "") ?? "No content yet."}
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs capitalize">
+                      {doc.source.replace("_", " ")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <Clock className="h-3.5 w-3.5" />
+                      {formatRelativeDate(doc.updatedAt)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">{/* actions go here */}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
-        {openDoc && (
-          <div className="mt-8">
-            <h2 className="mb-4 text-lg font-semibold">
-              Preview: {openDoc.title}
-            </h2>
-            <Card>
-              <CardContent className="p-6">
-                <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-4 text-sm">
-                  {openDoc.content}
-                </pre>
-              </CardContent>
-            </Card>
-          </div>
+        {screenshotOpen && (
+          <Dialog open onOpenChange={setScreenshotOpen}>
+            <DialogContent className="h-[calc(100vh-3rem)] max-w-6xl flex-col overflow-hidden">
+              <div className="flex items-center justify-between border-b px-6 py-4">
+                <h3 className="text-lg font-semibold">
+                  Screenshot of {site.name}
+                </h3>
+                <DialogClose onClick={() => setScreenshotOpen(false)} />
+              </div>
+              <div className="flex-1 overflow-auto bg-muted p-6">
+                <img
+                  src={screenshotDoc ?? undefined}
+                  alt={`Screenshot of ${site.name}`}
+                  className="mx-auto max-w-full shadow-sm"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {editingDoc && (
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingDoc(null);
+                setEditContent("");
+                setEditTitle("");
+              }
+            }}
+          >
+            <DialogContent className="flex h-[calc(100vh-3rem)] max-w-6xl flex-col overflow-hidden">
+              <div className="flex items-center justify-between border-b px-6 py-4">
+                <div className="flex-1 pr-4">
+                  <Input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="h-10 text-lg font-semibold"
+                    placeholder="Doc title"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      saveDoc.mutate(
+                        {
+                          key: editingDoc.key,
+                          body: { title: editTitle, content: editContent },
+                        },
+                        {
+                          onSuccess: () => {
+                            setEditingDoc(null);
+                            setEditContent("");
+                            setEditTitle("");
+                          },
+                        },
+                      )
+                    }
+                    disabled={saveDoc.isPending || !editTitle.trim()}
+                  >
+                    {saveDoc.isPending ? (
+                      <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save changes
+                  </Button>
+                  <DialogClose
+                    onClick={() => {
+                      setEditingDoc(null);
+                      setEditContent("");
+                      setEditTitle("");
+                    }}
+                  />
+                </div>
+              </div>
+              {saveDoc.isError && (
+                <p className="px-6 py-2 text-sm text-destructive">
+                  {saveDoc.error?.message}
+                </p>
+              )}
+              <div className="flex-1 overflow-hidden p-6">
+                <div className="flex h-full flex-col rounded-md border">
+                  <BlockNoteEditor
+                    content={editContent}
+                    onChange={setEditContent}
+                  />
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </div>
-  );
-}
-
-function DocCard({ doc }: { doc: Doc }) {
-  const previewLink = `/sites/${doc.siteUuid}?doc=${doc.key}`;
-
-  return (
-    <Card className="flex flex-col">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          {getDocCategory(doc.key)}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        <p className="line-clamp-3 flex-1 text-sm text-muted-foreground">
-          {doc.content?.slice(0, 160).replace(/#|>/g, "") ?? "No content yet."}
-        </p>
-        <div className="mt-4 flex items-center gap-2">
-          <Badge variant="outline" className="text-xs capitalize">
-            {doc.source.replace("_", " ")}
-          </Badge>
-          <Button variant="ghost" size="sm" className="ml-auto" asChild>
-            <Link to={previewLink}>Preview</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/docs?doc=${doc.key}`}>Open in docs</Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

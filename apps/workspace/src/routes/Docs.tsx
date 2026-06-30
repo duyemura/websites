@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Save, Plus, Archive } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type Doc } from "@/lib/api";
 import { BlockNoteEditor } from "@/components/BlockNoteEditor";
 
 export function Docs() {
@@ -14,10 +15,38 @@ export function Docs() {
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
-  const { data: docs, isLoading } = useQuery({
+  const { data: docs, isLoading: isLoadingDocs } = useQuery({
     queryKey: ["docs"],
     queryFn: api.getDocs,
   });
+
+  const { data: sites, isLoading: isLoadingSites } = useQuery({
+    queryKey: ["sites"],
+    queryFn: api.getSites,
+  });
+
+  const siteByUuid = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const site of sites ?? []) {
+      map.set(site.uuid, site.name);
+    }
+    return map;
+  }, [sites]);
+
+  const groupedDocs = useMemo(() => {
+    const workspace: Doc[] = [];
+    const bySite = new Map<string, Doc[]>();
+    for (const doc of docs ?? []) {
+      if (!doc.siteUuid) {
+        workspace.push(doc);
+      } else {
+        const list = bySite.get(doc.siteUuid) ?? [];
+        list.push(doc);
+        bySite.set(doc.siteUuid, list);
+      }
+    }
+    return { workspace, bySite };
+  }, [docs]);
 
   const saveDoc = useMutation({
     mutationFn: ({ key, body }: { key: string; body: { title: string; content: string } }) =>
@@ -78,6 +107,37 @@ export function Docs() {
     createDoc.mutate({ title: newTitle.trim() });
   };
 
+  const isLoading = isLoadingDocs || isLoadingSites;
+
+  function renderDocList(docs: Doc[], groupLabel: string) {
+    return (
+      <div className="space-y-1">
+        {docs.map((doc) => (
+          <button
+            key={doc.key}
+            onClick={() => selectDoc(doc.key)}
+            className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors ${
+              selectedKey === doc.key
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-accent hover:text-accent-foreground"
+            }`}
+          >
+            <div className="font-medium">{doc.title}</div>
+            <div className="flex items-center gap-2 text-xs opacity-80">
+              <Badge
+                variant={selectedKey === doc.key ? "secondary" : "outline"}
+                className="text-[10px] px-1 py-0"
+              >
+                {groupLabel}
+              </Badge>
+              <span>Saved</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       <aside className="w-80 border-r bg-card p-4 overflow-auto flex flex-col">
@@ -122,24 +182,31 @@ export function Docs() {
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-5">
             {docs?.length === 0 && !isAdding && (
               <p className="text-sm text-muted-foreground">No docs yet.</p>
             )}
-            {docs?.map((doc) => (
-              <button
-                key={doc.key}
-                onClick={() => selectDoc(doc.key)}
-                className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors ${
-                  selectedKey === doc.key
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent hover:text-accent-foreground"
-                }`}
-              >
-                <div className="font-medium">{doc.title}</div>
-                <div className="text-xs opacity-80">Saved</div>
-              </button>
-            ))}
+
+            {groupedDocs.workspace.length > 0 && (
+              <div>
+                <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Workspace
+                </h3>
+                {renderDocList(groupedDocs.workspace, "Workspace")}
+              </div>
+            )}
+
+            {Array.from(groupedDocs.bySite.entries()).map(([siteUuid, siteDocs]) => {
+              const siteName = siteByUuid.get(siteUuid) ?? "Site";
+              return (
+                <div key={siteUuid}>
+                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {siteName}
+                  </h3>
+                  {renderDocList(siteDocs, "Site")}
+                </div>
+              );
+            })}
           </div>
         )}
       </aside>

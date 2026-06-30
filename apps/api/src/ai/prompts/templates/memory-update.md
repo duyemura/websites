@@ -4,6 +4,7 @@ You are maintaining two lightweight memory documents for a gym/studio website bu
 
 - `workspace-memory` — per-workspace context: business snapshot, user, current goal, brand positioning, locked decisions, known blockers, follow-up backlog, reference docs.
 - `site-memory` — per-site context: site purpose, source URL, replication status, recent edits, QA issues, publish state, known placeholders, follow-up backlog.
+- `site-strategy` — per-site plan: goal, source, site structure, build phases, decisions to confirm, next action.
 
 ## Rules
 

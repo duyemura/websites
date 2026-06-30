@@ -1,6 +1,7 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import { makeDocKey } from "../../utils/docs";
+import { AllowedDocKeySchema } from "../../utils/doc-registry";
 
 const DocSchema = z.object({
   uuid: z.string(),
@@ -56,7 +57,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/docs/:key",
     {
       schema: {
-        params: z.object({ key: z.string() }),
+        params: z.object({ key: AllowedDocKeySchema }),
         response: { 200: DocSchema, 404: z.object({ error: z.string() }) },
       },
     },
@@ -84,9 +85,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/docs/:key",
     {
       schema: {
-        params: z.object({ key: z.string() }),
+        params: z.object({ key: AllowedDocKeySchema }),
         body: UpsertDocSchema,
-        response: { 200: DocSchema, 201: DocSchema },
+        response: { 200: DocSchema, 201: DocSchema, 400: z.object({ error: z.string() }) },
       },
     },
     async (request, reply) => {
@@ -151,12 +152,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
     async (request, reply) => {
       const { title, content } = request.body;
-      const key = makeDocKey(title, request.body.key);
-
-      if (!key) {
-        return reply.code(400).send({ error: "Doc key is required." });
+      const generatedKey = makeDocKey(title, request.body.key);
+      const keyParse = AllowedDocKeySchema.safeParse(generatedKey);
+      if (!keyParse.success) {
+        return reply.code(400).send({
+          error:
+            `Doc key "${generatedKey}" is not allowed. ` +
+            `Allowed keys: workspace-memory, site-memory, brand-guidelines, business-info, site-strategy, blueprint-draft.`,
+        });
       }
-
+      const key = keyParse.data;
       const workspaceUuid = request.workspace.uuid;
 
       const existing = await fastify.db
@@ -195,7 +200,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/docs/:key",
     {
       schema: {
-        params: z.object({ key: z.string() }),
+        params: z.object({ key: AllowedDocKeySchema }),
         response: { 204: z.object({}).openapi({ type: "object" }) },
       },
     },
@@ -214,7 +219,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/docs/:key/archive",
     {
       schema: {
-        params: z.object({ key: z.string() }),
+        params: z.object({ key: AllowedDocKeySchema }),
         response: { 200: DocSchema, 404: z.object({ error: z.string() }) },
       },
     },
@@ -243,7 +248,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/docs/:key/restore",
     {
       schema: {
-        params: z.object({ key: z.string() }),
+        params: z.object({ key: AllowedDocKeySchema }),
         response: { 200: DocSchema, 404: z.object({ error: z.string() }) },
       },
     },

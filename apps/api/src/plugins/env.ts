@@ -34,14 +34,18 @@ const ConfigSchema = z.object({
   S3_ASSETS_BUCKET: z.string(),
   S3_DEPLOYMENTS_BUCKET: z.string().optional(),
   CDN_BASE_URL: z.string(),
-  LLM_PROVIDER: z.enum(["openrouter", "ollama"]).default("openrouter"),
+  LLM_PROVIDER: z.enum(["openrouter", "ollama"]).default("ollama"),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
   OLLAMA_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional().default("http://localhost:11434"),
-  DEFAULT_LLM_MODEL: z.string().default("anthropic/claude-3.5-sonnet"),
-  VISION_LLM_MODEL: z.string().default("openai/gpt-4o"),
-  CHEAP_LLM_MODEL: z.string().default("google/gemini-flash-1.5"),
+  DEFAULT_LLM_MODEL: z.string().default("qwen3.5:397b-cloud"),
+  VISION_LLM_MODEL: z.string().default("gemma4:31b-cloud"),
+  CHEAP_LLM_MODEL: z.string().default("qwen3.6:35b-a3b-nvfp4"),
+  CODE_LLM_MODEL: z.string().default("kimi-k2.7-code:cloud"),
+  LONG_CONTEXT_LLM_MODEL: z.string().default("qwen3.5:397b-cloud"),
+  REASONING_LLM_MODEL: z.string().default("qwen3.5:397b-cloud"),
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

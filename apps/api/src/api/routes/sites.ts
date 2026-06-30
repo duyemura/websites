@@ -9,6 +9,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
+import { enrichWithGmb } from "../../utils/gmb-enrichment";
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -19,6 +20,7 @@ const SiteSchema = z.object({
   themeUuid: z.string().nullable().optional(),
   defaultMetaTitle: z.string().nullable().optional(),
   defaultMetaDescription: z.string().nullable().optional(),
+  sourceUrl: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -59,6 +61,17 @@ const ScrapeSiteResponseSchema = z.object({
     .nullable()
     .optional(),
 });
+
+function normalizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    const path = parsed.pathname === "/" ? "" : parsed.pathname.toLowerCase();
+    return `${hostname}${path}`;
+  } catch {
+    return url.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  }
+}
 
 function deriveSiteSlug(url: string): string {
   try {
@@ -255,13 +268,51 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/sites/scrape",
     {
       schema: {
-        body: ScrapeSiteSchema,
-        response: { 201: ScrapeSiteResponseSchema },
+        body: ScrapeSiteSchema.extend({ force: z.boolean().optional() }),
+        response: {
+          201: ScrapeSiteResponseSchema,
+          409: z.object({
+            error: z.string(),
+            siteUuid: z.string().optional(),
+            status: z.string().optional(),
+            requiresConfirmation: z.boolean().optional(),
+          }),
+        },
       },
     },
     async (request, reply) => {
-      const { url, name } = request.body;
+      const { url, name, force } = request.body;
       const workspaceUuid = request.workspace.uuid;
+      const normalized = normalizeUrl(url);
+
+      const match = await fastify.db
+        .selectFrom("sites")
+        .selectAll()
+        .where("workspaceUuid", "=", workspaceUuid)
+        .where("sourceUrl", "=", normalized)
+        .executeTakeFirst();
+
+      if (match) {
+        if (match.status === "published") {
+          return reply.code(409).send({
+            error: "Published sites can’t be rescanned. Unpublish the site before scanning again.",
+            siteUuid: match.uuid,
+            status: match.status,
+            requiresConfirmation: false,
+          });
+        }
+
+        if (!force) {
+          return reply.code(409).send({
+            error:
+              "A site already exists for this URL. Rescanning will replace its content. Confirm to continue.",
+            siteUuid: match.uuid,
+            status: match.status,
+            requiresConfirmation: true,
+          });
+        }
+      }
+
       let browser: Browser | undefined;
 
       try {
@@ -340,37 +391,89 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           data.screenshotUrls = [];
         }
 
-        const docs = generateSiteDocs(data);
+        const gmbApiKey = fastify.config.GOOGLE_PLACES_API_KEY;
+        let gmbListing: import("@ploy-gyms/gmb-client").GmbListing | undefined;
+        if (gmbApiKey) {
+          const { data: enriched, result: gmbResult } = await enrichWithGmb(data, gmbApiKey);
+          Object.assign(data, enriched);
+          gmbListing = gmbResult.listing;
+        }
 
-        let baseSlug = deriveSiteSlug(url);
-        let slug = baseSlug;
+        const docs = generateSiteDocs(data, gmbListing);
+
+        const siteName = deriveSiteName(url, name);
+        const baseSlug = deriveSiteSlug(url);
+        const slug = match ? match.slug : baseSlug;
+
+        if (match) {
+          await fastify.db
+            .deleteFrom("aiActivity")
+            .where("siteUuid", "=", match.uuid)
+            .execute();
+          await fastify.db
+            .deleteFrom("aiJobs")
+            .where("siteUuid", "=", match.uuid)
+            .execute();
+          await fastify.db
+            .deleteFrom("deployments")
+            .where("siteUuid", "=", match.uuid)
+            .execute();
+          await fastify.db
+            .deleteFrom("pages")
+            .where("siteUuid", "=", match.uuid)
+            .execute();
+          await fastify.db
+            .deleteFrom("docs")
+            .where("siteUuid", "=", match.uuid)
+            .execute();
+        }
+
         let suffix = 1;
+        let uniqueSlug = slug;
         while (
           await fastify.db
             .selectFrom("sites")
             .select("uuid")
             .where("workspaceUuid", "=", workspaceUuid)
-            .where("slug", "=", slug)
+            .where("slug", "=", uniqueSlug)
             .executeTakeFirst()
         ) {
+          if (match && uniqueSlug === match.slug) {
+            uniqueSlug = `${baseSlug}-${suffix}`;
+          }
           suffix++;
-          slug = `${baseSlug}-${suffix}`;
+          uniqueSlug = `${baseSlug}-${suffix}`;
         }
 
-        const siteName = deriveSiteName(url, name);
-        const site = await fastify.db
-          .insertInto("sites")
-          .values({
-            workspaceUuid,
-            name: siteName,
-            slug,
-            status: "draft",
-            themeUuid: null,
-            defaultMetaTitle: data.title,
-            defaultMetaDescription: data.description,
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow();
+        const site = match
+          ? await fastify.db
+              .updateTable("sites")
+              .set({
+                name: siteName,
+                slug: uniqueSlug,
+                status: "draft",
+                sourceUrl: normalized,
+                defaultMetaTitle: data.title,
+                defaultMetaDescription: data.description,
+                updatedAt: new Date(),
+              })
+              .where("uuid", "=", match.uuid)
+              .returningAll()
+              .executeTakeFirstOrThrow()
+          : await fastify.db
+              .insertInto("sites")
+              .values({
+                workspaceUuid,
+                name: siteName,
+                slug: uniqueSlug,
+                status: "draft",
+                themeUuid: null,
+                sourceUrl: normalized,
+                defaultMetaTitle: data.title,
+                defaultMetaDescription: data.description,
+              })
+              .returningAll()
+              .executeTakeFirstOrThrow();
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
 

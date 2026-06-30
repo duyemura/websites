@@ -1,0 +1,20 @@
+{
+  "name": "@ploy-gyms/gmb-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Google Business Profile / Places API client",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run --no-file-parallelism"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.1.0",
+    "typescript": "~5.7.2"
+  }
+}

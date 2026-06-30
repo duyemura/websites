@@ -53,6 +53,9 @@ importers:
       '@ploy-gyms/ai-specs':
         specifier: workspace:*
         version: link:../../packages/ai-specs
+      '@ploy-gyms/gmb-client':
+        specifier: workspace:*
+        version: link:../../packages/gmb-client
       '@ploy-gyms/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -302,6 +305,15 @@ importers:
 
   packages/ai-specs:
     devDependencies:
+      typescript:
+        specifier: ~5.7.2
+        version: 5.7.3
+
+  packages/gmb-client:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.1.0
+        version: 22.20.0
       typescript:
         specifier: ~5.7.2
         version: 5.7.3

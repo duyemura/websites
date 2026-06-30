@@ -5,6 +5,7 @@ import { SiteDetail } from "@/routes/SiteDetail";
 import { Docs } from "@/routes/Docs";
 import { Assets } from "@/routes/Assets";
 import { Playbooks } from "@/routes/Playbooks";
+import { Templates } from "@/routes/Templates";
 import { Settings } from "@/routes/Settings";
 import { Workspaces } from "@/routes/Workspaces";
 
@@ -17,6 +18,7 @@ function App() {
         <Route path="/docs" element={<Docs />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="/playbooks" element={<Playbooks />} />
+        <Route path="/templates" element={<Templates />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/workspaces" element={<Workspaces />} />
       </Route>

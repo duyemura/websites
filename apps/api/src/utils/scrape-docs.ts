@@ -6,6 +6,7 @@ import type {
   ScrapedLayoutRule,
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
+import type { GmbListing } from "@ploy-gyms/gmb-client";
 
 export interface ScrapedWebsiteData {
   url: string;
@@ -153,7 +154,7 @@ function buildImageryStrategy(data: ScrapedWebsiteData): string {
   if (text.includes("salon") || text.includes("spa") || text.includes("beauty")) {
     return "Clean, polished imagery with soft lighting and a premium, serene mood.";
   }
-  return "Professional local-business photography matched to the brand’s tone and service.";
+  return "Professional local-business photography matched to the brand's tone and service.";
 }
 
 function buildImagePlacement(data: ScrapedWebsiteData): string[] {
@@ -205,43 +206,61 @@ function buildApplicationExamples(data: ScrapedWebsiteData): string[] {
   return examples;
 }
 
-export function buildBrandGuidelinesInput(data: ScrapedWebsiteData): ScrapedBrandInput {
-  const businessName = data.businessName ?? data.title.replace(/\s*-.*$/, "").trim();
-  const industry = inferIndustry(
-    [data.description ?? "", ...data.headings.slice(0, 5), ...data.paragraphs.slice(0, 5)].join(" "),
-  );
+export interface BrandGuidelinesContext {
+  scraped: ScrapedWebsiteData;
+  gmb?: GmbListing;
+}
+
+export function buildBrandGuidelinesInput(ctx: BrandGuidelinesContext): ScrapedBrandInput {
+  const { scraped, gmb } = ctx;
+  const businessName = gmb?.name ?? scraped.businessName ?? scraped.title.replace(/\s*-.*$/, "").trim();
+  const tagline = gmb?.editorialSummary ?? scraped.tagline;
+  const industry = gmb?.primaryType
+    ? inferIndustry(gmb.primaryType)
+    : inferIndustry([scraped.description ?? "", ...scraped.headings.slice(0, 5), ...scraped.paragraphs.slice(0, 5)].join(" "));
+
+  const gmbContextLines: string[] = [];
+  if (gmb?.primaryType) gmbContextLines.push(`Google Business Profile category: ${gmb.primaryType}.`);
+  if (gmb?.editorialSummary) gmbContextLines.push(`Business summary: ${gmb.editorialSummary}`);
+  if (gmb?.photos?.length) gmbContextLines.push(`${gmb.photos.length} photos available from Google Business Profile.`);
 
   return {
     businessName,
-    tagline: data.tagline,
+    tagline,
     industry,
-    description: data.description,
-    colors: data.colors,
-    colorStrategy: buildColorStrategy(data.colors),
-    pairingRules: buildPairingRules(data.colors),
-    contextRules: buildContextRules(data.colors),
-    darkModeBehavior: buildDarkModeBehavior(data.colors),
-    fonts: data.fonts,
-    typeScale: data.fontSizes,
-    toneKeywords: extractToneKeywords(data),
+    description: scraped.description,
+    colors: scraped.colors,
+    colorStrategy: buildColorStrategy(scraped.colors),
+    pairingRules: buildPairingRules(scraped.colors),
+    contextRules: buildContextRules(scraped.colors),
+    darkModeBehavior: buildDarkModeBehavior(scraped.colors),
+    fonts: scraped.fonts,
+    typeScale: scraped.fontSizes,
+    toneKeywords: extractToneKeywords(ctx),
     toneExamples: [
-      ...data.headings.slice(0, 8),
-      ...data.buttons.slice(0, 8),
+      ...scraped.headings.slice(0, 8),
+      ...scraped.buttons.slice(0, 8),
     ].filter((e, i, arr) => arr.indexOf(e) === i),
-    imageryStrategy: buildImageryStrategy(data),
-    imagePlacement: buildImagePlacement(data),
-    promptKeywords: buildPromptKeywords(data),
-    images: data.images,
-    layoutRules: data.layoutRules,
-    designTokens: data.designTokens,
-    componentPatterns: inferComponentPatterns(data),
-    applicationExamples: buildApplicationExamples(data),
-    screenshotUrls: data.screenshotUrls,
+    imageryStrategy: buildImageryStrategy(scraped),
+    imagePlacement: buildImagePlacement(scraped),
+    promptKeywords: buildPromptKeywords(scraped),
+    images: scraped.images,
+    layoutRules: scraped.layoutRules,
+    designTokens: scraped.designTokens,
+    componentPatterns: inferComponentPatterns(scraped),
+    applicationExamples: buildApplicationExamples(scraped),
+    screenshotUrls: scraped.screenshotUrls,
   };
 }
 
-function extractToneKeywords(data: ScrapedWebsiteData): string[] {
-  const text = [data.tagline ?? "", ...data.headings, ...data.buttons].join(" ").toLowerCase();
+function extractToneKeywords(ctx: BrandGuidelinesContext): string[] {
+  const { scraped, gmb } = ctx;
+  const text = [
+    gmb?.editorialSummary ?? "",
+    scraped.tagline ?? "",
+    ...scraped.headings,
+    ...scraped.buttons,
+  ].join(" ").toLowerCase();
   const keywords: string[] = [];
   const checks: Record<string, string[]> = {
     direct: ["book", "join", "start", "get", "free"],

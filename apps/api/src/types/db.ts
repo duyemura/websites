@@ -191,6 +191,7 @@ export interface Sites {
   publishedAt: Timestamp | null;
   schemaJson: Json | null;
   slug: string;
+  sourceUrl: string | null;
   status: Generated<SiteStatus>;
   subdomain: string | null;
   themeUuid: string | null;

@@ -64,6 +64,7 @@ export interface Site {
   subdomain?: string | null;
   customDomain?: string | null;
   themeUuid?: string | null;
+  sourceUrl?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
   createdAt: string;
@@ -147,7 +148,7 @@ export const api = {
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
   createSite: (body: { name: string; slug: string; templateKey?: string }) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
-  scrapeSite: (body: { url: string; name?: string }) =>
+  scrapeSite: (body: { url: string; name?: string; force?: boolean }) =>
     fetchJson<ScrapeSiteResult>("/sites/scrape", {
       method: "POST",
       body: JSON.stringify(body),
@@ -195,7 +196,13 @@ export const api = {
       `/assets/upload-url?filename=${encodeURIComponent(filename)}${contentType ? `&contentType=${encodeURIComponent(contentType)}` : ""}`,
     ),
 
-  getTemplates: () => fetchJson<Template[]>("/templates?systemOnly=true"),
+  getTemplates: (systemOnly?: boolean) =>
+    fetchJson<Template[]>(`/templates${systemOnly != null ? `?systemOnly=${systemOnly}` : ""}`),
+  createTemplateFromUrl: (body: { url: string; name?: string; category?: string }) =>
+    fetchJson<Template>("/templates/from-url", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getPlaybooks: () => fetchJson<Playbook[]>("/playbooks"),
 
   getOrganizations: () =>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { to: "/", icon: LayoutTemplate, label: "Sites" },
+  { to: "/templates", icon: LayoutTemplate, label: "Templates" },
   { to: "/docs", icon: FileText, label: "Docs" },
   { to: "/assets", icon: Image, label: "Assets" },
   { to: "/playbooks", icon: BookOpen, label: "Playbooks" },
@@ -77,7 +78,7 @@ export function Shell() {
               <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
                 <NavLink to="/workspaces" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Manage workspaces
+                  Manage Workspaces
                 </NavLink>
               </Button>
             </div>

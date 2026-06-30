@@ -183,18 +183,28 @@ export function BlockNoteEditor({ content, onChange }: BlockNoteEditorProps) {
   const editor = useCreateBlockNote({
     initialContent: [{ type: "paragraph", content: "" }],
   });
-  const previousContent = useRef(content);
+  // Start with an empty sentinel so the first non-empty content is always applied.
+  const previousContent = useRef("");
   const [activeStyles, setActiveStyles] = useState<
     ReturnType<BlockNoteEditorType["getActiveStyles"]>
   >({});
   const [activeBlock, setActiveBlock] = useState<Block | null>(null);
 
   useEffect(() => {
-    if (!editor || content === previousContent.current) return;
-    previousContent.current = content;
+    if (!editor) return;
+    const normalized = (content || "").replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+    if (normalized === previousContent.current) return;
+    previousContent.current = normalized;
 
-    const blocks = markdownToBlocks(content || "", editor.pmSchema) as PartialBlock[];
-    editor.replaceBlocks(editor.document, blocks);
+    try {
+      const blocks = markdownToBlocks(normalized, editor.pmSchema) as PartialBlock[];
+      editor.replaceBlocks(editor.document, blocks);
+    } catch (err) {
+      console.warn("BlockNote markdown parse failed, falling back to plain text:", err);
+      editor.replaceBlocks(editor.document, [
+        { type: "paragraph", content: normalized },
+      ]);
+    }
   }, [content, editor]);
 
   const refreshToolbar = () => {
@@ -223,6 +233,9 @@ export function BlockNoteEditor({ content, onChange }: BlockNoteEditorProps) {
           onChange={() => {
             refreshToolbar();
             const markdown = editor.blocksToMarkdownLossy(editor.document);
+            // Mark this content as already applied so the effect doesn't
+            // re-parse and reset the cursor/selection.
+            previousContent.current = markdown.replace(/\r\n/g, "\n");
             onChange(markdown);
           }}
         />

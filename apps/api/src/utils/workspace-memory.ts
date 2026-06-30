@@ -41,8 +41,7 @@ export function generateWorkspaceMemory(
     referenceDocKeys: overrides.referenceDocKeys ?? [
       "brand-guidelines",
       "business-info",
-      "site-structure",
-      "generation-plan",
+      "site-strategy",
       "blueprint-draft",
     ],
   };

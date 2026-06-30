@@ -1,7 +1,12 @@
 import { describe, test, expect } from "vitest";
+import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/utils/brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { generateSiteDocs } from "../../src/utils/site-docs";
+
+function docKeys(docs: ReturnType<typeof generateSiteDocs>): string[] {
+  return docs.map((d) => d.key);
+}
 
 const baseScrape: ScrapedWebsiteData = {
   url: "https://example-gym.com",
@@ -29,13 +34,49 @@ const baseScrape: ScrapedWebsiteData = {
   locations: [{ name: "Downtown", address: "123 Main St" }],
   team: [{ name: "Coach Alex", role: "Head coach", bio: "CSCS certified." }],
   offerings: [{ name: "Group class", description: "One hour", price: "$30" }],
-  contact: { phone: "555-1234", email: "hi@example-gym.com", social: [{ platform: "Instagram", url: "https://instagram.com/betagym" }] },
+  contact: {
+    phone: "555-1234",
+    email: "hi@example-gym.com",
+    social: [
+      { platform: "Instagram", url: "https://instagram.com/betagym" },
+      { platform: "Facebook", url: "https://facebook.com/betagym" },
+      { platform: "YouTube", url: "https://youtube.com/@betagym" },
+    ],
+  },
   screenshotUrls: ["https://example-gym.com/screenshot.png"],
+};
+
+const baseGmb: GmbListing = {
+  placeId: "places/abc123",
+  name: "Beta Gym GMB",
+  primaryType: "fitness_center",
+  types: ["fitness_center", "gym", "health_club"],
+  address: {
+    streetNumber: "123",
+    streetName: "Main St",
+    city: "Anytown",
+    state: "CA",
+    country: "US",
+    postalCode: "90210",
+  },
+  phoneNumber: "555-9999",
+  websiteUri: "https://gmb-website.example.com",
+  googleMapsUri: "https://maps.google.com/?cid=abc123",
+  rating: 4.8,
+  userRatingCount: 120,
+  editorialSummary: "Top-rated functional fitness gym.",
+  regularOpeningHours: [
+    { day: "MONDAY", open: "5:00 AM", close: "10:00 PM" },
+    { day: "TUESDAY", open: "5:00 AM", close: "10:00 PM" },
+  ],
+  photos: [{ name: "photo1", url: "https://example.com/photo1.jpg" }],
+  reviews: [{ name: "review1", rating: 5, text: "Great gym", author: "Sam" }],
+  businessStatus: "OPERATIONAL",
 };
 
 describe("generateBrandGuidelines", () => {
   test("renders brand guidelines markdown from scraped input", () => {
-    const input = buildBrandGuidelinesInput(baseScrape);
+    const input = buildBrandGuidelinesInput({ scraped: baseScrape });
     const markdown = generateBrandGuidelines(input);
     expect(markdown).toContain("# Beta Gym Brand Guidelines");
     expect(markdown).toContain("**Industry**: fitness / gym");
@@ -52,36 +93,24 @@ describe("generateBrandGuidelines", () => {
 });
 
 describe("generateSiteDocs", () => {
-  test("generates required docs and optional docs from scraped data", () => {
-    const docs = generateSiteDocs(baseScrape);
-    const keys = docs.map((d) => d.key);
-    expect(keys).toContain("workspace-memory");
-    expect(keys).toContain("site-memory");
-    expect(keys).toContain(BRAND_GUIDELINES_DOC_KEY);
-    expect(keys).toContain("business-info");
-    expect(keys).toContain("site-structure");
-    expect(keys).toContain("team-bios");
-    expect(keys).toContain("testimonials");
-    expect(keys).toContain("faqs");
+  test("generates core docs from scraped data", () => {
+    const keys = docKeys(generateSiteDocs(baseScrape));
+    expect(keys).toEqual([
+      "workspace-memory",
+      "site-memory",
+      BRAND_GUIDELINES_DOC_KEY,
+      "business-info",
+      "site-strategy",
+      "blueprint-draft",
+    ]);
   });
 
-  test("skips empty optional doc types", () => {
-    const minimal: ScrapedWebsiteData = {
-      ...baseScrape,
-      offerings: [],
-      locations: [],
-      team: [],
-      testimonials: [],
-      faqs: [],
-    };
-    const docs = generateSiteDocs(minimal);
-    const keys = docs.map((d) => d.key);
+  test("does not generate removed standalone docs", () => {
+    const keys = docKeys(generateSiteDocs(baseScrape));
+    expect(keys).not.toContain("site-structure");
     expect(keys).not.toContain("team-bios");
     expect(keys).not.toContain("testimonials");
     expect(keys).not.toContain("faqs");
-    expect(keys).toContain("workspace-memory");
-    expect(keys).toContain("site-memory");
-    expect(keys).toContain(BRAND_GUIDELINES_DOC_KEY);
   });
 
   test("workspace memory includes business snapshot and reference docs", () => {
@@ -91,6 +120,8 @@ describe("generateSiteDocs", () => {
     expect(memory.content).toContain("Current goal");
     expect(memory.content).toContain("[[brand-guidelines]]");
     expect(memory.content).toContain("[[business-info]]");
+    expect(memory.content).toContain("[[site-strategy]]");
+    expect(memory.content).not.toContain("[[site-structure]]");
   });
 
   test("site memory includes source url and publish state", () => {
@@ -101,25 +132,80 @@ describe("generateSiteDocs", () => {
     expect(memory.content).toContain("draft");
   });
 
-  test("business info doc includes contact, social links, offerings, and locations", () => {
+  test("business info doc includes contact, social links, offerings, locations, team, testimonials, and faqs", () => {
     const docs = generateSiteDocs(baseScrape);
     const businessInfo = docs.find((d) => d.key === "business-info")!;
     expect(businessInfo.content).toContain("Beta Gym");
     expect(businessInfo.content).toContain("Stronger together.");
+    expect(businessInfo.content).toContain("## Contact");
     expect(businessInfo.content).toContain("555-1234");
     expect(businessInfo.content).toContain("hi@example-gym.com");
-    expect(businessInfo.content).toContain("Instagram");
+    expect(businessInfo.content).toContain("## External profiles");
+    expect(businessInfo.content).toContain("Instagram: https://instagram.com/betagym");
+    expect(businessInfo.content).toContain("Facebook: https://facebook.com/betagym");
+    expect(businessInfo.content).toContain("YouTube: https://youtube.com/@betagym");
     expect(businessInfo.content).toContain("Group class");
     expect(businessInfo.content).toContain("Downtown");
     expect(businessInfo.content).toContain("123 Main St");
+    expect(businessInfo.content).toContain("Coach Alex");
+    expect(businessInfo.content).toContain("Best gym in town.");
+    expect(businessInfo.content).toContain("Do you offer drop-ins?");
   });
 
-  test("site structure doc includes nav links only, not copy examples", () => {
+  test("business info doc emits phone and email only under the Contact section", () => {
     const docs = generateSiteDocs(baseScrape);
-    const structure = docs.find((d) => d.key === "site-structure")!;
-    expect(structure.content).toContain("https://example-gym.com");
-    expect(structure.content).toContain("[Classes](/classes)");
-    expect(structure.content).not.toContain("Train with purpose");
+    const businessInfo = docs.find((d) => d.key === "business-info")!;
+    const [, afterContact] = businessInfo.content.split("## Contact");
+    expect(afterContact).toContain("**Phone**: 555-1234");
+    expect(afterContact).toContain("**Email**: hi@example-gym.com");
+    expect(businessInfo.content.match(/\*\*Phone\*\*:/g)).toHaveLength(1);
+    expect(businessInfo.content.match(/\*\*Email\*\*:/g)).toHaveLength(1);
+  });
+
+  test("business info doc includes gmb-only fields when provided", () => {
+    const docs = generateSiteDocs(baseScrape, baseGmb);
+    const businessInfo = docs.find((d) => d.key === "business-info")!;
+    expect(businessInfo.content).toContain("# Beta Gym GMB");
+    expect(businessInfo.content).toContain("**Tagline**: Top-rated functional fitness gym.");
+    expect(businessInfo.content).toContain("## External profiles");
+    expect(businessInfo.content).toContain("Google Maps: https://maps.google.com/?cid=abc123");
+    expect(businessInfo.content).toContain("Website: https://gmb-website.example.com");
+    expect(businessInfo.content).toContain("## Google Business Profile");
+    expect(businessInfo.content).toContain("**Rating**: 4.8 / 5 (120 reviews)");
+    expect(businessInfo.content).toContain("**Primary category**: fitness_center");
+    expect(businessInfo.content).toContain("## Location");
+    expect(businessInfo.content).toContain("123 Main St, Anytown, CA, 90210");
+    expect(businessInfo.content).toContain("Monday: 5:00 AM–10:00 PM");
+    expect(businessInfo.content).toContain("## Contact");
+    expect(businessInfo.content).toContain("**Phone**: 555-9999");
+  });
+
+  test("business info doc falls back to gmb reviews when scraped testimonials are missing", () => {
+    const docs = generateSiteDocs({ ...baseScrape, testimonials: [] }, baseGmb);
+    const businessInfo = docs.find((d) => d.key === "business-info")!;
+    expect(businessInfo.content).toContain("## Testimonials");
+    expect(businessInfo.content).toContain('"Great gym" — Sam');
+  });
+
+  test("site strategy includes gmb source facts", () => {
+    const docs = generateSiteDocs(baseScrape, baseGmb);
+    const plan = docs.find((d) => d.key === "site-strategy")!;
+    expect(plan.content).toContain("Google Business Profile verified as Beta Gym GMB.");
+    expect(plan.content).toContain("Primary category: fitness_center.");
+    expect(plan.content).toContain("Rating: 4.8 / 5.");
+    expect(plan.content).toContain("1 GMB photos available for asset curation.");
+  });
+
+  test("site strategy includes site structure, phases, decisions, and next action", () => {
+    const docs = generateSiteDocs(baseScrape);
+    const plan = docs.find((d) => d.key === "site-strategy")!;
+    expect(plan.content).toContain("https://example-gym.com");
+    expect(plan.content).toContain("## Site structure");
+    expect(plan.content).toContain("[Classes](/classes)");
+    expect(plan.content).toContain("## Build phases");
+    expect(plan.content).toContain("## Decisions to confirm");
+    expect(plan.content).toContain("## Next action");
+    expect(plan.content).not.toContain("Train with purpose");
   });
 
   test("brand guidelines include voice and copy examples", () => {
@@ -129,5 +215,15 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("Copy examples");
     expect(brand.content).toContain("Train with purpose");
     expect(brand.content).toContain("Book a class");
+  });
+
+  test("brand guidelines include substantive tone of voice guidance", () => {
+    const docs = generateSiteDocs(baseScrape);
+    const brand = docs.find((d) => d.key === BRAND_GUIDELINES_DOC_KEY)!;
+    expect(brand.content).toContain("Voice attributes");
+    expect(brand.content).toContain("Do");
+    expect(brand.content).toContain("Avoid");
+    expect(brand.content).toContain("direct");
+    expect(brand.content).toContain("inclusive");
   });
 });

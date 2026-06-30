@@ -100,6 +100,68 @@ function tokenCategoryLabel(category: ScrapedDesignToken["category"]): string {
   return labels[category];
 }
 
+function buildToneDescription(keywords: string[], industry?: string): string {
+  const industryPhrase = industry ? `${industry.replace(/\//g, " / ")}` : "this business";
+
+  const attributeLines: string[] = [];
+  const doLines: string[] = [];
+  const avoidLines: string[] = [];
+
+  if (keywords.includes("direct")) {
+    attributeLines.push("Direct: say exactly what the visitor should do next and why.");
+    doLines.push("Lead with the benefit, then the action.");
+    avoidLines.push("Avoid vague claims like 'the best gym ever' without proof or specifics.");
+  }
+  if (keywords.includes("inclusive")) {
+    attributeLines.push("Inclusive: welcome every fitness level, age, and background.");
+    doLines.push("Use 'you' and 'we' to sound like a coach, not a brand.");
+    avoidLines.push("Avoid insider jargon, elitist language, or assumptions about experience.");
+  }
+  if (keywords.includes("playful")) {
+    attributeLines.push("Playful: energy and personality over corporate polish.");
+    doLines.push("Use contractions, active verbs, and short punchy sentences.");
+    avoidLines.push("Avoid stiff, formal copy that feels like a brochure.");
+  }
+  if (keywords.includes("gritty")) {
+    attributeLines.push("Gritty: celebrate effort, discipline, and real results.");
+    doLines.push("Name the hard work and the payoff honestly.");
+    avoidLines.push("Avoid promises that sound too easy or instant.");
+  }
+  if (keywords.includes("premium")) {
+    attributeLines.push("Premium: confident, refined, and worth the investment.");
+    doLines.push("Use precise, elevated language and clear value proof.");
+    avoidLines.push("Avoid discount-focused copy or apologetic pricing language.");
+  }
+  if (keywords.includes("technical")) {
+    attributeLines.push("Technical: respect the athlete's intelligence and coach them.");
+    doLines.push("Explain the method briefly and accurately.");
+    avoidLines.push("Avoid hype that contradicts training science.");
+  }
+
+  if (attributeLines.length === 0) {
+    attributeLines.push("Direct and action-oriented: every sentence should move the visitor toward the next step.");
+    doLines.push("Use short sentences, active verbs, and clear CTAs.");
+    avoidLines.push("Avoid passive voice, filler words, and generic superlatives.");
+  }
+
+  return [
+    `The ${industryPhrase} voice is ${keywords.slice(0, 4).join(", ") || "direct and action-oriented"}. ` +
+      "Every page should sound like a coach talking to a member: clear, encouraging, and focused on outcomes.",
+    "",
+    "### Voice attributes",
+    "",
+    ...attributeLines.map((line) => `- ${line}`),
+    "",
+    "### Do",
+    "",
+    ...doLines.map((line) => `- ${line}`),
+    "",
+    "### Avoid",
+    "",
+    ...avoidLines.map((line) => `- ${line}`),
+  ].join("\n");
+}
+
 function renderTone(tone: ScrapedBrandInput): string {
   const keywords =
     tone.toneKeywords.length > 0
@@ -115,7 +177,9 @@ function renderTone(tone: ScrapedBrandInput): string {
     return `### ${title}\n\n${items.map((e) => `- "${e}"`).join("\n")}`;
   };
 
-  return `## Tone keywords
+  return `${buildToneDescription(tone.toneKeywords, tone.industry)}
+
+## Tone keywords
 
 - ${keywords}
 
@@ -197,8 +261,6 @@ ${input.description ? `- **Description**: ${input.description}` : ""}
 ${renderColorStrategy(input)}
 
 ${renderColorTable(input.colors)}
-
-${input.screenshotUrls?.length ? `![Asset ID: Original Website Screenshot](${input.screenshotUrls[0]})` : ""}
 
 ## Typography
 

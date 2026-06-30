@@ -31,8 +31,8 @@ function formatRelativeDate(date: string | Date): string {
 
 function getSiteDomain(site: Site): string {
   if (site.customDomain) return site.customDomain;
-  if (site.subdomain) return `${site.subdomain}.ploy.build`;
-  return `${site.slug}.ploy.build`;
+  if (site.subdomain) return `${site.subdomain}.pushpress.build`;
+  return `${site.slug}.pushpress.build`;
 }
 
 function SiteThumbnail({ className }: { className?: string }) {
@@ -56,6 +56,11 @@ export function Dashboard() {
   const [scrapeUrl, setScrapeUrl] = useState("");
   const [scrapeName, setScrapeName] = useState("");
   const [showScrape, setShowScrape] = useState(false);
+  const [confirmScrape, setConfirmScrape] = useState<{
+    siteUuid: string;
+    status: string;
+    message: string;
+  } | null>(null);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
@@ -70,7 +75,23 @@ export function Dashboard() {
       setScrapeUrl("");
       setScrapeName("");
       setShowScrape(false);
+      setConfirmScrape(null);
       navigate(`/docs?site=${result.site.uuid}`);
+    },
+    onError: (error) => {
+      try {
+        const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        if (body.requiresConfirmation && body.siteUuid) {
+          setConfirmScrape({
+            siteUuid: body.siteUuid,
+            status: body.status,
+            message: body.error,
+          });
+          return;
+        }
+      } catch {
+        // not our shaped error; let it surface normally
+      }
     },
   });
 
@@ -87,9 +108,13 @@ export function Dashboard() {
     return list;
   }, [sites, search]);
 
-  const handleScrape = () => {
+  const handleScrape = (force?: boolean) => {
     if (!scrapeUrl.trim()) return;
-    scrapeSite.mutate({ url: scrapeUrl.trim(), name: scrapeName.trim() || undefined });
+    scrapeSite.mutate({
+      url: scrapeUrl.trim(),
+      name: scrapeName.trim() || undefined,
+      force,
+    });
   };
 
   return (
@@ -171,7 +196,7 @@ export function Dashboard() {
             <div className="mt-4 flex items-center gap-3">
               <Button
                 size="sm"
-                onClick={handleScrape}
+                onClick={() => handleScrape()}
                 disabled={scrapeSite.isPending || !scrapeUrl.trim()}
               >
                 {scrapeSite.isPending ? (
@@ -188,18 +213,53 @@ export function Dashboard() {
                   setShowScrape(false);
                   setScrapeUrl("");
                   setScrapeName("");
+                  setConfirmScrape(null);
                   scrapeSite.reset();
                 }}
                 disabled={scrapeSite.isPending}
               >
                 Cancel
               </Button>
-              {scrapeSite.isError && (
+              {scrapeSite.isError && !confirmScrape && (
                 <p className="text-sm text-destructive">
-                  {scrapeSite.error?.message}
+                  {scrapeSite.error?.message.replace(/^\d+:\s*/, "")}
                 </p>
               )}
             </div>
+
+            {confirmScrape && (
+              <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/5 p-4">
+                <p className="text-sm font-medium text-destructive">
+                  {confirmScrape.message}
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleScrape(true)}
+                    disabled={scrapeSite.isPending}
+                  >
+                    {scrapeSite.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Link2 className="mr-2 h-4 w-4" />
+                    )}
+                    Rescan and replace
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmScrape(null);
+                      scrapeSite.reset();
+                    }}
+                    disabled={scrapeSite.isPending}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -239,7 +299,11 @@ export function Dashboard() {
               </TableHeader>
               <TableBody>
                 {filteredSites.map((site) => (
-                  <TableRow key={site.uuid} className="cursor-pointer">
+                  <TableRow
+                    key={site.uuid}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-sm font-semibold">
@@ -280,7 +344,12 @@ export function Dashboard() {
                   <p className="mt-1 font-mono text-sm text-muted-foreground">
                     {getSiteDomain(site)}
                   </p>
-                  <Button variant="outline" className="mt-3 w-full" size="sm">
+                  <Button
+                    variant="outline"
+                    className="mt-3 w-full"
+                    size="sm"
+                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                  >
                     Dashboard
                   </Button>
                 </div>

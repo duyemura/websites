@@ -9,15 +9,30 @@ describe("docs routes", () => {
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Gym story", content: "# Our story" },
+      payload: { title: "Business info", content: "# Our story", key: "business-info" },
     });
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.key).toBe("gym-story");
-    expect(body.title).toBe("Gym story");
+    expect(body.key).toBe("business-info");
+    expect(body.title).toBe("Business info");
     expect(body.status).toBe("active");
     expect(body.content).toBe("# Our story");
+
+    await app.close();
+  });
+
+  test("POST /docs rejects disallowed keys", async () => {
+    const app = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: { title: "Random", key: "random-doc" },
+    });
+
+    expect(response.statusCode).toBe(400);
 
     await app.close();
   });
@@ -29,14 +44,14 @@ describe("docs routes", () => {
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Gym story" },
+      payload: { title: "Business info", key: "business-info" },
     });
 
     const response = await app.inject({
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Gym story" },
+      payload: { title: "Business info", key: "business-info" },
     });
 
     expect(response.statusCode).toBe(409);
@@ -51,20 +66,19 @@ describe("docs routes", () => {
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Visible" },
+      payload: { title: "Business info", key: "business-info" },
     });
-
-    const archived = await app.inject({
-      method: "POST",
-      url: "/api/docs",
-      headers: authHeaders(),
-      payload: { title: "Archived", key: "archived" },
-    });
-    const archivedKey = archived.json().key;
 
     await app.inject({
       method: "POST",
-      url: `/api/docs/${archivedKey}/archive`,
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: { title: "Site strategy", key: "site-strategy" },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/docs/site-strategy/archive",
       headers: authHeaders(),
     });
 
@@ -77,7 +91,7 @@ describe("docs routes", () => {
     expect(response.statusCode).toBe(200);
     const docs = response.json();
     expect(docs).toHaveLength(1);
-    expect(docs[0].key).toBe("visible");
+    expect(docs[0].key).toBe("business-info");
 
     await app.close();
   });
@@ -85,17 +99,16 @@ describe("docs routes", () => {
   test("PUT /docs/:key updates a doc", async () => {
     const app = await build();
 
-    const created = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Original" },
+      payload: { title: "Business info", key: "business-info" },
     });
-    const key = created.json().key;
 
     const response = await app.inject({
       method: "PUT",
-      url: `/api/docs/${key}`,
+      url: "/api/docs/business-info",
       headers: authHeaders(),
       payload: { title: "Updated", content: "New body" },
     });
@@ -108,27 +121,41 @@ describe("docs routes", () => {
     await app.close();
   });
 
+  test("PUT /docs/:key rejects disallowed keys", async () => {
+    const app = await build();
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/docs/random-doc",
+      headers: authHeaders(),
+      payload: { title: "Updated" },
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   test("POST /docs/:key/archive and /restore toggle status", async () => {
     const app = await build();
 
-    const created = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Toggle me" },
+      payload: { title: "Business info", key: "business-info" },
     });
-    const key = created.json().key;
 
     const archived = await app.inject({
       method: "POST",
-      url: `/api/docs/${key}/archive`,
+      url: "/api/docs/business-info/archive",
       headers: authHeaders(),
     });
     expect(archived.json().status).toBe("archived");
 
     const restored = await app.inject({
       method: "POST",
-      url: `/api/docs/${key}/restore`,
+      url: "/api/docs/business-info/restore",
       headers: authHeaders(),
     });
     expect(restored.json().status).toBe("active");
@@ -139,17 +166,16 @@ describe("docs routes", () => {
   test("DELETE /docs/:key removes a doc", async () => {
     const app = await build();
 
-    const created = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/docs",
       headers: authHeaders(),
-      payload: { title: "Delete me" },
+      payload: { title: "Business info", key: "business-info" },
     });
-    const key = created.json().key;
 
     const deleted = await app.inject({
       method: "DELETE",
-      url: `/api/docs/${key}`,
+      url: "/api/docs/business-info",
       headers: authHeaders(),
     });
     expect(deleted.statusCode).toBe(204);
@@ -160,6 +186,19 @@ describe("docs routes", () => {
       headers: authHeaders(),
     });
     expect(list.json()).toHaveLength(0);
+
+    await app.close();
+  });
+
+  test("DELETE /docs/:key rejects disallowed keys", async () => {
+    const app = await build();
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/api/docs/random-doc",
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(400);
 
     await app.close();
   });

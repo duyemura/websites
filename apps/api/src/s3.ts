@@ -5,6 +5,7 @@ import {
   HeadBucketCommand,
   DeleteObjectCommand,
   PutObjectCommand,
+  PutBucketPolicyCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import path from "node:path";
@@ -42,6 +43,24 @@ export async function ensureBuckets(
     } catch {
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
     }
+
+    const policy = {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: "*",
+          Action: "s3:GetObject",
+          Resource: `arn:aws:s3:::${bucket}/*`,
+        },
+      ],
+    };
+    await s3.send(
+      new PutBucketPolicyCommand({
+        Bucket: bucket,
+        Policy: JSON.stringify(policy),
+      }),
+    );
   }
 }
 

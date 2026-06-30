@@ -77,10 +77,15 @@ export const db = createDatabase({
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   OPENROUTER_BASE_URL:
     process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-  DEFAULT_LLM_MODEL:
-    process.env.DEFAULT_LLM_MODEL ?? "anthropic/claude-3.5-sonnet",
-  VISION_LLM_MODEL: process.env.VISION_LLM_MODEL ?? "openai/gpt-4o",
-  CHEAP_LLM_MODEL: process.env.CHEAP_LLM_MODEL ?? "google/gemini-flash-1.5",
+  OLLAMA_API_KEY: process.env.OLLAMA_API_KEY,
+  OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+  DEFAULT_LLM_MODEL: process.env.DEFAULT_LLM_MODEL ?? "qwen3.5:397b-cloud",
+  VISION_LLM_MODEL: process.env.VISION_LLM_MODEL ?? "gemma4:31b-cloud",
+  CHEAP_LLM_MODEL: process.env.CHEAP_LLM_MODEL ?? "qwen3.6:35b-a3b-nvfp4",
+  CODE_LLM_MODEL: process.env.CODE_LLM_MODEL ?? "kimi-k2.7-code:cloud",
+  LONG_CONTEXT_LLM_MODEL:
+    process.env.LONG_CONTEXT_LLM_MODEL ?? "qwen3.5:397b-cloud",
+  REASONING_LLM_MODEL: process.env.REASONING_LLM_MODEL ?? "qwen3.5:397b-cloud",
 } as Config);
 
 export const migrator = createMigrator(db);

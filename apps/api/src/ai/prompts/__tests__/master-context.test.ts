@@ -50,11 +50,11 @@ describe("assembleMasterContext", () => {
       makeDoc("site-memory", "Site memory", "Source: example.com"),
       makeDoc("brand-guidelines", "Brand guidelines", "Accent: #ff4d00"),
       makeDoc("business-info", "Business info", "Phone: 555-1234"),
-      makeDoc("site-structure", "Site structure", "Nav: Classes, Coaches"),
+      makeDoc("site-strategy", "Site strategy", "Nav: Classes, Coaches"),
     ];
     const ctx = assembleMasterContext(docs, { job: "seo-report" });
     expect(ctx.includedKeys).toContain("business-info");
-    expect(ctx.includedKeys).toContain("site-structure");
+    expect(ctx.includedKeys).toContain("site-strategy");
     expect(ctx.includedKeys).not.toContain("brand-guidelines");
   });
 
