@@ -3,7 +3,7 @@ import type { DB, AiActivityAction, AiActivityOutcome } from "../types/db";
 import { logAiActivity } from "../services/ai-activity";
 import { getLlmPricing, calculateLlmCost, estimateLlmCostFromTotal } from "../services/llm-pricing";
 import { chatCompletion, sanitizeRawResponse, type ChatMessage, type ChatResponse } from "./llm-client";
-import { modelForAgent, type LlmTask } from "./model-picker";
+import { modelForAgent, modelForTask, type LlmTask } from "./model-picker";
 import type { Config } from "../plugins/env";
 
 export interface LlmCallContext {

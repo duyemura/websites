@@ -612,7 +612,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           ])
           .where("workspaceUuid", "=", workspaceUuid)
           .where("siteUuid", "=", site.uuid)
-          .where("createdAt", ">=", sql`now() - interval '5 minutes'`)
+          .where("createdAt", ">=", new Date(Date.now() - 5 * 60 * 1000))
           .executeTakeFirst();
 
         await logAiActivity(fastify.db, {

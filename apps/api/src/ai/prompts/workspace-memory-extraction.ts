@@ -7,6 +7,7 @@ import { IcpProfileSchema } from "@ploy-gyms/shared-types";
 import { callLlmAndLog } from "../llm-with-logging";
 import type { Config } from "../../plugins/env";
 import type { ScrapedWebsiteData } from "../../utils/scrape-docs";
+import type { DB } from "../../types/db";
 
 const PROMPT_PATH = path.resolve(__dirname, "./templates/workspace-memory-extraction.md");
 const ICP_STANDARD_PATH = path.resolve(__dirname, "./templates/icp-standard.md");
