@@ -1,5 +1,12 @@
 import type { ScrapedBrandInput, ScrapedColor, ScrapedDesignToken } from "@ploy-gyms/shared-types";
 
+const SWATCH_STYLE =
+  "display:inline-block;width:15px;height:15px;border-radius:2px;margin-right:4px;vertical-align:middle;";
+
+function colorSwatch(hex: string): string {
+  return `<span style="${SWATCH_STYLE}background-color:${hex};"></span>`;
+}
+
 function colorRoleName(role: ScrapedColor["role"]): string {
   const names: Record<ScrapedColor["role"], string> = {
     background: "Background",
@@ -14,17 +21,14 @@ function colorRoleName(role: ScrapedColor["role"]): string {
   return names[role];
 }
 
-function renderColorTable(colors: ScrapedBrandInput["colors"]): string {
+function renderColorList(colors: ScrapedBrandInput["colors"]): string {
   if (colors.length === 0) return "- No dominant colors detected.";
-  const rows = colors
+  return colors
     .map(
       (c) =>
-        `| ${colorRoleName(c.role)} | \`${c.token}\` | ${c.hex} | ${c.usage ?? ""} |`,
+        `- ${colorSwatch(c.hex)}**${colorRoleName(c.role)}** — \`${c.token}\` ${c.hex}${c.usage ? ` — ${c.usage}` : ""}`,
     )
     .join("\n");
-  return `| Role | Token | Hex | Usage |
-| --- | --- | --- | --- |
-${rows}`;
 }
 
 function renderColorStrategy(input: ScrapedBrandInput): string {
@@ -34,7 +38,7 @@ function renderColorStrategy(input: ScrapedBrandInput): string {
   for (const rule of input.contextRules ?? []) lines.push(`- **Context Rule**: ${rule}`);
   if (input.darkModeBehavior) lines.push(`- **Dark Mode Behavior**: ${input.darkModeBehavior}`);
   if (lines.length === 0) {
-    lines.push("- No detailed color strategy captured; derive from the color table above.");
+    lines.push("- No detailed color strategy captured; derive from the captured palette.");
   }
   return lines.join("\n");
 }
@@ -258,9 +262,13 @@ ${input.description ? `- **Description**: ${input.description}` : ""}
 
 ## Color System
 
-${renderColorStrategy(input)}
+### Captured palette
 
-${renderColorTable(input.colors)}
+${renderColorList(input.colors)}
+
+### Strategy
+
+${renderColorStrategy(input)}
 
 ## Typography
 

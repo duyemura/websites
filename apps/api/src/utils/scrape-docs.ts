@@ -132,7 +132,7 @@ function buildColorStrategy(colors: ScrapedColor[]): string {
   if (accent) {
     parts.push(`${accent.token} (${accent.hex}) is reserved for high-priority calls to action and interactive emphasis.`);
   }
-  return parts.join(" ") || "Color strategy inferred from the palette below.";
+  return parts.join(" ") || "Color strategy inferred from the captured palette.";
 }
 
 function buildPairingRules(colors: ScrapedColor[]): string[] {

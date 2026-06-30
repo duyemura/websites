@@ -22,6 +22,7 @@ const baseScrape: ScrapedWebsiteData = {
     { label: "Coaches", href: "/coaches" },
   ],
   colors: [
+    { token: "bg", hex: "#FFFFFF", role: "background", usage: "background" },
     { token: "primary", hex: "#111111", role: "text", usage: "headings" },
     { token: "accent", hex: "#ff4d00", role: "accent", usage: "CTAs" },
   ],
@@ -80,8 +81,15 @@ describe("generateBrandGuidelines", () => {
     const markdown = generateBrandGuidelines(input);
     expect(markdown).toContain("# Beta Gym Brand Guidelines");
     expect(markdown).toContain("**Industry**: fitness / gym");
-    expect(markdown).toContain("| Primary text | `primary` | #111111 | headings |");
-    expect(markdown).toContain("| Accent | `accent` | #ff4d00 | CTAs |");
+    expect(markdown).toContain("### Captured palette");
+    expect(markdown).toContain("### Strategy");
+    expect(markdown).toMatch(/\*\*Background\*\* — `bg` #FFFFFF/);
+    expect(markdown).toMatch(/\*\*Primary text\*\* — `primary` #111111 — headings/);
+    expect(markdown).toMatch(/\*\*Accent\*\* — `accent` #ff4d00 — CTAs/);
+    expect(markdown).toMatch(/background-color:#111111/);
+    expect(markdown).toMatch(/background-color:#ff4d00/);
+    expect(markdown).toMatch(/background-color:#FFFFFF/);
+    expect(markdown).not.toContain("| Role | Token | Hex | Usage |");
     expect(markdown).toContain("**Tagline**: Stronger together.");
     expect(markdown).toContain("![Asset ID: Original Website Screenshot](https://example-gym.com/screenshot.png)");
     expect(markdown).toContain("**Color Strategy**");
