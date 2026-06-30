@@ -176,6 +176,9 @@ describe("buildSiteBlueprint", () => {
         { label: "External", href: "https://external.com" },
         { label: "Anchor", href: "#features" },
         { label: "Home", href: "/" },
+        { label: "Email", href: "mailto:hi@example.com" },
+        { label: "Call", href: "tel:+15551234" },
+        { label: "Protocol", href: "//cdn.example.com/page" },
         { label: "Classes", href: "/classes" },
       ],
     });
@@ -185,6 +188,9 @@ describe("buildSiteBlueprint", () => {
     expect(slugs).not.toContain("external");
     expect(slugs).not.toContain("anchor");
     expect(slugs).not.toContain("home");
+    expect(slugs).not.toContain("email");
+    expect(slugs).not.toContain("call");
+    expect(slugs).not.toContain("protocol");
   });
 
   test("deriveSlug strips query strings from relative paths", () => {

@@ -357,6 +357,10 @@ function inferSecondaryPage(
   };
 }
 
+function isInternalRelativeLink(href: string): boolean {
+  return href.startsWith("/") && !href.startsWith("//");
+}
+
 export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
   const tokens = buildDesignTokens(data);
   const header = makeHeaderSection(data);
@@ -365,12 +369,7 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
   const homePage = buildHomePage(data);
 
   const secondaryPages = data.navLinks
-    .filter(
-      (link) =>
-        !link.href.startsWith("http") &&
-        !link.href.startsWith("#") &&
-        link.href !== "/",
-    )
+    .filter((link) => isInternalRelativeLink(link.href) && link.href !== "/")
     .map((link) => inferSecondaryPage(link, data))
     .filter((page): page is TemplateShellPage => page !== null);
 
