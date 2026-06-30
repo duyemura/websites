@@ -3,15 +3,17 @@ import bull from "../bullmq";
 
 export default fp(
   (fastify, _, done) => {
-    const aiGenerate = bull.build("ai-generate");
-    const sitePublish = bull.build("site-publish");
-    const siteReplicate = bull.build("site-replicate");
-    const playbookRun = bull.build("playbook-run");
+    const generatePage = bull.build("generate_page");
+    const generateAssets = bull.build("generate_assets");
+    const replicateSite = bull.build("replicate_site");
+    const sitePublish = bull.build("site_publish");
+    const playbookRun = bull.build("playbook_run");
 
     fastify.decorate("queues", {
-      aiGenerate,
+      generatePage,
+      generateAssets,
+      replicateSite,
       sitePublish,
-      siteReplicate,
       playbookRun,
     });
 
@@ -22,20 +24,43 @@ export default fp(
 
 declare module "../bullmq" {
   export interface QueueConfig {
-    "ai-generate": { data: { workspaceUuid: string; siteUuid?: string }; result: unknown };
-    "site-publish": { data: { siteUuid: string; deploymentUuid: string }; result: unknown };
-    "site-replicate": { data: { workspaceUuid: string; url: string }; result: unknown };
-    "playbook-run": { data: { workspaceUuid: string; playbookUuid: string }; result: unknown };
+    generate_page: {
+      data: {
+        workspaceUuid: string;
+        siteUuid: string;
+        pageSlug: string;
+        aiJobUuid: string;
+        attemptId: string;
+      };
+      result: unknown;
+    };
+    generate_assets: {
+      data: { workspaceUuid: string; siteUuid: string; assetJobUuid?: string };
+      result: unknown;
+    };
+    replicate_site: {
+      data: { workspaceUuid: string; siteUuid: string; url?: string };
+      result: unknown;
+    };
+    site_publish: {
+      data: { siteUuid: string; deploymentUuid: string };
+      result: unknown;
+    };
+    playbook_run: {
+      data: { workspaceUuid: string; playbookUuid: string; aiJobUuid?: string };
+      result: unknown;
+    };
   }
 }
 
 declare module "fastify" {
   interface FastifyInstance {
     queues: {
-      aiGenerate: ReturnType<typeof bull.build<"ai-generate">>;
-      sitePublish: ReturnType<typeof bull.build<"site-publish">>;
-      siteReplicate: ReturnType<typeof bull.build<"site-replicate">>;
-      playbookRun: ReturnType<typeof bull.build<"playbook-run">>;
+      generatePage: ReturnType<typeof bull.build<"generate_page">>;
+      generateAssets: ReturnType<typeof bull.build<"generate_assets">>;
+      replicateSite: ReturnType<typeof bull.build<"replicate_site">>;
+      sitePublish: ReturnType<typeof bull.build<"site_publish">>;
+      playbookRun: ReturnType<typeof bull.build<"playbook_run">>;
     };
   }
 }

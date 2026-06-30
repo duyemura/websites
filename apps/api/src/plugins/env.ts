@@ -34,6 +34,7 @@ const ConfigSchema = z.object({
   S3_ASSETS_BUCKET: z.string(),
   S3_DEPLOYMENTS_BUCKET: z.string().optional(),
   CDN_BASE_URL: z.string(),
+  CDN_DEPLOYMENTS_BASE_URL: z.string().optional(),
   LLM_PROVIDER: z.enum(["openrouter", "ollama"]).default("ollama"),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),

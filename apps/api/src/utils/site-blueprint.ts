@@ -22,6 +22,8 @@ const NEUTRAL_TOKENS: ThemeTokens = {
   radius: "0.5rem",
 };
 
+export type PageBuildStatus = "planned" | "in_progress" | "built" | "approved" | "skipped";
+
 export interface SiteBlueprint {
   site_metadata: {
     framework: "astro";
@@ -38,6 +40,14 @@ export interface SiteBlueprint {
     navLinks: { label: string; href: string }[];
   };
   pages: TemplateShellPage[];
+  build_plan: {
+    /** Slug of the page that should be generated next. */
+    next_page: string;
+    /** Current status for every page in the blueprint. */
+    page_status: Record<string, PageBuildStatus>;
+    /** Order in which pages should be built after the homepage is approved. */
+    build_order: string[];
+  };
 }
 
 function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
@@ -373,6 +383,12 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
     .map((link) => inferSecondaryPage(link, data))
     .filter((page): page is TemplateShellPage => page !== null);
 
+  const pages = [homePage, ...secondaryPages];
+  const pageStatus: Record<string, PageBuildStatus> = {};
+  for (const page of pages) {
+    pageStatus[page.slug] = page.isHomePage ? "in_progress" : "planned";
+  }
+
   return {
     site_metadata: {
       framework: "astro",
@@ -388,6 +404,11 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
       footer,
       navLinks: data.navLinks,
     },
-    pages: [homePage, ...secondaryPages],
+    pages,
+    build_plan: {
+      next_page: "index",
+      page_status: pageStatus,
+      build_order: pages.map((p) => p.slug),
+    },
   };
 }

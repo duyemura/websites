@@ -1,10 +1,20 @@
 import type { ScrapedBrandInput, ScrapedColor, ScrapedDesignToken } from "@ploy-gyms/shared-types";
 
 const SWATCH_STYLE =
-  "display:inline-block;width:15px;height:15px;border-radius:2px;margin-right:4px;vertical-align:middle;";
+  "display:inline-block;width:20px;height:20px;border-radius:3px;border:1px solid rgba(0,0,0,0.15);margin-right:6px;margin-left:0;vertical-align:middle;";
 
-function colorSwatch(hex: string): string {
-  return `<span style="${SWATCH_STYLE}background-color:${hex};"></span>`;
+function colorSwatch(color: string): string {
+  return `<span style="${SWATCH_STYLE}background-color:${color};"></span>`;
+}
+
+const EXISTING_SWATCH_RE =
+  /<span\s+[^>]*?style="[^"]*background-color:[^"]*"[^>]*>[^<]*<\/span>\s*/gi;
+
+const STANDALONE_COLOR_RE = /(?:(?:#|rgb)a?\([^)]*\)|#[0-9A-Fa-f]{3,8})/gi;
+
+function injectColorSwatches(markdown: string): string {
+  const stripped = markdown.replace(EXISTING_SWATCH_RE, "");
+  return stripped.replace(STANDALONE_COLOR_RE, (color) => `${colorSwatch(color)}${color}`);
 }
 
 function colorRoleName(role: ScrapedColor["role"]): string {
@@ -26,7 +36,7 @@ function renderColorList(colors: ScrapedBrandInput["colors"]): string {
   return colors
     .map(
       (c) =>
-        `- ${colorSwatch(c.hex)}**${colorRoleName(c.role)}** — \`${c.token}\` ${c.hex}${c.usage ? ` — ${c.usage}` : ""}`,
+        `- **${colorRoleName(c.role)}** — \`${c.token}\` ${c.hex}${c.usage ? ` — ${c.usage}` : ""}`,
     )
     .join("\n");
 }
@@ -250,7 +260,7 @@ function renderApplicationExamples(
 }
 
 export function generateBrandGuidelines(input: ScrapedBrandInput): string {
-  return `# ${input.businessName} Brand Guidelines
+  const markdown = `# ${input.businessName} Brand Guidelines
 
 ## Brand Overview
 
@@ -294,6 +304,7 @@ ${renderLayoutRules(input.layoutRules, input.designTokens)}
 
 ${renderApplicationExamples(input.applicationExamples ?? [], input.componentPatterns, input.screenshotUrls)}
 `;
+  return injectColorSwatches(markdown);
 }
 
 export const BRAND_GUIDELINES_DOC_KEY = "brand-guidelines";

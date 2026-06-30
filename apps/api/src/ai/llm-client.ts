@@ -1,8 +1,12 @@
 import type { Config } from "../plugins/env";
 
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 export interface ChatOptions {
@@ -173,7 +177,7 @@ export async function chatCompletion(
       },
       body: JSON.stringify({
         model: options.model,
-        messages: options.messages,
+        messages: await buildOllamaMessages(options.messages),
         stream: false,
         options: {
           temperature: options.temperature ?? 0.7,
@@ -194,7 +198,7 @@ export async function chatCompletion(
       },
       body: JSON.stringify({
         model: options.model,
-        messages: options.messages,
+        messages: buildOpenRouterMessages(options.messages),
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens,
         ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
@@ -208,4 +212,48 @@ export async function chatCompletion(
     ...response,
     latencyMs: Math.round(performance.now() - start),
   };
+}
+
+async function buildOllamaMessages(
+  messages: ChatMessage[],
+): Promise<Array<{ role: string; content: string; images?: string[] }>> {
+  return Promise.all(
+    messages.map(async (msg) => {
+      if (typeof msg.content === "string") {
+        return { role: msg.role, content: msg.content };
+      }
+      let content = "";
+      const images: string[] = [];
+      for (const part of msg.content) {
+        if (part.type === "text") {
+          content += part.text;
+        } else if (part.type === "image_url") {
+          const base64 = await urlToBase64(part.image_url.url);
+          if (base64) images.push(base64);
+        }
+      }
+      return { role: msg.role, content, ...(images.length ? { images } : {}) };
+    }),
+  );
+}
+
+function buildOpenRouterMessages(
+  messages: ChatMessage[],
+): Array<{ role: string; content: string | ChatContentPart[] }> {
+  return messages.map((msg) => ({ role: msg.role, content: msg.content }));
+}
+
+async function urlToBase64(url: string): Promise<string | null> {
+  if (url.startsWith("data:")) {
+    const comma = url.indexOf(",");
+    return comma === -1 ? null : url.slice(comma + 1);
+  }
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer.toString("base64");
+  } catch {
+    return null;
+  }
 }

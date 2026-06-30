@@ -83,9 +83,9 @@ describe("generateBrandGuidelines", () => {
     expect(markdown).toContain("**Industry**: fitness / gym");
     expect(markdown).toContain("### Captured palette");
     expect(markdown).toContain("### Strategy");
-    expect(markdown).toMatch(/\*\*Background\*\* — `bg` #FFFFFF/);
-    expect(markdown).toMatch(/\*\*Primary text\*\* — `primary` #111111 — headings/);
-    expect(markdown).toMatch(/\*\*Accent\*\* — `accent` #ff4d00 — CTAs/);
+    expect(markdown).toMatch(/\*\*Background\*\* — `bg` <span[^>]*background-color:#FFFFFF[^>]*><\/span>#FFFFFF/);
+    expect(markdown).toMatch(/\*\*Primary text\*\* — `primary` <span[^>]*background-color:#111111[^>]*><\/span>#111111 — headings/);
+    expect(markdown).toMatch(/\*\*Accent\*\* — `accent` <span[^>]*background-color:#ff4d00[^>]*><\/span>#ff4d00 — CTAs/);
     expect(markdown).toMatch(/background-color:#111111/);
     expect(markdown).toMatch(/background-color:#ff4d00/);
     expect(markdown).toMatch(/background-color:#FFFFFF/);
@@ -231,7 +231,7 @@ describe("generateSiteDocs", () => {
     expect(plan.content).toContain("## Site structure");
     expect(plan.content).toContain("[Classes](/classes)");
     expect(plan.content).toContain("## Build phases");
-    expect(plan.content).toContain("## Decisions to confirm");
+    expect(plan.content).toContain("## Build plan");
     expect(plan.content).toContain("## Next action");
     expect(plan.content).not.toContain("Train with purpose");
   });

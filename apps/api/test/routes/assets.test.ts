@@ -86,6 +86,7 @@ describe("asset routes", () => {
       payload: {
         name: "test.png",
         type: "image",
+        source: "upload",
         mimeType: "image/png",
         url: "https://cdn.test/test.png",
         storageKey: `workspaces/${workspaceUuid}/assets/123-test.png`,
@@ -96,6 +97,7 @@ describe("asset routes", () => {
     const body = response.json();
     expect(body.name).toBe("test.png");
     expect(body.type).toBe("image");
+    expect(body.source).toBe("upload");
     expect(body.workspaceUuid).toBeDefined();
 
     await app.close();
@@ -103,6 +105,7 @@ describe("asset routes", () => {
 
   test("POST /assets rejects a storage key outside the workspace", async () => {
     const app = await build();
+    await getTestWorkspaceUuid();
 
     const response = await app.inject({
       method: "POST",
@@ -134,6 +137,7 @@ describe("asset routes", () => {
       payload: {
         name: "a.png",
         type: "image",
+        source: "upload",
         url: "https://cdn.test/a.png",
         storageKey: `workspaces/${workspaceUuid}/assets/a`,
       },
@@ -151,6 +155,50 @@ describe("asset routes", () => {
     await app.close();
   });
 
+  test("GET /assets excludes screenshot source assets", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "visible.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/visible.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/visible`,
+      },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "hidden.png",
+        type: "image",
+        source: "screenshot",
+        url: "https://cdn.test/hidden.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/hidden`,
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/assets",
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].name).toBe("visible.png");
+
+    await app.close();
+  });
+
   test("PUT /assets/:uuid updates an asset", async () => {
     const app = await build();
     const workspaceUuid = await getTestWorkspaceUuid();
@@ -162,6 +210,7 @@ describe("asset routes", () => {
       payload: {
         name: "old.png",
         type: "image",
+        source: "upload",
         url: "https://cdn.test/old.png",
         storageKey: `workspaces/${workspaceUuid}/assets/old`,
       },
@@ -194,6 +243,7 @@ describe("asset routes", () => {
       payload: {
         name: "delete.png",
         type: "image",
+        source: "upload",
         url: "https://cdn.test/delete.png",
         storageKey: `workspaces/${workspaceUuid}/assets/delete.png`,
       },
@@ -232,6 +282,7 @@ describe("asset routes", () => {
       payload: {
         name: "raw.png",
         type: "image",
+        source: "upload",
         url: "https://cdn.test/raw.png",
         storageKey: `workspaces/${workspaceUuid}/assets/raw.png`,
       },

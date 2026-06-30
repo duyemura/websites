@@ -13,6 +13,8 @@ export type AiJobStatus = "cancelled" | "completed" | "failed" | "pending" | "ru
 
 export type AiJobType = "generate_assets" | "generate_page" | "replicate_site" | "run_playbook";
 
+export type AssetSource = "ai_generated" | "scraped" | "screenshot" | "upload";
+
 export type AssetType = "document" | "font" | "icon" | "image" | "logo" | "video";
 
 export type DeploymentStatus = "building" | "failed" | "pending" | "success";
@@ -42,6 +44,8 @@ export type MembershipRole = "admin" | "member" | "owner";
 export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type PageStatus = "archived" | "draft" | "published";
+
+export type SiteMode = "greenfield" | "replication" | "template";
 
 export type SiteStatus = "archived" | "draft" | "published";
 
@@ -78,10 +82,13 @@ export interface AiActivity {
 export interface AiJobs {
   createdAt: Generated<Timestamp>;
   input: Json | null;
+  options: Json | null;
   output: Json | null;
   playbookUuid: string | null;
   siteUuid: string | null;
+  state: Json | null;
   status: Generated<AiJobStatus>;
+  steps: Json | null;
   type: AiJobType;
   updatedAt: Generated<Timestamp>;
   uuid: Generated<string>;
@@ -93,6 +100,7 @@ export interface Assets {
   metadata: Json | null;
   mimeType: string | null;
   name: string;
+  source: Generated<AssetSource>;
   storageKey: string;
   type: AssetType;
   url: string;
@@ -105,6 +113,7 @@ export interface Deployments {
   buildId: string;
   createdAt: Generated<Timestamp>;
   metadata: Json | null;
+  previewUrl: string | null;
   siteUuid: string;
   status: Generated<DeploymentStatus>;
   updatedAt: Generated<Timestamp>;
@@ -200,6 +209,7 @@ export interface Sites {
   defaultMetaTitle: string | null;
   faviconUrl: string | null;
   integrations: Json | null;
+  mode: Generated<SiteMode>;
   name: string;
   ogImageUrl: string | null;
   publishedAt: Timestamp | null;

@@ -5,6 +5,7 @@ import { chromium, type Browser } from "playwright";
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
@@ -14,6 +15,10 @@ import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
 import { logAiActivity } from "../../services/ai-activity";
+import { startSiteBuild, approvePage } from "../../services/site-generation-orchestrator";
+import { downloadScrapedAssets } from "../../utils/scraped-assets";
+
+const SiteModeSchema = z.enum(["replication", "template", "greenfield"]);
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -25,6 +30,7 @@ const SiteSchema = z.object({
   defaultMetaTitle: z.string().nullable().optional(),
   defaultMetaDescription: z.string().nullable().optional(),
   sourceUrl: z.string().nullable().optional(),
+  mode: SiteModeSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -449,6 +455,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           captureHtml: false,
         });
 
+        const newSiteUuid = crypto.randomUUID();
+
         let screenshotAsset: {
           uuid: string;
           url: string;
@@ -463,11 +471,14 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             accessKeyId: fastify.config.S3_ACCESS_KEY,
             secretAccessKey: fastify.config.S3_SECRET_KEY,
           });
+          const siteUuid = match?.uuid ?? newSiteUuid;
           const storageKey = path.posix.join(
             "workspaces",
             workspaceUuid,
-            "assets",
-            `scrape-${Date.now()}-screenshot.png`,
+            "sites",
+            siteUuid,
+            "screenshots",
+            `scrape-${Date.now()}.png`,
           );
           await s3.send(
             new PutObjectCommand({
@@ -487,6 +498,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               workspaceUuid,
               name: `${deriveSiteName(url, name)} screenshot`,
               type: "image",
+              source: "screenshot",
               mimeType: "image/png",
               url: publicUrl,
               storageKey,
@@ -508,6 +520,25 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         } catch {
           // Screenshot upload is best-effort; continue without it.
           data.screenshotUrls = [];
+        }
+
+        try {
+          const assetMap = await downloadScrapedAssets(
+            fastify.db,
+            fastify.config,
+            workspaceUuid,
+            match?.uuid ?? newSiteUuid,
+            data.images,
+          );
+          for (const image of data.images) {
+            const local = assetMap.byOriginalUrl.get(image.url);
+            if (local) {
+              image.url = local.url;
+              image.assetUuid = local.assetUuid;
+            }
+          }
+        } catch {
+          // Asset download is best-effort; continue with original third-party URLs.
         }
 
         const gmbApiKey = fastify.config.GOOGLE_PLACES_API_KEY;
@@ -578,6 +609,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
                 slug: uniqueSlug,
                 status: "draft",
                 sourceUrl: normalized,
+                mode: "replication",
                 defaultMetaTitle: data.title,
                 defaultMetaDescription: data.description,
                 updatedAt: new Date(),
@@ -588,10 +620,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           : await fastify.db
               .insertInto("sites")
               .values({
+                uuid: newSiteUuid,
                 workspaceUuid,
                 name: siteName,
                 slug: uniqueSlug,
                 status: "draft",
+                mode: "replication",
                 themeUuid: null,
                 sourceUrl: normalized,
                 defaultMetaTitle: data.title,
@@ -601,6 +635,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               .executeTakeFirstOrThrow();
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
+
+        await fastify.queues.replicateSite.queue.add("replicate_site", {
+          workspaceUuid,
+          siteUuid: site.uuid,
+          url,
+        });
 
         const childActivities = await fastify.db
           .selectFrom("aiActivity")
@@ -665,6 +705,179 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       } finally {
         await browser?.close();
       }
+    },
+  );
+
+  fastify.post(
+    "/sites/:uuid/generate",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        body: z.object({
+          accuracy: z.enum(["fast", "balanced", "accurate"]).optional(),
+          maxQaIterations: z.number().int().min(1).optional(),
+          maxBudgetUsd: z.number().min(0).optional(),
+          fidelityThreshold: z.number().min(0).max(1).optional(),
+          mode: SiteModeSchema.optional(),
+        }),
+        response: {
+          200: z.object({ aiJobUuid: z.string(), attemptId: z.string(), status: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const result = await startSiteBuild({
+        db: fastify.db,
+        queues: fastify.queues,
+        config: fastify.config,
+        workspaceUuid,
+        siteUuid,
+        requestedMode: request.body.mode,
+        accuracy: request.body.accuracy,
+        maxQaIterations: request.body.maxQaIterations,
+        maxBudgetUsd: request.body.maxBudgetUsd,
+        fidelityThreshold: request.body.fidelityThreshold,
+        userUuid: request.user.uuid,
+      });
+
+      return result;
+    },
+  );
+
+  fastify.post(
+    "/sites/:uuid/pages/:slug/approve",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid(), slug: z.string().min(1) }),
+        response: {
+          200: z.object({ approved: z.string(), remainingPagesEnqueued: z.array(z.string()) }),
+          404: z.object({ error: z.string() }),
+          409: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+      const pageSlug = request.params.slug;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      try {
+        const result = await approvePage({
+          db: fastify.db,
+          queues: fastify.queues,
+          workspaceUuid,
+          siteUuid,
+          pageSlug,
+          userUuid: request.user.uuid,
+        });
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Approval failed";
+        return reply.code(409).send({ error: message });
+      }
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/preview/:attemptId",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
+        response: {
+          302: z.any(),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const deployment = await fastify.db
+        .selectFrom("deployments")
+        .select("previewUrl")
+        .where("siteUuid", "=", request.params.uuid)
+        .where("buildId", "=", request.params.attemptId)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+
+      if (!deployment?.previewUrl) {
+        return reply.code(404).send({ error: "Preview not found" });
+      }
+
+      return reply.redirect(deployment.previewUrl);
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/deployments",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: z.array(
+            z.object({
+              uuid: z.string(),
+              buildId: z.string(),
+              status: z.string(),
+              previewUrl: z.string().nullable().optional(),
+              artifactUrl: z.string().nullable().optional(),
+              metadata: z.any().nullable().optional(),
+              createdAt: z.string(),
+              updatedAt: z.string(),
+            }),
+          ),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const deployments = await fastify.db
+        .selectFrom("deployments")
+        .selectAll()
+        .where("siteUuid", "=", siteUuid)
+        .orderBy("createdAt", "desc")
+        .execute();
+
+      return deployments.map((d) => ({
+        ...d,
+        createdAt: d.createdAt.toISOString(),
+        updatedAt: d.updatedAt.toISOString(),
+      }));
     },
   );
 

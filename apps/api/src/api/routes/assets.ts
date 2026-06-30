@@ -2,6 +2,7 @@ import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 
 const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
+const AssetSource = z.enum(["upload", "scraped", "screenshot", "ai_generated"]);
 
 const AssetMetadataSchema = z.object({
   filename: z.string().optional(),
@@ -21,6 +22,7 @@ const AssetSchema = z.object({
   workspaceUuid: z.string(),
   name: z.string(),
   type: AssetType,
+  source: AssetSource,
   mimeType: z.string().nullable().optional(),
   url: z.string(),
   signedUrl: z.string(),
@@ -32,6 +34,7 @@ const AssetSchema = z.object({
 const CreateAssetSchema = z.object({
   name: z.string().min(1),
   type: AssetType,
+  source: AssetSource.default("upload"),
   mimeType: z.string().optional(),
   url: z.string().url(),
   storageKey: z.string().min(1),
@@ -57,6 +60,7 @@ function serializeAsset(
     workspaceUuid: string;
     name: string;
     type: string;
+    source: string;
     mimeType: string | null;
     url: string;
     storageKey: string;
@@ -70,6 +74,7 @@ function serializeAsset(
     workspaceUuid: asset.workspaceUuid,
     name: asset.name,
     type: AssetType.parse(asset.type),
+    source: AssetSource.parse(asset.source),
     mimeType: asset.mimeType,
     url: asset.url,
     signedUrl,
@@ -94,6 +99,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .selectFrom("assets")
         .selectAll()
         .where("workspaceUuid", "=", request.workspace.uuid)
+        .where("source", "!=", "screenshot")
         .orderBy("createdAt", "desc")
         .execute();
 

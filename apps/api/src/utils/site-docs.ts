@@ -11,6 +11,10 @@ import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-doc
 import { buildSiteBlueprint } from "./site-blueprint";
 import type { Config } from "../plugins/env";
 import {
+  extractBusinessInfoFields,
+  type BusinessInfoExtractionResult,
+} from "../ai/prompts/business-info-extraction";
+import {
   generateSiteMemory,
   generateWorkspaceMemory,
   renderSiteMemory,
@@ -34,6 +38,10 @@ export interface DocGenerationContext {
   gmb?: GmbListing;
 }
 
+interface BusinessInfoDocContext extends DocGenerationContext {
+  extracted?: BusinessInfoExtractionResult | null;
+}
+
 function validateGeneratedDocs(docs: GeneratedSiteDoc[]): void {
   for (const doc of docs) {
     assertAllowedDocKey(doc.key);
@@ -51,7 +59,122 @@ function formatGmbHours(hours: { day: string; open?: string; close?: string; isC
     .join("\n");
 }
 
-function makeBusinessInfoDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
+function renderExtractedBusinessInfo(extracted: BusinessInfoExtractionResult): string {
+  const lines: string[] = [`# ${extracted.businessName}`, ""];
+
+  if (extracted.tagline) {
+    lines.push(`**Tagline**: ${extracted.tagline}`, "");
+  }
+
+  lines.push(`**Summary**: ${extracted.oneLineSummary}`, "");
+
+  lines.push(
+    "## Classification",
+    "",
+    `- **Industry / niche**: ${extracted.classification.industryNiche}`,
+    `- **Service model**: ${extracted.classification.serviceModel}`,
+    `- **Primary audience**: ${extracted.classification.primaryAudience}`,
+    "",
+  );
+
+  const contact = extracted.contact;
+  const hasContact =
+    contact.phone || contact.email || contact.website || contact.googleMapsUrl || contact.socials.length > 0;
+  if (hasContact) {
+    lines.push("## Contact", "");
+    if (contact.phone) lines.push(`- **Phone**: ${contact.phone}`);
+    if (contact.email) lines.push(`- **Email**: ${contact.email}`);
+    if (contact.website) lines.push(`- **Website**: ${contact.website}`);
+    if (contact.googleMapsUrl) lines.push(`- **Google Maps**: ${contact.googleMapsUrl}`);
+    for (const social of contact.socials) {
+      lines.push(`- **${social.platform}**: ${social.url}`);
+    }
+    lines.push("");
+  }
+
+  if (extracted.location) {
+    lines.push("## Location", "", `- **Address**: ${extracted.location.address}`, "");
+    if (extracted.location.hours.length > 0) {
+      lines.push("**Hours**", "");
+      for (const h of extracted.location.hours) {
+        lines.push(`- ${h.day}: ${h.hours}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (extracted.offerings.length > 0) {
+    lines.push("## Offerings", "");
+    for (const o of extracted.offerings) {
+      const parts = [o.description, o.intendedFor ? `For: ${o.intendedFor}` : "", o.priceFrequency].filter(Boolean);
+      lines.push(`- **${o.name}**${parts.length > 0 ? ` — ${parts.join(" | ")}` : ""}`);
+    }
+    lines.push("");
+  }
+
+  if (extracted.trustSignals) {
+    const ts = extracted.trustSignals;
+    const hasSignals =
+      ts.gmbRating != null || ts.reviewCount != null || ts.teamCredentials.length > 0;
+    if (hasSignals) {
+      lines.push("## Trust signals", "");
+      if (ts.gmbRating != null && ts.reviewCount != null) {
+        lines.push(`- **Google rating**: ${ts.gmbRating} / 5 (${ts.reviewCount} reviews)`);
+      } else if (ts.gmbRating != null) {
+        lines.push(`- **Google rating**: ${ts.gmbRating} / 5`);
+      }
+      for (const credential of ts.teamCredentials) {
+        lines.push(`- ${credential}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (extracted.testimonials.length > 0) {
+    lines.push("## Testimonials", "");
+    const grouped: Record<string, { quote: string; author?: string }[]> = {};
+    for (const t of extracted.testimonials) {
+      const theme = t.theme || "other";
+      (grouped[theme] ??= []).push({ quote: t.quote, author: t.author ?? undefined });
+    }
+    for (const [theme, items] of Object.entries(grouped)) {
+      lines.push(`### ${theme.charAt(0).toUpperCase() + theme.slice(1)}`, "");
+      for (const item of items) {
+        lines.push(`> "${item.quote}"${item.author ? ` — ${item.author}` : ""}`, "");
+      }
+    }
+  }
+
+  if (extracted.faqs.length > 0) {
+    lines.push("## FAQs", "");
+    for (const f of extracted.faqs) {
+      lines.push(`### ${f.question}`, "", f.answer, "");
+    }
+  }
+
+  lines.push(
+    "## Conversion signals",
+    "",
+    `- **Primary CTA**: ${extracted.conversionSignals.primaryCta}`,
+    extracted.conversionSignals.offer ? `- **Offer**: ${extracted.conversionSignals.offer}` : "",
+    extracted.conversionSignals.signupMethod ? `- **How to sign up**: ${extracted.conversionSignals.signupMethod}` : "",
+    "",
+  );
+
+  if (extracted.messagingThemes.length > 0) {
+    lines.push("## Messaging themes", "");
+    for (const theme of extracted.messagingThemes) {
+      lines.push(`- ${theme}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Competitive angle", "", `- ${extracted.competitiveAngle}`, "");
+
+  return lines.filter(Boolean).join("\n");
+}
+
+function makeFallbackBusinessInfoDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
   const { scraped, gmb } = ctx;
   const businessName = gmb?.name ?? scraped.businessName ?? scraped.title;
 
@@ -187,6 +310,22 @@ function makeBusinessInfoDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
   };
 }
 
+async function makeBusinessInfoDoc(
+  ctx: BusinessInfoDocContext,
+  config?: Config,
+  memoryCtx?: WorkspaceMemoryContext,
+): Promise<GeneratedSiteDoc> {
+  if (config && memoryCtx && ctx.extracted) {
+    return {
+      key: "business-info",
+      title: "Business info",
+      content: renderExtractedBusinessInfo(ctx.extracted),
+      source: "ai_extracted",
+    };
+  }
+  return makeFallbackBusinessInfoDoc(ctx);
+}
+
 function makeSiteStrategyDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
   const { scraped, gmb } = ctx;
   const businessName = gmb?.name ?? scraped.businessName ?? scraped.title;
@@ -226,33 +365,34 @@ ${sourceFacts.length > 0 ? sourceFacts.map((f) => `- ${f}`).join("\n") : "- No v
 
 ${navLines}
 
-### Pages to build
+### Pages discovered
 
-- **Homepage** — gate page. Must include hero, social proof, and primary CTA.
-- **About / Coaches** — optional if team data is strong.
-- **Services / Classes** — optional if offerings are complex.
-- **Contact / Location** — optional if location or contact is unique.
+The blueprint captures the full site structure from the scan so it can be built incrementally. The homepage is always the first build; other pages stay planned until the homepage is approved.
+
+- **Homepage** — gate page. Build first. Must include hero, social proof, and primary CTA.
+- **About / Coaches** — build if team data is strong.
+- **Services / Classes** — build if offerings are complex.
+- **Contact / Location** — build if location or contact is unique.
 
 Build only what the source site and business info justify. Prefer fewer, stronger pages over empty placeholders.
 
 ## Build phases
 
-1. **Discovery** (done) — GMB listing resolved and website scraped.
-2. **Blueprint** — emit a JSON site blueprint with design tokens, pages, and sections.
-3. **Assets** — resolve/download/generate all images, fonts, and icons.
-4. **Code** — generate Astro + Tailwind source from the blueprint.
-5. **Build/QA** — run \`astro build\` and automated checks.
-6. **Review/Publish** — human review gate and publish.
+1. **Discovery** (done) — GMB listing resolved and full website scraped; all pages and assets catalogued.
+2. **Blueprint** — emit a JSON site blueprint with design tokens, global shell, all planned pages, and a build plan.
+3. **Build homepage** — generate Astro + Tailwind source for the homepage only.
+4. **Review homepage** — human approval gate before additional pages.
+5. **Build remaining pages** — use the blueprint's \`build_plan\` to generate each planned page in order.
+6. **Assets / QA** — resolve remaining images, run \`astro build\`, and automated checks.
+7. **Publish** — deploy the full site.
 
-## Decisions to confirm
+## Build plan
 
-- Which pages to build first (homepage is the gate).
-- Whether to reuse scraped images or generate replacements.
-- Any business details that need correction.
+The blueprint JSON includes \`build_plan.next_page\` (slug to build next) and \`build_plan.page_status\` for every discovered page. On first scan, \`index\` is \`in_progress\` and every other page is \`planned\`.
 
 ## Next action
 
-Generate the homepage blueprint from the docs in this workspace and the screenshot asset.
+Generate the homepage from the blueprint draft, workspace memory, business info, brand guidelines, and screenshot asset.
 `,
     source: "ai_extracted",
   };
@@ -288,6 +428,18 @@ export async function generateSiteDocs(
   const workspaceMemory = await generateWorkspaceMemory(data, gmb, config, memoryCtx);
   const siteMemory = generateSiteMemory(data);
 
+  let extracted: BusinessInfoExtractionResult | null = null;
+  if (config && memoryCtx) {
+    extracted = await extractBusinessInfoFields(data, gmb, config, {
+      db: memoryCtx.db,
+      workspaceUuid: memoryCtx.workspaceUuid,
+      userUuid: memoryCtx.userUuid,
+      siteUuid: memoryCtx.siteUuid,
+    });
+  }
+
+  const businessInfoCtx: BusinessInfoDocContext = { ...ctx, extracted };
+
   const docs: GeneratedSiteDoc[] = [
     {
       key: WORKSPACE_MEMORY_DOC_KEY,
@@ -307,7 +459,7 @@ export async function generateSiteDocs(
       content: generateBrandGuidelines(brandInput),
       source: "ai_extracted",
     },
-    makeBusinessInfoDoc(ctx),
+    await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
     makeSiteStrategyDoc(ctx),
     makeBlueprintDraftDoc(ctx),
   ];
