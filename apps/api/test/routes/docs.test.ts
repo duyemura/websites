@@ -202,4 +202,86 @@ describe("docs routes", () => {
 
     await app.close();
   });
+
+  test("GET /docs/:key distinguishes workspace and site-scoped docs by siteUuid", async () => {
+    const app = await build();
+
+    // Create a site to scope a doc to.
+    const site = await app.inject({
+      method: "POST",
+      url: "/api/sites",
+      headers: authHeaders(),
+      payload: { name: "Test Site", slug: "test-site" },
+    });
+    const siteUuid = site.json().uuid;
+
+    // Workspace-level business-info doc.
+    await app.inject({
+      method: "POST",
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: { title: "Workspace business info", key: "business-info" },
+    });
+
+    // Site-level business-info doc.
+    await app.inject({
+      method: "POST",
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: {
+        title: "Site business info",
+        key: "business-info",
+        siteUuid,
+      },
+    });
+
+    const workspaceDoc = await app.inject({
+      method: "GET",
+      url: "/api/docs/business-info",
+      headers: authHeaders(),
+    });
+    expect(workspaceDoc.statusCode).toBe(200);
+    expect(workspaceDoc.json().title).toBe("Workspace business info");
+    expect(workspaceDoc.json().siteUuid).toBeNull();
+
+    const siteDoc = await app.inject({
+      method: "GET",
+      url: `/api/docs/business-info?siteUuid=${siteUuid}`,
+      headers: authHeaders(),
+    });
+    expect(siteDoc.statusCode).toBe(200);
+    expect(siteDoc.json().title).toBe("Site business info");
+    expect(siteDoc.json().siteUuid).toBe(siteUuid);
+
+    await app.close();
+  });
+
+  test("POST /docs rejects duplicate keys within the same scope", async () => {
+    const app = await build();
+
+    const site = await app.inject({
+      method: "POST",
+      url: "/api/sites",
+      headers: authHeaders(),
+      payload: { name: "Scoped Site", slug: "scoped-site" },
+    });
+    const siteUuid = site.json().uuid;
+
+    await app.inject({
+      method: "POST",
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: { title: "Site memory", key: "site-memory", siteUuid },
+    });
+
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/docs",
+      headers: authHeaders(),
+      payload: { title: "Site memory 2", key: "site-memory", siteUuid },
+    });
+    expect(duplicate.statusCode).toBe(409);
+
+    await app.close();
+  });
 });

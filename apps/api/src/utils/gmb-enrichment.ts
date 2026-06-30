@@ -1,4 +1,4 @@
-import { getPhotoMediaUrl, getPlaceDetails, searchPlaces, type GmbListing } from "@ploy-gyms/gmb-client";
+import { getPlaceDetails, searchPlaces, type GmbListing } from "@ploy-gyms/gmb-client";
 import type { ScrapedWebsiteData } from "./scrape-docs";
 
 function hostnameFromUrl(url: string): string {
@@ -11,9 +11,9 @@ function hostnameFromUrl(url: string): string {
 
 function domainsMatch(a?: string, b?: string): boolean {
   if (!a || !b) return false;
-  const cleanA = a.replace(/^www\./, "").replace(/\/$/, "").toLowerCase();
-  const cleanB = b.replace(/^www\./, "").replace(/\/$/, "").toLowerCase();
-  return cleanA === cleanB || cleanB.endsWith(cleanA) || cleanA.endsWith(cleanB);
+  const cleanA = hostnameFromUrl(a.startsWith("http") ? a : `https://${a}`);
+  const cleanB = hostnameFromUrl(b.startsWith("http") ? b : `https://${b}`);
+  return cleanA === cleanB && cleanA.length > 0;
 }
 
 function pickBestListing(listings: GmbListing[], targetHostname: string): GmbListing | undefined {
@@ -175,16 +175,10 @@ export async function enrichWithGmb(
     }));
   }
 
-  // GMB photos are a separate, high-quality image source.
-  if (listing.photos.length > 0) {
-    const gmbImages = listing.photos.map((p) => ({
-      url: getPhotoMediaUrl(p.name, apiKey, { maxHeightPx: 1200 }),
-      alt: `${listing.name} photo`,
-      context: "other" as const,
-      promptKeywords: ["gmb", "business exterior", "interior", "team"],
-    }));
-    enriched.images = [...gmbImages, ...enriched.images];
-  }
+  // GMB photos are available on the listing for later server-side curation.
+  // We do NOT materialize key-bearing URLs into persisted scraped data; doing
+  // so would leak the Places API key into docs, blueprints, and rendered sites.
+  // Asset pipeline should fetch them via fetchPhotoMedia() and upload to S3.
 
   return { data: enriched, result: { listing, applied: true } };
 }

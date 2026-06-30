@@ -9,23 +9,28 @@
   "exports": {
     ".": {
       "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./site": {
       "require": "./dist/site.js",
-      "types": "./dist/site.d.ts"
+      "types": "./dist/site.d.ts",
+      "default": "./dist/site.js"
     },
     "./page": {
       "require": "./dist/page.js",
-      "types": "./dist/page.d.ts"
+      "types": "./dist/page.d.ts",
+      "default": "./dist/page.js"
     },
     "./theme": {
       "require": "./dist/theme.js",
-      "types": "./dist/theme.d.ts"
+      "types": "./dist/theme.d.ts",
+      "default": "./dist/theme.js"
     },
     "./docs": {
       "require": "./dist/docs.js",
-      "types": "./dist/docs.d.ts"
+      "types": "./dist/docs.d.ts",
+      "default": "./dist/docs.js"
     }
   },
   "scripts": {

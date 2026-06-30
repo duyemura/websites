@@ -9,6 +9,7 @@ import type {
 import type { ScrapedWebsiteData } from "./scrape-docs";
 import { dedupeFaqs } from "./faqs";
 import { extractSocialProfiles } from "./social-links";
+import { isHttpUrl } from "./http-url";
 
 export interface ScrapeOptions {
   url: string;
@@ -1138,6 +1139,9 @@ function formatBorderWidth(value: string): string {
 
 export async function scrapeWebsite(browser: Browser, options: ScrapeOptions): Promise<ScrapedWebsiteData> {
   const { url, takeScreenshot = true, screenshotPath, captureHtml = false, maxWaitMs = 5000 } = options;
+  if (!isHttpUrl(url)) {
+    throw new Error(`Scrape URL must use http:// or https://, got: ${url}`);
+  }
   const page = await browser.newPage();
   try {
     await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });

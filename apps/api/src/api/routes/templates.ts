@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { buildTemplateShell } from "../../utils/template-shell";
+import { HttpUrlSchema } from "../../utils/http-url";
 
 const TemplateSchema = z.object({
   uuid: z.string(),
@@ -24,7 +25,7 @@ const TemplateSchema = z.object({
 });
 
 const CreateTemplateFromUrlSchema = z.object({
-  url: z.string().url(),
+  url: HttpUrlSchema,
   name: z.string().min(1).optional(),
   category: z.string().optional(),
 });
@@ -157,8 +158,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         });
       } catch (err) {
         fastify.log.error(err);
-        const message = err instanceof Error ? err.message : "Failed to create template from URL";
-        return reply.code(400).send({ error: message });
+        // Schema validation and the explicit duplicate-template check above both
+        // return 400 before this try block. Anything reaching here is an
+        // unexpected runtime failure, so return 500 and avoid leaking internals.
+        return reply.code(500).send({ error: "Failed to create template from URL" });
       } finally {
         await browser?.close();
       }

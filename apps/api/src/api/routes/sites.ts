@@ -10,6 +10,7 @@ import { getS3Client } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
+import { HttpUrlSchema } from "../../utils/http-url";
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -32,7 +33,7 @@ const CreateSiteSchema = z.object({
 });
 
 const ScrapeSiteSchema = z.object({
-  url: z.string().url(),
+  url: HttpUrlSchema,
   name: z.string().optional(),
 });
 
@@ -403,7 +404,6 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
-        const slug = match ? match.slug : baseSlug;
 
         if (match) {
           await fastify.db
@@ -428,21 +428,21 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             .execute();
         }
 
-        let suffix = 1;
-        let uniqueSlug = slug;
-        while (
-          await fastify.db
-            .selectFrom("sites")
-            .select("uuid")
-            .where("workspaceUuid", "=", workspaceUuid)
-            .where("slug", "=", uniqueSlug)
-            .executeTakeFirst()
-        ) {
-          if (match && uniqueSlug === match.slug) {
+        // For rescans, reuse the existing slug. For new sites, find a unique slug.
+        let uniqueSlug = match ? match.slug : baseSlug;
+        if (!match) {
+          let suffix = 1;
+          while (
+            await fastify.db
+              .selectFrom("sites")
+              .select("uuid")
+              .where("workspaceUuid", "=", workspaceUuid)
+              .where("slug", "=", uniqueSlug)
+              .executeTakeFirst()
+          ) {
+            suffix++;
             uniqueSlug = `${baseSlug}-${suffix}`;
           }
-          suffix++;
-          uniqueSlug = `${baseSlug}-${suffix}`;
         }
 
         const site = match

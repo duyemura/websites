@@ -135,10 +135,11 @@ export async function getPlaceDetails(
 ): Promise<GmbListing> {
   const cleanId = placeId.replace(/^places\//, "");
   const result = (await fetchJson(
-    `${PLACES_BASE_URL}/places/${cleanId}?key=${encodeURIComponent(apiKey)}`,
+    `${PLACES_BASE_URL}/places/${cleanId}`,
     {
       method: "GET",
       headers: {
+        "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask": PLACE_DETAILS_FIELDS,
       },
     },
@@ -147,15 +148,36 @@ export async function getPlaceDetails(
   return normalizePlace(result);
 }
 
+/**
+ * Returns the Places photo media endpoint URL **without** an API key.
+ * The key must be supplied in the `X-Goog-Api-Key` header when fetching.
+ * Do not persist URLs that include the API key.
+ */
 export function getPhotoMediaUrl(
+  photoName: string,
+  options: { maxHeightPx?: number; maxWidthPx?: number } = {},
+): string {
+  const params = new URLSearchParams();
+  if (options.maxHeightPx) params.set("maxHeightPx", String(options.maxHeightPx));
+  if (options.maxWidthPx) params.set("maxWidthPx", String(options.maxWidthPx));
+  const query = params.toString();
+  return `${PLACES_BASE_URL}/${photoName}/media${query ? `?${query}` : ""}`;
+}
+
+/**
+ * Fetches a Places photo server-side, sending the API key in a header so it is
+ * never exposed in a persisted URL. Returns the raw Response so the caller can
+ * stream the bytes to S3 or another store.
+ */
+export async function fetchPhotoMedia(
   photoName: string,
   apiKey: string,
   options: { maxHeightPx?: number; maxWidthPx?: number } = {},
-): string {
-  const params = new URLSearchParams({ key: apiKey });
-  if (options.maxHeightPx) params.set("maxHeightPx", String(options.maxHeightPx));
-  if (options.maxWidthPx) params.set("maxWidthPx", String(options.maxWidthPx));
-  return `${PLACES_BASE_URL}/${photoName}/media?${params.toString()}`;
+): Promise<Response> {
+  const url = getPhotoMediaUrl(photoName, options);
+  return fetch(url, {
+    headers: { "X-Goog-Api-Key": apiKey },
+  });
 }
 
 export * from "./types";
