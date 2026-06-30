@@ -110,7 +110,9 @@ export async function extractWorkspaceMemoryFields(
       return null;
     }
     return result.data;
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[workspace-memory-extraction] failed", err);
     return null;
   }
 }
