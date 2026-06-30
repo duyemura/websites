@@ -8,6 +8,7 @@ import {
 import { assertAllowedDocKey } from "./doc-registry";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
+import { buildSiteBlueprint } from "./site-blueprint";
 import {
   generateSiteMemory,
   generateWorkspaceMemory,
@@ -256,27 +257,18 @@ Generate the homepage blueprint from the docs in this workspace and the screensh
 }
 
 function makeBlueprintDraftDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
-  const { scraped } = ctx;
+  const blueprint = buildSiteBlueprint(ctx.scraped);
   return {
     key: "blueprint-draft",
     title: "Blueprint draft",
     content: `# Blueprint draft
 
-This doc will hold the validated JSON blueprint for the site once the generation phase runs.
+This doc holds the initial JSON blueprint derived from the scraped source site.
 
-## Placeholder
+## Site blueprint
 
 \`\`\`json
-{
-  "site_metadata": {
-    "framework": "astro",
-    "mode": "replication",
-    "target_url": "${scraped.url}"
-  },
-  "design_tokens": {},
-  "global_shell": {},
-  "pages": []
-}
+${JSON.stringify(blueprint, null, 2)}
 \`\`\`
 `,
     source: "ai_extracted",

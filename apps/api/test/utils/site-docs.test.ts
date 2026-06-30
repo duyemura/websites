@@ -226,4 +226,17 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("direct");
     expect(brand.content).toContain("inclusive");
   });
+
+  test("blueprint draft doc contains a populated site blueprint, not an empty placeholder", () => {
+    const docs = generateSiteDocs(baseScrape);
+    const blueprint = docs.find((d) => d.key === "blueprint-draft")!;
+    expect(blueprint.content).toContain("## Site blueprint");
+    expect(blueprint.content).toContain('"site_metadata"');
+    expect(blueprint.content).toContain('"target_url": "https://example-gym.com"');
+    expect(blueprint.content).toContain('"pages"');
+    expect(blueprint.content).toContain('"slug": "index"');
+    expect(blueprint.content).toContain('"slug": "classes"');
+    expect(blueprint.content).not.toContain('"design_tokens": {}');
+    expect(blueprint.content).not.toContain('"pages": []');
+  });
 });
