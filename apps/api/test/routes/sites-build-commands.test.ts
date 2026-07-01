@@ -122,6 +122,49 @@ describe("POST /sites/:uuid/build-commands", () => {
     await app.close();
   });
 
+  test("recognizes publish site command", async () => {
+    const app = await build();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      headers: authHeaders(),
+      payload: { name: "Publish Gym", slug: "publish-gym" },
+    });
+
+    const site = await app.inject({
+      method: "POST",
+      url: "/api/sites",
+      headers: { ...authHeaders(), "x-workspace-slug": "publish-gym" },
+      payload: { name: "Publish Site", slug: "home" },
+    });
+    const siteUuid = site.json().uuid;
+
+    await db
+      .insertInto("deployments")
+      .values({
+        siteUuid,
+        buildId: "attempt-publish",
+        status: "success",
+        previewUrl: "https://example.com/preview",
+      })
+      .execute();
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sites/${siteUuid}/build-commands`,
+      headers: { ...authHeaders(), "x-workspace-slug": "publish-gym" },
+      payload: { message: "publish the site" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.action).toBe("publish_page");
+    expect(body.enqueued).toBe(true);
+
+    await app.close();
+  });
+
   test("unknown command returns helpful reply", async () => {
     const app = await build();
 
