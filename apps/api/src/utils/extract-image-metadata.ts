@@ -62,9 +62,42 @@ async function parseExif(buffer: Buffer): Promise<Record<string, unknown> | unde
   }
 }
 
+function isSvg(buffer: Buffer, mimeType?: string): boolean {
+  if (mimeType === "image/svg+xml") return true;
+  const head = buffer.slice(0, 200).toString("utf8").trim().toLowerCase();
+  return head.startsWith("<?xml") || head.startsWith("<svg");
+}
+
+function parseSvgDimensions(buffer: Buffer): { width?: number; height?: number } {
+  const text = buffer.toString("utf8");
+  const viewBoxMatch = text.match(/viewBox=["']([^"']+)["']/);
+  if (viewBoxMatch?.[1]) {
+    const parts = viewBoxMatch[1].split(/\s+/).map(Number);
+    if (parts.length === 4 && parts.every((n) => !Number.isNaN(n))) {
+      return { width: parts[2], height: parts[3] };
+    }
+  }
+  const widthMatch = text.match(/\bwidth=["']([0-9.]+)/);
+  const heightMatch = text.match(/\bheight=["']([0-9.]+)/);
+  return {
+    width: widthMatch?.[1] ? Number.parseFloat(widthMatch[1]) : undefined,
+    height: heightMatch?.[1] ? Number.parseFloat(heightMatch[1]) : undefined,
+  };
+}
+
 export async function extractImageMetadata(
   buffer: Buffer,
+  mimeType?: string,
 ): Promise<ExtractedImageMetadata> {
+  if (isSvg(buffer, mimeType)) {
+    return {
+      ...parseSvgDimensions(buffer),
+      format: "svg",
+      hasTransparency: !buffer.toString("utf8").includes("background"),
+      fileSize: buffer.length,
+    };
+  }
+
   const image = sharp(buffer, { failOnError: false });
   const metadata = await image.metadata();
   const stats = await image.stats();
@@ -88,18 +121,24 @@ export async function extractImageMetadata(
 const MAX_IMAGE_DIMENSION = 1024;
 const JPEG_QUALITY = 85;
 
-export async function prepareImageForVision(buffer: Buffer): Promise<{
+export async function prepareImageForVision(
+  buffer: Buffer,
+  mimeType?: string,
+): Promise<{
   buffer: Buffer;
   mimeType: string;
 }> {
+  if (isSvg(buffer, mimeType)) {
+    return { buffer, mimeType: "image/svg+xml" };
+  }
+
   const image = sharp(buffer, { failOnError: false });
   const metadata = await image.metadata();
 
   const needsResize =
     metadata.width &&
     metadata.height &&
-    (metadata.width > MAX_IMAGE_DIMENSION ||
-      metadata.height > MAX_IMAGE_DIMENSION);
+    (metadata.width > MAX_IMAGE_DIMENSION || metadata.height > MAX_IMAGE_DIMENSION);
 
   let processed = image;
   if (needsResize) {

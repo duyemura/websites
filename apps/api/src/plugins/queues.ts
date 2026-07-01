@@ -4,6 +4,7 @@ import bull from "../bullmq";
 export default fp(
   (fastify, _, done) => {
     const classifyAssets = bull.build("classify_assets");
+    const unclassifiedAssets = bull.build("unclassified_assets");
     const generatePage = bull.build("generate_page");
     const generateAssets = bull.build("generate_assets");
     const replicateSite = bull.build("replicate_site");
@@ -12,6 +13,7 @@ export default fp(
 
     fastify.decorate("queues", {
       classifyAssets,
+      unclassifiedAssets,
       generatePage,
       generateAssets,
       replicateSite,
@@ -33,6 +35,17 @@ declare module "../bullmq" {
         userUuid: string;
         siteUuid?: string;
         aiJobUuid?: string;
+      };
+      result: unknown;
+    };
+    unclassified_assets: {
+      data: {
+        workspaceUuid: string;
+        assetUuid: string;
+        userUuid: string;
+        siteUuid?: string;
+        aiJobUuid?: string;
+        reason: string;
       };
       result: unknown;
     };
@@ -69,6 +82,7 @@ declare module "fastify" {
   interface FastifyInstance {
     queues: {
       classifyAssets: ReturnType<typeof bull.build<"classify_assets">>;
+      unclassifiedAssets: ReturnType<typeof bull.build<"unclassified_assets">>;
       generatePage: ReturnType<typeof bull.build<"generate_page">>;
       generateAssets: ReturnType<typeof bull.build<"generate_assets">>;
       replicateSite: ReturnType<typeof bull.build<"replicate_site">>;

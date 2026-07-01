@@ -393,50 +393,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/sites/scrape",
     {
       schema: {
-        body: ScrapeSiteSchema.extend({ force: z.boolean().optional() }),
+        body: ScrapeSiteSchema,
         response: {
           201: ScrapeSiteResponseSchema,
-          409: z.object({
-            error: z.string(),
-            siteUuid: z.string().optional(),
-            status: z.string().optional(),
-            requiresConfirmation: z.boolean().optional(),
-          }),
         },
       },
     },
     async (request, reply) => {
-      const { url, name, force } = request.body;
+      const { url, name } = request.body;
       const workspaceUuid = request.workspace.uuid;
       const normalized = normalizeUrl(url);
-
-      const match = await fastify.db
-        .selectFrom("sites")
-        .selectAll()
-        .where("workspaceUuid", "=", workspaceUuid)
-        .where("sourceUrl", "=", normalized)
-        .executeTakeFirst();
-
-      if (match) {
-        if (match.status === "published") {
-          return reply.code(409).send({
-            error: "Published sites can’t be rescanned. Unpublish the site before scanning again.",
-            siteUuid: match.uuid,
-            status: match.status,
-            requiresConfirmation: false,
-          });
-        }
-
-        if (!force) {
-          return reply.code(409).send({
-            error:
-              "A site already exists for this URL. Rescanning will replace its content. Confirm to continue.",
-            siteUuid: match.uuid,
-            status: match.status,
-            requiresConfirmation: true,
-          });
-        }
-      }
 
       let browser: Browser | undefined;
 
@@ -471,12 +437,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             accessKeyId: fastify.config.S3_ACCESS_KEY,
             secretAccessKey: fastify.config.S3_SECRET_KEY,
           });
-          const siteUuid = match?.uuid ?? newSiteUuid;
           const storageKey = path.posix.join(
             "workspaces",
             workspaceUuid,
             "sites",
-            siteUuid,
+            newSiteUuid,
             "screenshots",
             `scrape-${Date.now()}.png`,
           );
@@ -527,7 +492,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             fastify.db,
             fastify.config,
             workspaceUuid,
-            match?.uuid ?? newSiteUuid,
+            newSiteUuid,
             data.images,
           );
           for (const image of data.images) {
@@ -536,12 +501,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               image.url = local.url;
               image.assetUuid = local.assetUuid;
               fastify.queues.classifyAssets.queue
-                .add("classify_assets", {
-                  workspaceUuid,
-                  assetUuid: local.assetUuid,
-                  userUuid: request.user.uuid,
-                  siteUuid: match?.uuid ?? newSiteUuid,
-                })
+                .add(
+                  "classify_assets",
+                  {
+                    workspaceUuid,
+                    assetUuid: local.assetUuid,
+                    userUuid: request.user.uuid,
+                    siteUuid: newSiteUuid,
+                  },
+                  { jobId: local.assetUuid },
+                )
                 .catch((err) => {
                   fastify.log.warn(
                     { err, assetUuid: local.assetUuid },
@@ -565,87 +534,44 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
 
-        // Clean up old site-derived state before generating new docs so the
-        // new ai_activity entries for this scrape are preserved.
-        if (match) {
-          await fastify.db
-            .deleteFrom("aiActivity")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("aiJobs")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("deployments")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("pages")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("docs")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-        }
-
         const docs = await generateSiteDocs(data, gmbListing, fastify.config, {
           db: fastify.db,
           workspaceUuid: request.workspace.uuid,
           userUuid: request.user.uuid,
-          siteUuid: match?.uuid,
+          siteUuid: newSiteUuid,
         });
 
-        // For rescans, reuse the existing slug. For new sites, find a unique slug.
-        let uniqueSlug = match ? match.slug : baseSlug;
-        if (!match) {
-          let suffix = 1;
-          while (
-            await fastify.db
-              .selectFrom("sites")
-              .select("uuid")
-              .where("workspaceUuid", "=", workspaceUuid)
-              .where("slug", "=", uniqueSlug)
-              .executeTakeFirst()
-          ) {
-            suffix++;
-            uniqueSlug = `${baseSlug}-${suffix}`;
-          }
+        // Find a unique slug in this workspace.
+        let uniqueSlug = baseSlug;
+        let suffix = 1;
+        while (
+          await fastify.db
+            .selectFrom("sites")
+            .select("uuid")
+            .where("workspaceUuid", "=", workspaceUuid)
+            .where("slug", "=", uniqueSlug)
+            .executeTakeFirst()
+        ) {
+          suffix++;
+          uniqueSlug = `${baseSlug}-${suffix}`;
         }
 
-        const site = match
-          ? await fastify.db
-              .updateTable("sites")
-              .set({
-                name: siteName,
-                slug: uniqueSlug,
-                status: "draft",
-                sourceUrl: normalized,
-                mode: "replication",
-                defaultMetaTitle: data.title,
-                defaultMetaDescription: data.description,
-                updatedAt: new Date(),
-              })
-              .where("uuid", "=", match.uuid)
-              .returningAll()
-              .executeTakeFirstOrThrow()
-          : await fastify.db
-              .insertInto("sites")
-              .values({
-                uuid: newSiteUuid,
-                workspaceUuid,
-                name: siteName,
-                slug: uniqueSlug,
-                status: "draft",
-                mode: "replication",
-                themeUuid: null,
-                sourceUrl: normalized,
-                defaultMetaTitle: data.title,
-                defaultMetaDescription: data.description,
-              })
-              .returningAll()
-              .executeTakeFirstOrThrow();
+        const site = await fastify.db
+          .insertInto("sites")
+          .values({
+            uuid: newSiteUuid,
+            workspaceUuid,
+            name: siteName,
+            slug: uniqueSlug,
+            status: "draft",
+            mode: "replication",
+            themeUuid: null,
+            sourceUrl: normalized,
+            defaultMetaTitle: data.title,
+            defaultMetaDescription: data.description,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
 

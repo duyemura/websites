@@ -54,6 +54,33 @@ async function uploadTestImage(storageKey: string): Promise<Buffer> {
   return buffer;
 }
 
+function mockLlmSuccess() {
+  vi.mocked(callLlmAndLog).mockResolvedValue({
+    response: {
+      content: JSON.stringify({
+        description: "A bright gym interior.",
+        altText: "Bright gym interior with equipment.",
+        context: "hero",
+        confidence: 0.9,
+        tags: ["gym", "interior", "bright"],
+        technical: { hasText: false, textConfidence: 0.1, faces: 0, people: 0 },
+        quality: { score: 4, resolution: "medium", sharpness: "good", issues: [] },
+        marketing: {
+          mood: "energetic",
+          useCases: ["hero"],
+          subject: "gym interior",
+          brandFit: 0.85,
+        },
+        safety: { hasIdentifiablePeople: false, needsReview: false },
+      }),
+      usage: { promptTokens: 100, completionTokens: 80, totalTokens: 180 },
+      latencyMs: 500,
+    },
+    outcome: "success",
+    errorMessage: null,
+  });
+}
+
 describe("analyzeAsset", () => {
   let workspaceUuid: string;
 
@@ -80,6 +107,7 @@ describe("analyzeAsset", () => {
     const assetUuid = crypto.randomUUID();
     const storageKey = `workspaces/${workspaceUuid}/assets/test.jpg`;
     await uploadTestImage(storageKey);
+    mockLlmSuccess();
 
     await db
       .insertInto("assets")
@@ -95,31 +123,6 @@ describe("analyzeAsset", () => {
         metadata: { filename: "test.jpg" },
       })
       .execute();
-
-    vi.mocked(callLlmAndLog).mockResolvedValue({
-      response: {
-        content: JSON.stringify({
-          description: "A bright gym interior.",
-          altText: "Bright gym interior with equipment.",
-          context: "hero",
-          confidence: 0.9,
-          tags: ["gym", "interior", "bright"],
-          technical: { hasText: false, textConfidence: 0.1, faces: 0, people: 0 },
-          quality: { score: 4, resolution: "medium", sharpness: "good", issues: [] },
-          marketing: {
-            mood: "energetic",
-            useCases: ["hero"],
-            subject: "gym interior",
-            brandFit: 0.85,
-          },
-          safety: { hasIdentifiablePeople: false, needsReview: false },
-        }),
-        usage: { promptTokens: 100, completionTokens: 80, totalTokens: 180 },
-        latencyMs: 500,
-      },
-      outcome: "success",
-      errorMessage: null,
-    });
 
     await analyzeAsset({
       db: db as Kysely<DB>,
@@ -141,6 +144,49 @@ describe("analyzeAsset", () => {
       "Bright gym interior with equipment.",
     );
     expect((metadata.dimensions as { width: number }).width).toBe(400);
+  });
+
+  test("logs AI activity as analyze action", async () => {
+    const assetUuid = crypto.randomUUID();
+    const storageKey = `workspaces/${workspaceUuid}/assets/test.jpg`;
+    await uploadTestImage(storageKey);
+    mockLlmSuccess();
+
+    await db
+      .insertInto("assets")
+      .values({
+        uuid: assetUuid,
+        workspaceUuid,
+        name: "test.jpg",
+        type: "image",
+        source: "upload",
+        mimeType: "image/jpeg",
+        url: "http://localhost:9010/test.jpg",
+        storageKey,
+        metadata: {},
+      })
+      .execute();
+
+    await analyzeAsset({
+      db: db as Kysely<DB>,
+      config: mockConfig,
+      workspaceUuid,
+      assetUuid,
+      userUuid: crypto.randomUUID(),
+    });
+
+    expect(callLlmAndLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceUuid,
+        aiJobUuid: null,
+      }),
+      expect.objectContaining({
+        agent: "asset-curator",
+        actionType: "analyze",
+        promptTemplateKeys: ["asset-analysis"],
+      }),
+      mockConfig,
+    );
   });
 
   test("skips screenshot assets", async () => {
@@ -171,7 +217,7 @@ describe("analyzeAsset", () => {
     expect(callLlmAndLog).not.toHaveBeenCalled();
   });
 
-  test("skips non-image assets", async () => {
+  test("skips non-image assets without fetching from S3", async () => {
     const assetUuid = crypto.randomUUID();
     await db
       .insertInto("assets")
@@ -197,5 +243,186 @@ describe("analyzeAsset", () => {
     });
 
     expect(callLlmAndLog).not.toHaveBeenCalled();
+  });
+
+  test("skips assets missing from S3", async () => {
+    const assetUuid = crypto.randomUUID();
+    mockLlmSuccess();
+
+    await db
+      .insertInto("assets")
+      .values({
+        uuid: assetUuid,
+        workspaceUuid,
+        name: "missing.jpg",
+        type: "image",
+        source: "upload",
+        mimeType: "image/jpeg",
+        url: "http://localhost:9010/missing.jpg",
+        storageKey: `workspaces/${workspaceUuid}/assets/missing.jpg`,
+        metadata: {},
+      })
+      .execute();
+
+    await analyzeAsset({
+      db: db as Kysely<DB>,
+      config: mockConfig,
+      workspaceUuid,
+      assetUuid,
+      userUuid: crypto.randomUUID(),
+    });
+
+    expect(callLlmAndLog).not.toHaveBeenCalled();
+    const row = await db
+      .selectFrom("assets")
+      .selectAll()
+      .where("uuid", "=", assetUuid)
+      .executeTakeFirstOrThrow();
+    expect((row.metadata as Record<string, unknown>).analysis).toBeUndefined();
+  });
+
+  test("does not store analysis when LLM fails", async () => {
+    const assetUuid = crypto.randomUUID();
+    const storageKey = `workspaces/${workspaceUuid}/assets/test.jpg`;
+    await uploadTestImage(storageKey);
+
+    vi.mocked(callLlmAndLog).mockResolvedValue({
+      response: { content: "" },
+      outcome: "failure",
+      errorMessage: "vision service unavailable",
+    });
+
+    await db
+      .insertInto("assets")
+      .values({
+        uuid: assetUuid,
+        workspaceUuid,
+        name: "test.jpg",
+        type: "image",
+        source: "upload",
+        mimeType: "image/jpeg",
+        url: "http://localhost:9010/test.jpg",
+        storageKey,
+        metadata: {},
+      })
+      .execute();
+
+    await analyzeAsset({
+      db: db as Kysely<DB>,
+      config: mockConfig,
+      workspaceUuid,
+      assetUuid,
+      userUuid: crypto.randomUUID(),
+    });
+
+    const row = await db
+      .selectFrom("assets")
+      .selectAll()
+      .where("uuid", "=", assetUuid)
+      .executeTakeFirstOrThrow();
+    expect((row.metadata as Record<string, unknown>).analysis).toBeUndefined();
+  });
+
+  test("does not store analysis when LLM returns partial outcome", async () => {
+    const assetUuid = crypto.randomUUID();
+    const storageKey = `workspaces/${workspaceUuid}/assets/test.jpg`;
+    await uploadTestImage(storageKey);
+
+    vi.mocked(callLlmAndLog).mockResolvedValue({
+      response: { content: "not valid json" },
+      outcome: "partial",
+      errorMessage: "schema validation failed",
+    });
+
+    await db
+      .insertInto("assets")
+      .values({
+        uuid: assetUuid,
+        workspaceUuid,
+        name: "test.jpg",
+        type: "image",
+        source: "upload",
+        mimeType: "image/jpeg",
+        url: "http://localhost:9010/test.jpg",
+        storageKey,
+        metadata: {},
+      })
+      .execute();
+
+    await analyzeAsset({
+      db: db as Kysely<DB>,
+      config: mockConfig,
+      workspaceUuid,
+      assetUuid,
+      userUuid: crypto.randomUUID(),
+    });
+
+    const row = await db
+      .selectFrom("assets")
+      .selectAll()
+      .where("uuid", "=", assetUuid)
+      .executeTakeFirstOrThrow();
+    expect((row.metadata as Record<string, unknown>).analysis).toBeUndefined();
+  });
+
+  test("extracts SVG metadata without invoking sharp", async () => {
+    const assetUuid = crypto.randomUUID();
+    const storageKey = `workspaces/${workspaceUuid}/assets/logo.svg`;
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100"/></svg>',
+    );
+    const s3 = getS3Client({
+      endpoint: mockConfig.S3_ENDPOINT,
+      region: mockConfig.S3_REGION,
+      accessKeyId: mockConfig.S3_ACCESS_KEY,
+      secretAccessKey: mockConfig.S3_SECRET_KEY,
+    });
+    await s3.send(
+      new (await import("@aws-sdk/client-s3")).PutObjectCommand({
+        Bucket: mockConfig.S3_ASSETS_BUCKET,
+        Key: storageKey,
+        Body: svg,
+        ContentType: "image/svg+xml",
+      }),
+    );
+
+    vi.mocked(callLlmAndLog).mockResolvedValue({
+      response: { content: "" },
+      outcome: "failure",
+      errorMessage: "vision service unavailable",
+    });
+
+    await db
+      .insertInto("assets")
+      .values({
+        uuid: assetUuid,
+        workspaceUuid,
+        name: "logo.svg",
+        type: "image",
+        source: "upload",
+        mimeType: "image/svg+xml",
+        url: "http://localhost:9010/logo.svg",
+        storageKey,
+        metadata: {},
+      })
+      .execute();
+
+    await analyzeAsset({
+      db: db as Kysely<DB>,
+      config: mockConfig,
+      workspaceUuid,
+      assetUuid,
+      userUuid: crypto.randomUUID(),
+    });
+
+    const row = await db
+      .selectFrom("assets")
+      .selectAll()
+      .where("uuid", "=", assetUuid)
+      .executeTakeFirstOrThrow();
+    const metadata = row.metadata as Record<string, unknown>;
+    expect((metadata.technicalLocal as { format: string }).format).toBe("svg");
+    expect((metadata.dimensions as { width: number }).width).toBe(200);
+    expect((metadata.dimensions as { height: number }).height).toBe(100);
   });
 });

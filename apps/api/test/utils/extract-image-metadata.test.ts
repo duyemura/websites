@@ -60,6 +60,18 @@ describe("extractImageMetadata", () => {
     expect(meta.dominantColors).toBeDefined();
     expect(meta.dominantColors!.length).toBeGreaterThan(0);
   });
+
+  test("extracts SVG metadata without invoking sharp", async () => {
+    const buffer = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 75"><rect width="150" height="75"/></svg>',
+    );
+
+    const meta = await extractImageMetadata(buffer, "image/svg+xml");
+    expect(meta.format).toBe("svg");
+    expect(meta.width).toBe(150);
+    expect(meta.height).toBe(75);
+    expect(meta.fileSize).toBe(buffer.length);
+  });
 });
 
 describe("prepareImageForVision", () => {
@@ -97,6 +109,16 @@ describe("prepareImageForVision", () => {
 
     const prepared = await prepareImageForVision(buffer);
     expect(prepared.mimeType).toBe("image/png");
+  });
+
+  test("returns SVG data URL unchanged", async () => {
+    const buffer = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>',
+    );
+
+    const prepared = await prepareImageForVision(buffer, "image/svg+xml");
+    expect(prepared.mimeType).toBe("image/svg+xml");
+    expect(prepared.buffer.toString("utf8")).toContain("svg");
   });
 });
 

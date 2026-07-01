@@ -1,41 +1,15 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
+import { AssetAnalysisSchema as LlmAssetAnalysisSchema } from "../../ai/prompts/asset-analysis";
 
 const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
 const AssetSource = z.enum(["upload", "scraped", "screenshot", "ai_generated"]);
 
-const AssetAnalysisSchema = z.object({
+const AssetAnalysisSchema = LlmAssetAnalysisSchema.extend({
   analyzedAt: z.string(),
   model: z.string(),
   version: z.number().int(),
-  description: z.string(),
-  altText: z.string(),
-  context: z.string(),
-  confidence: z.number().min(0).max(1),
-  tags: z.array(z.string()),
-  technical: z.object({
-    hasText: z.boolean(),
-    textConfidence: z.number().min(0).max(1),
-    faces: z.number().int().nullable().optional(),
-    people: z.number().int().nullable().optional(),
-  }),
-  quality: z.object({
-    score: z.number().int().min(1).max(5),
-    resolution: z.enum(["low", "medium", "high", "unknown"]),
-    sharpness: z.enum(["blurry", "soft", "good", "sharp", "unknown"]),
-    issues: z.array(z.string()),
-  }),
-  marketing: z.object({
-    mood: z.string(),
-    useCases: z.array(z.string()),
-    subject: z.string(),
-    brandFit: z.number().min(0).max(1).nullable().optional(),
-  }),
-  safety: z.object({
-    hasIdentifiablePeople: z.boolean(),
-    needsReview: z.boolean(),
-  }),
 });
 
 const AssetMetadataSchema = z.object({
@@ -102,12 +76,16 @@ function enqueueAssetClassification(
   if (type !== "image") return;
 
   fastify.queues.classifyAssets.queue
-    .add("classify_assets", {
-      workspaceUuid,
-      assetUuid,
-      userUuid,
-      siteUuid,
-    })
+    .add(
+      "classify_assets",
+      {
+        workspaceUuid,
+        assetUuid,
+        userUuid,
+        siteUuid,
+      },
+      { jobId: assetUuid },
+    )
     .catch((err) => {
       fastify.log.warn({ err, assetUuid }, "Failed to enqueue asset classification");
     });
@@ -384,19 +362,18 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         )
         .execute();
 
-      for (const asset of assets) {
-        fastify.queues.classifyAssets.queue
-          .add("classify_assets", {
-            workspaceUuid: request.workspace.uuid,
-            assetUuid: asset.uuid,
-            userUuid: request.user.uuid,
-          })
-          .catch((err) => {
-            fastify.log.warn(
-              { err, assetUuid: asset.uuid },
-              "Failed to enqueue backfill asset classification",
-            );
-          });
+      if (assets.length > 0) {
+        await fastify.queues.classifyAssets.queue.addBulk(
+          assets.map((asset) => ({
+            name: "classify_assets",
+            data: {
+              workspaceUuid: request.workspace.uuid,
+              assetUuid: asset.uuid,
+              userUuid: request.user.uuid,
+            },
+            opts: { jobId: asset.uuid },
+          })),
+        );
       }
 
       return reply.code(202).send({ enqueued: assets.length });
@@ -427,11 +404,15 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         return reply.code(202).send({ enqueued: false });
       }
 
-      await fastify.queues.classifyAssets.queue.add("classify_assets", {
-        workspaceUuid: request.workspace.uuid,
-        assetUuid: asset.uuid,
-        userUuid: request.user.uuid,
-      });
+      await fastify.queues.classifyAssets.queue.add(
+        "classify_assets",
+        {
+          workspaceUuid: request.workspace.uuid,
+          assetUuid: asset.uuid,
+          userUuid: request.user.uuid,
+        },
+        { jobId: asset.uuid },
+      );
 
       return reply.code(202).send({ enqueued: true });
     },

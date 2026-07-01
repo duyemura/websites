@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
@@ -38,7 +38,8 @@ export interface AssetAnalysis {
   analysis: AnalysisOutput;
   dimensions?: { width?: number; height?: number };
   fileSize?: number;
-  exif?: { base64?: string };
+  exif?: Record<string, unknown>;
+  technicalLocal?: ExtractedImageMetadata;
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
@@ -74,6 +75,22 @@ async function fetchAssetBuffer(
   }
 }
 
+function isAnalyzableImage(
+  type: string,
+  mimeType: string | null | undefined,
+): boolean {
+  return type === "image" || mimeType?.startsWith("image/") || false;
+}
+
+async function acquireAssetAnalysisLock(
+  db: Kysely<DB>,
+  assetUuid: string,
+): Promise<void> {
+  await sql`select pg_advisory_xact_lock(('x' || substr(md5(${assetUuid}), 1, 16))::bit(64)::bigint)`.execute(
+    db,
+  );
+}
+
 export interface AnalyzeAssetInput {
   db: Kysely<DB>;
   config: Config;
@@ -87,6 +104,10 @@ export interface AnalyzeAssetInput {
 export async function analyzeAsset(input: AnalyzeAssetInput): Promise<void> {
   const { db, config, workspaceUuid, assetUuid, userUuid, siteUuid, aiJobUuid } = input;
 
+  // Serialize per-asset analysis to prevent concurrent vision-LLM calls for the
+  // same asset. The lock is transaction-scoped and released on commit/rollback.
+  await acquireAssetAnalysisLock(db, assetUuid);
+
   const asset = await db
     .selectFrom("assets")
     .select(["uuid", "type", "source", "mimeType", "storageKey", "metadata"])
@@ -96,35 +117,35 @@ export async function analyzeAsset(input: AnalyzeAssetInput): Promise<void> {
 
   if (!asset) return;
   if (asset.source === "screenshot") return;
+  if (!isAnalyzableImage(asset.type, asset.mimeType)) return;
 
   const metadata = (asset.metadata ?? {}) as Record<string, unknown>;
   const existingAnalysis = metadata.analysis as
     | { version?: number; analyzedAt?: string }
     | undefined;
-  if (existingAnalysis && existingAnalysis.version && existingAnalysis.version >= CURRENT_ANALYSIS_VERSION) {
+  if (
+    existingAnalysis &&
+    existingAnalysis.version &&
+    existingAnalysis.version >= CURRENT_ANALYSIS_VERSION
+  ) {
     return;
   }
 
   const buffer = await fetchAssetBuffer(config, asset.storageKey);
   if (!buffer) return;
 
-  let localMetadata: ExtractedImageMetadata | undefined;
-  if (asset.type === "image" || asset.mimeType?.startsWith("image/")) {
-    localMetadata = await extractImageMetadata(buffer);
-  }
+  const localMetadata = await extractImageMetadata(buffer, asset.mimeType ?? undefined);
 
-  const llmResult: AssetAnalysisResult | null =
-    asset.type === "image" || asset.mimeType?.startsWith("image/")
-      ? await runVisionAnalysis(buffer, {
-          db,
-          config,
-          workspaceUuid,
-          userUuid,
-          siteUuid,
-          aiJobUuid,
-        })
-      : null;
-
+  const llmResult: AssetAnalysisResult | null = localMetadata.format
+    ? await runVisionAnalysis(buffer, asset.mimeType ?? undefined, {
+        db,
+        config,
+        workspaceUuid,
+        userUuid,
+        siteUuid,
+        aiJobUuid,
+      })
+    : null;
 
   const analysis: AnalysisOutput | undefined = llmResult
     ? {
@@ -145,33 +166,36 @@ export async function analyzeAsset(input: AnalyzeAssetInput): Promise<void> {
 
   const updatedMetadata: Record<string, unknown> = {
     ...metadata,
-    ...(localMetadata
-      ? {
-          dimensions: {
-            width: localMetadata.width,
-            height: localMetadata.height,
-          },
-          fileSize: localMetadata.fileSize,
-          exif: localMetadata.exif,
-          technicalLocal: {
-            format: localMetadata.format,
-            hasTransparency: localMetadata.hasTransparency,
-            hasAnimation: localMetadata.hasAnimation,
-            channels: localMetadata.channels,
-            depth: localMetadata.depth,
-            density: localMetadata.density,
-            orientation: localMetadata.orientation,
-            dominantColors: localMetadata.dominantColors,
-          },
-        }
-      : {}),
+    dimensions: {
+      width: localMetadata.width,
+      height: localMetadata.height,
+    },
+    fileSize: localMetadata.fileSize,
+    exif: localMetadata.exif,
+    technicalLocal: {
+      format: localMetadata.format,
+      hasTransparency: localMetadata.hasTransparency,
+      hasAnimation: localMetadata.hasAnimation,
+      channels: localMetadata.channels,
+      depth: localMetadata.depth,
+      density: localMetadata.density,
+      orientation: localMetadata.orientation,
+      dominantColors: localMetadata.dominantColors,
+    },
     ...(analysis ? { analysis } : {}),
   };
 
+  // Conditional update prevents a slow vision call from overwriting analysis
+  // produced by a faster concurrent worker that finished while this one ran.
   await db
     .updateTable("assets")
     .set({ metadata: updatedMetadata as import("../types/db").Json })
     .where("uuid", "=", assetUuid)
+    .where(
+      sql<boolean>`metadata is null or not metadata @> ${sql.lit(
+        JSON.stringify({ analysis: {} }),
+      )} or coalesce((metadata -> 'analysis' ->> 'version')::int, 0) < ${CURRENT_ANALYSIS_VERSION}`,
+    )
     .execute();
 }
 
@@ -181,9 +205,10 @@ interface VisionContext extends LlmCallContext {
 
 async function runVisionAnalysis(
   buffer: Buffer,
+  mimeType: string | undefined,
   ctx: VisionContext,
 ): Promise<AssetAnalysisResult | null> {
-  const prepared = await prepareImageForVision(buffer);
+  const prepared = await prepareImageForVision(buffer, mimeType);
   const dataUrl = bufferToDataUrl(prepared.buffer, prepared.mimeType);
   const template = loadAssetAnalysisTemplate();
 

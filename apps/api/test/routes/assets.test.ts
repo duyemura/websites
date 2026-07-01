@@ -504,7 +504,7 @@ describe("asset routes", () => {
       },
     });
 
-    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object));
+    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object), { jobId: expect.any(String) });
 
     addSpy.mockRestore();
     await app.close();
@@ -537,7 +537,56 @@ describe("asset routes", () => {
     });
 
     expect(response.statusCode).toBe(202);
-    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object));
+    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object), { jobId: expect.any(String) });
+
+    addSpy.mockRestore();
+    await app.close();
+  });
+
+  test("POST /assets/:uuid/regenerate-analysis returns 404 for missing asset", async () => {
+    const app = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/assets/${crypto.randomUUID()}/regenerate-analysis`,
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Asset not found" });
+
+    await app.close();
+  });
+
+  test("POST /assets/:uuid/regenerate-analysis skips screenshots", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "screenshot.png",
+        type: "image",
+        source: "screenshot",
+        url: "https://cdn.test/screenshot.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/screenshot`,
+      },
+    });
+    const uuid = created.json().uuid;
+
+    const addSpy = vi.spyOn(app.queues.classifyAssets.queue, "add");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/assets/${uuid}/regenerate-analysis`,
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ enqueued: false });
+    expect(addSpy).not.toHaveBeenCalled();
 
     addSpy.mockRestore();
     await app.close();
@@ -560,7 +609,7 @@ describe("asset routes", () => {
       },
     });
 
-    const addSpy = vi.spyOn(app.queues.classifyAssets.queue, "add");
+    const addBulkSpy = vi.spyOn(app.queues.classifyAssets.queue, "addBulk");
 
     const response = await app.inject({
       method: "POST",
@@ -570,9 +619,9 @@ describe("asset routes", () => {
 
     expect(response.statusCode).toBe(202);
     expect(response.json().enqueued).toBeGreaterThanOrEqual(1);
-    expect(addSpy).toHaveBeenCalled();
+    expect(addBulkSpy).toHaveBeenCalled();
 
-    addSpy.mockRestore();
+    addBulkSpy.mockRestore();
     await app.close();
   });
 });
