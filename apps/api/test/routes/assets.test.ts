@@ -303,4 +303,325 @@ describe("asset routes", () => {
 
     await app.close();
   });
+
+  test("GET /assets filters by source", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "upload.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/upload.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/upload`,
+      },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "scraped.png",
+        type: "image",
+        source: "scraped",
+        url: "https://cdn.test/scraped.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/scraped`,
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/assets?source=scraped",
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].source).toBe("scraped");
+
+    await app.close();
+  });
+
+  test("GET /assets filters by analyzed status", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "analyzed.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/analyzed.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/analyzed`,
+        metadata: {
+          analysis: {
+            analyzedAt: new Date().toISOString(),
+            model: "test",
+            version: 1,
+            description: "d",
+            altText: "a",
+            context: "other",
+            confidence: 0.5,
+            tags: [],
+            technical: { hasText: false, textConfidence: 0 },
+            quality: { score: 3, resolution: "medium", sharpness: "good", issues: [] },
+            marketing: { mood: "calm", useCases: [], subject: "s" },
+            safety: { hasIdentifiablePeople: false, needsReview: false },
+          },
+        },
+      },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "unanalyzed.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/unanalyzed.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/unanalyzed`,
+      },
+    });
+
+    const analyzedResponse = await app.inject({
+      method: "GET",
+      url: "/api/assets?analyzed=true",
+      headers: authHeaders(),
+    });
+    expect(analyzedResponse.json()).toHaveLength(1);
+    expect(analyzedResponse.json()[0].name).toBe("analyzed.png");
+
+    const unanalyzedResponse = await app.inject({
+      method: "GET",
+      url: "/api/assets?analyzed=false",
+      headers: authHeaders(),
+    });
+    expect(unanalyzedResponse.json()).toHaveLength(1);
+    expect(unanalyzedResponse.json()[0].name).toBe("unanalyzed.png");
+
+    await app.close();
+  });
+
+  test("GET /assets filters by tag", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "hero.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/hero.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/hero`,
+        metadata: {
+          analysis: {
+            analyzedAt: new Date().toISOString(),
+            model: "test",
+            version: 1,
+            description: "d",
+            altText: "a",
+            context: "hero",
+            confidence: 0.9,
+            tags: ["hero-candidate"],
+            technical: { hasText: false, textConfidence: 0 },
+            quality: { score: 5, resolution: "high", sharpness: "sharp", issues: [] },
+            marketing: { mood: "energetic", useCases: ["hero"], subject: "gym" },
+            safety: { hasIdentifiablePeople: false, needsReview: false },
+          },
+        },
+      },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "logo.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/logo.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/logo`,
+        metadata: {
+          analysis: {
+            analyzedAt: new Date().toISOString(),
+            model: "test",
+            version: 1,
+            description: "d",
+            altText: "a",
+            context: "logo",
+            confidence: 0.9,
+            tags: ["logo"],
+            technical: { hasText: false, textConfidence: 0 },
+            quality: { score: 5, resolution: "high", sharpness: "sharp", issues: [] },
+            marketing: { mood: "professional", useCases: ["logo"], subject: "brand" },
+            safety: { hasIdentifiablePeople: false, needsReview: false },
+          },
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/assets?tag=hero-candidate",
+      headers: authHeaders(),
+    });
+    expect(response.json()).toHaveLength(1);
+    expect(response.json()[0].name).toBe("hero.png");
+
+    await app.close();
+  });
+
+  test("POST /assets enqueues image classification", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+    const addSpy = vi.spyOn(app.queues.classifyAssets.queue, "add");
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "enqueue.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/enqueue.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/enqueue`,
+      },
+    });
+
+    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object), { jobId: expect.any(String) });
+
+    addSpy.mockRestore();
+    await app.close();
+  });
+
+  test("POST /assets/:uuid/regenerate-analysis enqueues classification", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "regenerate.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/regenerate.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/regenerate`,
+      },
+    });
+    const uuid = created.json().uuid;
+
+    const addSpy = vi.spyOn(app.queues.classifyAssets.queue, "add");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/assets/${uuid}/regenerate-analysis`,
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(addSpy).toHaveBeenCalledWith("classify_assets", expect.any(Object), { jobId: expect.any(String) });
+
+    addSpy.mockRestore();
+    await app.close();
+  });
+
+  test("POST /assets/:uuid/regenerate-analysis returns 404 for missing asset", async () => {
+    const app = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/assets/${crypto.randomUUID()}/regenerate-analysis`,
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Asset not found" });
+
+    await app.close();
+  });
+
+  test("POST /assets/:uuid/regenerate-analysis skips screenshots", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "screenshot.png",
+        type: "image",
+        source: "screenshot",
+        url: "https://cdn.test/screenshot.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/screenshot`,
+      },
+    });
+    const uuid = created.json().uuid;
+
+    const addSpy = vi.spyOn(app.queues.classifyAssets.queue, "add");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/assets/${uuid}/regenerate-analysis`,
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ enqueued: false });
+    expect(addSpy).not.toHaveBeenCalled();
+
+    addSpy.mockRestore();
+    await app.close();
+  });
+
+  test("POST /assets/backfill-analysis enqueues unanalyzed images", async () => {
+    const app = await build();
+    const workspaceUuid = await getTestWorkspaceUuid();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: authHeaders(),
+      payload: {
+        name: "backfill.png",
+        type: "image",
+        source: "upload",
+        url: "https://cdn.test/backfill.png",
+        storageKey: `workspaces/${workspaceUuid}/assets/backfill`,
+      },
+    });
+
+    const addBulkSpy = vi.spyOn(app.queues.classifyAssets.queue, "addBulk");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/assets/backfill-analysis",
+      headers: authHeaders(),
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().enqueued).toBeGreaterThanOrEqual(1);
+    expect(addBulkSpy).toHaveBeenCalled();
+
+    addBulkSpy.mockRestore();
+    await app.close();
+  });
 });

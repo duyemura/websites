@@ -1,8 +1,19 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
+import type { FastifyInstance } from "fastify";
+import { AssetAnalysisSchema as LlmAssetAnalysisSchema } from "../../ai/prompts/asset-analysis";
+import { isAnalyzableImage } from "../../utils/asset-analysis";
+import { AssetConsentSchema } from "../../utils/asset-consent";
+import { jsonb } from "../../utils/jsonb";
 
 const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
 const AssetSource = z.enum(["upload", "scraped", "screenshot", "ai_generated"]);
+
+const AssetAnalysisSchema = LlmAssetAnalysisSchema.extend({
+  analyzedAt: z.string(),
+  model: z.string(),
+  version: z.number().int(),
+});
 
 const AssetMetadataSchema = z.object({
   filename: z.string().optional(),
@@ -15,6 +26,7 @@ const AssetMetadataSchema = z.object({
       height: z.number(),
     })
     .optional(),
+  analysis: AssetAnalysisSchema.optional(),
 });
 
 const AssetSchema = z.object({
@@ -54,6 +66,35 @@ function storageKeyBelongsToWorkspace(
   return storageKey.startsWith(`workspaces/${workspaceUuid}/`);
 }
 
+function enqueueAssetClassification(
+  fastify: FastifyInstance,
+  workspaceUuid: string,
+  assetUuid: string,
+  userUuid: string,
+  source: string,
+  type: string,
+  mimeType: string | null | undefined,
+  siteUuid?: string,
+) {
+  if (source === "screenshot") return;
+  if (!isAnalyzableImage(type, mimeType)) return;
+
+  fastify.queues.classifyAssets.queue
+    .add(
+      "classify_assets",
+      {
+        workspaceUuid,
+        assetUuid,
+        userUuid,
+        siteUuid,
+      },
+      { jobId: assetUuid },
+    )
+    .catch((err) => {
+      fastify.log.warn({ err, assetUuid }, "Failed to enqueue asset classification");
+    });
+}
+
 function serializeAsset(
   asset: {
     uuid: string;
@@ -91,17 +132,43 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/assets",
     {
       schema: {
+        querystring: z.object({
+          tag: z.string().optional(),
+          source: AssetSource.optional(),
+          analyzed: z.enum(["true", "false"]).optional(),
+        }),
         response: { 200: z.array(AssetSchema) },
       },
     },
     async (request) => {
-      const assets = await fastify.db
+      let query = fastify.db
         .selectFrom("assets")
         .selectAll()
         .where("workspaceUuid", "=", request.workspace.uuid)
-        .where("source", "!=", "screenshot")
-        .orderBy("createdAt", "desc")
-        .execute();
+        .where("source", "!=", "screenshot");
+
+      if (request.query.source) {
+        query = query.where("source", "=", request.query.source);
+      }
+      if (request.query.tag) {
+        query = query.where(
+          "metadata",
+          "@>",
+          JSON.stringify({ analysis: { tags: [request.query.tag] } }),
+        );
+      }
+      if (request.query.analyzed === "true") {
+        query = query.where("metadata", "@>", JSON.stringify({ analysis: {} }));
+      } else if (request.query.analyzed === "false") {
+        query = query.where((eb) =>
+          eb.or([
+            eb("metadata", "is", null),
+            eb.not(eb("metadata", "@>", JSON.stringify({ analysis: {} }))),
+          ]),
+        );
+      }
+
+      const assets = await query.orderBy("createdAt", "desc").execute();
 
       return Promise.all(
         assets.map(async (asset) =>
@@ -196,6 +263,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .returningAll()
         .executeTakeFirstOrThrow();
 
+      enqueueAssetClassification(
+        fastify,
+        asset.workspaceUuid,
+        asset.uuid,
+        request.user.uuid,
+        asset.source,
+        asset.type,
+        asset.mimeType,
+      );
+
       return reply.code(201).send(
         serializeAsset(
           asset,
@@ -265,6 +342,146 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .execute();
 
       return reply.code(204).send({});
+    },
+  );
+
+  fastify.post(
+    "/assets/backfill-analysis",
+    {
+      schema: {
+        response: { 202: z.object({ enqueued: z.number().int() }) },
+      },
+    },
+    async (request, reply) => {
+      const assets = await fastify.db
+        .selectFrom("assets")
+        .select(["uuid"])
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .where("source", "!=", "screenshot")
+        .where((eb) =>
+          eb.or([
+            eb("type", "=", "image"),
+            eb("mimeType", "like", "image/%"),
+          ]),
+        )
+        .where((eb) =>
+          eb.or([
+            eb("metadata", "is", null),
+            eb.not(eb("metadata", "@>", JSON.stringify({ analysis: {} }))),
+          ]),
+        )
+        .execute();
+
+      if (assets.length > 0) {
+        await fastify.queues.classifyAssets.queue.addBulk(
+          assets.map((asset) => ({
+            name: "classify_assets",
+            data: {
+              workspaceUuid: request.workspace.uuid,
+              assetUuid: asset.uuid,
+              userUuid: request.user.uuid,
+            },
+            opts: { jobId: asset.uuid },
+          })),
+        );
+      }
+
+      return reply.code(202).send({ enqueued: assets.length });
+    },
+  );
+
+  fastify.post(
+    "/assets/:uuid/regenerate-analysis",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: { 202: z.object({ enqueued: z.boolean() }), 404: z.object({ error: z.string() }) },
+      },
+    },
+    async (request, reply) => {
+      const asset = await fastify.db
+        .selectFrom("assets")
+        .select(["uuid", "source", "type", "mimeType"])
+        .where("uuid", "=", request.params.uuid)
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .executeTakeFirst();
+
+      if (!asset) {
+        return reply.code(404).send({ error: "Asset not found" });
+      }
+
+      if (asset.source === "screenshot" || !isAnalyzableImage(asset.type, asset.mimeType)) {
+        return reply.code(202).send({ enqueued: false });
+      }
+
+      await fastify.queues.classifyAssets.queue.add(
+        "classify_assets",
+        {
+          workspaceUuid: request.workspace.uuid,
+          assetUuid: asset.uuid,
+          userUuid: request.user.uuid,
+        },
+        { jobId: asset.uuid },
+      );
+
+      return reply.code(202).send({ enqueued: true });
+    },
+  );
+
+  fastify.post(
+    "/assets/:uuid/consent",
+    {
+      schema: {
+        operationId: "setAssetConsent",
+        tags: ["assets"],
+        summary: "Record consent metadata for an asset",
+        params: z.object({ uuid: z.string().uuid() }),
+        body: AssetConsentSchema.omit({ affirmedAt: true, affirmedByUserUuid: true }),
+        response: {
+          200: AssetSchema,
+          400: z.object({ error: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const asset = await fastify.db
+        .selectFrom("assets")
+        .selectAll()
+        .where("uuid", "=", request.params.uuid)
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .executeTakeFirst();
+
+      if (!asset) {
+        return reply.code(404).send({ error: "Asset not found" });
+      }
+
+      const existingMetadata = (asset.metadata ?? {}) as Record<string, unknown>;
+      const existingConsent = existingMetadata.consent as Record<string, unknown> | undefined;
+
+      const consent = AssetConsentSchema.parse({
+        ...existingConsent,
+        ...request.body,
+        affirmedByUserUuid: request.user.uuid,
+        affirmedAt: new Date().toISOString(),
+      });
+
+      const updatedMetadata = {
+        ...existingMetadata,
+        consent,
+      };
+
+      const updatedAsset = await fastify.db
+        .updateTable("assets")
+        .set({ metadata: jsonb(updatedMetadata) })
+        .where("uuid", "=", request.params.uuid)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      return serializeAsset(
+        updatedAsset,
+        await fastify.storage.getDownloadUrl(updatedAsset.storageKey),
+      );
     },
   );
 

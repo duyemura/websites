@@ -16,6 +16,8 @@ export function generatePageProcessor(fastify: FastifyInstance) {
       pageSlug: job.data.pageSlug,
       aiJobUuid: job.data.aiJobUuid,
       attemptId: job.data.attemptId,
+      mode: job.data.mode,
+      referenceScreenshotUrl: job.data.referenceScreenshotUrl,
     });
 
     fastify.log.info({ jobId: job.id, result }, "Generate page worker finished");

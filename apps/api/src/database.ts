@@ -48,9 +48,7 @@ export function createMigrator(db: Kysely<DB>) {
   });
 }
 
-// Default singleton used by the kysely-ctl CLI. The app creates its own
-// instance from config so it can be safely closed per test run.
-export const db = createDatabase({
+const dbConfig = {
   NODE_ENV: process.env.NODE_ENV ?? "development",
   SERVICE: process.env.SERVICE ?? "monolith",
   DB_HOST: process.env.DB_HOST ?? "localhost",
@@ -67,9 +65,10 @@ export const db = createDatabase({
   REDIS_CLUSTER: process.env.REDIS_CLUSTER === "true",
   CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
   CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY,
-  S3_ENDPOINT: process.env.S3_ENDPOINT ?? "",
+  S3_ENDPOINT: process.env.S3_ENDPOINT,
   S3_ACCESS_KEY: process.env.S3_ACCESS_KEY ?? "",
   S3_SECRET_KEY: process.env.S3_SECRET_KEY ?? "",
+  S3_SESSION_TOKEN: process.env.S3_SESSION_TOKEN,
   S3_REGION: process.env.S3_REGION ?? "us-east-1",
   S3_ASSETS_BUCKET: process.env.S3_ASSETS_BUCKET ?? "",
   S3_DEPLOYMENTS_BUCKET: process.env.S3_DEPLOYMENTS_BUCKET,
@@ -86,6 +85,12 @@ export const db = createDatabase({
   LONG_CONTEXT_LLM_MODEL:
     process.env.LONG_CONTEXT_LLM_MODEL ?? "qwen3.5:397b-cloud",
   REASONING_LLM_MODEL: process.env.REASONING_LLM_MODEL ?? "qwen3.5:397b-cloud",
-} as Config);
+} as Config;
+
+// Default singleton used by the kysely-ctl CLI. The app creates its own
+// instance from config so it can be safely closed per test run.
+export const db = createDatabase(dbConfig);
+
+export const config = dbConfig;
 
 export const migrator = createMigrator(db);

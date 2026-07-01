@@ -7,12 +7,18 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { SiteBlueprint } from "../utils/site-blueprint";
+import type { ChatContentPart } from "../ai/llm-client";
 import { callLlmAndLog } from "../ai/llm-with-logging";
-import { getJobCostUsd } from "../utils/job-budget";
-import { generateAstroPage, type QaIssue } from "./astro-code-generator";
 
-export interface RalphLoopInput {
+export interface QaIssue {
+  component_id: string;
+  category: string;
+  severity: "high" | "medium" | "low";
+  description: string;
+  suggested_fix: string;
+}
+
+export interface PageQaInput {
   db: Kysely<DB>;
   config: Config;
   workspaceUuid: string;
@@ -20,100 +26,58 @@ export interface RalphLoopInput {
   pageSlug: string;
   aiJobUuid: string;
   distDir: string;
+  previewUrl: string;
   referenceScreenshotUrl?: string | null;
   mode: "replication" | "template" | "greenfield";
-  maxIterations: number;
-  fidelityThreshold: number;
-  maxBudgetUsd?: number | null;
-  blueprint: SiteBlueprint;
-  attemptId: string;
+  fidelityThreshold?: number;
 }
 
-export interface RalphLoopOutput {
+export interface PageQaOutput {
   passed: boolean;
   fidelityScore: number;
   issues: QaIssue[];
-  iterations: number;
   screenshots: { desktop: string; mobile?: string };
-  previewUrl?: string;
+  previewUrl: string;
 }
 
-export async function runRalphLoop(input: RalphLoopInput): Promise<RalphLoopOutput> {
-  const { db, config, workspaceUuid, siteUuid, pageSlug, aiJobUuid, mode } = input;
-  let distDir = input.distDir;
-  let attemptId = input.attemptId;
-  let iterations = 0;
-  let issues: QaIssue[] = [];
-  let fidelityScore = 0;
-  let previewUrl: string | undefined;
-  const screenshots: { desktop: string; mobile?: string } = { desktop: "" };
+export async function runPageQa(input: PageQaInput): Promise<PageQaOutput> {
+  const { mode, referenceScreenshotUrl, fidelityThreshold = 0.85 } = input;
 
-  while (iterations < input.maxIterations) {
-    iterations++;
+  const server = await serveStaticDir(input.distDir);
+  let currentScreenshot: Buffer;
 
-    const server = await serveStaticDir(distDir);
-    let currentScreenshot: Buffer | undefined;
-
-    try {
-      currentScreenshot = await captureScreenshot(server.url, { width: 1280, height: 800 });
-      screenshots.desktop = `data:image/png;base64,${currentScreenshot.toString("base64")}`;
-
-      if (mode === "replication" && input.referenceScreenshotUrl) {
-        const referenceBuffer = await fetchImageBuffer(input.referenceScreenshotUrl);
-        fidelityScore = referenceBuffer
-          ? computeFidelity(currentScreenshot, referenceBuffer)
-          : 0;
-      } else {
-        fidelityScore = 1;
-      }
-
-      issues = await runVisualQa({
-        ...input,
-        generatedScreenshotDataUrl: screenshots.desktop,
-        referenceScreenshotUrl: input.referenceScreenshotUrl ?? null,
-        fidelityScore,
-        priorIssues: issues,
-      });
-
-      const passed = fidelityScore >= input.fidelityThreshold && !issues.some((i) => i.severity === "high");
-      previewUrl = previewUrl ?? `${server.url}/index.html`;
-
-      if (passed || iterations === input.maxIterations) {
-        return { passed, fidelityScore, issues, iterations, screenshots, previewUrl };
-      }
-
-      if (input.maxBudgetUsd) {
-        const costSoFar = await getJobCostUsd(db, aiJobUuid);
-        if (costSoFar >= input.maxBudgetUsd) {
-          return { passed: false, fidelityScore, issues, iterations, screenshots, previewUrl };
-        }
-      }
-
-      attemptId = `${input.attemptId}-ralph-${iterations}`;
-      const regenerated = await generateAstroPage({
-        db,
-        config,
-        workspaceUuid,
-        siteUuid,
-        pageSlug,
-        blueprint: input.blueprint,
-        mode,
-        attemptId,
-        priorIssues: issues,
-      });
-
-      if (!regenerated.buildSuccess) {
-        return { passed: false, fidelityScore, issues, iterations, screenshots, previewUrl: regenerated.previewUrl };
-      }
-
-      distDir = regenerated.distDir;
-      previewUrl = regenerated.previewUrl;
-    } finally {
-      server.close();
-    }
+  try {
+    currentScreenshot = await captureScreenshot(server.url, { width: 1280, height: 800 });
+  } finally {
+    server.close();
   }
 
-  return { passed: false, fidelityScore, issues, iterations, screenshots, previewUrl };
+  const desktopDataUrl = `data:image/png;base64,${currentScreenshot.toString("base64")}`;
+
+  let fidelityScore: number;
+  if (mode === "replication" && referenceScreenshotUrl) {
+    const referenceBuffer = await fetchImageBuffer(referenceScreenshotUrl);
+    fidelityScore = referenceBuffer ? computeFidelity(currentScreenshot, referenceBuffer) : 0;
+  } else {
+    fidelityScore = 1;
+  }
+
+  const issues = await runVisualQa({
+    ...input,
+    generatedScreenshotDataUrl: desktopDataUrl,
+    referenceScreenshotUrl: referenceScreenshotUrl ?? null,
+    fidelityScore,
+  });
+
+  const passed = fidelityScore >= fidelityThreshold && !issues.some((i) => i.severity === "high");
+
+  return {
+    passed,
+    fidelityScore,
+    issues,
+    screenshots: { desktop: desktopDataUrl },
+    previewUrl: input.previewUrl,
+  };
 }
 
 interface StaticServer {
@@ -202,18 +166,17 @@ function padTo(png: PNG, width: number, height: number): Buffer {
   return output;
 }
 
-interface VisualQaInput extends Pick<RalphLoopInput, "db" | "config" | "workspaceUuid" | "siteUuid" | "pageSlug" | "aiJobUuid" | "mode"> {
+interface VisualQaInput extends Pick<PageQaInput, "db" | "config" | "workspaceUuid" | "siteUuid" | "pageSlug" | "aiJobUuid" | "mode"> {
   generatedScreenshotDataUrl: string;
   referenceScreenshotUrl: string | null;
   fidelityScore: number;
-  priorIssues: QaIssue[];
 }
 
 async function runVisualQa(input: VisualQaInput): Promise<QaIssue[]> {
-  const parts: import("../ai/llm-client").ChatContentPart[] = [
+  const parts: ChatContentPart[] = [
     {
       type: "text",
-      text: buildVisualQaPrompt(input.mode, input.fidelityScore, input.priorIssues),
+      text: buildVisualQaPrompt(input.mode, input.fidelityScore),
     },
     { type: "image_url", image_url: { url: input.generatedScreenshotDataUrl } },
   ];
@@ -264,7 +227,7 @@ async function runVisualQa(input: VisualQaInput): Promise<QaIssue[]> {
 }
 
 function systemVisualQaPrompt(): string {
-  return `You are Ralph, a meticulous visual QA engineer for an AI website builder.
+  return `You are a meticulous visual QA engineer for an AI website builder.
 Your job is to compare a generated webpage screenshot against the source site screenshot (when available) and list concrete visual issues.
 
 Return ONLY a JSON object with this shape:
@@ -287,15 +250,10 @@ Rules:
 - Do not invent issues that are not visible in the screenshots.`;
 }
 
-function buildVisualQaPrompt(mode: string, fidelityScore: number, priorIssues: QaIssue[]): string {
-  const priorText =
-    priorIssues.length > 0
-      ? `Prior issues to verify:\n${priorIssues.map((i) => `- [${i.severity}] ${i.component_id}: ${i.description}`).join("\n")}`
-      : "No prior issues.";
-
+function buildVisualQaPrompt(mode: string, fidelityScore: number): string {
   return mode === "replication"
-    ? `Compare the generated page (first image) to the reference source site (second image). Pixel fidelity score: ${fidelityScore.toFixed(2)}. ${priorText}`
-    : `Review the generated page (first image) for build, content, and responsive quality. ${priorText}`;
+    ? `Compare the generated page (first image) to the reference source site (second image). Pixel fidelity score: ${fidelityScore.toFixed(2)}.`
+    : `Review the generated page (first image) for build, content, and responsive quality.`;
 }
 
 function parseQaIssues(raw: string): QaIssue[] | null {

@@ -33,6 +33,7 @@ function extractToken(header: string | undefined): string | null {
 async function verifyBearerToken(
   token: string,
   config: { secretKey?: string; verify: boolean },
+  log: import("fastify").FastifyBaseLogger,
 ): Promise<string | null> {
   if (!config.verify) {
     return token;
@@ -45,7 +46,8 @@ async function verifyBearerToken(
   try {
     const result = await verifyToken(token, { secretKey: config.secretKey });
     return result.sub ?? null;
-  } catch {
+  } catch (error) {
+    log.warn({ err: error }, "Clerk token verification failed");
     return null;
   }
 }
@@ -55,6 +57,17 @@ export default fp(
     const config = fastify.config;
 
     fastify.addHook("onRequest", async (request, reply) => {
+      // Preview URLs are intentionally public redirects to S3-hosted build
+      // artifacts. Skip workspace auth for those requests.
+      const pathname = request.raw.url?.split("?")[0] ?? "";
+
+      if (
+        request.method === "GET" &&
+        /^(\/api)?\/sites\/[^/]+\/preview\/[^/]+\/?$/.test(pathname)
+      ) {
+        return;
+      }
+
       const token = extractToken(request.headers.authorization as string | undefined);
 
       if (!token) {
@@ -67,10 +80,14 @@ export default fp(
         return reply.code(401).send({ error: "Missing x-workspace-slug header" });
       }
 
-      const externalUserId = await verifyBearerToken(token, {
-        secretKey: config.CLERK_SECRET_KEY,
-        verify: config.CLERK_VERIFY_TOKENS,
-      });
+      const externalUserId = await verifyBearerToken(
+        token,
+        {
+          secretKey: config.CLERK_SECRET_KEY,
+          verify: config.CLERK_VERIFY_TOKENS,
+        },
+        fastify.log,
+      );
 
       if (!externalUserId) {
         return reply.code(401).send({ error: "Invalid authorization token" });

@@ -7,16 +7,24 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../../s3";
+import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
-import { logAiActivity, getRecentAiActivity } from "../../services/ai-activity";
-import { startSiteBuild, approvePage } from "../../services/site-generation-orchestrator";
+import {
+  logAiActivity,
+  getRecentAiActivity,
+  getAiActivityCostSummary,
+} from "../../services/ai-activity";
+import {
+  startSiteBuild,
+  approvePage,
+} from "../../services/site-generation-orchestrator";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
+import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
 import { loadBlueprintDoc } from "../../utils/blueprint-io";
 import { jsonb } from "../../utils/jsonb";
 import { resolveBuildCommand } from "../../services/build-assistant/registry";
@@ -589,50 +597,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     "/sites/scrape",
     {
       schema: {
-        body: ScrapeSiteSchema.extend({ force: z.boolean().optional() }),
+        body: ScrapeSiteSchema,
         response: {
           201: ScrapeSiteResponseSchema,
-          409: z.object({
-            error: z.string(),
-            siteUuid: z.string().optional(),
-            status: z.string().optional(),
-            requiresConfirmation: z.boolean().optional(),
-          }),
         },
       },
     },
     async (request, reply) => {
-      const { url, name, force } = request.body;
+      const { url, name } = request.body;
       const workspaceUuid = request.workspace.uuid;
       const normalized = normalizeUrl(url);
-
-      const match = await fastify.db
-        .selectFrom("sites")
-        .selectAll()
-        .where("workspaceUuid", "=", workspaceUuid)
-        .where("sourceUrl", "=", normalized)
-        .executeTakeFirst();
-
-      if (match) {
-        if (match.status === "published") {
-          return reply.code(409).send({
-            error: "Published sites can’t be rescanned. Unpublish the site before scanning again.",
-            siteUuid: match.uuid,
-            status: match.status,
-            requiresConfirmation: false,
-          });
-        }
-
-        if (!force) {
-          return reply.code(409).send({
-            error:
-              "A site already exists for this URL. Rescanning will replace its content. Confirm to continue.",
-            siteUuid: match.uuid,
-            status: match.status,
-            requiresConfirmation: true,
-          });
-        }
-      }
 
       let browser: Browser | undefined;
 
@@ -666,13 +640,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             region: fastify.config.S3_REGION,
             accessKeyId: fastify.config.S3_ACCESS_KEY,
             secretAccessKey: fastify.config.S3_SECRET_KEY,
+            sessionToken: fastify.config.S3_SESSION_TOKEN,
           });
-          const siteUuid = match?.uuid ?? newSiteUuid;
           const storageKey = path.posix.join(
             "workspaces",
             workspaceUuid,
             "sites",
-            siteUuid,
+            newSiteUuid,
             "screenshots",
             `scrape-${Date.now()}.png`,
           );
@@ -684,9 +658,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               ContentType: "image/png",
             }),
           );
-          const publicUrl = `${fastify.config.CDN_BASE_URL.replace(/\/$/, "")}/${
-            fastify.config.S3_ASSETS_BUCKET
-          }/${storageKey}`;
+          const publicUrl = buildS3ObjectUrl({
+            endpoint: fastify.config.S3_ENDPOINT,
+            region: fastify.config.S3_REGION,
+            bucket: fastify.config.S3_ASSETS_BUCKET,
+            key: storageKey,
+          });
 
           const asset = await fastify.db
             .insertInto("assets")
@@ -723,7 +700,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             fastify.db,
             fastify.config,
             workspaceUuid,
-            match?.uuid ?? newSiteUuid,
+            newSiteUuid,
             data.images,
           );
           for (const image of data.images) {
@@ -731,6 +708,23 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             if (local) {
               image.url = local.url;
               image.assetUuid = local.assetUuid;
+              fastify.queues.classifyAssets.queue
+                .add(
+                  "classify_assets",
+                  {
+                    workspaceUuid,
+                    assetUuid: local.assetUuid,
+                    userUuid: request.user.uuid,
+                    siteUuid: newSiteUuid,
+                  },
+                  { jobId: local.assetUuid },
+                )
+                .catch((err) => {
+                  fastify.log.warn(
+                    { err, assetUuid: local.assetUuid },
+                    "Failed to enqueue scraped asset classification",
+                  );
+                });
             }
           }
         } catch {
@@ -748,87 +742,44 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
 
-        // Clean up old site-derived state before generating new docs so the
-        // new ai_activity entries for this scrape are preserved.
-        if (match) {
-          await fastify.db
-            .deleteFrom("aiActivity")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("aiJobs")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("deployments")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("pages")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-          await fastify.db
-            .deleteFrom("docs")
-            .where("siteUuid", "=", match.uuid)
-            .execute();
-        }
-
         const docs = await generateSiteDocs(data, gmbListing, fastify.config, {
           db: fastify.db,
           workspaceUuid: request.workspace.uuid,
           userUuid: request.user.uuid,
-          siteUuid: match?.uuid,
+          siteUuid: newSiteUuid,
         });
 
-        // For rescans, reuse the existing slug. For new sites, find a unique slug.
-        let uniqueSlug = match ? match.slug : baseSlug;
-        if (!match) {
-          let suffix = 1;
-          while (
-            await fastify.db
-              .selectFrom("sites")
-              .select("uuid")
-              .where("workspaceUuid", "=", workspaceUuid)
-              .where("slug", "=", uniqueSlug)
-              .executeTakeFirst()
-          ) {
-            suffix++;
-            uniqueSlug = `${baseSlug}-${suffix}`;
-          }
+        // Find a unique slug in this workspace.
+        let uniqueSlug = baseSlug;
+        let suffix = 1;
+        while (
+          await fastify.db
+            .selectFrom("sites")
+            .select("uuid")
+            .where("workspaceUuid", "=", workspaceUuid)
+            .where("slug", "=", uniqueSlug)
+            .executeTakeFirst()
+        ) {
+          suffix++;
+          uniqueSlug = `${baseSlug}-${suffix}`;
         }
 
-        const site = match
-          ? await fastify.db
-              .updateTable("sites")
-              .set({
-                name: siteName,
-                slug: uniqueSlug,
-                status: "draft",
-                sourceUrl: normalized,
-                mode: "replication",
-                defaultMetaTitle: data.title,
-                defaultMetaDescription: data.description,
-                updatedAt: new Date(),
-              })
-              .where("uuid", "=", match.uuid)
-              .returningAll()
-              .executeTakeFirstOrThrow()
-          : await fastify.db
-              .insertInto("sites")
-              .values({
-                uuid: newSiteUuid,
-                workspaceUuid,
-                name: siteName,
-                slug: uniqueSlug,
-                status: "draft",
-                mode: "replication",
-                themeUuid: null,
-                sourceUrl: normalized,
-                defaultMetaTitle: data.title,
-                defaultMetaDescription: data.description,
-              })
-              .returningAll()
-              .executeTakeFirstOrThrow();
+        const site = await fastify.db
+          .insertInto("sites")
+          .values({
+            uuid: newSiteUuid,
+            workspaceUuid,
+            name: siteName,
+            slug: uniqueSlug,
+            status: "draft",
+            mode: "replication",
+            themeUuid: null,
+            sourceUrl: normalized,
+            defaultMetaTitle: data.title,
+            defaultMetaDescription: data.description,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
 
@@ -1027,33 +978,54 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
-  fastify.get(
-    "/sites/:uuid/preview/:attemptId",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
-        response: {
-          302: z.any(),
-          404: z.object({ error: z.string() }),
-        },
+  async function previewRedirect(
+    request: import("fastify").FastifyRequest<{
+      Params: { uuid: string; attemptId: string };
+    }>,
+    reply: import("fastify").FastifyReply,
+  ) {
+    const deployment = await fastify.db
+      .selectFrom("deployments")
+      .select(["previewUrl", "metadata"])
+      .where("siteUuid", "=", request.params.uuid)
+      .where("buildId", "=", request.params.attemptId)
+      .orderBy("createdAt", "desc")
+      .executeTakeFirst();
+
+    if (!deployment?.previewUrl) {
+      return reply.code(404).send({ error: "Preview not found" });
+    }
+
+    const s3Meta = (deployment.metadata as { s3?: { bucket: string; previewKey: string } } | null)?.s3;
+    if (s3Meta?.bucket && s3Meta?.previewKey) {
+      const signedUrl = await getSignedDownloadUrl({
+        endpoint: fastify.config.S3_ENDPOINT,
+        region: fastify.config.S3_REGION,
+        accessKeyId: fastify.config.S3_ACCESS_KEY,
+        secretAccessKey: fastify.config.S3_SECRET_KEY,
+        sessionToken: fastify.config.S3_SESSION_TOKEN,
+        bucket: s3Meta.bucket,
+        key: s3Meta.previewKey,
+        expiresIn: 300,
+      });
+      return reply.redirect(signedUrl);
+    }
+
+    return reply.redirect(deployment.previewUrl);
+  }
+
+  const previewRouteConfig = {
+    schema: {
+      params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
+      response: {
+        302: z.any(),
+        404: z.object({ error: z.string() }),
       },
     },
-    async (request, reply) => {
-      const deployment = await fastify.db
-        .selectFrom("deployments")
-        .select("previewUrl")
-        .where("siteUuid", "=", request.params.uuid)
-        .where("buildId", "=", request.params.attemptId)
-        .orderBy("createdAt", "desc")
-        .executeTakeFirst();
+  };
 
-      if (!deployment?.previewUrl) {
-        return reply.code(404).send({ error: "Preview not found" });
-      }
-
-      return reply.redirect(deployment.previewUrl);
-    },
-  );
+  fastify.get("/sites/:uuid/preview/:attemptId", previewRouteConfig, previewRedirect);
+  fastify.get("/sites/:uuid/preview/:attemptId/*", previewRouteConfig, previewRedirect);
 
   fastify.get(
     "/sites/:uuid/deployments",
@@ -1065,7 +1037,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             z.object({
               uuid: z.string(),
               buildId: z.string(),
-              status: z.string(),
+              status: z.enum(["building", "failed", "pending", "success"]),
               previewUrl: z.string().nullable().optional(),
               artifactUrl: z.string().nullable().optional(),
               metadata: z.any().nullable().optional(),
@@ -1103,6 +1075,101 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         createdAt: d.createdAt.toISOString(),
         updatedAt: d.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/ai-activity",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        querystring: z.object({
+          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+          outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
+          limit: z.coerce.number().int().min(1).max(500).optional().default(50),
+        }),
+        response: {
+          200: z.object({
+            activities: z.array(
+              z.object({
+                uuid: z.string(),
+                workspaceUuid: z.string(),
+                siteUuid: z.string().nullable(),
+                userUuid: z.string(),
+                aiJobUuid: z.string().nullable(),
+                actionType: z.string(),
+                model: z.string().nullable(),
+                provider: z.string().nullable(),
+                promptTemplateKeys: z.string().nullable(),
+                inputDocKeys: z.string().nullable(),
+                inputTokens: z.number().nullable(),
+                outputTokens: z.number().nullable(),
+                costUsd: z.number().nullable(),
+                latencyMs: z.number().nullable(),
+                outcome: z.string(),
+                fidelityScore: z.number().nullable(),
+                summary: z.string(),
+                errorMessage: z.string().nullable(),
+                userCorrection: z.string().nullable(),
+                metadata: z.any().nullable(),
+                createdAt: z.string(),
+              }),
+            ),
+            summary: z.object({
+              totalCostUsd: z.number(),
+              totalTokens: z.number(),
+              count: z.number(),
+            }),
+          }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const { actionType, outcome, limit } = request.query;
+
+      const [activities, summary] = await Promise.all([
+        getRecentAiActivity(fastify.db, {
+          workspaceUuid,
+          siteUuid,
+          actionType: actionType as AiActivityAction | undefined,
+          outcome: outcome as AiActivityOutcome | undefined,
+          limit,
+        }),
+        getAiActivityCostSummary(fastify.db, {
+          workspaceUuid,
+          siteUuid,
+          actionType: actionType as AiActivityAction | undefined,
+          outcome: outcome as AiActivityOutcome | undefined,
+          // Rollup rows (actionType = 'generate' for scrape summaries) duplicate
+          // child costs already represented by their underlying LLM calls. Exclude
+          // them so site totals reflect actual LLM invocations, not summary rows.
+          excludeActionTypes: ["generate"],
+        }),
+      ]);
+
+      return {
+        activities: activities.map((a) => ({
+          ...a,
+          costUsd: a.costUsd != null ? Number(a.costUsd) : null,
+          fidelityScore: a.fidelityScore != null ? Number(a.fidelityScore) : null,
+          createdAt: a.createdAt.toISOString(),
+        })),
+        summary,
+      };
     },
   );
 

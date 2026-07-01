@@ -1,4 +1,4 @@
-import type { Asset, AssetMetadata } from "@/lib/api";
+import type { Asset, AssetAnalysis, AssetMetadata } from "@/lib/api";
 
 export function formatBytes(bytes?: number | null): string {
   if (bytes == null || bytes === 0) return "0 B";
@@ -38,20 +38,42 @@ export type AssetTagKey = (typeof ASSET_TAGS)[number]["key"];
 const TYPE_TAG_MAP: Record<Asset["type"], AssetTagKey> = {
   image: "photograph",
   video: "screenshot",
-  audio: "ad-creative",
   font: "font",
   document: "website",
   logo: "logo",
   icon: "graphic",
 };
 
+function isAssetTagKey(tag: string): tag is AssetTagKey {
+  return ASSET_TAGS.some((t) => t.key === tag);
+}
+
+export function getAssetSourceLabel(source: Asset["source"]): string {
+  switch (source) {
+    case "upload":
+      return "Upload";
+    case "scraped":
+      return "Scraped";
+    case "screenshot":
+      return "Screenshot";
+    case "ai_generated":
+      return "AI generated";
+  }
+}
+
+export function canRegenerateAnalysis(asset: Asset): boolean {
+  if (asset.source === "screenshot") return false;
+  return asset.type === "image" || asset.mimeType?.startsWith("image/") || false;
+}
+
 export function getAssetTags(asset: Asset): AssetTagKey[] {
   const fromMeta = asset.metadata?.tags ?? [];
+  const fromAnalysis = asset.metadata?.analysis?.tags ?? [];
   const typeTag = TYPE_TAG_MAP[asset.type];
   const tags = new Set<AssetTagKey>();
-  for (const tag of fromMeta) {
-    if (ASSET_TAGS.some((t) => t.key === tag)) {
-      tags.add(tag as AssetTagKey);
+  for (const tag of [...fromMeta, ...fromAnalysis]) {
+    if (isAssetTagKey(tag)) {
+      tags.add(tag);
     }
   }
   if (typeTag) tags.add(typeTag);
@@ -75,7 +97,31 @@ export function getAssetFilename(asset: Asset): string {
 }
 
 export function getAssetDescription(asset: Asset): string {
-  return asset.metadata?.description ?? "";
+  return asset.metadata?.description ?? asset.metadata?.analysis?.description ?? "";
+}
+
+export function getAssetAltText(asset: Asset): string {
+  return asset.metadata?.analysis?.altText ?? "";
+}
+
+export function getAssetAnalysis(asset: Asset): AssetAnalysis | undefined {
+  return asset.metadata?.analysis;
+}
+
+export function isAssetAnalyzed(asset: Asset): boolean {
+  return Boolean(asset.metadata?.analysis);
+}
+
+export function needsAnalysisReview(asset: Asset): boolean {
+  return asset.metadata?.analysis?.safety?.needsReview ?? false;
+}
+
+export function getAnalysisQualityLabel(asset: Asset): string | null {
+  const score = asset.metadata?.analysis?.quality.score;
+  if (score == null) return null;
+  if (score >= 4) return "High quality";
+  if (score === 3) return "Average quality";
+  return "Low quality";
 }
 
 export function buildAssetMetadata(

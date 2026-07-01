@@ -66,6 +66,7 @@ export interface Site {
   slug: string;
   name: string;
   status: "draft" | "published" | "archived";
+  mode?: "replication" | "template" | "greenfield" | null;
   subdomain?: string | null;
   customDomain?: string | null;
   themeUuid?: string | null;
@@ -89,20 +90,65 @@ export interface Doc {
   updatedAt: string;
 }
 
+export interface AssetAnalysis {
+  analyzedAt: string;
+  model: string;
+  version: number;
+  description: string;
+  altText: string;
+  context:
+    | "hero"
+    | "logo"
+    | "icon"
+    | "testimonial"
+    | "program"
+    | "class"
+    | "blog"
+    | "social"
+    | "background"
+    | "other";
+  confidence: number;
+  tags: string[];
+  technical: {
+    hasText: boolean;
+    textConfidence: number;
+    faces?: number | null;
+    people?: number | null;
+  };
+  quality: {
+    score: number;
+    resolution: "low" | "medium" | "high" | "unknown";
+    sharpness: "blurry" | "soft" | "good" | "sharp" | "unknown";
+    issues: string[];
+  };
+  marketing: {
+    mood: string;
+    useCases: string[];
+    subject: string;
+    brandFit?: number | null;
+  };
+  safety: {
+    hasIdentifiablePeople: boolean;
+    needsReview: boolean;
+  };
+}
+
 export interface AssetMetadata {
   filename?: string;
   description?: string;
   tags?: string[];
   size?: number;
   dimensions?: { width: number; height: number };
+  analysis?: AssetAnalysis;
 }
 
 export interface Asset {
   uuid: string;
   workspaceUuid: string;
   name: string;
-  type: "image" | "video" | "audio" | "font" | "document" | "logo" | "icon";
+  type: "image" | "video" | "font" | "document" | "logo" | "icon";
   mimeType?: string | null;
+  source: "upload" | "scraped" | "screenshot" | "ai_generated";
   url: string;
   signedUrl: string;
   storageKey: string;
@@ -150,9 +196,72 @@ export interface UploadUrl {
 export interface ScrapeSiteResult {
   site: Site;
   docs: Doc[];
-  aiJobUuid: string;
   screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
 }
+
+export interface GenerateSiteResult {
+  aiJobUuid: string;
+  attemptId: string;
+  status: string;
+}
+
+export interface ApprovePageResult {
+  approved: string;
+  remainingPagesEnqueued: string[];
+}
+
+export interface Deployment {
+  uuid: string;
+  buildId: string;
+  status: "building" | "failed" | "pending" | "success";
+  previewUrl: string | null;
+  artifactUrl: string | null;
+  metadata?: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiActivityResponse {
+  activities: {
+    uuid: string;
+    workspaceUuid: string;
+    siteUuid: string | null;
+    userUuid: string;
+    aiJobUuid: string | null;
+    actionType: string;
+    model: string | null;
+    provider: string | null;
+    promptTemplateKeys: string | null;
+    inputDocKeys: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costUsd: number | null;
+    latencyMs: number | null;
+    outcome: string;
+    fidelityScore: number | null;
+    summary: string;
+    errorMessage: string | null;
+    userCorrection: string | null;
+    metadata: unknown;
+    createdAt: string;
+  }[];
+  summary: { totalCostUsd: number; totalTokens: number; count: number };
+}
+
+export interface GenerateSiteOptions {
+  mode?: "replication" | "template" | "greenfield";
+  accuracy?: "fast" | "balanced" | "accurate";
+  maxQaIterations?: number;
+  maxBudgetUsd?: number;
+  fidelityThreshold?: number;
+}
+
+export type CreateAssetBody = Omit<
+  Asset,
+  "uuid" | "workspaceUuid" | "createdAt" | "signedUrl" | "mimeType"
+> & {
+  mimeType?: string;
+};
 
 export interface BuildStatus {
   site: Site;
@@ -199,17 +308,40 @@ export interface BuildCommandResponse {
   messages?: { role: "assistant" | "user"; content: string }[];
   userMessage?: string;
 }
-
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
   createSite: (body: { name: string; slug: string; templateKey?: string }) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
-  scrapeSite: (body: { url: string; name?: string; force?: boolean }) =>
+  scrapeSite: (body: { url: string; name?: string }) =>
     fetchJson<ScrapeSiteResult>("/sites/scrape", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  generateSite: (siteUuid: string, options: GenerateSiteOptions = {}) =>
+    fetchJson<GenerateSiteResult>(
+      `/sites/${encodeURIComponent(siteUuid)}/generate`,
+      { method: "POST", body: JSON.stringify(options) },
+    ),
+  approvePage: (siteUuid: string, slug: string) =>
+    fetchJson<ApprovePageResult>(
+      `/sites/${encodeURIComponent(siteUuid)}/pages/${encodeURIComponent(slug)}/approve`,
+      { method: "POST" },
+    ),
+  listDeployments: (siteUuid: string) =>
+    fetchJson<Deployment[]>(
+      `/sites/${encodeURIComponent(siteUuid)}/deployments`,
+    ),
+  previewUrl: (siteUuid: string, attemptId: string) =>
+    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}`,
+  getSiteAiActivity: (siteUuid: string, options?: { actionType?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.actionType) params.set("actionType", options.actionType);
+    if (options?.limit != null) params.set("limit", String(options.limit));
+    return fetchJson<AiActivityResponse>(
+      `/sites/${encodeURIComponent(siteUuid)}/ai-activity?${params.toString()}`,
+    );
+  },
   getBuildStatus: (siteUuid: string) =>
     fetchJson<BuildStatus>(`/sites/${encodeURIComponent(siteUuid)}/build-status`),
   sendBuildCommand: (siteUuid: string, message: string) =>
@@ -240,10 +372,14 @@ export const api = {
       method: "POST",
     }),
 
-  getAssets: () => fetchJson<Asset[]>("/assets"),
-  createAsset: (
-    body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt" | "signedUrl">,
-  ) =>
+  getAssets: (params?: { tag?: string; source?: Asset["source"]; analyzed?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.tag) query.set("tag", params.tag);
+    if (params?.source) query.set("source", params.source);
+    if (params?.analyzed != null) query.set("analyzed", params.analyzed ? "true" : "false");
+    return fetchJson<Asset[]>(`/assets${query.toString() ? `?${query.toString()}` : ""}`);
+  },
+  createAsset: (body: CreateAssetBody) =>
     fetchJson<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
   updateAsset: (
     uuid: string,
@@ -255,6 +391,15 @@ export const api = {
     }),
   deleteAsset: (uuid: string) =>
     fetchWithBase(`/assets/${uuid}`, { method: "DELETE" }),
+  regenerateAnalysis: (uuid: string) =>
+    fetchJson<{ enqueued: boolean }>(
+      `/assets/${encodeURIComponent(uuid)}/regenerate-analysis`,
+      { method: "POST" },
+    ),
+  backfillAnalysis: () =>
+    fetchJson<{ enqueued: number }>("/assets/backfill-analysis", {
+      method: "POST",
+    }),
   getUploadUrl: (filename: string, contentType?: string) =>
     fetchJson<UploadUrl>(
       `/assets/upload-url?filename=${encodeURIComponent(filename)}${contentType ? `&contentType=${encodeURIComponent(contentType)}` : ""}`,
@@ -279,32 +424,7 @@ export const api = {
   getAiActivity: (limit = 100, siteUuid?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (siteUuid) params.set("siteUuid", siteUuid);
-    return fetchJson<{
-      activities: {
-        uuid: string;
-        workspaceUuid: string;
-        siteUuid: string | null;
-        userUuid: string;
-        aiJobUuid: string | null;
-        actionType: string;
-        model: string | null;
-        provider: string | null;
-        promptTemplateKeys: string | null;
-        inputDocKeys: string | null;
-        inputTokens: number | null;
-        outputTokens: number | null;
-        costUsd: number | null;
-        latencyMs: number | null;
-        outcome: string;
-        fidelityScore: number | null;
-        summary: string;
-        errorMessage: string | null;
-        userCorrection: string | null;
-        metadata: unknown;
-        createdAt: string;
-      }[];
-      summary: { totalCostUsd: number; totalTokens: number; count: number };
-    }>(`/ai-activity?${params.toString()}`);
+    return fetchJson<AiActivityResponse>(`/ai-activity?${params.toString()}`);
   },
 
   getOrganizations: () =>

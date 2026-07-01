@@ -115,7 +115,10 @@ describe("ai-activity service", () => {
       summary: "Scraped site and generated docs",
     });
 
-    const summary = await getAiActivityCostSummary(db, workspaceUuid);
+    const summary = await getAiActivityCostSummary(db, {
+      workspaceUuid,
+      excludeActionTypes: ["generate"],
+    });
     expect(summary.totalCostUsd).toBeCloseTo(0.025, 3);
     expect(summary.totalTokens).toBe(3500);
     expect(summary.count).toBe(1);

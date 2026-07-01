@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -11,11 +18,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search, Loader2, Link2, Activity } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Activity, Copy, X } from "lucide-react";
 import { api, type Site } from "@/lib/api";
 import { useNavigate, Link } from "react-router";
 
 type ViewMode = "grid" | "list";
+
+type PendingSite = Omit<Site, "status"> & { status: "cloning" };
+
+type DashboardSite = Site | PendingSite;
 
 function formatRelativeDate(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date;
@@ -29,7 +40,7 @@ function formatRelativeDate(date: string | Date): string {
   return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
-function getSiteDomain(site: Site): string {
+function getSiteDomain(site: DashboardSite): string {
   if (site.customDomain) return site.customDomain;
   if (site.subdomain) return `${site.subdomain}.pushpress.build`;
   return `${site.slug}.pushpress.build`;
@@ -53,50 +64,56 @@ export function Dashboard() {
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [showNewSite, setShowNewSite] = useState(false);
-  const [scrapeUrl, setScrapeUrl] = useState("");
-  const [scrapeName, setScrapeName] = useState("");
-  const [showScrape, setShowScrape] = useState(false);
-  const [confirmScrape, setConfirmScrape] = useState<{
-    siteUuid: string;
-    status: string;
-    message: string;
-  } | null>(null);
+  const [siteUrl, setSiteUrl] = useState("");
+  const [siteName, setSiteName] = useState("");
+  const [isMyWebsite, setIsMyWebsite] = useState(false);
+  const [hasRights, setHasRights] = useState(false);
+  const [pendingClones, setPendingClones] = useState<PendingSite[]>([]);
+  const [cloneError, setCloneError] = useState<string | null>(null);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: api.getSites,
   });
 
-  const scrapeSite = useMutation({
-    mutationFn: api.scrapeSite,
-    onSuccess: (result) => {
+  const createSite = useMutation({
+    mutationFn: async ({
+      url,
+      name,
+    }: {
+      url: string;
+      name?: string;
+    }) => {
+      const scrapeResult = await api.scrapeSite({ url, name });
+      const generateResult = await api.generateSite(scrapeResult.site.uuid, {
+        mode: "replication",
+        accuracy: "accurate",
+      });
+      return { site: scrapeResult.site, aiJobUuid: generateResult.aiJobUuid };
+    },
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
       queryClient.invalidateQueries({ queryKey: ["docs"] });
-      setScrapeUrl("");
-      setScrapeName("");
-      setShowScrape(false);
-      setConfirmScrape(null);
+      setPendingClones((prev) =>
+        prev.filter((s) => s.sourceUrl !== variables.url),
+      );
       navigate(`/build/${result.site.uuid}?job=${result.aiJobUuid}`);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      setPendingClones((prev) =>
+        prev.filter((s) => s.sourceUrl !== variables.url),
+      );
       try {
         const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
-        if (body.requiresConfirmation && body.siteUuid) {
-          setConfirmScrape({
-            siteUuid: body.siteUuid,
-            status: body.status,
-            message: body.error,
-          });
-          return;
-        }
+        setCloneError(body.error || error.message);
       } catch {
-        // not our shaped error; let it surface normally
+        setCloneError(error.message);
       }
     },
   });
 
   const filteredSites = useMemo(() => {
-    let list = sites ?? [];
+    let list: DashboardSite[] = [...(sites ?? []), ...pendingClones];
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -105,16 +122,46 @@ export function Dashboard() {
           site.slug.toLowerCase().includes(q),
       );
     }
-    return list;
-  }, [sites, search]);
+    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [sites, pendingClones, search]);
 
-  const handleScrape = (force?: boolean) => {
-    if (!scrapeUrl.trim()) return;
-    scrapeSite.mutate({
-      url: scrapeUrl.trim(),
-      name: scrapeName.trim() || undefined,
-      force,
-    });
+  const handleCreate = () => {
+    if (!siteUrl.trim()) return;
+    const url = siteUrl.trim();
+    const name = siteName.trim() || undefined;
+
+    const tempSlug = `cloning-${Date.now()}`;
+    const pending: PendingSite = {
+      uuid: tempSlug,
+      workspaceUuid: "",
+      slug: tempSlug,
+      name: name || url,
+      status: "cloning",
+      sourceUrl: url,
+      mode: "replication",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setPendingClones((prev) => [pending, ...prev]);
+    setShowNewSite(false);
+    setSiteUrl("");
+    setSiteName("");
+    setIsMyWebsite(false);
+    setHasRights(false);
+    createSite.reset();
+    createSite.mutate({ url, name });
+  };
+
+  const canSubmit = siteUrl.trim() && (!isMyWebsite || hasRights);
+
+  const resetModal = () => {
+    setShowNewSite(false);
+    setSiteUrl("");
+    setSiteName("");
+    setIsMyWebsite(false);
+    setHasRights(false);
+    createSite.reset();
   };
 
   return (
@@ -164,10 +211,6 @@ export function Dashboard() {
               <List className="h-4 w-4" />
             </button>
           </div>
-          <Button size="sm" onClick={() => setShowScrape(true)}>
-            <Link2 className="h-4 w-4" />
-            Scrape URL
-          </Button>
           <Button size="sm" onClick={() => setShowNewSite(true)}>
             <Plus className="h-4 w-4" />
             New site
@@ -176,123 +219,123 @@ export function Dashboard() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
-        {showScrape && (
-          <div className="mb-6 rounded-lg border bg-card p-6">
-            <h2 className="mb-2 font-semibold">Scrape a website</h2>
-            <p className="mb-4 text-sm text-muted-foreground">
-              Enter a gym or studio URL. We will scrape the homepage, create a site record, and generate workspace docs you can inspect.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                type="url"
-                placeholder="https://example-gym.com"
-                value={scrapeUrl}
-                onChange={(e) => setScrapeUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleScrape();
-                }}
-              />
-              <Input
-                placeholder="Site name (optional)"
-                value={scrapeName}
-                onChange={(e) => setScrapeName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleScrape();
-                }}
-              />
+        {cloneError && (
+          <div className="mb-4 flex items-start justify-between rounded-md border border-destructive/50 bg-destructive/5 px-4 py-3">
+            <p className="text-sm text-destructive">{cloneError}</p>
+            <button
+              type="button"
+              onClick={() => setCloneError(null)}
+              className="ml-3 text-destructive hover:text-destructive/80"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <Dialog
+          open={showNewSite}
+          onOpenChange={(open) => {
+            if (!open) resetModal();
+          }}
+          className="max-w-lg"
+        >
+          <DialogContent className="gap-0 p-0">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Create a New Site</h2>
+              <DialogClose onClick={resetModal} />
             </div>
-            <div className="mt-4 flex items-center gap-3">
-              <Button
-                size="sm"
-                onClick={() => handleScrape()}
-                disabled={scrapeSite.isPending || !scrapeUrl.trim()}
-              >
-                {scrapeSite.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Link2 className="mr-2 h-4 w-4" />
+
+            <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="new-site-url" className="text-sm font-medium">
+                  Source website URL
+                </label>
+                <Input
+                  id="new-site-url"
+                  type="url"
+                  placeholder="https://example-gym.com"
+                  value={siteUrl}
+                  onChange={(e) => setSiteUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit) handleCreate();
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  We will use this site as the starting point for your new site.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="new-site-name" className="text-sm font-medium">
+                  Site name
+                </label>
+                <Input
+                  id="new-site-name"
+                  placeholder="Optional — we will derive one from the URL"
+                  value={siteName}
+                  onChange={(e) => setSiteName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit) handleCreate();
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-md border bg-muted/50 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">This is my website</span>
+                  <Switch
+                    checked={isMyWebsite}
+                    onCheckedChange={setIsMyWebsite}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {isMyWebsite
+                    ? "We will scrape your existing site, create workspace docs, and build a new homepage you can approve."
+                    : "We will use this site as a template and generate a fresh design inspired by its layout."}
+                </p>
+
+                {isMyWebsite && (
+                  <div className="mt-1 flex items-start gap-3">
+                    <Checkbox
+                      id="rights-confirm"
+                      checked={hasRights}
+                      onCheckedChange={setHasRights}
+                      className="mt-0.5"
+                    />
+                    <label htmlFor="rights-confirm" className="text-sm leading-5">
+                      I confirm I have the rights to clone and reuse the content from this website.
+                    </label>
+                  </div>
                 )}
-                {scrapeSite.isPending ? "Scraping…" : "Scrape and create docs"}
-              </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t bg-card px-6 py-3">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setShowScrape(false);
-                  setScrapeUrl("");
-                  setScrapeName("");
-                  setConfirmScrape(null);
-                  scrapeSite.reset();
-                }}
-                disabled={scrapeSite.isPending}
+                onClick={resetModal}
               >
                 Cancel
               </Button>
-              {scrapeSite.isError && !confirmScrape && (
-                <p className="text-sm text-destructive">
-                  {scrapeSite.error?.message.replace(/^\d+:\s*/, "")}
-                </p>
-              )}
+              <Button
+                size="sm"
+                onClick={handleCreate}
+                disabled={!canSubmit}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Create new site
+              </Button>
             </div>
-
-            {confirmScrape && (
-              <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/5 p-4">
-                <p className="text-sm font-medium text-destructive">
-                  {confirmScrape.message}
-                </p>
-                <div className="mt-3 flex items-center gap-3">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleScrape(true)}
-                    disabled={scrapeSite.isPending}
-                  >
-                    {scrapeSite.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link2 className="mr-2 h-4 w-4" />
-                    )}
-                    Rescan and replace
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setConfirmScrape(null);
-                      scrapeSite.reset();
-                    }}
-                    disabled={scrapeSite.isPending}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {showNewSite && (
-          <div className="mb-6 rounded-lg border bg-card p-6">
-            <p className="text-sm text-muted-foreground">
-              Creating a new site from the dashboard is coming soon. Use the
-              "Scrape URL" flow to import an existing site.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() => setShowNewSite(false)}
-            >
-              Close
-            </Button>
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
 
         {isLoading ? (
           <p className="text-muted-foreground">Loading…</p>
         ) : filteredSites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-            <p className="text-muted-foreground">No sites yet. New site creation is coming soon.</p>
+            <p className="text-muted-foreground">No sites yet. Create a new site to get started.</p>
           </div>
         ) : view === "list" ? (
           <div className="rounded-md border">
@@ -309,27 +352,39 @@ export function Dashboard() {
                 {filteredSites.map((site) => (
                   <TableRow
                     key={site.uuid}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                    className={site.status === "cloning" ? "cursor-default" : "cursor-pointer"}
+                    onClick={() => site.status !== "cloning" && navigate(`/sites/${site.uuid}`)}
                   >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-sm font-semibold">
                           {site.name.charAt(0).toUpperCase()}
                         </div>
-                        <span className="font-medium">{site.name}</span>
+                        <div>
+                          <span className="font-medium">{site.name}</span>
+                          {site.status === "cloning" && (
+                            <p className="text-xs text-muted-foreground">Cloning from {site.sourceUrl}</p>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {site.status}
-                      </Badge>
+                      {site.status === "cloning" ? (
+                        <Badge variant="outline" className="gap-1 capitalize">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Cloning
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="capitalize">
+                          {site.status}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {getSiteDomain(site)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {formatRelativeDate(site.updatedAt)}
+                      {site.status === "cloning" ? "Just now" : formatRelativeDate(site.updatedAt)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -345,9 +400,21 @@ export function Dashboard() {
               >
                 <SiteThumbnail className="aspect-video w-full" />
                 <div className="p-4">
-                  <h3 className="font-semibold">{site.name}</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">{site.name}</h3>
+                    {site.status === "cloning" ? (
+                      <Badge variant="outline" className="gap-1 capitalize">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Cloning
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="capitalize">
+                        {site.status}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Updated {formatRelativeDate(site.updatedAt)}
+                    {site.status === "cloning" ? "Just now" : `Updated ${formatRelativeDate(site.updatedAt)}`}
                   </p>
                   <p className="mt-1 font-mono text-sm text-muted-foreground">
                     {getSiteDomain(site)}
@@ -356,9 +423,10 @@ export function Dashboard() {
                     variant="outline"
                     className="mt-3 w-full"
                     size="sm"
-                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                    disabled={site.status === "cloning"}
+                    onClick={() => site.status !== "cloning" && navigate(`/sites/${site.uuid}`)}
                   >
-                    Dashboard
+                    {site.status === "cloning" ? "Cloning…" : "Dashboard"}
                   </Button>
                 </div>
               </div>

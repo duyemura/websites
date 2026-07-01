@@ -85,4 +85,34 @@ describe("api client", () => {
     expect(init?.method).toBe("DELETE");
     expect(init?.headers).not.toHaveProperty("Content-Type");
   });
+
+  test("getAssets builds the query string from filters", async () => {
+    await api.getAssets({ source: "upload", analyzed: true, tag: "logo" });
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/assets?tag=logo&source=upload&analyzed=true");
+  });
+
+  test("getAssets omits the analyzed param when undefined", async () => {
+    await api.getAssets({ source: "upload" });
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/assets?source=upload");
+  });
+
+  test("regenerateAnalysis sends a POST request", async () => {
+    await api.regenerateAnalysis("uuid-1");
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/assets/uuid-1/regenerate-analysis");
+    expect(init?.method).toBe("POST");
+  });
+
+  test("backfillAnalysis sends a POST request", async () => {
+    await api.backfillAnalysis();
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/assets/backfill-analysis");
+    expect(init?.method).toBe("POST");
+  });
 });

@@ -13,6 +13,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
     },
+    sequence: {
+      concurrent: false,
+    },
     testTimeout: 20000,
     hookTimeout: 30000,
   },
