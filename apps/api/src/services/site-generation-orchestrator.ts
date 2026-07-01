@@ -168,7 +168,6 @@ async function createParentAiJob(
   siteUuid: string,
   type: DB["aiJobs"]["type"],
   options: Record<string, unknown>,
-  _userUuid?: string,
 ) {
   const row = await db
     .insertInto("aiJobs")
@@ -177,7 +176,7 @@ async function createParentAiJob(
       siteUuid,
       type,
       status: "running",
-      input: { siteUuid, workspaceUuid, options } as Json,
+      input: { siteUuid, workspaceUuid, url: null, options } as Json,
       state: { phase: "build", currentSlug: "index" } as Json,
       steps: [{ name: "build_homepage", status: "in_progress" }] as Json,
       options: options as Json,
@@ -188,7 +187,7 @@ async function createParentAiJob(
 }
 
 export async function startSiteBuild(input: StartSiteBuildInput) {
-  const { db, queues, workspaceUuid, siteUuid, requestedMode, userUuid, existingAiJobUuid } = input;
+  const { db, queues, workspaceUuid, siteUuid, requestedMode, existingAiJobUuid } = input;
   const { site } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
 
   const mode = requestedMode ?? (site.mode as SiteMode);
@@ -202,6 +201,14 @@ export async function startSiteBuild(input: StartSiteBuildInput) {
 
   let aiJobUuid: string;
   if (existingAiJobUuid) {
+    const existingJob = await db
+      .selectFrom("aiJobs")
+      .selectAll()
+      .where("uuid", "=", existingAiJobUuid)
+      .executeTakeFirst();
+    if (!existingJob || existingJob.workspaceUuid !== workspaceUuid || existingJob.siteUuid !== siteUuid || existingJob.type !== "replicate_site") {
+      throw new Error(`Cannot reuse aiJob ${existingAiJobUuid}: not found or does not belong to this site/workspace`);
+    }
     aiJobUuid = existingAiJobUuid;
     await db
       .updateTable("aiJobs")
@@ -215,7 +222,7 @@ export async function startSiteBuild(input: StartSiteBuildInput) {
       .where("uuid", "=", existingAiJobUuid)
       .execute();
   } else {
-    aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options, userUuid);
+    aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options);
   }
 
   const attemptId = generateAttemptId();

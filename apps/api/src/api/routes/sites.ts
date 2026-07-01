@@ -645,18 +645,32 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             siteUuid: site.uuid,
             type: "replicate_site",
             status: "pending",
-            input: { siteUuid: site.uuid, workspaceUuid, url } as Json,
+            input: { siteUuid: site.uuid, workspaceUuid, url, options: {} } as Json,
             options: {} as Json,
           })
           .returning("uuid")
           .executeTakeFirstOrThrow();
 
-        await fastify.queues.replicateSite.queue.add("replicate_site", {
-          workspaceUuid,
-          siteUuid: site.uuid,
-          url,
-          aiJobUuid: aiJob.uuid,
-        });
+        try {
+          await fastify.queues.replicateSite.queue.add("replicate_site", {
+            workspaceUuid,
+            siteUuid: site.uuid,
+            url,
+            aiJobUuid: aiJob.uuid,
+          });
+        } catch (err) {
+          await fastify.db
+            .updateTable("aiJobs")
+            .set({
+              status: "failed",
+              state: { phase: "failed", error: err instanceof Error ? err.message : "enqueue failed" } as Json,
+              steps: [{ name: "enqueue", status: "failed" }] as Json,
+              updatedAt: new Date(),
+            })
+            .where("uuid", "=", aiJob.uuid)
+            .execute();
+          throw err;
+        }
 
         const childActivities = await fastify.db
           .selectFrom("aiActivity")
