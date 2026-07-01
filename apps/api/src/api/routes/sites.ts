@@ -14,9 +14,10 @@ import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
-import { logAiActivity } from "../../services/ai-activity";
+import { logAiActivity, getRecentAiActivity, getAiActivityCostSummary } from "../../services/ai-activity";
 import { startSiteBuild, approvePage } from "../../services/site-generation-orchestrator";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
+import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
 
 const SiteModeSchema = z.enum(["replication", "template", "greenfield"]);
 
@@ -817,6 +818,92 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         createdAt: d.createdAt.toISOString(),
         updatedAt: d.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/ai-activity",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        querystring: z.object({
+          actionType: z.enum(["apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+          outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
+          limit: z.coerce.number().int().min(1).max(500).optional().default(50),
+        }),
+        response: {
+          200: z.object({
+            activities: z.array(
+              z.object({
+                uuid: z.string(),
+                workspaceUuid: z.string(),
+                siteUuid: z.string().nullable(),
+                userUuid: z.string(),
+                aiJobUuid: z.string().nullable(),
+                actionType: z.string(),
+                model: z.string().nullable(),
+                provider: z.string().nullable(),
+                promptTemplateKeys: z.string().nullable(),
+                inputDocKeys: z.string().nullable(),
+                inputTokens: z.number().nullable(),
+                outputTokens: z.number().nullable(),
+                costUsd: z.number().nullable(),
+                latencyMs: z.number().nullable(),
+                outcome: z.string(),
+                fidelityScore: z.number().nullable(),
+                summary: z.string(),
+                errorMessage: z.string().nullable(),
+                userCorrection: z.string().nullable(),
+                metadata: z.any().nullable(),
+                createdAt: z.string(),
+              }),
+            ),
+            summary: z.object({
+              totalCostUsd: z.number(),
+              totalTokens: z.number(),
+              count: z.number(),
+            }),
+          }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const { actionType, outcome, limit } = request.query;
+
+      const [activities, summary] = await Promise.all([
+        getRecentAiActivity(fastify.db, {
+          workspaceUuid,
+          siteUuid,
+          actionType: actionType as AiActivityAction | undefined,
+          outcome: outcome as AiActivityOutcome | undefined,
+          limit,
+        }),
+        getAiActivityCostSummary(fastify.db, workspaceUuid),
+      ]);
+
+      return {
+        activities: activities.map((a) => ({
+          ...a,
+          costUsd: a.costUsd != null ? Number(a.costUsd) : null,
+          fidelityScore: a.fidelityScore != null ? Number(a.fidelityScore) : null,
+          createdAt: a.createdAt.toISOString(),
+        })),
+        summary,
+      };
     },
   );
 
