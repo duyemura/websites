@@ -25,6 +25,7 @@ export class EditPageAction implements BuildAssistantAction {
         reply: "I need a build job to edit against. Start a site build first.",
         action: this.name,
         enqueued: false,
+        userMessage: message,
       };
     }
 
@@ -41,9 +42,10 @@ export class EditPageAction implements BuildAssistantAction {
       reply: "I’ll rebuild the homepage with your changes in mind.",
       action: this.name,
       enqueued: true,
+      userMessage: message,
       messages: [
         { role: "user", content: message },
-        { role: "assistant", content: "I’ll rebuild the homepage with your changes in mind." },
+        { role: "assistant", content: "I'll rebuild the homepage with your changes in mind." },
       ],
     };
   }

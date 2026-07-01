@@ -135,6 +135,7 @@ const BuildCommandResponseSchema = z.object({
       }),
     )
     .optional(),
+  userMessage: z.string().optional(),
 });
 
 function normalizeUrl(url: string): string {

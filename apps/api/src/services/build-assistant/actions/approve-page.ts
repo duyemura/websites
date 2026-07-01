@@ -31,6 +31,7 @@ export class ApprovePageAction implements BuildAssistantAction {
             : "Homepage approved. There are no remaining pages to build.",
         action: this.name,
         enqueued: remaining.length > 0,
+        userMessage: message,
         messages: [
           { role: "user", content: message },
           { role: "assistant", content: `Homepage approved. ${remaining.length > 0 ? `Queued ${remaining.join(", ")}.` : "No remaining pages."}` },
@@ -39,9 +40,10 @@ export class ApprovePageAction implements BuildAssistantAction {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Approval failed";
       return {
-        reply: `I can’t approve the homepage right now: ${errorMessage}`,
+        reply: `I can't approve the homepage right now: ${errorMessage}`,
         action: this.name,
         enqueued: false,
+        userMessage: message,
       };
     }
   }

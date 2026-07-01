@@ -14,12 +14,13 @@ export class PreviewInfoAction implements BuildAssistantAction {
 
     if (deployment?.previewUrl) {
       return {
-        reply: `Here’s the latest preview: ${deployment.previewUrl}`,
+        reply: `Here's the latest preview: ${deployment.previewUrl}`,
         action: this.name,
         enqueued: false,
+        userMessage: message,
         messages: [
           { role: "user", content: message },
-          { role: "assistant", content: `Here’s the latest preview: ${deployment.previewUrl}` },
+          { role: "assistant", content: `Here's the latest preview: ${deployment.previewUrl}` },
         ],
       };
     }
@@ -28,6 +29,7 @@ export class PreviewInfoAction implements BuildAssistantAction {
       reply: "No preview is ready yet. Wait for the homepage build to finish.",
       action: this.name,
       enqueued: false,
+      userMessage: message,
     };
   }
 }

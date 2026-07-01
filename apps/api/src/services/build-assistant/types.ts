@@ -20,6 +20,7 @@ export interface ActionResult {
   action: string;
   enqueued: boolean;
   messages?: { role: "assistant" | "user"; content: string }[];
+  userMessage?: string;
 }
 
 export interface BuildAssistantAction {

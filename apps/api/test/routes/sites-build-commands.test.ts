@@ -194,7 +194,7 @@ describe("POST /sites/:uuid/build-commands", () => {
     const body = response.json();
     expect(body.action).toBe("help");
     expect(body.enqueued).toBe(false);
-    expect(body.reply).toContain("Here’s what I can help with today");
+    expect(body.reply).toContain("Here's what I can help with today");
 
     await app.close();
   });

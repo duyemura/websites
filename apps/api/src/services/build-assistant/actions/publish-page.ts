@@ -21,17 +21,19 @@ export class PublishPageAction implements BuildAssistantAction {
 
     if (!deployment) {
       return {
-        reply: "There’s no deployment to publish yet. Wait for the homepage preview to finish building.",
+        reply: "There's no deployment to publish yet. Wait for the homepage preview to finish building.",
         action: this.name,
         enqueued: false,
+        userMessage: message,
       };
     }
 
     if (deployment.status !== "success") {
       return {
-        reply: "The latest deployment didn’t succeed, so I can’t publish it yet. Fix the build issues first.",
+        reply: "The latest deployment didn't succeed, so I can't publish it yet. Fix the build issues first.",
         action: this.name,
         enqueued: false,
+        userMessage: message,
       };
     }
 
@@ -44,6 +46,7 @@ export class PublishPageAction implements BuildAssistantAction {
       reply: "Publishing the site now. It will be live shortly.",
       action: this.name,
       enqueued: true,
+      userMessage: message,
       messages: [
         { role: "user", content: message },
         { role: "assistant", content: "Publishing the site now. It will be live shortly." },
