@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search, Loader2, Link2, Activity } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Link2, Activity, Copy } from "lucide-react";
 import { api, type Site } from "@/lib/api";
 import { useNavigate, Link } from "react-router";
 
@@ -53,14 +53,11 @@ export function Dashboard() {
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [showNewSite, setShowNewSite] = useState(false);
+  const [cloneUrl, setCloneUrl] = useState("");
+  const [cloneName, setCloneName] = useState("");
   const [scrapeUrl, setScrapeUrl] = useState("");
   const [scrapeName, setScrapeName] = useState("");
   const [showScrape, setShowScrape] = useState(false);
-  const [confirmScrape, setConfirmScrape] = useState<{
-    siteUuid: string;
-    status: string;
-    message: string;
-  } | null>(null);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
@@ -75,23 +72,32 @@ export function Dashboard() {
       setScrapeUrl("");
       setScrapeName("");
       setShowScrape(false);
-      setConfirmScrape(null);
       navigate(`/docs?site=${result.site.uuid}`);
     },
-    onError: (error) => {
-      try {
-        const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
-        if (body.requiresConfirmation && body.siteUuid) {
-          setConfirmScrape({
-            siteUuid: body.siteUuid,
-            status: body.status,
-            message: body.error,
-          });
-          return;
-        }
-      } catch {
-        // not our shaped error; let it surface normally
-      }
+  });
+
+  const cloneSite = useMutation({
+    mutationFn: async ({
+      url,
+      name,
+    }: {
+      url: string;
+      name?: string;
+    }) => {
+      const result = await api.scrapeSite({ url, name });
+      await api.generateSite(result.site.uuid, {
+        mode: "replication",
+        accuracy: "accurate",
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["sites"] });
+      queryClient.invalidateQueries({ queryKey: ["docs"] });
+      setCloneUrl("");
+      setCloneName("");
+      setShowNewSite(false);
+      navigate(`/sites/${result.site.uuid}`);
     },
   });
 
@@ -108,12 +114,19 @@ export function Dashboard() {
     return list;
   }, [sites, search]);
 
-  const handleScrape = (force?: boolean) => {
+  const handleScrape = () => {
     if (!scrapeUrl.trim()) return;
     scrapeSite.mutate({
       url: scrapeUrl.trim(),
       name: scrapeName.trim() || undefined,
-      force,
+    });
+  };
+
+  const handleClone = () => {
+    if (!cloneUrl.trim()) return;
+    cloneSite.mutate({
+      url: cloneUrl.trim(),
+      name: cloneName.trim() || undefined,
     });
   };
 
@@ -221,70 +234,95 @@ export function Dashboard() {
                   setShowScrape(false);
                   setScrapeUrl("");
                   setScrapeName("");
-                  setConfirmScrape(null);
                   scrapeSite.reset();
                 }}
                 disabled={scrapeSite.isPending}
               >
                 Cancel
               </Button>
-              {scrapeSite.isError && !confirmScrape && (
+              {scrapeSite.isError && (
                 <p className="text-sm text-destructive">
                   {scrapeSite.error?.message.replace(/^\d+:\s*/, "")}
                 </p>
               )}
             </div>
-
-            {confirmScrape && (
-              <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/5 p-4">
-                <p className="text-sm font-medium text-destructive">
-                  {confirmScrape.message}
-                </p>
-                <div className="mt-3 flex items-center gap-3">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleScrape(true)}
-                    disabled={scrapeSite.isPending}
-                  >
-                    {scrapeSite.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link2 className="mr-2 h-4 w-4" />
-                    )}
-                    Rescan and replace
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setConfirmScrape(null);
-                      scrapeSite.reset();
-                    }}
-                    disabled={scrapeSite.isPending}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
         {showNewSite && (
           <div className="mb-6 rounded-lg border bg-card p-6">
-            <p className="text-sm text-muted-foreground">
-              Creating a new site from the dashboard is coming soon. Use the
-              "Scrape URL" flow to import an existing site.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() => setShowNewSite(false)}
-            >
-              Close
-            </Button>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-semibold">Create a new site</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNewSite(false);
+                  setCloneUrl("");
+                  setCloneName("");
+                  cloneSite.reset();
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col rounded-md border p-5">
+                <h3 className="font-semibold">Clone my site</h3>
+                <p className="mt-1 flex-1 text-sm text-muted-foreground">
+                  Enter your current gym website URL. We will scrape it, create docs,
+                  and build a new homepage you can approve.
+                </p>
+                <div className="mt-4 grid gap-3">
+                  <Input
+                    type="url"
+                    placeholder="https://example-gym.com"
+                    value={cloneUrl}
+                    onChange={(e) => setCloneUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleClone();
+                    }}
+                  />
+                  <Input
+                    placeholder="Site name (optional)"
+                    value={cloneName}
+                    onChange={(e) => setCloneName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleClone();
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleClone}
+                    disabled={cloneSite.isPending || !cloneUrl.trim()}
+                  >
+                    {cloneSite.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Copy className="mr-2 h-4 w-4" />
+                    )}
+                    {cloneSite.isPending ? "Cloning…" : "Clone my site"}
+                  </Button>
+                </div>
+                {cloneSite.isError && (
+                  <p className="mt-3 text-sm text-destructive">
+                    {cloneSite.error?.message.replace(/^\d+:\s*/, "")}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col rounded-md border p-5 opacity-75">
+                <h3 className="font-semibold">Clone as template</h3>
+                <p className="mt-1 flex-1 text-sm text-muted-foreground">
+                  Coming soon — use any public gym site as a reusable template.
+                </p>
+                <div className="mt-4">
+                  <Button size="sm" variant="outline" disabled className="w-full">
+                    Choose template
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -292,7 +330,7 @@ export function Dashboard() {
           <p className="text-muted-foreground">Loading…</p>
         ) : filteredSites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-            <p className="text-muted-foreground">No sites yet. New site creation is coming soon.</p>
+            <p className="text-muted-foreground">No sites yet. Scrape or clone a site to get started.</p>
           </div>
         ) : view === "list" ? (
           <div className="rounded-md border">

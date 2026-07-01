@@ -66,13 +66,13 @@ export interface Site {
   slug: string;
   name: string;
   status: "draft" | "published" | "archived";
+  mode?: "replication" | "template" | "greenfield" | null;
   subdomain?: string | null;
   customDomain?: string | null;
   themeUuid?: string | null;
   sourceUrl?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
-  mode?: "greenfield" | "replication" | "template" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -154,17 +154,6 @@ export interface ScrapeSiteResult {
   screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
 }
 
-export interface Deployment {
-  uuid: string;
-  buildId: string;
-  status: string;
-  previewUrl: string | null;
-  artifactUrl: string | null;
-  metadata?: unknown | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface GenerateSiteResult {
   aiJobUuid: string;
   attemptId: string;
@@ -176,16 +165,86 @@ export interface ApprovePageResult {
   remainingPagesEnqueued: string[];
 }
 
+export interface Deployment {
+  uuid: string;
+  buildId: string;
+  status: string;
+  previewUrl: string | null;
+  artifactUrl: string | null;
+  metadata?: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiActivityResponse {
+  activities: {
+    uuid: string;
+    workspaceUuid: string;
+    siteUuid: string | null;
+    userUuid: string;
+    aiJobUuid: string | null;
+    actionType: string;
+    model: string | null;
+    provider: string | null;
+    promptTemplateKeys: string | null;
+    inputDocKeys: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costUsd: number | null;
+    latencyMs: number | null;
+    outcome: string;
+    fidelityScore: number | null;
+    summary: string;
+    errorMessage: string | null;
+    userCorrection: string | null;
+    metadata: unknown;
+    createdAt: string;
+  }[];
+  summary: { totalCostUsd: number; totalTokens: number; count: number };
+}
+
+export interface GenerateSiteOptions {
+  mode?: "replication" | "template" | "greenfield";
+  accuracy?: "fast" | "balanced" | "accurate";
+  maxQaIterations?: number;
+  maxBudgetUsd?: number;
+  fidelityThreshold?: number;
+}
+
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
   createSite: (body: { name: string; slug: string; templateKey?: string }) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
-  scrapeSite: (body: { url: string; name?: string; force?: boolean }) =>
+  scrapeSite: (body: { url: string; name?: string }) =>
     fetchJson<ScrapeSiteResult>("/sites/scrape", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  generateSite: (siteUuid: string, options: GenerateSiteOptions = {}) =>
+    fetchJson<GenerateSiteResult>(
+      `/sites/${encodeURIComponent(siteUuid)}/generate`,
+      { method: "POST", body: JSON.stringify(options) },
+    ),
+  approvePage: (siteUuid: string, slug: string) =>
+    fetchJson<ApprovePageResult>(
+      `/sites/${encodeURIComponent(siteUuid)}/pages/${encodeURIComponent(slug)}/approve`,
+      { method: "POST" },
+    ),
+  listDeployments: (siteUuid: string) =>
+    fetchJson<Deployment[]>(
+      `/sites/${encodeURIComponent(siteUuid)}/deployments`,
+    ),
+  previewUrl: (siteUuid: string, attemptId: string) =>
+    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}/`,
+  getSiteAiActivity: (siteUuid: string, options?: { actionType?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.actionType) params.set("actionType", options.actionType);
+    if (options?.limit != null) params.set("limit", String(options.limit));
+    return fetchJson<AiActivityResponse>(
+      `/sites/${encodeURIComponent(siteUuid)}/ai-activity?${params.toString()}`,
+    );
+  },
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
   getSiteDocs: (siteUuid: string) =>
@@ -248,32 +307,7 @@ export const api = {
   getAiActivity: (limit = 100, siteUuid?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (siteUuid) params.set("siteUuid", siteUuid);
-    return fetchJson<{
-      activities: {
-        uuid: string;
-        workspaceUuid: string;
-        siteUuid: string | null;
-        userUuid: string;
-        aiJobUuid: string | null;
-        actionType: string;
-        model: string | null;
-        provider: string | null;
-        promptTemplateKeys: string | null;
-        inputDocKeys: string | null;
-        inputTokens: number | null;
-        outputTokens: number | null;
-        costUsd: number | null;
-        latencyMs: number | null;
-        outcome: string;
-        fidelityScore: number | null;
-        summary: string;
-        errorMessage: string | null;
-        userCorrection: string | null;
-        metadata: unknown;
-        createdAt: string;
-      }[];
-      summary: { totalCostUsd: number; totalTokens: number; count: number };
-    }>(`/ai-activity?${params.toString()}`);
+    return fetchJson<AiActivityResponse>(`/ai-activity?${params.toString()}`);
   },
 
   getOrganizations: () =>

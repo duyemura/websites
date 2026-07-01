@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, FileText, Image, ExternalLink, Clock, Save, RefreshCw, Loader2, Activity } from "lucide-react";
+import { ArrowLeft, FileText, ExternalLink, Clock, Save, RefreshCw, Loader2, Activity } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -21,7 +21,13 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { BlockNoteEditor } from "@/components/BlockNoteEditor";
-import { api, type Doc } from "@/lib/api";
+import {
+  api,
+  type Doc,
+  type Deployment,
+  type GenerateSiteResult,
+  type ApprovePageResult,
+} from "@/lib/api";
 
 const DOC_CATEGORY_ORDER = [
   "workspace-memory",
@@ -79,9 +85,7 @@ export function SiteDetail() {
   const [editingDoc, setEditingDoc] = useState<Doc | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
-  const [screenshotOpen, setScreenshotOpen] = useState(false);
-  const [rescanError, setRescanError] = useState<string | null>(null);
-  const [rescanConfirm, setRescanConfirm] = useState(false);
+  const [approvedMessage, setApprovedMessage] = useState<string | null>(null);
 
   const { data: site, isLoading: siteLoading } = useQuery({
     queryKey: ["sites", uuid],
@@ -100,6 +104,20 @@ export function SiteDetail() {
     queryFn: () => api.getDocs(),
   });
 
+  const { data: deployments } = useQuery({
+    queryKey: ["sites", uuid, "deployments"],
+    queryFn: () => api.listDeployments(uuid!),
+    enabled: !!uuid,
+    refetchInterval: 5000,
+  });
+
+  const { data: buildActivity } = useQuery({
+    queryKey: ["sites", uuid, "ai-activity", "generate"],
+    queryFn: () =>
+      api.getSiteAiActivity(uuid!, { actionType: "generate", limit: 20 }),
+    enabled: !!uuid,
+  });
+
   const saveDoc = useMutation({
     mutationFn: ({ key, body }: { key: string; body: { title: string; content: string } }) =>
       api.saveDoc(key, body),
@@ -110,39 +128,38 @@ export function SiteDetail() {
     },
   });
 
-  const rescanSite = useMutation({
-    mutationFn: ({ url, force }: { url: string; force?: boolean }) => api.scrapeSite({ url, force }),
+  const generateSite = useMutation<GenerateSiteResult, Error, void>({
+    mutationFn: () =>
+      api.generateSite(uuid!, { mode: "replication", accuracy: "accurate" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sites"] });
-      queryClient.invalidateQueries({ queryKey: ["sites", uuid, "docs"] });
-      queryClient.invalidateQueries({ queryKey: ["docs"] });
-      setRescanError(null);
-      setRescanConfirm(false);
-    },
-    onError: (error) => {
-      try {
-        const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
-        if (body.requiresConfirmation) {
-          setRescanConfirm(true);
-          setRescanError(null);
-          return;
-        }
-        setRescanError(body.error || error.message);
-        setRescanConfirm(false);
-      } catch {
-        setRescanError(error.message);
-        setRescanConfirm(false);
-      }
+      setApprovedMessage(null);
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "deployments"],
+      });
     },
   });
 
-  const screenshotDoc = useMemo(() => {
-    const docs = [...(siteDocs ?? []), ...(workspaceDocs ?? [])];
-    const brand = docs.find((d) => d.key === "brand-guidelines");
-    if (!brand?.content) return null;
-    const match = brand.content.match(/!\[.*?\]\(([^)]+)\)/);
-    return match?.[1] ?? null;
-  }, [siteDocs, workspaceDocs]);
+  const approveHomepage = useMutation<ApprovePageResult, Error, void>({
+    mutationFn: () => api.approvePage(site!.uuid, "index"),
+    onSuccess: () => {
+      setApprovedMessage("Approved — remaining pages queued.");
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "deployments"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["sites", uuid, "docs"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["sites", uuid] });
+    },
+  });
+
+  const latestDeployment = useMemo<Deployment | null>(() => {
+    if (!deployments?.length) return null;
+    return [...deployments].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )[0];
+  }, [deployments]);
 
   const sortedWorkspaceDocs = useMemo(() => {
     if (!workspaceDocs || !uuid) return [];
@@ -218,100 +235,110 @@ export function SiteDetail() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
-        {screenshotDoc && (
-          <Card className="mb-6 overflow-hidden">
+        {(site.mode === "replication" || site.sourceUrl) && (
+          <Card className="mb-6">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Image className="h-4 w-4" />
-                Screenshot
+                <Activity className="h-4 w-4" />
+                Site build
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col gap-4 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setScreenshotOpen(true)}
-                  className="group relative block h-64 w-full overflow-hidden rounded-md border bg-muted text-left sm:w-[300px]"
-                >
-                  <img
-                    src={screenshotDoc}
-                    alt={`Screenshot of ${site.name}`}
-                    className="h-full w-full object-cover object-top"
-                  />
-                  <div className="absolute inset-0 flex items-start justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <div className="rounded-md bg-background/90 p-1.5 shadow-sm">
-                      <ExternalLink className="h-4 w-4" />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={() => generateSite.mutate()}
+                    disabled={generateSite.isPending}
+                  >
+                    {generateSite.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Build homepage
+                  </Button>
+                  {approvedMessage && (
+                    <p className="text-sm text-muted-foreground">
+                      {approvedMessage}
+                    </p>
+                  )}
+                </div>
+
+                {latestDeployment && (
+                  <div className="rounded-md border bg-muted/50 p-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Badge variant="outline" className="capitalize">
+                        {latestDeployment.status}
+                      </Badge>
+                      {latestDeployment.previewUrl && (
+                        <a
+                          href={api.previewUrl(
+                            site.uuid,
+                            latestDeployment.buildId,
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        >
+                          Open preview
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {(latestDeployment.status === "ready" ||
+                        latestDeployment.status === "success") &&
+                        !approvedMessage && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => approveHomepage.mutate()}
+                            disabled={approveHomepage.isPending}
+                          >
+                            {approveHomepage.isPending && (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Approve homepage
+                          </Button>
+                        )}
                     </div>
-                  </div>
-                </button>
-                <div className="flex min-h-64 flex-1 flex-col justify-between rounded-md border bg-muted/50 p-4">
-                  <div className="text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground">Rescan source site</p>
-                    <p className="mt-1">
-                      Re-scrape {site.sourceUrl || site.slug} to regenerate docs from the latest source.
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Build {latestDeployment.buildId} ·{" "}
+                      {formatRelativeDate(latestDeployment.createdAt)}
                     </p>
                   </div>
-                  <div className="mt-4">
-                    {rescanError && !rescanConfirm && (
-                      <p className="mb-3 text-sm text-destructive">{rescanError}</p>
-                    )}
-                    {rescanConfirm ? (
-                      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-                        <p className="text-sm text-destructive">
-                          This will replace all docs, pages, and assets for this site.
-                        </p>
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() =>
-                              rescanSite.mutate({
-                                url: `https://${site.sourceUrl || `${site.slug}.pushpress.build`}`,
-                                force: true,
-                              })
-                            }
-                            disabled={rescanSite.isPending}
-                          >
-                            {rescanSite.isPending ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            Rescan and replace
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setRescanConfirm(false);
-                              setRescanError(null);
-                            }}
-                            disabled={rescanSite.isPending}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          rescanSite.mutate({
-                            url: `https://${site.sourceUrl || `${site.slug}.pushpress.build`}`,
-                          })
-                        }
-                        disabled={rescanSite.isPending || !site.sourceUrl}
-                      >
-                        {rescanSite.isPending ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                        )}
-                        Rescan site
-                      </Button>
-                    )}
+                )}
+
+                {deployments && deployments.length > 1 && (
+                  <div>
+                    <h4 className="mb-2 text-sm font-medium">Deployments</h4>
+                    <ul className="space-y-1 text-sm">
+                      {deployments.map((deployment) => (
+                        <li
+                          key={deployment.uuid}
+                          className="flex items-center justify-between rounded-md border px-3 py-2"
+                        >
+                          <span className="font-mono text-xs">
+                            {deployment.buildId}
+                          </span>
+                          <Badge variant="outline" className="capitalize">
+                            {deployment.status}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
+                )}
+
+                {buildActivity && (
+                  <div className="rounded-md border bg-muted/50 p-3">
+                    <p className="text-sm font-medium">
+                      Latest build cost/activity
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {buildActivity.summary.count} activities · $
+                      {buildActivity.summary.totalCostUsd.toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -380,26 +407,6 @@ export function SiteDetail() {
               </TableBody>
             </Table>
           </div>
-        )}
-
-        {screenshotOpen && (
-          <Dialog open onOpenChange={setScreenshotOpen}>
-            <DialogContent className="h-[calc(100vh-3rem)] max-w-6xl flex-col overflow-hidden">
-              <div className="flex items-center justify-between border-b px-6 py-4">
-                <h3 className="text-lg font-semibold">
-                  Screenshot of {site.name}
-                </h3>
-                <DialogClose onClick={() => setScreenshotOpen(false)} />
-              </div>
-              <div className="flex-1 overflow-auto bg-muted p-6">
-                <img
-                  src={screenshotDoc ?? undefined}
-                  alt={`Screenshot of ${site.name}`}
-                  className="mx-auto max-w-full shadow-sm"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
         )}
 
         {editingDoc && (
