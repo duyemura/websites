@@ -5,8 +5,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { SiteBlueprint } from "../utils/site-blueprint";
-import type { SiteSection } from "@ploy-gyms/shared-types";
+import type { TemplateShellPage, ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
+import type { DesignSystem } from "../utils/design-system";
 import { renderSectionComponent } from "../utils/section-component-registry";
 import { uploadBuildArtifacts } from "../utils/build-artifacts";
 
@@ -16,18 +16,10 @@ export interface GeneratePageInput {
   workspaceUuid: string;
   siteUuid: string;
   pageSlug: string;
-  blueprint: SiteBlueprint;
+  designSystem: DesignSystem;
+  page: TemplateShellPage;
   mode: "replication" | "template" | "greenfield";
   attemptId: string;
-  priorIssues?: QaIssue[];
-}
-
-export interface QaIssue {
-  component_id: string;
-  category: string;
-  severity: "high" | "medium" | "low";
-  description: string;
-  suggested_fix: string;
 }
 
 export interface GeneratePageOutput {
@@ -47,11 +39,7 @@ const TAILWIND_INTEGRATION_VERSION = "^5.1.3";
 const TAILWIND_VERSION = "3";
 
 export async function generateAstroPage(input: GeneratePageInput): Promise<GeneratePageOutput> {
-  const { config, workspaceUuid, siteUuid, pageSlug, blueprint, attemptId } = input;
-  const page = blueprint.pages.find((p) => p.slug === pageSlug);
-  if (!page) {
-    throw new Error(`Page ${pageSlug} not found in blueprint`);
-  }
+  const { config, workspaceUuid, siteUuid, pageSlug, designSystem, page, attemptId } = input;
 
   const sourceDir = path.join(os.tmpdir(), "ploy-gyms-build", siteUuid, attemptId, pageSlug);
   const distDir = path.join(sourceDir, "dist");
@@ -59,36 +47,16 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
   await rm(sourceDir, { recursive: true, force: true });
   await mkdir(sourceDir, { recursive: true });
 
-  await writeProjectFiles(sourceDir, blueprint, page);
+  await writeProjectFiles(sourceDir, designSystem, page);
 
   const installResult = await runCommand("pnpm", ["install"], sourceDir);
   if (installResult.exitCode !== 0) {
-    return {
-      attemptId,
-      sourceDir,
-      distDir,
-      previewUrl: "",
-      pageSections: page.sections,
-      metaTitle: page.metaTitle ?? page.title,
-      metaDescription: page.metaDescription ?? "",
-      buildSuccess: false,
-      buildLog: `pnpm install failed:\n${installResult.output}`,
-    };
+    return failureOutput(attemptId, sourceDir, distDir, page, `pnpm install failed:\n${installResult.output}`);
   }
 
   const buildResult = await runCommand("pnpm", ["exec", "astro", "build"], sourceDir);
   if (buildResult.exitCode !== 0) {
-    return {
-      attemptId,
-      sourceDir,
-      distDir,
-      previewUrl: "",
-      pageSections: page.sections,
-      metaTitle: page.metaTitle ?? page.title,
-      metaDescription: page.metaDescription ?? "",
-      buildSuccess: false,
-      buildLog: `astro build failed:\n${buildResult.output}`,
-    };
+    return failureOutput(attemptId, sourceDir, distDir, page, `astro build failed:\n${buildResult.output}`);
   }
 
   const { previewUrl } = await uploadBuildArtifacts({
@@ -114,10 +82,30 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
   };
 }
 
+function failureOutput(
+  attemptId: string,
+  sourceDir: string,
+  distDir: string,
+  page: TemplateShellPage,
+  buildLog: string,
+): GeneratePageOutput {
+  return {
+    attemptId,
+    sourceDir,
+    distDir,
+    previewUrl: "",
+    pageSections: page.sections,
+    metaTitle: page.metaTitle ?? page.title,
+    metaDescription: page.metaDescription ?? "",
+    buildSuccess: false,
+    buildLog,
+  };
+}
+
 async function writeProjectFiles(
   sourceDir: string,
-  blueprint: SiteBlueprint,
-  page: SiteBlueprint["pages"][number],
+  designSystem: DesignSystem,
+  page: TemplateShellPage,
 ): Promise<void> {
   const dirs = [
     path.join(sourceDir, "src", "layouts"),
@@ -132,15 +120,15 @@ async function writeProjectFiles(
   await writeFile(path.join(sourceDir, "astro.config.mjs"), astroConfig());
   await writeFile(path.join(sourceDir, "tailwind.config.mjs"), tailwindConfig());
   await writeFile(path.join(sourceDir, "tsconfig.json"), tsConfig());
-  await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(blueprint.design_tokens));
-  await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(blueprint));
+  await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem.global.tokens));
+  await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem));
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Header.astro"),
-    renderSectionComponent(blueprint.global_shell.header ?? makeDefaultHeader(blueprint)),
+    renderSectionComponent(designSystem.global.shell.header ?? makeDefaultHeader(designSystem)),
   );
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
-    renderSectionComponent(blueprint.global_shell.footer ?? makeDefaultFooter(blueprint)),
+    renderSectionComponent(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
   );
 
   for (const section of page.sections) {
@@ -219,7 +207,7 @@ function tsConfig(): string {
   );
 }
 
-function tokensCss(tokens: SiteBlueprint["design_tokens"]): string {
+function tokensCss(tokens: ThemeTokens): string {
   return `:root {
   --color-primary: ${tokens.colors.primary};
   --color-primary-foreground: ${tokens.colors.primaryForeground};
@@ -245,8 +233,8 @@ h1, h2, h3, h4, h5, h6 {
 `;
 }
 
-function layoutAstro(blueprint: SiteBlueprint): string {
-  const businessName = blueprint.site_metadata.business_name ?? "Ploy for gyms";
+function layoutAstro(designSystem: DesignSystem): string {
+  const businessName = designSystem.business.name ?? "Ploy for gyms";
   return `---
 import Header from "../components/shared/Header.astro";
 import Footer from "../components/shared/Footer.astro";
@@ -278,26 +266,26 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
 `;
 }
 
-function makeDefaultHeader(blueprint: SiteBlueprint): import("@ploy-gyms/shared-types").SiteSection {
+function makeDefaultHeader(designSystem: DesignSystem): SiteSection {
   return {
     id: "header",
     type: "SiteHeader",
     props: {
-      logo: { type: "text", value: blueprint.site_metadata.business_name ?? "Home" },
-      navLinks: blueprint.global_shell.navLinks ?? [],
+      logo: { type: "text", value: designSystem.business.name ?? "Home" },
+      navLinks: designSystem.global.shell.navLinks ?? [],
     },
   };
 }
 
-function makeDefaultFooter(blueprint: SiteBlueprint): import("@ploy-gyms/shared-types").SiteSection {
+function makeDefaultFooter(designSystem: DesignSystem): SiteSection {
   const year = new Date().getFullYear();
-  const businessName = blueprint.site_metadata.business_name ?? "";
+  const businessName = designSystem.business.name ?? "";
   return {
     id: "footer",
     type: "SiteFooter",
     props: {
       businessName,
-      navLinks: blueprint.global_shell.navLinks ?? [],
+      navLinks: designSystem.global.shell.navLinks ?? [],
       copyright: businessName ? `© ${year} ${businessName}. All rights reserved.` : `© ${year}`,
     },
   };
@@ -307,7 +295,7 @@ function toIdentifier(value: string): string {
   return value.replace(/[^a-zA-Z0-9_$]/g, "_").replace(/^(?=[0-9])/, "_");
 }
 
-function pageAstro(page: SiteBlueprint["pages"][number]): string {
+function pageAstro(page: TemplateShellPage): string {
   const title = page.metaTitle ?? page.title;
   const description = page.metaDescription ?? "";
   const imports = page.sections

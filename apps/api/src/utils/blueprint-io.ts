@@ -1,6 +1,7 @@
 import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { SiteBlueprint } from "./site-blueprint";
+import type { TemplateShellPage } from "@ploy-gyms/shared-types";
 
 const BLUEPRINT_DOC_KEY = "blueprint-draft";
 
@@ -115,5 +116,23 @@ export function advanceNextPage(blueprint: SiteBlueprint): SiteBlueprint {
 export function allBuiltSlugs(blueprint: SiteBlueprint): string[] {
   return blueprint.build_plan.build_order.filter(
     (slug) => blueprint.build_plan.page_status[slug] === "built" || slug === "index",
+  );
+}
+
+export function pageBySlug(
+  blueprint: SiteBlueprint,
+  slug: string,
+): TemplateShellPage | undefined {
+  return blueprint.pages.find((p) => p.slug === slug);
+}
+
+export function remainingPlannedSlugs(
+  blueprint: SiteBlueprint,
+  afterSlug: string,
+): string[] {
+  const index = blueprint.build_plan.build_order.indexOf(afterSlug);
+  const start = index === -1 ? 0 : index + 1;
+  return blueprint.build_plan.build_order.slice(start).filter(
+    (slug) => blueprint.build_plan.page_status[slug] === "planned",
   );
 }

@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client, buildS3ObjectUrl } from "../../s3";
+import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
@@ -986,7 +986,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   ) {
     const deployment = await fastify.db
       .selectFrom("deployments")
-      .select("previewUrl")
+      .select(["previewUrl", "metadata"])
       .where("siteUuid", "=", request.params.uuid)
       .where("buildId", "=", request.params.attemptId)
       .orderBy("createdAt", "desc")
@@ -994,6 +994,21 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
     if (!deployment?.previewUrl) {
       return reply.code(404).send({ error: "Preview not found" });
+    }
+
+    const s3Meta = (deployment.metadata as { s3?: { bucket: string; previewKey: string } } | null)?.s3;
+    if (s3Meta?.bucket && s3Meta?.previewKey) {
+      const signedUrl = await getSignedDownloadUrl({
+        endpoint: fastify.config.S3_ENDPOINT,
+        region: fastify.config.S3_REGION,
+        accessKeyId: fastify.config.S3_ACCESS_KEY,
+        secretAccessKey: fastify.config.S3_SECRET_KEY,
+        sessionToken: fastify.config.S3_SESSION_TOKEN,
+        bucket: s3Meta.bucket,
+        key: s3Meta.previewKey,
+        expiresIn: 300,
+      });
+      return reply.redirect(signedUrl);
     }
 
     return reply.redirect(deployment.previewUrl);
