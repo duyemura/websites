@@ -19,6 +19,7 @@ import { startSiteBuild, approvePage } from "../../services/site-generation-orch
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
 import { loadBlueprintDoc } from "../../utils/blueprint-io";
 import { jsonb } from "../../utils/jsonb";
+import { resolveBuildCommand } from "../../services/build-assistant/registry";
 
 const SiteModeSchema = z.enum(["replication", "template", "greenfield"]);
 
@@ -120,6 +121,20 @@ const BuildStatusResponseSchema = z.object({
     .nullable(),
   blueprint: SiteBlueprintSchema.nullable(),
   aiActivity: z.array(z.any()),
+});
+
+const BuildCommandResponseSchema = z.object({
+  reply: z.string(),
+  action: z.string().nullable(),
+  enqueued: z.boolean(),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["assistant", "user"]),
+        content: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 function normalizeUrl(url: string): string {
@@ -513,6 +528,59 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           createdAt: a.createdAt.toISOString(),
         })),
       };
+    },
+  );
+
+  fastify.post(
+    "/sites/:uuid/build-commands",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        body: z.object({ message: z.string().min(1) }),
+        response: {
+          200: BuildCommandResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .selectAll()
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const deployment = await fastify.db
+        .selectFrom("deployments")
+        .selectAll()
+        .where("siteUuid", "=", siteUuid)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+
+      const blueprint = await loadBlueprintDoc(fastify.db, workspaceUuid, siteUuid);
+
+      const ctx = {
+        db: fastify.db,
+        queues: fastify.queues,
+        config: fastify.config,
+        workspaceUuid,
+        siteUuid,
+        userUuid: request.user.uuid,
+        site,
+        deployment: deployment ?? null,
+        blueprint,
+      };
+
+      const action = await resolveBuildCommand(request.body.message, ctx);
+      return action.execute(request.body.message, ctx);
     },
   );
 
