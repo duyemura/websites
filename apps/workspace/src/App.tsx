@@ -9,12 +9,14 @@ import { Templates } from "@/routes/Templates";
 import { Settings } from "@/routes/Settings";
 import { Workspaces } from "@/routes/Workspaces";
 import { AiActivity } from "@/routes/AiActivity";
+import { SiteBuild } from "@/routes/SiteBuild";
 
 function App() {
   return (
     <Routes>
       <Route element={<Shell />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/build/:siteUuid" element={<SiteBuild />} />
         <Route path="/sites/:uuid" element={<SiteDetail />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/assets" element={<Assets />} />

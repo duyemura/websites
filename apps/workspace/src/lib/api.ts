@@ -263,6 +263,51 @@ export type CreateAssetBody = Omit<
   mimeType?: string;
 };
 
+export interface BuildStatus {
+  site: Site;
+  aiJob: {
+    uuid: string;
+    type: string;
+    status: string;
+    state: unknown;
+    steps: unknown;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  deployment: {
+    uuid: string;
+    buildId: string;
+    status: string;
+    previewUrl: string | null;
+    artifactUrl: string | null;
+    metadata: unknown;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  blueprint: {
+    build_plan: {
+      next_page: string;
+      page_status: Record<string, string>;
+      build_order: string[];
+    };
+  } | null;
+  aiActivity: {
+    uuid: string;
+    actionType: string;
+    outcome: string;
+    summary: string;
+    createdAt: string;
+    metadata: unknown;
+  }[];
+}
+
+export interface BuildCommandResponse {
+  reply: string;
+  action: string | null;
+  enqueued: boolean;
+  messages?: { role: "assistant" | "user"; content: string }[];
+  userMessage?: string;
+}
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
@@ -297,6 +342,13 @@ export const api = {
       `/sites/${encodeURIComponent(siteUuid)}/ai-activity?${params.toString()}`,
     );
   },
+  getBuildStatus: (siteUuid: string) =>
+    fetchJson<BuildStatus>(`/sites/${encodeURIComponent(siteUuid)}/build-status`),
+  sendBuildCommand: (siteUuid: string, message: string) =>
+    fetchJson<BuildCommandResponse>(`/sites/${encodeURIComponent(siteUuid)}/build-commands`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
   getSiteDocs: (siteUuid: string) =>

@@ -26,6 +26,7 @@ export interface StartSiteBuildInput extends OrchestratorContext {
   maxQaIterations?: number;
   maxBudgetUsd?: number;
   fidelityThreshold?: number;
+  existingAiJobUuid?: string;
 }
 
 export interface BuildPageInput extends OrchestratorContext {
@@ -168,7 +169,6 @@ async function createParentAiJob(
   siteUuid: string,
   type: DB["aiJobs"]["type"],
   options: Record<string, unknown>,
-  _userUuid?: string,
 ) {
   const row = await db
     .insertInto("aiJobs")
@@ -188,7 +188,7 @@ async function createParentAiJob(
 }
 
 export async function startSiteBuild(input: StartSiteBuildInput) {
-  const { db, queues, workspaceUuid, siteUuid, requestedMode, userUuid } = input;
+  const { db, queues, workspaceUuid, siteUuid, requestedMode, existingAiJobUuid } = input;
   const { site } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
 
   const mode = requestedMode ?? (site.mode as SiteMode);
@@ -200,7 +200,31 @@ export async function startSiteBuild(input: StartSiteBuildInput) {
     fidelityThreshold: input.fidelityThreshold ?? preset.fidelityThreshold,
   };
 
-  const aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options, userUuid);
+  let aiJobUuid: string;
+  if (existingAiJobUuid) {
+    const existingJob = await db
+      .selectFrom("aiJobs")
+      .selectAll()
+      .where("uuid", "=", existingAiJobUuid)
+      .executeTakeFirst();
+    if (!existingJob || existingJob.workspaceUuid !== workspaceUuid || existingJob.siteUuid !== siteUuid || existingJob.type !== "replicate_site") {
+      throw new Error(`Cannot reuse aiJob ${existingAiJobUuid}: not found or does not belong to this site/workspace`);
+    }
+    aiJobUuid = existingAiJobUuid;
+    await db
+      .updateTable("aiJobs")
+      .set({
+        status: "running",
+        state: jsonb({ phase: "build", currentSlug: "index" }),
+        steps: jsonb([{ name: "build_homepage", status: "in_progress" }]),
+        options: jsonb(options),
+        updatedAt: new Date(),
+      })
+      .where("uuid", "=", existingAiJobUuid)
+      .execute();
+  } else {
+    aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options);
+  }
 
   const attemptId = generateAttemptId();
   await queues.generatePage.queue.add("generate_page", {

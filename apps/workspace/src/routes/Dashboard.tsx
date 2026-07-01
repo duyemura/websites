@@ -84,19 +84,20 @@ export function Dashboard() {
       url: string;
       name?: string;
     }) => {
-      const result = await api.scrapeSite({ url, name });
-      await api.generateSite(result.site.uuid, {
+      const scrapeResult = await api.scrapeSite({ url, name });
+      const generateResult = await api.generateSite(scrapeResult.site.uuid, {
         mode: "replication",
         accuracy: "accurate",
       });
-      return result;
+      return { site: scrapeResult.site, aiJobUuid: generateResult.aiJobUuid };
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
       queryClient.invalidateQueries({ queryKey: ["docs"] });
       setPendingClones((prev) =>
         prev.filter((s) => s.sourceUrl !== variables.url),
       );
+      navigate(`/build/${result.site.uuid}?job=${result.aiJobUuid}`);
     },
     onError: (error, variables) => {
       setPendingClones((prev) =>

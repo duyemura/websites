@@ -64,8 +64,8 @@ declare module "../bullmq" {
       result: unknown;
     };
     replicate_site: {
-      data: { workspaceUuid: string; siteUuid: string; url?: string };
-      result: unknown;
+      data: { workspaceUuid: string; siteUuid: string; url: string; aiJobUuid: string };
+      result: { aiJobUuid: string; attemptId: string; status: string };
     };
     site_publish: {
       data: { siteUuid: string; deploymentUuid: string };
