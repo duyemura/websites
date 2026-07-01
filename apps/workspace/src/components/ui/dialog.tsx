@@ -33,7 +33,7 @@ export const Dialog = ({ open, onOpenChange, children, className }: DialogProps)
       />
       <div
         className={cn(
-          "relative z-50 w-full max-w-5xl rounded-lg border bg-card p-0 shadow-lg",
+          "relative z-50 flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg border bg-card p-0 shadow-lg",
           className,
         )}
       >
@@ -50,7 +50,7 @@ export const DialogContent = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("flex h-[80vh] overflow-hidden rounded-lg", className)}>{children}</div>
+  <div className={cn("flex flex-col overflow-hidden rounded-lg", className)}>{children}</div>
 );
 
 export const DialogClose = ({ onClick }: { onClick?: () => void }) => (

@@ -189,7 +189,7 @@ export function Dashboard() {
           }}
           className="max-w-lg"
         >
-          <DialogContent className="flex max-h-[80vh] flex-col gap-0 p-0">
+          <DialogContent className="gap-0 p-0">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Create a new site</h2>
               <DialogClose
@@ -275,7 +275,7 @@ export function Dashboard() {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 border-t bg-card px-6 py-4">
+            <div className="flex items-center justify-end gap-3 border-t bg-card px-6 py-3">
               <Button
                 variant="outline"
                 size="sm"
