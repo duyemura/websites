@@ -742,33 +742,39 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
-  fastify.get(
-    "/sites/:uuid/preview/:attemptId",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
-        response: {
-          302: z.any(),
-          404: z.object({ error: z.string() }),
-        },
+  async function previewRedirect(
+    request: import("fastify").FastifyRequest<{
+      Params: { uuid: string; attemptId: string };
+    }>,
+    reply: import("fastify").FastifyReply,
+  ) {
+    const deployment = await fastify.db
+      .selectFrom("deployments")
+      .select("previewUrl")
+      .where("siteUuid", "=", request.params.uuid)
+      .where("buildId", "=", request.params.attemptId)
+      .orderBy("createdAt", "desc")
+      .executeTakeFirst();
+
+    if (!deployment?.previewUrl) {
+      return reply.code(404).send({ error: "Preview not found" });
+    }
+
+    return reply.redirect(deployment.previewUrl);
+  }
+
+  const previewRouteConfig = {
+    schema: {
+      params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
+      response: {
+        302: z.any(),
+        404: z.object({ error: z.string() }),
       },
     },
-    async (request, reply) => {
-      const deployment = await fastify.db
-        .selectFrom("deployments")
-        .select("previewUrl")
-        .where("siteUuid", "=", request.params.uuid)
-        .where("buildId", "=", request.params.attemptId)
-        .orderBy("createdAt", "desc")
-        .executeTakeFirst();
+  };
 
-      if (!deployment?.previewUrl) {
-        return reply.code(404).send({ error: "Preview not found" });
-      }
-
-      return reply.redirect(deployment.previewUrl);
-    },
-  );
+  fastify.get("/sites/:uuid/preview/:attemptId", previewRouteConfig, previewRedirect);
+  fastify.get("/sites/:uuid/preview/:attemptId/*", previewRouteConfig, previewRedirect);
 
   fastify.get(
     "/sites/:uuid/deployments",
@@ -780,7 +786,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             z.object({
               uuid: z.string(),
               buildId: z.string(),
-              status: z.string(),
+              status: z.enum(["building", "failed", "pending", "success"]),
               previewUrl: z.string().nullable().optional(),
               artifactUrl: z.string().nullable().optional(),
               metadata: z.any().nullable().optional(),
@@ -827,7 +833,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       schema: {
         params: z.object({ uuid: z.string().uuid() }),
         querystring: z.object({
-          actionType: z.enum(["apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
           outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
           limit: z.coerce.number().int().min(1).max(500).optional().default(50),
         }),
@@ -892,7 +898,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           outcome: outcome as AiActivityOutcome | undefined,
           limit,
         }),
-        getAiActivityCostSummary(fastify.db, workspaceUuid),
+        getAiActivityCostSummary(fastify.db, {
+          workspaceUuid,
+          siteUuid,
+          actionType: actionType as AiActivityAction | undefined,
+          outcome: outcome as AiActivityOutcome | undefined,
+          // Rollup rows (actionType = 'generate' for scrape summaries) duplicate
+          // child costs already represented by their underlying LLM calls. Exclude
+          // them so site totals reflect actual LLM invocations, not summary rows.
+          excludeActionTypes: ["generate"],
+        }),
       ]);
 
       return {

@@ -16,6 +16,7 @@ export function classifyAssetsProcessor(fastify: FastifyInstance) {
         userUuid: job.data.userUuid,
         siteUuid: job.data.siteUuid,
         aiJobUuid: job.data.aiJobUuid,
+        log: fastify.log,
       });
 
       fastify.log.info({ jobId: job.id }, "Classify assets worker finished");

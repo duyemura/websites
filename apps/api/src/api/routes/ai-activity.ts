@@ -29,7 +29,7 @@ const AiActivitySchema = z.object({
 
 const AiActivityListQuerySchema = z.object({
   siteUuid: z.string().uuid().optional(),
-  actionType: z.enum(["apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+  actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
   outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).optional().default(50),
 });
@@ -64,7 +64,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           outcome: outcome as AiActivityOutcome | undefined,
           limit,
         }),
-        getAiActivityCostSummary(fastify.db, workspaceUuid),
+        getAiActivityCostSummary(fastify.db, {
+          workspaceUuid,
+          siteUuid,
+          actionType: actionType as AiActivityAction | undefined,
+          outcome: outcome as AiActivityOutcome | undefined,
+          // Rollup rows (actionType = 'generate' for scrape summaries) duplicate
+          // child costs already represented by their underlying LLM calls. Exclude
+          // them so global totals reflect actual LLM invocations, not summary rows.
+          excludeActionTypes: ["generate"],
+        }),
       ]);
 
       return {

@@ -121,9 +121,7 @@ export function Dashboard() {
           site.slug.toLowerCase().includes(q),
       );
     }
-    return list.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [sites, pendingClones, search]);
 
   const handleCreate = () => {
@@ -243,7 +241,7 @@ export function Dashboard() {
         >
           <DialogContent className="gap-0 p-0">
             <div className="flex items-center justify-between border-b px-6 py-4">
-              <h2 className="text-lg font-semibold">Create a new site</h2>
+              <h2 className="text-lg font-semibold">Create a New Site</h2>
               <DialogClose onClick={resetModal} />
             </div>
 

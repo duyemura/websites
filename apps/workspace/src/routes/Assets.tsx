@@ -24,6 +24,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
   Download,
   FileText,
   Globe,
@@ -36,6 +37,7 @@ import {
   Package,
   Pencil,
   Play,
+  RefreshCw,
   Search,
   Shapes,
   Sparkles,
@@ -49,12 +51,18 @@ import {
   ASSET_TAGS,
   type AssetTagKey,
   assetMatchesTag,
+  canRegenerateAnalysis,
   formatBytes,
   formatDate,
+  getAssetAnalysis,
   getAssetDescription,
   getAssetFilename,
   getAssetPreviewUrl,
+  getAssetSourceLabel,
   getAssetTags,
+  getAnalysisQualityLabel,
+  isAssetAnalyzed,
+  needsAnalysisReview,
 } from "@/lib/assets";
 
 type ViewMode = "grid" | "list";
@@ -107,6 +115,7 @@ async function getImageDimensions(
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
+      console.warn("Could not read image dimensions", file.name);
       resolve(undefined);
     };
     img.src = url;
@@ -165,6 +174,17 @@ function AssetThumbnail({
   );
 }
 
+const ASSET_SOURCES: { key: Asset["source"]; label: string }[] = [
+  { key: "upload", label: "Upload" },
+  { key: "scraped", label: "Scraped" },
+  { key: "ai_generated", label: "AI generated" },
+];
+
+const ANALYSIS_STATUSES: { key: "analyzed" | "unanalyzed"; label: string }[] = [
+  { key: "analyzed", label: "Analyzed" },
+  { key: "unanalyzed", label: "Not analyzed" },
+];
+
 export function Assets() {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -182,18 +202,29 @@ export function Assets() {
   const [renameUuid, setRenameUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [openMenuUuid, setOpenMenuUuid] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<Asset["source"] | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<"analyzed" | "unanalyzed" | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: assets, isLoading } = useQuery({
-    queryKey: ["assets"],
-    queryFn: api.getAssets,
+    queryKey: ["assets", { source: selectedSource, analyzed: selectedStatus }],
+    queryFn: () =>
+      api.getAssets({
+        source: selectedSource ?? undefined,
+        analyzed: selectedStatus
+          ? selectedStatus === "analyzed"
+          : undefined,
+      }),
   });
 
   const createAsset = useMutation({
-    mutationFn: (
-      body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt" | "signedUrl">,
-    ) => api.createAsset(body),
+    mutationFn: api.createAsset,
     onSuccess: () => {
+      setUploadError(null);
       queryClient.invalidateQueries({ queryKey: ["assets"] });
+    },
+    onError: (error) => {
+      console.error("createAsset failed", error);
     },
   });
 
@@ -208,6 +239,9 @@ export function Assets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
     },
+    onError: (error) => {
+      console.error("updateAsset failed", error);
+    },
   });
 
   const deleteAsset = useMutation({
@@ -218,11 +252,24 @@ export function Assets() {
         setSelectedAsset(null);
       }
     },
+    onError: (error) => {
+      console.error("deleteAsset failed", error);
+    },
+  });
+
+  const regenerateAnalysis = useMutation({
+    mutationFn: api.regenerateAnalysis,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+    },
+    onError: (error) => {
+      console.error("regenerateAnalysis failed", error);
+    },
   });
 
   useEffect(() => {
     setPage(1);
-  }, [search, selectedTag, pageSize]);
+  }, [search, selectedTag, selectedSource, selectedStatus, pageSize]);
 
   useEffect(() => {
     if (!openMenuUuid) return;
@@ -250,6 +297,7 @@ export function Assets() {
     if (!file) return;
 
     setUploading(true);
+    setUploadError(null);
     try {
       const { signedUrl, publicUrl, storageKey } = await api.getUploadUrl(
         file.name,
@@ -263,7 +311,7 @@ export function Assets() {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        throw new Error(`Upload to storage failed (${uploadResponse.status}). Please try again.`);
       }
 
       const type = file.type.startsWith("image/")
@@ -286,12 +334,15 @@ export function Assets() {
         name: file.name.replace(/\.[^/.]+$/, ""),
         type,
         mimeType: file.type,
+        source: "upload",
         url: publicUrl,
         storageKey,
         metadata,
       });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Upload failed");
+      const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
+      console.error("asset upload failed", error);
+      setUploadError(message);
     } finally {
       setUploading(false);
       if (inputRef.current) {
@@ -388,21 +439,67 @@ export function Assets() {
       {/* Sidebar */}
       <aside className="w-60 flex-shrink-0 border-r bg-card/50 p-4">
         <button
-          onClick={() => setSelectedTag(null)}
+          onClick={() => {
+            setSelectedTag(null);
+            setSelectedSource(null);
+            setSelectedStatus(null);
+          }}
           className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-            selectedTag === null
+            selectedTag === null && selectedSource === null && selectedStatus === null
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           }`}
         >
           <span className="flex items-center gap-2">
             <Image className="h-4 w-4" />
-            All assets
+            All Assets
           </span>
           <Badge variant="outline" className="h-5 px-1.5 text-xs">
             {assets?.length ?? 0}
           </Badge>
         </button>
+        <Separator className="my-3" />
+        <div className="space-y-0.5">
+          <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+            Status
+          </p>
+          {ANALYSIS_STATUSES.map((status) => (
+            <button
+              key={status.key}
+              onClick={() =>
+                setSelectedStatus((prev) => (prev === status.key ? null : status.key))
+              }
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
+                selectedStatus === status.key
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+            >
+              <span>{status.label}</span>
+            </button>
+          ))}
+        </div>
+        <Separator className="my-3" />
+        <div className="space-y-0.5">
+          <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+            Source
+          </p>
+          {ASSET_SOURCES.map((source) => (
+            <button
+              key={source.key}
+              onClick={() =>
+                setSelectedSource((prev) => (prev === source.key ? null : source.key))
+              }
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
+                selectedSource === source.key
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+            >
+              <span>{source.label}</span>
+            </button>
+          ))}
+        </div>
         <Separator className="my-3" />
         <div className="space-y-0.5">
           <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
@@ -437,7 +534,7 @@ export function Assets() {
       {/* Main */}
       <main className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b px-6 py-4">
-          <h1 className="text-2xl font-bold tracking-tight">All assets</h1>
+          <h1 className="text-2xl font-bold tracking-tight">All Assets</h1>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -490,6 +587,12 @@ export function Assets() {
           </div>
         </header>
 
+        {uploadError && (
+          <div className="border-b border-destructive/50 bg-destructive/5 px-6 py-3">
+            <p className="text-sm text-destructive">{uploadError}</p>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-6">
           {isLoading ? (
             <p className="text-muted-foreground">Loading…</p>
@@ -507,6 +610,7 @@ export function Assets() {
                   <TableRow>
                     <TableHead className="w-[45%]">Name</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Analysis</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="w-12" />
@@ -573,6 +677,9 @@ export function Assets() {
                       <TableCell className="capitalize text-muted-foreground">
                         {asset.type}
                       </TableCell>
+                      <TableCell>
+                        <AnalysisStatusBadge asset={asset} />
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatBytes(getFileSizeFromName(asset))}
                       </TableCell>
@@ -593,7 +700,20 @@ export function Assets() {
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
                           {openMenuUuid === asset.uuid && (
-                            <div className="absolute right-0 top-8 z-10 w-40 rounded-md border bg-card p-1 shadow-lg">
+                            <div className="absolute right-0 top-8 z-10 w-44 rounded-md border bg-card p-1 shadow-lg">
+                              {canRegenerateAnalysis(asset) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuUuid(null);
+                                    regenerateAnalysis.mutate(asset.uuid);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                                >
+                                  <RefreshCw className="h-4 w-4" />
+                                  Regenerate analysis
+                                </button>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -643,28 +763,31 @@ export function Assets() {
                         {asset.type}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartRename(asset);
-                        }}
-                        className="rounded p-1 hover:bg-accent"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(asset.uuid);
-                        }}
-                        className="rounded p-1 hover:bg-accent"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <div className="flex items-center gap-1">
+                      <AnalysisStatusBadge asset={asset} size="sm" />
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartRename(asset);
+                          }}
+                          className="rounded p-1 hover:bg-accent"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(asset.uuid);
+                          }}
+                          className="rounded p-1 hover:bg-accent"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                   </div>
                 </div>
+              </div>
               ))}
             </div>
           )}
@@ -870,6 +993,10 @@ export function Assets() {
                   <p className="text-sm capitalize">{selectedAsset.type}</p>
                 </DetailField>
 
+                <DetailField label="Source">
+                  <p className="text-sm">{getAssetSourceLabel(selectedAsset.source)}</p>
+                </DetailField>
+
                 <DetailField label="Size">
                   <p className="text-sm">
                     {formatBytes(getFileSizeFromName(selectedAsset))}
@@ -889,24 +1016,51 @@ export function Assets() {
                 </DetailField>
 
                 <DetailField label="Tags">
-                  <div className="flex flex-wrap gap-1.5">
-                    {getAssetTags(selectedAsset).map((tagKey) => {
-                      const tag = ASSET_TAGS.find((t) => t.key === tagKey);
-                      if (!tag) return null;
-                      return (
-                        <Badge key={tagKey} variant="secondary">
-                          {tag.label}
-                        </Badge>
-                      );
-                    })}
-                    {getAssetTags(selectedAsset).length === 0 && (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const tags = getAssetTags(selectedAsset);
+                    return (
+                      <div className="flex flex-wrap gap-1.5">
+                        {tags.map((tagKey) => {
+                          const tag = ASSET_TAGS.find((t) => t.key === tagKey);
+                          if (!tag) return null;
+                          return (
+                            <Badge key={tagKey} variant="secondary">
+                              {tag.label}
+                            </Badge>
+                          );
+                        })}
+                        {tags.length === 0 && (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </DetailField>
+
+                <AnalysisDetailPanel asset={selectedAsset} />
               </div>
 
+              {(updateAsset.error || deleteAsset.error || regenerateAnalysis.error) && (
+                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+                  <p className="text-sm text-destructive">
+                    {updateAsset.error?.message ||
+                      deleteAsset.error?.message ||
+                      regenerateAnalysis.error?.message}
+                  </p>
+                </div>
+              )}
               <div className="mt-auto flex flex-col gap-2 pt-6">
+                {canRegenerateAnalysis(selectedAsset) && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => regenerateAnalysis.mutate(selectedAsset.uuid)}
+                    disabled={regenerateAnalysis.isPending}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Regenerate analysis
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="w-full"
@@ -933,6 +1087,111 @@ export function Assets() {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+    </div>
+  );
+}
+
+function AnalysisStatusBadge({
+  asset,
+  size = "md",
+}: {
+  asset: Asset;
+  size?: "sm" | "md";
+}) {
+  const analyzed = isAssetAnalyzed(asset);
+  const needsReview = needsAnalysisReview(asset);
+
+  let variant: "default" | "secondary" | "destructive" | "outline" = "outline";
+  let label = analyzed ? "Analyzed" : "Not analyzed";
+  if (needsReview) {
+    variant = "destructive";
+    label = "Needs review";
+  } else if (analyzed) {
+    variant = "secondary";
+  }
+
+  return (
+    <Badge variant={variant} className={size === "sm" ? "text-xs" : undefined}>
+      {label}
+    </Badge>
+  );
+}
+
+function AnalysisDetailPanel({ asset }: { asset: Asset }) {
+  const analysis = getAssetAnalysis(asset);
+  if (!analysis) return null;
+
+  const qualityLabel = getAnalysisQualityLabel(asset);
+
+  return (
+    <div className="space-y-5 border-t pt-5">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">AI Analysis</h3>
+        <AnalysisStatusBadge asset={asset} size="sm" />
+      </div>
+
+      <DetailField label="Alt text">
+        <div className="flex items-start gap-2">
+          <p className="flex-1 text-sm">{analysis.altText || "—"}</p>
+          {analysis.altText && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(analysis.altText).catch((error) => {
+                  console.error("clipboard write failed", error);
+                });
+              }}
+              className="rounded p-1 hover:bg-accent"
+              title="Copy alt text"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </DetailField>
+
+      <DetailField label="Context">
+        <p className="text-sm capitalize">{analysis.context}</p>
+      </DetailField>
+
+      {analysis.marketing.useCases.length > 0 && (
+        <DetailField label="Use cases">
+          <ul className="list-inside list-disc text-sm">
+            {analysis.marketing.useCases.map((useCase) => (
+              <li key={useCase}>{useCase}</li>
+            ))}
+          </ul>
+        </DetailField>
+      )}
+
+      <DetailField label="Quality">
+        <div className="flex items-center gap-2">
+          {qualityLabel && <Badge variant="secondary">{qualityLabel}</Badge>}
+          <span className="text-sm text-muted-foreground capitalize">
+            {analysis.quality.resolution} · {analysis.quality.sharpness}
+          </span>
+        </div>
+        {analysis.quality.issues.length > 0 && (
+          <ul className="mt-1 list-inside list-disc text-sm text-muted-foreground">
+            {analysis.quality.issues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        )}
+      </DetailField>
+
+      <DetailField label="Subject">
+        <p className="text-sm">{analysis.marketing.subject || "—"}</p>
+      </DetailField>
+
+      <DetailField label="Mood">
+        <p className="text-sm">{analysis.marketing.mood || "—"}</p>
+      </DetailField>
+
+      {analysis.safety.hasIdentifiablePeople && (
+        <DetailField label="Safety">
+          <Badge variant="destructive">Contains identifiable people</Badge>
+        </DetailField>
       )}
     </div>
   );

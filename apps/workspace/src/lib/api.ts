@@ -90,20 +90,65 @@ export interface Doc {
   updatedAt: string;
 }
 
+export interface AssetAnalysis {
+  analyzedAt: string;
+  model: string;
+  version: number;
+  description: string;
+  altText: string;
+  context:
+    | "hero"
+    | "logo"
+    | "icon"
+    | "testimonial"
+    | "program"
+    | "class"
+    | "blog"
+    | "social"
+    | "background"
+    | "other";
+  confidence: number;
+  tags: string[];
+  technical: {
+    hasText: boolean;
+    textConfidence: number;
+    faces?: number | null;
+    people?: number | null;
+  };
+  quality: {
+    score: number;
+    resolution: "low" | "medium" | "high" | "unknown";
+    sharpness: "blurry" | "soft" | "good" | "sharp" | "unknown";
+    issues: string[];
+  };
+  marketing: {
+    mood: string;
+    useCases: string[];
+    subject: string;
+    brandFit?: number | null;
+  };
+  safety: {
+    hasIdentifiablePeople: boolean;
+    needsReview: boolean;
+  };
+}
+
 export interface AssetMetadata {
   filename?: string;
   description?: string;
   tags?: string[];
   size?: number;
   dimensions?: { width: number; height: number };
+  analysis?: AssetAnalysis;
 }
 
 export interface Asset {
   uuid: string;
   workspaceUuid: string;
   name: string;
-  type: "image" | "video" | "audio" | "font" | "document" | "logo" | "icon";
+  type: "image" | "video" | "font" | "document" | "logo" | "icon";
   mimeType?: string | null;
+  source: "upload" | "scraped" | "screenshot" | "ai_generated";
   url: string;
   signedUrl: string;
   storageKey: string;
@@ -168,7 +213,7 @@ export interface ApprovePageResult {
 export interface Deployment {
   uuid: string;
   buildId: string;
-  status: string;
+  status: "building" | "failed" | "pending" | "success";
   previewUrl: string | null;
   artifactUrl: string | null;
   metadata?: unknown | null;
@@ -211,6 +256,13 @@ export interface GenerateSiteOptions {
   fidelityThreshold?: number;
 }
 
+export type CreateAssetBody = Omit<
+  Asset,
+  "uuid" | "workspaceUuid" | "createdAt" | "signedUrl" | "mimeType"
+> & {
+  mimeType?: string;
+};
+
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
@@ -236,7 +288,7 @@ export const api = {
       `/sites/${encodeURIComponent(siteUuid)}/deployments`,
     ),
   previewUrl: (siteUuid: string, attemptId: string) =>
-    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}/`,
+    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}`,
   getSiteAiActivity: (siteUuid: string, options?: { actionType?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (options?.actionType) params.set("actionType", options.actionType);
@@ -268,10 +320,14 @@ export const api = {
       method: "POST",
     }),
 
-  getAssets: () => fetchJson<Asset[]>("/assets"),
-  createAsset: (
-    body: Omit<Asset, "uuid" | "workspaceUuid" | "createdAt" | "signedUrl">,
-  ) =>
+  getAssets: (params?: { tag?: string; source?: Asset["source"]; analyzed?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.tag) query.set("tag", params.tag);
+    if (params?.source) query.set("source", params.source);
+    if (params?.analyzed != null) query.set("analyzed", params.analyzed ? "true" : "false");
+    return fetchJson<Asset[]>(`/assets${query.toString() ? `?${query.toString()}` : ""}`);
+  },
+  createAsset: (body: CreateAssetBody) =>
     fetchJson<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
   updateAsset: (
     uuid: string,
@@ -283,6 +339,15 @@ export const api = {
     }),
   deleteAsset: (uuid: string) =>
     fetchWithBase(`/assets/${uuid}`, { method: "DELETE" }),
+  regenerateAnalysis: (uuid: string) =>
+    fetchJson<{ enqueued: boolean }>(
+      `/assets/${encodeURIComponent(uuid)}/regenerate-analysis`,
+      { method: "POST" },
+    ),
+  backfillAnalysis: () =>
+    fetchJson<{ enqueued: number }>("/assets/backfill-analysis", {
+      method: "POST",
+    }),
   getUploadUrl: (filename: string, contentType?: string) =>
     fetchJson<UploadUrl>(
       `/assets/upload-url?filename=${encodeURIComponent(filename)}${contentType ? `&contentType=${encodeURIComponent(contentType)}` : ""}`,

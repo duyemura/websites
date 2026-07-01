@@ -2,6 +2,7 @@ import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { AssetAnalysisSchema as LlmAssetAnalysisSchema } from "../../ai/prompts/asset-analysis";
+import { isAnalyzableImage } from "../../utils/asset-analysis";
 
 const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
 const AssetSource = z.enum(["upload", "scraped", "screenshot", "ai_generated"]);
@@ -70,10 +71,11 @@ function enqueueAssetClassification(
   userUuid: string,
   source: string,
   type: string,
+  mimeType: string | null | undefined,
   siteUuid?: string,
 ) {
   if (source === "screenshot") return;
-  if (type !== "image") return;
+  if (!isAnalyzableImage(type, mimeType)) return;
 
   fastify.queues.classifyAssets.queue
     .add(
@@ -266,6 +268,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         request.user.uuid,
         asset.source,
         asset.type,
+        asset.mimeType,
       );
 
       return reply.code(201).send(
@@ -353,7 +356,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .select(["uuid"])
         .where("workspaceUuid", "=", request.workspace.uuid)
         .where("source", "!=", "screenshot")
-        .where("type", "=", "image")
+        .where((eb) =>
+          eb.or([
+            eb("type", "=", "image"),
+            eb("mimeType", "like", "image/%"),
+          ]),
+        )
         .where((eb) =>
           eb.or([
             eb("metadata", "is", null),
@@ -391,7 +399,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     async (request, reply) => {
       const asset = await fastify.db
         .selectFrom("assets")
-        .select(["uuid", "source", "type"])
+        .select(["uuid", "source", "type", "mimeType"])
         .where("uuid", "=", request.params.uuid)
         .where("workspaceUuid", "=", request.workspace.uuid)
         .executeTakeFirst();
@@ -400,7 +408,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         return reply.code(404).send({ error: "Asset not found" });
       }
 
-      if (asset.source === "screenshot" || asset.type !== "image") {
+      if (asset.source === "screenshot" || !isAnalyzableImage(asset.type, asset.mimeType)) {
         return reply.code(202).send({ enqueued: false });
       }
 

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, FileText, ExternalLink, Clock, Save, RefreshCw, Loader2, Activity } from "lucide-react";
+import { ArrowLeft, FileText, ExternalLink, Clock, Save, RefreshCw, Loader2, Activity, AlertCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -137,6 +137,9 @@ export function SiteDetail() {
         queryKey: ["sites", uuid, "deployments"],
       });
     },
+    onError: (error) => {
+      console.error("generateSite failed", error);
+    },
   });
 
   const approveHomepage = useMutation<ApprovePageResult, Error, void>({
@@ -151,15 +154,69 @@ export function SiteDetail() {
       });
       queryClient.invalidateQueries({ queryKey: ["sites", uuid] });
     },
+    onError: (error) => {
+      console.error("approveHomepage failed", error);
+    },
   });
 
   const latestDeployment = useMemo<Deployment | null>(() => {
     if (!deployments?.length) return null;
-    return [...deployments].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )[0];
+    return [...deployments].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   }, [deployments]);
+
+  const buildStatus = useMemo(() => {
+    if (generateSite.isPending) {
+      return { type: "pending" as const, text: "Starting build…" };
+    }
+    if (approveHomepage.isPending) {
+      return { type: "pending" as const, text: "Approving homepage…" };
+    }
+    if (approveHomepage.error) {
+      const message = approveHomepage.error.message.replace(/^\d+:\s*/, "");
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed && typeof parsed === "object" && "error" in parsed) {
+          return { type: "error" as const, text: String(parsed.error) };
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          console.error("Unexpected error parsing approval error message", error);
+        }
+      }
+      return { type: "error" as const, text: message };
+    }
+    if (generateSite.error) {
+      const message = generateSite.error.message.replace(/^\d+:\s*/, "");
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed && typeof parsed === "object" && "error" in parsed) {
+          return { type: "error" as const, text: String(parsed.error) };
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          console.error("Unexpected error parsing build error message", error);
+        }
+      }
+      return { type: "error" as const, text: message };
+    }
+    if (!latestDeployment) return null;
+    if (latestDeployment.status === "pending" || latestDeployment.status === "building") {
+      return { type: "pending" as const, text: "Building homepage…" };
+    }
+    if (latestDeployment.status === "success") {
+      return { type: "success" as const, text: "Homepage ready for preview." };
+    }
+    if (latestDeployment.status === "failed") {
+      return { type: "error" as const, text: "Latest build failed. Try rebuilding." };
+    }
+    return null;
+  }, [
+    generateSite.isPending,
+    generateSite.error,
+    approveHomepage.isPending,
+    approveHomepage.error,
+    latestDeployment,
+  ]);
 
   const sortedWorkspaceDocs = useMemo(() => {
     if (!workspaceDocs || !uuid) return [];
@@ -257,7 +314,26 @@ export function SiteDetail() {
                     )}
                     Build homepage
                   </Button>
-                  {approvedMessage && (
+                  {buildStatus && (
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-sm ${
+                        buildStatus.type === "error"
+                          ? "text-destructive"
+                          : buildStatus.type === "success"
+                            ? "text-green-600"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {buildStatus.type === "pending" && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      )}
+                      {buildStatus.type === "error" && (
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      )}
+                      {buildStatus.text}
+                    </span>
+                  )}
+                  {approvedMessage && !buildStatus && (
                     <p className="text-sm text-muted-foreground">
                       {approvedMessage}
                     </p>
@@ -284,9 +360,7 @@ export function SiteDetail() {
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      {(latestDeployment.status === "ready" ||
-                        latestDeployment.status === "success") &&
-                        !approvedMessage && (
+                      {latestDeployment.status === "success" && !approvedMessage && (
                           <Button
                             size="sm"
                             variant="secondary"
@@ -331,7 +405,7 @@ export function SiteDetail() {
                 {buildActivity && (
                   <div className="rounded-md border bg-muted/50 p-3">
                     <p className="text-sm font-medium">
-                      Latest build cost/activity
+                      Latest build activity
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {buildActivity.summary.count} activities · $
@@ -361,7 +435,7 @@ export function SiteDetail() {
                     <TableRow className="bg-muted/50">
                       <TableCell colSpan={4}>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold">Workspace docs</span>
+                          <span className="text-sm font-semibold">Workspace Docs</span>
                           <Badge variant="outline" className="text-xs">Workspace scope</Badge>
                         </div>
                       </TableCell>
@@ -385,7 +459,7 @@ export function SiteDetail() {
                     <TableRow className="bg-muted/50">
                       <TableCell colSpan={4}>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold">Site docs</span>
+                          <span className="text-sm font-semibold">Site Docs</span>
                           <Badge variant="secondary" className="text-xs">Site scope</Badge>
                         </div>
                       </TableCell>
@@ -529,7 +603,7 @@ function BrandGuidelinesSwatches({ content }: { content: string }) {
 
   return (
     <div className="rounded-md border p-4">
-      <h3 className="mb-3 text-sm font-semibold">Color palette</h3>
+      <h3 className="mb-3 text-sm font-semibold">Color Palette</h3>
       <div className="flex flex-wrap gap-4">
         {colors.map((color, index) => (
           <div key={`${color.token}-${index}`} className="flex items-center gap-3">
