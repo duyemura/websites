@@ -14,6 +14,7 @@ export function replicateSiteProcessor(fastify: FastifyInstance) {
       workspaceUuid: job.data.workspaceUuid,
       siteUuid: job.data.siteUuid,
       requestedMode: "replication",
+      existingAiJobUuid: job.data.aiJobUuid,
     });
 
     fastify.log.info({ jobId: job.id, result }, "Replicate site worker finished");

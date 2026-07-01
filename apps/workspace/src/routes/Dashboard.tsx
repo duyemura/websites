@@ -76,7 +76,7 @@ export function Dashboard() {
       setScrapeName("");
       setShowScrape(false);
       setConfirmScrape(null);
-      navigate(`/docs?site=${result.site.uuid}`);
+      navigate(`/build/${result.site.uuid}?job=${result.aiJobUuid}`);
     },
     onError: (error) => {
       try {
