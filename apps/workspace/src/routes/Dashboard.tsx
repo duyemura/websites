@@ -3,6 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -11,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search, Loader2, Link2, Activity, Copy } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Activity, Copy } from "lucide-react";
 import { api, type Site } from "@/lib/api";
 import { useNavigate, Link } from "react-router";
 
@@ -53,30 +59,16 @@ export function Dashboard() {
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [showNewSite, setShowNewSite] = useState(false);
-  const [cloneUrl, setCloneUrl] = useState("");
-  const [cloneName, setCloneName] = useState("");
-  const [scrapeUrl, setScrapeUrl] = useState("");
-  const [scrapeName, setScrapeName] = useState("");
-  const [showScrape, setShowScrape] = useState(false);
+  const [siteUrl, setSiteUrl] = useState("");
+  const [siteName, setSiteName] = useState("");
+  const [isMyWebsite, setIsMyWebsite] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: api.getSites,
   });
 
-  const scrapeSite = useMutation({
-    mutationFn: api.scrapeSite,
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["sites"] });
-      queryClient.invalidateQueries({ queryKey: ["docs"] });
-      setScrapeUrl("");
-      setScrapeName("");
-      setShowScrape(false);
-      navigate(`/docs?site=${result.site.uuid}`);
-    },
-  });
-
-  const cloneSite = useMutation({
+  const createSite = useMutation({
     mutationFn: async ({
       url,
       name,
@@ -94,8 +86,9 @@ export function Dashboard() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
       queryClient.invalidateQueries({ queryKey: ["docs"] });
-      setCloneUrl("");
-      setCloneName("");
+      setSiteUrl("");
+      setSiteName("");
+      setIsMyWebsite(false);
       setShowNewSite(false);
       navigate(`/sites/${result.site.uuid}`);
     },
@@ -114,21 +107,15 @@ export function Dashboard() {
     return list;
   }, [sites, search]);
 
-  const handleScrape = () => {
-    if (!scrapeUrl.trim()) return;
-    scrapeSite.mutate({
-      url: scrapeUrl.trim(),
-      name: scrapeName.trim() || undefined,
+  const handleCreate = () => {
+    if (!siteUrl.trim()) return;
+    createSite.mutate({
+      url: siteUrl.trim(),
+      name: siteName.trim() || undefined,
     });
   };
 
-  const handleClone = () => {
-    if (!cloneUrl.trim()) return;
-    cloneSite.mutate({
-      url: cloneUrl.trim(),
-      name: cloneName.trim() || undefined,
-    });
-  };
+  const canSubmit = isMyWebsite && siteUrl.trim();
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -177,10 +164,6 @@ export function Dashboard() {
               <List className="h-4 w-4" />
             </button>
           </div>
-          <Button size="sm" onClick={() => setShowScrape(true)}>
-            <Link2 className="h-4 w-4" />
-            Scrape URL
-          </Button>
           <Button size="sm" onClick={() => setShowNewSite(true)}>
             <Plus className="h-4 w-4" />
             New site
@@ -189,148 +172,130 @@ export function Dashboard() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
-        {showScrape && (
-          <div className="mb-6 rounded-lg border bg-card p-6">
-            <h2 className="mb-2 font-semibold">Scrape a website</h2>
-            <p className="mb-4 text-sm text-muted-foreground">
-              Enter a gym or studio URL. We will scrape the homepage, create a site record, and generate workspace docs you can inspect.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                type="url"
-                placeholder="https://example-gym.com"
-                value={scrapeUrl}
-                onChange={(e) => setScrapeUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleScrape();
-                }}
-              />
-              <Input
-                placeholder="Site name (optional)"
-                value={scrapeName}
-                onChange={(e) => setScrapeName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleScrape();
+        <Dialog
+          open={showNewSite}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowNewSite(false);
+              setSiteUrl("");
+              setSiteName("");
+              setIsMyWebsite(false);
+              createSite.reset();
+            }
+          }}
+          className="max-w-lg"
+        >
+          <DialogContent className="flex flex-col gap-0 p-0">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Create a new site</h2>
+              <DialogClose
+                onClick={() => {
+                  setShowNewSite(false);
+                  setSiteUrl("");
+                  setSiteName("");
+                  setIsMyWebsite(false);
+                  createSite.reset();
                 }}
               />
             </div>
-            <div className="mt-4 flex items-center gap-3">
-              <Button
-                size="sm"
-                onClick={() => handleScrape()}
-                disabled={scrapeSite.isPending || !scrapeUrl.trim()}
-              >
-                {scrapeSite.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Link2 className="mr-2 h-4 w-4" />
-                )}
-                {scrapeSite.isPending ? "Scraping…" : "Scrape and create docs"}
-              </Button>
+
+            <div className="flex flex-col gap-5 px-6 py-5">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="new-site-url" className="text-sm font-medium">
+                  Source website URL
+                </label>
+                <Input
+                  id="new-site-url"
+                  type="url"
+                  placeholder="https://example-gym.com"
+                  value={siteUrl}
+                  onChange={(e) => setSiteUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit) handleCreate();
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  We will use this site as the starting point for your new site.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="new-site-name" className="text-sm font-medium">
+                  Site name
+                </label>
+                <Input
+                  id="new-site-name"
+                  placeholder="Optional — we will derive one from the URL"
+                  value={siteName}
+                  onChange={(e) => setSiteName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit) handleCreate();
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-md border bg-muted/50 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">This is my website</span>
+                  <Switch
+                    checked={isMyWebsite}
+                    onCheckedChange={setIsMyWebsite}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {isMyWebsite
+                    ? "We will scrape your existing site, create workspace docs, and build a new homepage you can approve."
+                    : "We will use this site as a template and generate a fresh design inspired by its layout. This option is coming soon."}
+                </p>
+              </div>
+
+              {createSite.isError && (
+                <p className="text-sm text-destructive">
+                  {createSite.error?.message.replace(/^\d+:\s*/, "")}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setShowScrape(false);
-                  setScrapeUrl("");
-                  setScrapeName("");
-                  scrapeSite.reset();
-                }}
-                disabled={scrapeSite.isPending}
-              >
-                Cancel
-              </Button>
-              {scrapeSite.isError && (
-                <p className="text-sm text-destructive">
-                  {scrapeSite.error?.message.replace(/^\d+:\s*/, "")}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {showNewSite && (
-          <div className="mb-6 rounded-lg border bg-card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-semibold">Create a new site</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
                   setShowNewSite(false);
-                  setCloneUrl("");
-                  setCloneName("");
-                  cloneSite.reset();
+                  setSiteUrl("");
+                  setSiteName("");
+                  setIsMyWebsite(false);
+                  createSite.reset();
                 }}
+                disabled={createSite.isPending}
               >
                 Cancel
               </Button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col rounded-md border p-5">
-                <h3 className="font-semibold">Clone my site</h3>
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                  Enter your current gym website URL. We will scrape it, create docs,
-                  and build a new homepage you can approve.
-                </p>
-                <div className="mt-4 grid gap-3">
-                  <Input
-                    type="url"
-                    placeholder="https://example-gym.com"
-                    value={cloneUrl}
-                    onChange={(e) => setCloneUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleClone();
-                    }}
-                  />
-                  <Input
-                    placeholder="Site name (optional)"
-                    value={cloneName}
-                    onChange={(e) => setCloneName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleClone();
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleClone}
-                    disabled={cloneSite.isPending || !cloneUrl.trim()}
-                  >
-                    {cloneSite.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Copy className="mr-2 h-4 w-4" />
-                    )}
-                    {cloneSite.isPending ? "Cloning…" : "Clone my site"}
-                  </Button>
-                </div>
-                {cloneSite.isError && (
-                  <p className="mt-3 text-sm text-destructive">
-                    {cloneSite.error?.message.replace(/^\d+:\s*/, "")}
-                  </p>
+              <Button
+                size="sm"
+                onClick={handleCreate}
+                disabled={createSite.isPending || !canSubmit}
+              >
+                {createSite.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Copy className="mr-2 h-4 w-4" />
                 )}
-              </div>
-
-              <div className="flex flex-col rounded-md border p-5 opacity-75">
-                <h3 className="font-semibold">Clone as template</h3>
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                  Coming soon — use any public gym site as a reusable template.
-                </p>
-                <div className="mt-4">
-                  <Button size="sm" variant="outline" disabled className="w-full">
-                    Choose template
-                  </Button>
-                </div>
-              </div>
+                {createSite.isPending
+                  ? "Creating…"
+                  : isMyWebsite
+                    ? "Clone my site"
+                    : "Create from template"}
+              </Button>
             </div>
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
 
         {isLoading ? (
           <p className="text-muted-foreground">Loading…</p>
         ) : filteredSites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-            <p className="text-muted-foreground">No sites yet. Scrape or clone a site to get started.</p>
+            <p className="text-muted-foreground">No sites yet. Create a new site to get started.</p>
           </div>
         ) : view === "list" ? (
           <div className="rounded-md border">
