@@ -14,10 +14,11 @@ import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
-import type { Json } from "../../types/db";
-import { logAiActivity } from "../../services/ai-activity";
+import { logAiActivity, getRecentAiActivity } from "../../services/ai-activity";
 import { startSiteBuild, approvePage } from "../../services/site-generation-orchestrator";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
+import { loadBlueprintDoc } from "../../utils/blueprint-io";
+import { jsonb } from "../../utils/jsonb";
 
 const SiteModeSchema = z.enum(["replication", "template", "greenfield"]);
 
@@ -72,6 +73,53 @@ const ScrapeSiteResponseSchema = z.object({
     })
     .nullable()
     .optional(),
+});
+
+const SiteBlueprintSchema = z.object({
+  site_metadata: z.object({
+    framework: z.string(),
+    mode: z.string(),
+    target_url: z.string(),
+    business_name: z.string().optional(),
+    generated_at: z.string(),
+  }),
+  design_tokens: z.any(),
+  global_shell: z.any(),
+  pages: z.array(z.any()),
+  build_plan: z.object({
+    next_page: z.string(),
+    page_status: z.record(z.string()),
+    build_order: z.array(z.string()),
+  }),
+});
+
+const BuildStatusResponseSchema = z.object({
+  site: SiteSchema,
+  aiJob: z
+    .object({
+      uuid: z.string(),
+      type: z.string(),
+      status: z.string(),
+      state: z.any().nullable(),
+      steps: z.any().nullable(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
+  deployment: z
+    .object({
+      uuid: z.string(),
+      buildId: z.string(),
+      status: z.string(),
+      previewUrl: z.string().nullable().optional(),
+      artifactUrl: z.string().nullable().optional(),
+      metadata: z.any().nullable().optional(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
+  blueprint: SiteBlueprintSchema.nullable(),
+  aiActivity: z.array(z.any()),
 });
 
 function normalizeUrl(url: string): string {
@@ -391,6 +439,83 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
+  fastify.get(
+    "/sites/:uuid/build-status",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: BuildStatusResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .selectAll()
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const aiJob = await fastify.db
+        .selectFrom("aiJobs")
+        .selectAll()
+        .where("siteUuid", "=", siteUuid)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+
+      const deployment = await fastify.db
+        .selectFrom("deployments")
+        .selectAll()
+        .where("siteUuid", "=", siteUuid)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+
+      const blueprint = await loadBlueprintDoc(fastify.db, workspaceUuid, siteUuid);
+
+      const aiActivity = await getRecentAiActivity(fastify.db, {
+        workspaceUuid,
+        siteUuid,
+        limit: 20,
+      });
+
+      return {
+        site: {
+          ...site,
+          createdAt: site.createdAt.toISOString(),
+          updatedAt: site.updatedAt.toISOString(),
+        },
+        aiJob: aiJob
+          ? {
+              ...aiJob,
+              createdAt: aiJob.createdAt.toISOString(),
+              updatedAt: aiJob.updatedAt.toISOString(),
+            }
+          : null,
+        deployment: deployment
+          ? {
+              ...deployment,
+              createdAt: deployment.createdAt.toISOString(),
+              updatedAt: deployment.updatedAt.toISOString(),
+            }
+          : null,
+        blueprint,
+        aiActivity: aiActivity.map((a) => ({
+          ...a,
+          createdAt: a.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
   fastify.post(
     "/sites/scrape",
     {
@@ -645,8 +770,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             siteUuid: site.uuid,
             type: "replicate_site",
             status: "pending",
-            input: { siteUuid: site.uuid, workspaceUuid, url, options: {} } as Json,
-            options: {} as Json,
+            input: jsonb({ siteUuid: site.uuid, workspaceUuid, url, options: {} }),
+            options: jsonb({}),
           })
           .returning("uuid")
           .executeTakeFirstOrThrow();
@@ -663,8 +788,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             .updateTable("aiJobs")
             .set({
               status: "failed",
-              state: { phase: "failed", error: err instanceof Error ? err.message : "enqueue failed" } as Json,
-              steps: [{ name: "enqueue", status: "failed" }] as Json,
+              state: jsonb({ phase: "failed", error: err instanceof Error ? err.message : "enqueue failed" }),
+              steps: jsonb([{ name: "enqueue", status: "failed" }]),
               updatedAt: new Date(),
             })
             .where("uuid", "=", aiJob.uuid)
