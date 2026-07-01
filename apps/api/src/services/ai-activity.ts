@@ -1,4 +1,5 @@
 import type { Kysely } from "kysely";
+import { jsonb } from "../utils/jsonb";
 import type { DB, AiActivityAction, AiActivityOutcome } from "../types/db";
 
 export interface LogAiActivityInput {
@@ -48,7 +49,7 @@ export async function logAiActivity(
       summary: input.summary,
       errorMessage: input.errorMessage ?? null,
       userCorrection: input.userCorrection ?? null,
-      metadata: input.metadata ? (input.metadata as unknown as import("../types/db").Json) : null,
+      metadata: input.metadata ? jsonb(input.metadata) : null,
     })
     .returning("uuid")
     .executeTakeFirstOrThrow();

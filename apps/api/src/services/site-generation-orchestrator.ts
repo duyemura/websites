@@ -1,5 +1,5 @@
 import type { Kysely } from "kysely";
-import type { DB, Json } from "../types/db";
+import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
 import type { FastifyInstance } from "fastify";
 import type { SiteBlueprint, PageBuildStatus } from "../utils/site-blueprint";
@@ -9,6 +9,7 @@ import { getJobCostUsd } from "../utils/job-budget";
 import { generateAstroPage, type QaIssue } from "./astro-code-generator";
 import { runRalphLoop } from "./ralph-loop";
 import { logAiActivity } from "./ai-activity";
+import { jsonb } from "../utils/jsonb";
 
 export interface OrchestratorContext {
   db: Kysely<DB>;
@@ -85,8 +86,8 @@ async function updateAiJobState(
   await db
     .updateTable("aiJobs")
     .set({
-      ...(patch.state ? { state: patch.state as Json } : {}),
-      ...(patch.steps ? { steps: patch.steps as Json } : {}),
+      ...(patch.state ? { state: jsonb(patch.state) } : {}),
+      ...(patch.steps ? { steps: jsonb(patch.steps) } : {}),
       ...(patch.status ? { status: patch.status } : {}),
       updatedAt: new Date(),
     })
@@ -176,10 +177,10 @@ async function createParentAiJob(
       siteUuid,
       type,
       status: "running",
-      input: { siteUuid, workspaceUuid, options } as Json,
-      state: { phase: "build", currentSlug: "index" } as Json,
-      steps: [{ name: "build_homepage", status: "in_progress" }] as Json,
-      options: options as Json,
+      input: jsonb({ siteUuid, workspaceUuid, options }),
+      state: jsonb({ phase: "build", currentSlug: "index" }),
+      steps: jsonb([{ name: "build_homepage", status: "in_progress" }]),
+      options: jsonb(options),
     })
     .returning("uuid")
     .executeTakeFirstOrThrow();
@@ -287,7 +288,7 @@ export async function buildPage(input: BuildPageInput) {
         title: generated.metaTitle,
         metaTitle: generated.metaTitle,
         metaDescription: generated.metaDescription,
-        sections: generated.pageSections as unknown as Json,
+        sections: jsonb(generated.pageSections),
         status: "draft",
         updatedAt: new Date(),
       })
@@ -305,7 +306,7 @@ export async function buildPage(input: BuildPageInput) {
         status: passed ? "success" : "failed",
         artifactUrl: finalPreviewUrl,
         previewUrl: finalPreviewUrl,
-        metadata: { mode, fidelityScore: ralph.fidelityScore, issues: ralph.issues } as unknown as Json,
+        metadata: jsonb({ mode, fidelityScore: ralph.fidelityScore, issues: ralph.issues }),
       })
       .execute();
   }

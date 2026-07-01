@@ -18,11 +18,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LayoutGrid, List, Plus, Search, Loader2, Activity, Copy } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Loader2, Activity, Copy, X } from "lucide-react";
 import { api, type Site } from "@/lib/api";
 import { useNavigate, Link } from "react-router";
 
 type ViewMode = "grid" | "list";
+
+type PendingSite = Omit<Site, "status"> & { status: "cloning" };
+
+type DashboardSite = Site | PendingSite;
 
 function formatRelativeDate(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date;
@@ -36,7 +40,7 @@ function formatRelativeDate(date: string | Date): string {
   return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
-function getSiteDomain(site: Site): string {
+function getSiteDomain(site: DashboardSite): string {
   if (site.customDomain) return site.customDomain;
   if (site.subdomain) return `${site.subdomain}.pushpress.build`;
   return `${site.slug}.pushpress.build`;
@@ -64,6 +68,8 @@ export function Dashboard() {
   const [siteName, setSiteName] = useState("");
   const [isMyWebsite, setIsMyWebsite] = useState(false);
   const [hasRights, setHasRights] = useState(false);
+  const [pendingClones, setPendingClones] = useState<PendingSite[]>([]);
+  const [cloneError, setCloneError] = useState<string | null>(null);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
@@ -85,20 +91,28 @@ export function Dashboard() {
       });
       return result;
     },
-    onSuccess: (result) => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
       queryClient.invalidateQueries({ queryKey: ["docs"] });
-      setSiteUrl("");
-      setSiteName("");
-      setIsMyWebsite(false);
-      setHasRights(false);
-      setShowNewSite(false);
-      navigate(`/sites/${result.site.uuid}`);
+      setPendingClones((prev) =>
+        prev.filter((s) => s.sourceUrl !== variables.url),
+      );
+    },
+    onError: (error, variables) => {
+      setPendingClones((prev) =>
+        prev.filter((s) => s.sourceUrl !== variables.url),
+      );
+      try {
+        const body = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        setCloneError(body.error || error.message);
+      } catch {
+        setCloneError(error.message);
+      }
     },
   });
 
   const filteredSites = useMemo(() => {
-    let list = sites ?? [];
+    let list: DashboardSite[] = [...(sites ?? []), ...pendingClones];
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -107,18 +121,49 @@ export function Dashboard() {
           site.slug.toLowerCase().includes(q),
       );
     }
-    return list;
-  }, [sites, search]);
+    return list.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [sites, pendingClones, search]);
 
   const handleCreate = () => {
     if (!siteUrl.trim()) return;
-    createSite.mutate({
-      url: siteUrl.trim(),
-      name: siteName.trim() || undefined,
-    });
+    const url = siteUrl.trim();
+    const name = siteName.trim() || undefined;
+
+    const tempSlug = `cloning-${Date.now()}`;
+    const pending: PendingSite = {
+      uuid: tempSlug,
+      workspaceUuid: "",
+      slug: tempSlug,
+      name: name || url,
+      status: "cloning",
+      sourceUrl: url,
+      mode: "replication",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setPendingClones((prev) => [pending, ...prev]);
+    setShowNewSite(false);
+    setSiteUrl("");
+    setSiteName("");
+    setIsMyWebsite(false);
+    setHasRights(false);
+    createSite.reset();
+    createSite.mutate({ url, name });
   };
 
   const canSubmit = siteUrl.trim() && (!isMyWebsite || hasRights);
+
+  const resetModal = () => {
+    setShowNewSite(false);
+    setSiteUrl("");
+    setSiteName("");
+    setIsMyWebsite(false);
+    setHasRights(false);
+    createSite.reset();
+  };
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -175,33 +220,31 @@ export function Dashboard() {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
+        {cloneError && (
+          <div className="mb-4 flex items-start justify-between rounded-md border border-destructive/50 bg-destructive/5 px-4 py-3">
+            <p className="text-sm text-destructive">{cloneError}</p>
+            <button
+              type="button"
+              onClick={() => setCloneError(null)}
+              className="ml-3 text-destructive hover:text-destructive/80"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <Dialog
           open={showNewSite}
           onOpenChange={(open) => {
-            if (!open) {
-              setShowNewSite(false);
-              setSiteUrl("");
-              setSiteName("");
-              setIsMyWebsite(false);
-              setHasRights(false);
-              createSite.reset();
-            }
+            if (!open) resetModal();
           }}
           className="max-w-lg"
         >
           <DialogContent className="gap-0 p-0">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Create a new site</h2>
-              <DialogClose
-                onClick={() => {
-                  setShowNewSite(false);
-                  setSiteUrl("");
-                  setSiteName("");
-                  setIsMyWebsite(false);
-                  setHasRights(false);
-                  createSite.reset();
-                }}
-              />
+              <DialogClose onClick={resetModal} />
             </div>
 
             <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
@@ -267,40 +310,22 @@ export function Dashboard() {
                   </div>
                 )}
               </div>
-
-              {createSite.isError && (
-                <p className="text-sm text-destructive">
-                  {createSite.error?.message.replace(/^\d+:\s*/, "")}
-                </p>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t bg-card px-6 py-3">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setShowNewSite(false);
-                  setSiteUrl("");
-                  setSiteName("");
-                  setIsMyWebsite(false);
-                  setHasRights(false);
-                  createSite.reset();
-                }}
-                disabled={createSite.isPending}
+                onClick={resetModal}
               >
                 Cancel
               </Button>
               <Button
                 size="sm"
                 onClick={handleCreate}
-                disabled={createSite.isPending || !canSubmit}
+                disabled={!canSubmit}
               >
-                {createSite.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Copy className="mr-2 h-4 w-4" />
-                )}
+                <Copy className="mr-2 h-4 w-4" />
                 Create new site
               </Button>
             </div>
@@ -328,27 +353,39 @@ export function Dashboard() {
                 {filteredSites.map((site) => (
                   <TableRow
                     key={site.uuid}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                    className={site.status === "cloning" ? "cursor-default" : "cursor-pointer"}
+                    onClick={() => site.status !== "cloning" && navigate(`/sites/${site.uuid}`)}
                   >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-sm font-semibold">
                           {site.name.charAt(0).toUpperCase()}
                         </div>
-                        <span className="font-medium">{site.name}</span>
+                        <div>
+                          <span className="font-medium">{site.name}</span>
+                          {site.status === "cloning" && (
+                            <p className="text-xs text-muted-foreground">Cloning from {site.sourceUrl}</p>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {site.status}
-                      </Badge>
+                      {site.status === "cloning" ? (
+                        <Badge variant="outline" className="gap-1 capitalize">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Cloning
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="capitalize">
+                          {site.status}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {getSiteDomain(site)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {formatRelativeDate(site.updatedAt)}
+                      {site.status === "cloning" ? "Just now" : formatRelativeDate(site.updatedAt)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -364,9 +401,21 @@ export function Dashboard() {
               >
                 <SiteThumbnail className="aspect-video w-full" />
                 <div className="p-4">
-                  <h3 className="font-semibold">{site.name}</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">{site.name}</h3>
+                    {site.status === "cloning" ? (
+                      <Badge variant="outline" className="gap-1 capitalize">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Cloning
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="capitalize">
+                        {site.status}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Updated {formatRelativeDate(site.updatedAt)}
+                    {site.status === "cloning" ? "Just now" : `Updated ${formatRelativeDate(site.updatedAt)}`}
                   </p>
                   <p className="mt-1 font-mono text-sm text-muted-foreground">
                     {getSiteDomain(site)}
@@ -375,9 +424,10 @@ export function Dashboard() {
                     variant="outline"
                     className="mt-3 w-full"
                     size="sm"
-                    onClick={() => navigate(`/sites/${site.uuid}`)}
+                    disabled={site.status === "cloning"}
+                    onClick={() => site.status !== "cloning" && navigate(`/sites/${site.uuid}`)}
                   >
-                    Dashboard
+                    {site.status === "cloning" ? "Cloning…" : "Dashboard"}
                   </Button>
                 </div>
               </div>
