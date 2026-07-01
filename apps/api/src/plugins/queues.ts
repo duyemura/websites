@@ -56,11 +56,13 @@ declare module "../bullmq" {
         pageSlug: string;
         aiJobUuid: string;
         attemptId: string;
+        mode?: "replication" | "template" | "greenfield";
+        referenceScreenshotUrl?: string | null;
       };
       result: unknown;
     };
     generate_assets: {
-      data: { workspaceUuid: string; siteUuid: string; assetJobUuid?: string };
+      data: { workspaceUuid: string; siteUuid?: string | null; assetGenerationUuid: string; userUuid: string; assetJobUuid?: string };
       result: unknown;
     };
     replicate_site: {

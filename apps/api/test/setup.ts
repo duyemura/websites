@@ -5,6 +5,9 @@ import { sql } from "kysely";
 async function resetDatabase() {
   const tables = [
     "ai_jobs",
+    "asset_generations",
+    "ai_activity",
+    "workspace_brand_memory",
     "deployments",
     "playbooks",
     "templates",

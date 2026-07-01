@@ -33,6 +33,7 @@ export interface AnalysisOutput {
   quality: AssetAnalysisResult["quality"];
   marketing: AssetAnalysisResult["marketing"];
   safety: AssetAnalysisResult["safety"];
+  technicalLocal?: ExtractedImageMetadata;
 }
 
 export interface AssetAnalysis {
@@ -171,6 +172,7 @@ export async function analyzeAsset(input: AnalyzeAssetInput): Promise<void> {
           quality: llmResult.quality,
           marketing: llmResult.marketing,
           safety: llmResult.safety,
+          technicalLocal: localMetadata,
         }
       : undefined;
 

@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import sharp from "sharp";
 import type { Kysely } from "kysely";
 import type { DB } from "../../src/types/db";
-import { db } from "../../src/database";
+import { db, config } from "../../src/database";
 import { analyzeAsset } from "../../src/utils/asset-analysis";
 import type { Config } from "../../src/plugins/env";
 import { getS3Client } from "../../src/s3";
@@ -13,15 +13,7 @@ vi.mock("../../src/ai/llm-with-logging", () => ({
 
 import { callLlmAndLog } from "../../src/ai/llm-with-logging";
 
-const mockConfig = {
-  S3_ENDPOINT: "http://localhost:9010",
-  S3_REGION: "us-east-1",
-  S3_ACCESS_KEY: "minioadmin",
-  S3_SECRET_KEY: "minioadmin",
-  S3_ASSETS_BUCKET: "ploygyms-test-assets",
-  CDN_BASE_URL: "http://localhost:9010",
-  VISION_LLM_MODEL: "gemma4:31b-cloud",
-} as unknown as Config;
+const mockConfig = config;
 
 async function uploadTestImage(storageKey: string): Promise<Buffer> {
   const s3 = getS3Client({
@@ -29,6 +21,7 @@ async function uploadTestImage(storageKey: string): Promise<Buffer> {
     region: mockConfig.S3_REGION,
     accessKeyId: mockConfig.S3_ACCESS_KEY,
     secretAccessKey: mockConfig.S3_SECRET_KEY,
+    sessionToken: mockConfig.S3_SESSION_TOKEN,
   });
 
   const buffer = await sharp({

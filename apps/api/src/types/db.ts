@@ -5,7 +5,7 @@
 
 import type { ColumnType } from "kysely";
 
-export type AiActivityAction = "analyze" | "apply_suggestion" | "edit" | "generate" | "memory_update" | "publish" | "qa" | "replicate" | "suggest";
+export type AiActivityAction = "analyze" | "apply_suggestion" | "edit" | "generate" | "generate_image" | "memory_update" | "publish" | "qa" | "replicate" | "suggest";
 
 export type AiActivityOutcome = "failure" | "partial" | "rejected" | "success" | "user_edited";
 
@@ -16,6 +16,22 @@ export type AiJobType = "generate_assets" | "generate_page" | "replicate_site" |
 export type AssetSource = "ai_generated" | "scraped" | "screenshot" | "upload";
 
 export type AssetType = "document" | "font" | "icon" | "image" | "logo" | "video";
+
+export type AssetGenerationStatus =
+  | "analyzing"
+  | "failed"
+  | "generating"
+  | "pending"
+  | "ready"
+  | "uploaded";
+
+export type AssetGenerationUseCase =
+  | "background"
+  | "b_roll"
+  | "blog_header"
+  | "hero"
+  | "program_page"
+  | "social";
 
 export type DeploymentStatus = "building" | "failed" | "pending" | "success";
 
@@ -104,6 +120,28 @@ export interface Assets {
   storageKey: string;
   type: AssetType;
   url: string;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface AssetGenerations {
+  costUsd: Numeric | null;
+  createdAt: Generated<Timestamp>;
+  failureReason: string | null;
+  generatedAssetUuid: string | null;
+  metadata: Json | null;
+  outputSpec: Generated<Json>;
+  promptSnapshot: Json | null;
+  provider: string | null;
+  providerJobId: string | null;
+  referenceAssetUuids: Json | null;
+  retries: Generated<number>;
+  siteUuid: string | null;
+  status: Generated<AssetGenerationStatus>;
+  subject: string;
+  updatedAt: Generated<Timestamp>;
+  useCase: AssetGenerationUseCase;
+  userUuid: string;
   uuid: Generated<string>;
   workspaceUuid: string;
 }
@@ -274,6 +312,25 @@ export interface WorkspaceMemberships {
   workspaceUuid: string;
 }
 
+export interface WorkspaceBrandMemory {
+  businessArchetype: string | null;
+  businessName: string | null;
+  colorPalette: Json | null;
+  createdAt: Generated<Timestamp>;
+  differentiators: Json | null;
+  equipmentTags: Json | null;
+  imageryStrategy: string | null;
+  interiorAndFinishes: string | null;
+  lighting: string | null;
+  mood: string | null;
+  promptKeywords: Json | null;
+  richContext: Json | null;
+  signageNotes: string | null;
+  updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
 export interface Workspaces {
   brandFontBody: string | null;
   brandFontHeading: string | null;
@@ -293,6 +350,7 @@ export interface Workspaces {
 export interface DB {
   aiActivity: AiActivity;
   aiJobs: AiJobs;
+  assetGenerations: AssetGenerations;
   assets: Assets;
   deployments: Deployments;
   docs: Docs;
@@ -305,6 +363,7 @@ export interface DB {
   templates: Templates;
   themes: Themes;
   users: Users;
+  workspaceBrandMemory: WorkspaceBrandMemory;
   workspaceMemberships: WorkspaceMemberships;
   workspaces: Workspaces;
 }

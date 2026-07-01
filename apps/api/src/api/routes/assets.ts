@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { AssetAnalysisSchema as LlmAssetAnalysisSchema } from "../../ai/prompts/asset-analysis";
 import { isAnalyzableImage } from "../../utils/asset-analysis";
+import { AssetConsentSchema } from "../../utils/asset-consent";
+import { jsonb } from "../../utils/jsonb";
 
 const AssetType = z.enum(["image", "video", "font", "document", "logo", "icon"]);
 const AssetSource = z.enum(["upload", "scraped", "screenshot", "ai_generated"]);
@@ -423,6 +425,63 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       );
 
       return reply.code(202).send({ enqueued: true });
+    },
+  );
+
+  fastify.post(
+    "/assets/:uuid/consent",
+    {
+      schema: {
+        operationId: "setAssetConsent",
+        tags: ["assets"],
+        summary: "Record consent metadata for an asset",
+        params: z.object({ uuid: z.string().uuid() }),
+        body: AssetConsentSchema.omit({ affirmedAt: true, affirmedByUserUuid: true }),
+        response: {
+          200: AssetSchema,
+          400: z.object({ error: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const asset = await fastify.db
+        .selectFrom("assets")
+        .selectAll()
+        .where("uuid", "=", request.params.uuid)
+        .where("workspaceUuid", "=", request.workspace.uuid)
+        .executeTakeFirst();
+
+      if (!asset) {
+        return reply.code(404).send({ error: "Asset not found" });
+      }
+
+      const existingMetadata = (asset.metadata ?? {}) as Record<string, unknown>;
+      const existingConsent = existingMetadata.consent as Record<string, unknown> | undefined;
+
+      const consent = AssetConsentSchema.parse({
+        ...existingConsent,
+        ...request.body,
+        affirmedByUserUuid: request.user.uuid,
+        affirmedAt: new Date().toISOString(),
+      });
+
+      const updatedMetadata = {
+        ...existingMetadata,
+        consent,
+      };
+
+      const updatedAsset = await fastify.db
+        .updateTable("assets")
+        .set({ metadata: jsonb(updatedMetadata) })
+        .where("uuid", "=", request.params.uuid)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      return serializeAsset(
+        updatedAsset,
+        await fastify.storage.getDownloadUrl(updatedAsset.storageKey),
+      );
     },
   );
 

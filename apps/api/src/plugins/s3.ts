@@ -10,6 +10,7 @@ export default fp(
       region: config.S3_REGION,
       accessKeyId: config.S3_ACCESS_KEY,
       secretAccessKey: config.S3_SECRET_KEY,
+      sessionToken: config.S3_SESSION_TOKEN,
     });
 
     const buckets = [config.S3_ASSETS_BUCKET];
@@ -23,8 +24,8 @@ export default fp(
       region: config.S3_REGION,
       accessKeyId: config.S3_ACCESS_KEY,
       secretAccessKey: config.S3_SECRET_KEY,
+      sessionToken: config.S3_SESSION_TOKEN,
       bucket: config.S3_ASSETS_BUCKET,
-      cdnBaseUrl: config.CDN_BASE_URL,
     });
 
     fastify.decorate("storage", storage);

@@ -27,9 +27,10 @@ const ConfigSchema = z.object({
   CLERK_SECRET_KEY: z.string().optional(),
   CLERK_PUBLISHABLE_KEY: z.string().optional(),
   CLERK_VERIFY_TOKENS: booleanFromEnv(true),
-  S3_ENDPOINT: z.string(),
+  S3_ENDPOINT: z.string().optional(),
   S3_ACCESS_KEY: z.string(),
   S3_SECRET_KEY: z.string(),
+  S3_SESSION_TOKEN: z.string().optional(),
   S3_REGION: z.string().default("us-east-1"),
   S3_ASSETS_BUCKET: z.string(),
   S3_DEPLOYMENTS_BUCKET: z.string().optional(),
@@ -47,6 +48,8 @@ const ConfigSchema = z.object({
   LONG_CONTEXT_LLM_MODEL: z.string().default("qwen3.5:397b-cloud"),
   REASONING_LLM_MODEL: z.string().default("qwen3.5:397b-cloud"),
   GOOGLE_PLACES_API_KEY: z.string().optional(),
+  FAL_KEY: z.string().optional(),
+  FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/dev/image-to-image"),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

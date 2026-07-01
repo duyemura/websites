@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../../s3";
+import { getS3Client, buildS3ObjectUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
@@ -640,6 +640,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             region: fastify.config.S3_REGION,
             accessKeyId: fastify.config.S3_ACCESS_KEY,
             secretAccessKey: fastify.config.S3_SECRET_KEY,
+            sessionToken: fastify.config.S3_SESSION_TOKEN,
           });
           const storageKey = path.posix.join(
             "workspaces",
@@ -657,9 +658,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               ContentType: "image/png",
             }),
           );
-          const publicUrl = `${fastify.config.CDN_BASE_URL.replace(/\/$/, "")}/${
-            fastify.config.S3_ASSETS_BUCKET
-          }/${storageKey}`;
+          const publicUrl = buildS3ObjectUrl({
+            endpoint: fastify.config.S3_ENDPOINT,
+            region: fastify.config.S3_REGION,
+            bucket: fastify.config.S3_ASSETS_BUCKET,
+            key: storageKey,
+          });
 
           const asset = await fastify.db
             .insertInto("assets")

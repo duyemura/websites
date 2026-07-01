@@ -6,9 +6,9 @@
   "main": "dist/app.js",
   "type": "commonjs",
   "scripts": {
-    "migrate:test": "DOTENV_CONFIG_PATH=./.env.test node -r dotenv/config ./node_modules/kysely-ctl/dist/bin.cjs migrate",
+    "migrate:test": "node -r ./test-env.js ./node_modules/kysely-ctl/dist/bin.cjs migrate",
     "pretest": "pnpm migrate:test latest",
-    "test": "DOTENV_CONFIG_PATH=./.env.test node -r dotenv/config ./node_modules/vitest/vitest.mjs --no-file-parallelism",
+    "test": "node -r ./test-env.js ./node_modules/vitest/vitest.mjs --no-file-parallelism",
     "test:coverage": "vitest --coverage --watch=false --no-file-parallelism",
     "lint": "eslint .",
     "copy-prompts": "mkdir -p dist/ai/prompts/templates && cp src/ai/prompts/templates/*.md dist/ai/prompts/templates/",

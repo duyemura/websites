@@ -5,7 +5,6 @@ import {
   HeadBucketCommand,
   DeleteObjectCommand,
   PutObjectCommand,
-  PutBucketPolicyCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import path from "node:path";
@@ -13,21 +12,26 @@ import type { StorageProvider, UploadUrl } from "./storage";
 
 let client: S3Client | null = null;
 
-export function getS3Client(config: {
-  endpoint: string;
+export interface S3ClientConfig {
+  endpoint?: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
-}): S3Client {
+  sessionToken?: string;
+}
+
+export function getS3Client(config: S3ClientConfig): S3Client {
   if (!client) {
+    const isCustomEndpoint = Boolean(config.endpoint);
     client = new S3Client({
-      endpoint: config.endpoint,
+      ...(isCustomEndpoint ? { endpoint: config.endpoint } : {}),
       region: config.region,
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
+        ...(config.sessionToken ? { sessionToken: config.sessionToken } : {}),
       },
-      forcePathStyle: true,
+      forcePathStyle: isCustomEndpoint,
     });
   }
   return client;
@@ -43,34 +47,30 @@ export async function ensureBuckets(
     } catch {
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
     }
-
-    const policy = {
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: "*",
-          Action: "s3:GetObject",
-          Resource: `arn:aws:s3:::${bucket}/*`,
-        },
-      ],
-    };
-    await s3.send(
-      new PutBucketPolicyCommand({
-        Bucket: bucket,
-        Policy: JSON.stringify(policy),
-      }),
-    );
   }
 }
 
+export function buildS3ObjectUrl(config: {
+  endpoint?: string;
+  region: string;
+  bucket: string;
+  key: string;
+}): string {
+  const encodedKey = config.key.split("/").map(encodeURIComponent).join("/");
+  if (config.endpoint) {
+    const base = config.endpoint.replace(/\/$/, "");
+    return `${base}/${config.bucket}/${encodedKey}`;
+  }
+  return `https://${config.bucket}.s3.${config.region}.amazonaws.com/${encodedKey}`;
+}
+
 export function createS3StorageProvider(config: {
-  endpoint: string;
+  endpoint?: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  sessionToken?: string;
   bucket: string;
-  cdnBaseUrl: string;
 }): StorageProvider {
   const s3 = getS3Client(config);
 
@@ -99,7 +99,12 @@ export function createS3StorageProvider(config: {
       });
 
       const signedUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
-      const publicUrl = `${config.cdnBaseUrl.replace(/\/$/, "")}/${config.bucket}/${key}`;
+      const publicUrl = buildS3ObjectUrl({
+        endpoint: config.endpoint,
+        region: config.region,
+        bucket: config.bucket,
+        key,
+      });
 
       return { signedUrl, publicUrl, storageKey: key };
     },
@@ -128,12 +133,12 @@ export function createS3StorageProvider(config: {
 }
 
 export async function getAssetUploadUrl(config: {
-  endpoint: string;
+  endpoint?: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  sessionToken?: string;
   bucket: string;
-  cdnBaseUrl: string;
   workspaceUuid: string;
   filename: string;
   contentType?: string;
@@ -143,8 +148,79 @@ export async function getAssetUploadUrl(config: {
     region: config.region,
     accessKeyId: config.accessKeyId,
     secretAccessKey: config.secretAccessKey,
+    sessionToken: config.sessionToken,
     bucket: config.bucket,
-    cdnBaseUrl: config.cdnBaseUrl,
   });
   return provider.getUploadUrl(config.workspaceUuid, config.filename, config.contentType);
+}
+
+export async function uploadBufferToS3(config: {
+  endpoint?: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  bucket: string;
+  workspaceUuid: string;
+  filename: string;
+  buffer: Buffer;
+  contentType?: string;
+}): Promise<{ publicUrl: string; storageKey: string }> {
+  const s3 = getS3Client({
+    endpoint: config.endpoint,
+    region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    sessionToken: config.sessionToken,
+  });
+
+  const safeFilename = path
+    .basename(config.filename)
+    .replace(/[\\/]/g, "_")
+    .replace(/\.{2,}/g, "_")
+    .replace(/^[.]+/, "");
+  const key = path.posix.join(
+    "workspaces",
+    config.workspaceUuid,
+    "assets",
+    `${Date.now()}-${safeFilename || "asset"}`,
+  );
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      Body: config.buffer,
+      ContentType: config.contentType ?? "application/octet-stream",
+    }),
+  );
+
+  const publicUrl = buildS3ObjectUrl({
+    endpoint: config.endpoint,
+    region: config.region,
+    bucket: config.bucket,
+    key,
+  });
+  return { publicUrl, storageKey: key };
+}
+
+export async function getSignedDownloadUrl(config: {
+  endpoint?: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  bucket: string;
+  key: string;
+  expiresIn?: number;
+}): Promise<string> {
+  const s3 = getS3Client({
+    endpoint: config.endpoint,
+    region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    sessionToken: config.sessionToken,
+  });
+  const command = new GetObjectCommand({ Bucket: config.bucket, Key: config.key });
+  return getSignedUrl(s3, command, { expiresIn: config.expiresIn ?? 300 });
 }
