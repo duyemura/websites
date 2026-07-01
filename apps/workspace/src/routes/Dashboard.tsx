@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,7 @@ export function Dashboard() {
   const [siteUrl, setSiteUrl] = useState("");
   const [siteName, setSiteName] = useState("");
   const [isMyWebsite, setIsMyWebsite] = useState(false);
+  const [hasRights, setHasRights] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
@@ -89,6 +91,7 @@ export function Dashboard() {
       setSiteUrl("");
       setSiteName("");
       setIsMyWebsite(false);
+      setHasRights(false);
       setShowNewSite(false);
       navigate(`/sites/${result.site.uuid}`);
     },
@@ -115,7 +118,7 @@ export function Dashboard() {
     });
   };
 
-  const canSubmit = isMyWebsite && siteUrl.trim();
+  const canSubmit = siteUrl.trim() && (!isMyWebsite || hasRights);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -180,12 +183,13 @@ export function Dashboard() {
               setSiteUrl("");
               setSiteName("");
               setIsMyWebsite(false);
+              setHasRights(false);
               createSite.reset();
             }
           }}
           className="max-w-lg"
         >
-          <DialogContent className="flex flex-col gap-0 p-0">
+          <DialogContent className="flex max-h-[80vh] flex-col gap-0 p-0">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Create a new site</h2>
               <DialogClose
@@ -194,12 +198,13 @@ export function Dashboard() {
                   setSiteUrl("");
                   setSiteName("");
                   setIsMyWebsite(false);
+                  setHasRights(false);
                   createSite.reset();
                 }}
               />
             </div>
 
-            <div className="flex flex-col gap-5 px-6 py-5">
+            <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
               <div className="flex flex-col gap-2">
                 <label htmlFor="new-site-url" className="text-sm font-medium">
                   Source website URL
@@ -245,8 +250,22 @@ export function Dashboard() {
                 <p className="text-sm text-muted-foreground">
                   {isMyWebsite
                     ? "We will scrape your existing site, create workspace docs, and build a new homepage you can approve."
-                    : "We will use this site as a template and generate a fresh design inspired by its layout. This option is coming soon."}
+                    : "We will use this site as a template and generate a fresh design inspired by its layout."}
                 </p>
+
+                {isMyWebsite && (
+                  <div className="mt-1 flex items-start gap-3">
+                    <Checkbox
+                      id="rights-confirm"
+                      checked={hasRights}
+                      onCheckedChange={setHasRights}
+                      className="mt-0.5"
+                    />
+                    <label htmlFor="rights-confirm" className="text-sm leading-5">
+                      I confirm I have the rights to clone and reuse the content from this website.
+                    </label>
+                  </div>
+                )}
               </div>
 
               {createSite.isError && (
@@ -256,7 +275,7 @@ export function Dashboard() {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
+            <div className="flex items-center justify-end gap-3 border-t bg-card px-6 py-4">
               <Button
                 variant="outline"
                 size="sm"
@@ -265,6 +284,7 @@ export function Dashboard() {
                   setSiteUrl("");
                   setSiteName("");
                   setIsMyWebsite(false);
+                  setHasRights(false);
                   createSite.reset();
                 }}
                 disabled={createSite.isPending}
@@ -281,11 +301,7 @@ export function Dashboard() {
                 ) : (
                   <Copy className="mr-2 h-4 w-4" />
                 )}
-                {createSite.isPending
-                  ? "Creating…"
-                  : isMyWebsite
-                    ? "Clone my site"
-                    : "Create from template"}
+                Create new site
               </Button>
             </div>
           </DialogContent>
