@@ -25,6 +25,7 @@ export interface StartSiteBuildInput extends OrchestratorContext {
   maxQaIterations?: number;
   maxBudgetUsd?: number;
   fidelityThreshold?: number;
+  existingAiJobUuid?: string;
 }
 
 export interface BuildPageInput extends OrchestratorContext {
@@ -187,7 +188,7 @@ async function createParentAiJob(
 }
 
 export async function startSiteBuild(input: StartSiteBuildInput) {
-  const { db, queues, workspaceUuid, siteUuid, requestedMode, userUuid } = input;
+  const { db, queues, workspaceUuid, siteUuid, requestedMode, userUuid, existingAiJobUuid } = input;
   const { site } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
 
   const mode = requestedMode ?? (site.mode as SiteMode);
@@ -199,7 +200,23 @@ export async function startSiteBuild(input: StartSiteBuildInput) {
     fidelityThreshold: input.fidelityThreshold ?? preset.fidelityThreshold,
   };
 
-  const aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options, userUuid);
+  let aiJobUuid: string;
+  if (existingAiJobUuid) {
+    aiJobUuid = existingAiJobUuid;
+    await db
+      .updateTable("aiJobs")
+      .set({
+        status: "running",
+        state: { phase: "build", currentSlug: "index" } as Json,
+        steps: [{ name: "build_homepage", status: "in_progress" }] as Json,
+        options: options as Json,
+        updatedAt: new Date(),
+      })
+      .where("uuid", "=", existingAiJobUuid)
+      .execute();
+  } else {
+    aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options, userUuid);
+  }
 
   const attemptId = generateAttemptId();
   await queues.generatePage.queue.add("generate_page", {

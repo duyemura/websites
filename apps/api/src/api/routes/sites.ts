@@ -14,6 +14,7 @@ import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
+import type { Json } from "../../types/db";
 import { logAiActivity } from "../../services/ai-activity";
 import { startSiteBuild, approvePage } from "../../services/site-generation-orchestrator";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
@@ -62,6 +63,7 @@ const DocSchema = z.object({
 const ScrapeSiteResponseSchema = z.object({
   site: SiteSchema,
   docs: z.array(DocSchema),
+  aiJobUuid: z.string().uuid(),
   screenshotAsset: z
     .object({
       uuid: z.string(),
@@ -636,10 +638,24 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
         await saveSiteDocs(fastify.db, workspaceUuid, docs, site.uuid);
 
+        const aiJob = await fastify.db
+          .insertInto("aiJobs")
+          .values({
+            workspaceUuid,
+            siteUuid: site.uuid,
+            type: "replicate_site",
+            status: "pending",
+            input: { siteUuid: site.uuid, workspaceUuid, url } as Json,
+            options: {} as Json,
+          })
+          .returning("uuid")
+          .executeTakeFirstOrThrow();
+
         await fastify.queues.replicateSite.queue.add("replicate_site", {
           workspaceUuid,
           siteUuid: site.uuid,
           url,
+          aiJobUuid: aiJob.uuid,
         });
 
         const childActivities = await fastify.db
@@ -700,6 +716,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             createdAt: doc.createdAt.toISOString(),
             updatedAt: doc.updatedAt.toISOString(),
           })),
+          aiJobUuid: aiJob.uuid,
           screenshotAsset,
         });
       } finally {
