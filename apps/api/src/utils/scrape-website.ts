@@ -7,6 +7,7 @@ import type {
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
 import type { ScrapedWebsiteData } from "./scrape-docs";
+import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 import { dedupeFaqs } from "./faqs";
 import { extractSocialProfiles } from "./social-links";
 import { isHttpUrl } from "./http-url";
@@ -69,6 +70,9 @@ interface ScrapedSection {
   type: string;
   heading?: string;
   body?: string;
+  intent?: string;
+  cta?: { label: string; href: string };
+  visualEvidence: SectionVisualEvidenceRow;
   items?: { title?: string; description?: string; imageUrl?: string }[];
   images?: { url: string; alt?: string; context?: string }[];
   styleHint?: {
@@ -1406,6 +1410,86 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
   }
 
+  function captureComputedStyleSnapshot(el, selectorName) {
+    if (!el) return null;
+    const style = window.getComputedStyle(el);
+    return {
+      selector: selectorName || el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""),
+      tagName: el.tagName,
+      className: (el.className || "").toString() || undefined,
+      backgroundColor: style.backgroundColor || undefined,
+      color: style.color || undefined,
+      fontFamily: style.fontFamily || undefined,
+      fontSize: style.fontSize || undefined,
+      fontWeight: style.fontWeight || undefined,
+      textTransform: style.textTransform || undefined,
+      textAlign: style.textAlign || undefined,
+      lineHeight: style.lineHeight || undefined,
+      letterSpacing: style.letterSpacing || undefined,
+      borderRadius: style.borderRadius || undefined,
+      padding: style.padding || undefined,
+      margin: style.margin || undefined,
+      boxShadow: style.boxShadow || undefined,
+      display: style.display || undefined,
+      flexDirection: style.flexDirection || undefined,
+      justifyContent: style.justifyContent || undefined,
+      alignItems: style.alignItems || undefined,
+      gap: style.gap || undefined,
+    };
+  }
+
+  function sanitizeOuterHTML(el) {
+    if (!el || !el.outerHTML) return "";
+    let html = el.outerHTML;
+    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+    html = html.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+    html = html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, "");
+    html = html.replace(/\s+on\w+=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+on\w+='[^']*'/gi, "");
+    html = html.replace(/\s+on\w+=[^\s>]+/gi, "");
+    html = html.replace(/\s+srcset=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+srcset='[^']*'/gi, "");
+    html = html.replace(/\s+style=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+style='[^']*'/gi, "");
+    html = html.replace(/\s+/g, " ").trim();
+    const MAX = 8192;
+    return html.length > MAX ? html.slice(0, MAX) : html;
+  }
+
+  function inferSectionLayoutHint(root, computedStyles, images) {
+    const style = window.getComputedStyle(root);
+    const cls = (root.className || "").toString().toLowerCase();
+    const bgImage = style.backgroundImage;
+    const hasBackgroundImage = !!(bgImage && bgImage !== "none");
+    const hasOverlay = !!root.querySelector("[class*='overlay'], [class*='backdrop']");
+    const bg = style.backgroundColor;
+    const hex = colorToHex(bg);
+    let theme;
+    if (hex) {
+      const clean = hex.replace("#", "");
+      const full = clean.length === 3 ? clean.split("").map(function(c) { return c + c; }).join("") : clean;
+      const r = parseInt(full.slice(0, 2), 16);
+      const g = parseInt(full.slice(2, 4), 16);
+      const b = parseInt(full.slice(4, 6), 16);
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      theme = lum < 0.5 ? "dark" : "light";
+    }
+    const align = detectHeroAlign(root);
+    const columns = detectColumns(root);
+    let imagePosition = "none";
+    if (hasBackgroundImage || images.some(function(i) { return i.context === "background"; })) {
+      imagePosition = "background";
+    } else if (images.length > 0) {
+      imagePosition = "left";
+    }
+    const hasBorder = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some(function(w) { return w && w !== "0px"; });
+    return { theme: theme, centered: align === "center", columns: columns, imagePosition: imagePosition, align: align, hasBackgroundImage: hasBackgroundImage, hasBorder: hasBorder, hasOverlay: hasOverlay };
+  }
+
+  function findFirstCta(root) {
+    return root.querySelector("a[class*='button'], a[class*='btn'], a[class*='cta'], button") || null;
+  }
+
   function extractGenericSections() {
     const roots = [];
     const bodyEl = document.body;
@@ -1489,6 +1573,39 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
         eyebrowPadding: eyebrow?.padding,
       };
 
+      // Build per-section visual evidence for downstream screenshot cropping and doc generation.
+      const pageSlug = "index";
+      const sectionId = "section-" + order;
+      const evidenceId = "section-" + pageSlug + "-" + order;
+      const rootRect = root.getBoundingClientRect();
+      const computedSnapshots = [];
+      computedSnapshots.push(captureComputedStyleSnapshot(root, "root"));
+      const firstHeading = root.querySelector("h1, h2, h3");
+      if (firstHeading) computedSnapshots.push(captureComputedStyleSnapshot(firstHeading, "heading"));
+      const firstParagraph = root.querySelector("p");
+      if (firstParagraph) computedSnapshots.push(captureComputedStyleSnapshot(firstParagraph, "paragraph"));
+      const firstCta = findFirstCta(root);
+      if (firstCta) computedSnapshots.push(captureComputedStyleSnapshot(firstCta, "cta"));
+      let firstVisual = root.querySelector("img");
+      if (!firstVisual) {
+        const bgNode = Array.from(root.querySelectorAll("*")).find(function(n) {
+          const s = window.getComputedStyle(n);
+          return s.backgroundImage && s.backgroundImage !== "none";
+        });
+        firstVisual = bgNode || null;
+      }
+      if (firstVisual) computedSnapshots.push(captureComputedStyleSnapshot(firstVisual, "image"));
+      const layoutHint = inferSectionLayoutHint(root, computedSnapshots, images);
+      const visualEvidence = {
+        evidenceId: evidenceId,
+        pageSlug: pageSlug,
+        sectionId: sectionId,
+        boundingBox: { x: rootRect.x, y: rootRect.y, width: rootRect.width, height: rootRect.height },
+        computedStyles: computedSnapshots.filter(function(s) { return s !== null; }),
+        domSnippet: sanitizeOuterHTML(root),
+        layoutHint: layoutHint,
+      };
+
       // For location sections, find the most specific address line inside the
       // section so the renderer can show a real map address instead of prose.
       let address;
@@ -1535,12 +1652,15 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
       }
 
       const section = {
-        id: "section-" + order,
+        id: sectionId,
         type: type,
         heading: heading || undefined,
         body: finalBody,
         address: address || undefined,
         widgetUrl: widgetUrl,
+        intent: type + " section" + (heading ? ": " + heading : ""),
+        cta: button || undefined,
+        visualEvidence: visualEvidence,
         items: items,
         images: images.length ? images : undefined,
         styleHint: styleHint,

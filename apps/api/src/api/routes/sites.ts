@@ -11,6 +11,7 @@ import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
+import { cropSectionScreenshots } from "../../utils/section-screenshots";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
@@ -633,15 +634,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           storageKey: string;
         } | null = null;
 
+        const s3 = getS3Client({
+          endpoint: fastify.config.S3_ENDPOINT,
+          region: fastify.config.S3_REGION,
+          accessKeyId: fastify.config.S3_ACCESS_KEY,
+          secretAccessKey: fastify.config.S3_SECRET_KEY,
+          sessionToken: fastify.config.S3_SESSION_TOKEN,
+        });
+
         try {
           const screenshotBuffer = await readFile(screenshotPath);
-          const s3 = getS3Client({
-            endpoint: fastify.config.S3_ENDPOINT,
-            region: fastify.config.S3_REGION,
-            accessKeyId: fastify.config.S3_ACCESS_KEY,
-            secretAccessKey: fastify.config.S3_SECRET_KEY,
-            sessionToken: fastify.config.S3_SESSION_TOKEN,
-          });
           const storageKey = path.posix.join(
             "workspaces",
             workspaceUuid,
@@ -693,6 +695,59 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         } catch {
           // Screenshot upload is best-effort; continue without it.
           data.screenshotUrls = [];
+        }
+
+        try {
+          const evidenceRows = data.sections?.map((s) => s.visualEvidence) ?? [];
+          const cropped = await cropSectionScreenshots(screenshotPath, evidenceRows);
+          for (const shot of cropped) {
+            try {
+              const storageKey = path.posix.join(
+                "workspaces",
+                workspaceUuid,
+                "sites",
+                newSiteUuid,
+                "sections",
+                `${shot.evidenceId}.png`,
+              );
+              await s3.send(
+                new PutObjectCommand({
+                  Bucket: fastify.config.S3_ASSETS_BUCKET,
+                  Key: storageKey,
+                  Body: shot.buffer,
+                  ContentType: "image/png",
+                }),
+              );
+              const url = buildS3ObjectUrl({
+                endpoint: fastify.config.S3_ENDPOINT,
+                region: fastify.config.S3_REGION,
+                bucket: fastify.config.S3_ASSETS_BUCKET,
+                key: storageKey,
+              });
+              await fastify.db
+                .insertInto("assets")
+                .values({
+                  workspaceUuid,
+                  name: shot.metadata.filename,
+                  type: "image",
+                  source: "screenshot",
+                  mimeType: "image/png",
+                  url,
+                  storageKey,
+                  metadata: shot.metadata,
+                })
+                .execute();
+              const row = evidenceRows.find((r) => r.evidenceId === shot.evidenceId);
+              if (row) row.screenshotUrl = url;
+            } catch (err) {
+              fastify.log.warn(
+                { err, evidenceId: shot.evidenceId },
+                "Failed to upload section screenshot",
+              );
+            }
+          }
+        } catch {
+          // Section screenshot upload is best-effort; continue without it.
         }
 
         try {

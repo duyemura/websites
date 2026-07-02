@@ -18,7 +18,7 @@ export interface ScrapedSection {
   widgetUrl?: string;
   intent?: string;
   cta?: { label: string; href: string };
-  visualEvidence?: SectionVisualEvidenceRow;
+  visualEvidence: SectionVisualEvidenceRow;
   items?: { title?: string; description?: string; imageUrl?: string }[];
   images?: { url: string; alt?: string; context?: string }[];
   styleHint?: {
