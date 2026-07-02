@@ -593,11 +593,9 @@ function extractSectionContent(section: SiteSection): HierarchySection["content"
   }
 
   const itemArray =
-    asItemArray(props.cards) ||
-    asItemArray(props.steps) ||
-    asItemArray(props.features) ||
-    asItemArray(props.reviews) ||
-    asItemArray(props.items);
+    [props.cards, props.steps, props.features, props.reviews, props.items]
+      .map(asItemArray)
+      .find((arr) => arr.length > 0) ?? [];
   if (itemArray.length > 0) {
     content.items = itemArray;
   }
@@ -620,11 +618,10 @@ function buildTemplateDesignSystem(
   screenshotUrl?: string | null,
 ): DesignSystemV2 {
   const tokens = sanitizeTokens(shell.theme);
-  const header = shell.page.sections.find((s) => s.type === "SiteHeader");
-  const footer = shell.page.sections.find((s) => s.type === "SiteFooter");
+  const headerSection = shell.page.sections.find((s) => s.type === "SiteHeader");
 
-  const navLinks = Array.isArray(header?.props.navLinks)
-    ? header.props.navLinks
+  const navLinks = Array.isArray(headerSection?.props.navLinks)
+    ? headerSection.props.navLinks
         .filter(
           (item): item is { label: string; href: string } =>
             item !== null && typeof item === "object" && isString(item.label) && isString(item.href),
@@ -647,8 +644,8 @@ function buildTemplateDesignSystem(
     global: {
       tokens,
       shell: {
-        header,
-        footer,
+        header: undefined,
+        footer: undefined,
         navLinks,
       },
       rules: {
@@ -926,7 +923,7 @@ export function generateSiteDocsForGreenfield(
     tag: "hero",
     intent: sectionTagIntent("hero"),
     content: {
-      heading: businessInput.tagline ? businessInput.businessName : "",
+      heading: businessInput.businessName,
       body: businessInput.tagline ?? businessInput.description ?? "",
       cta: { label: "Get started", href: "#cta" },
     },
