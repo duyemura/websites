@@ -152,7 +152,7 @@ function luminanceContrast(a: string, b: string): number {
   return Math.abs(hexLuminance(a) - hexLuminance(b));
 }
 
-function sanitizeTokens(tokens: ThemeTokens): ThemeTokens {
+export function sanitizeTokens(tokens: ThemeTokens): ThemeTokens {
   const colors = { ...tokens.colors };
 
   // If the primary accent equals the foreground text color, it will disappear

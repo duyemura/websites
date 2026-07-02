@@ -6,7 +6,8 @@ import { loadBlueprintDoc } from "./blueprint-io";
 import { buildDesignSystem, type DesignSystem } from "./design-system";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 
-const DESIGN_SYSTEM_DOC_KEY = "design-system";
+export const DESIGN_SYSTEM_DOC_KEY = "design-system";
+export const DESIGN_SYSTEM_DOC_TITLE = "Design system";
 const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
 
 export async function loadDesignSystemDoc(
@@ -74,7 +75,7 @@ ${JSON.stringify(designSystem, null, 2)}
         workspaceUuid,
         siteUuid,
         key: DESIGN_SYSTEM_DOC_KEY,
-        title: "Design system",
+        title: DESIGN_SYSTEM_DOC_TITLE,
         content,
         source: "ai_extracted",
         status: "active",

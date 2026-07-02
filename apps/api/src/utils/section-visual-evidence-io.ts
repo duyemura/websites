@@ -2,7 +2,8 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { SectionVisualEvidence } from "../types/section-visual-evidence";
 
-const SECTION_VISUAL_EVIDENCE_DOC_KEY = "section-visual-evidence";
+export const SECTION_VISUAL_EVIDENCE_DOC_KEY = "section-visual-evidence";
+export const SECTION_VISUAL_EVIDENCE_DOC_TITLE = "Section visual evidence";
 const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
 
 export async function loadSectionVisualEvidenceDoc(
@@ -51,7 +52,7 @@ export async function saveSectionVisualEvidenceDoc(
       workspaceUuid,
       siteUuid,
       key: SECTION_VISUAL_EVIDENCE_DOC_KEY,
-      title: "Section visual evidence",
+      title: SECTION_VISUAL_EVIDENCE_DOC_TITLE,
       content,
       source: "ai_extracted",
       status: "active",

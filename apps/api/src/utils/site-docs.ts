@@ -16,6 +16,18 @@ import {
   BLUEPRINT_DOC_KEY,
   BLUEPRINT_DOC_TITLE,
 } from "./blueprint-io";
+import {
+  SITE_HIERARCHY_DOC_KEY,
+  SITE_HIERARCHY_DOC_TITLE,
+} from "./site-hierarchy-io";
+import {
+  DESIGN_SYSTEM_DOC_KEY,
+  DESIGN_SYSTEM_DOC_TITLE,
+} from "./design-system-io";
+import {
+  SECTION_VISUAL_EVIDENCE_DOC_KEY,
+  SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+} from "./section-visual-evidence-io";
 import type { SiteHierarchy } from "../types/site-hierarchy";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { Config } from "../plugins/env";
@@ -425,13 +437,6 @@ ${JSON.stringify(blueprint, null, 2)}
     source: "ai_extracted",
   };
 }
-
-const SITE_HIERARCHY_DOC_KEY = "site-hierarchy";
-const SITE_HIERARCHY_DOC_TITLE = "Site hierarchy";
-const DESIGN_SYSTEM_DOC_KEY = "design-system";
-const DESIGN_SYSTEM_DOC_TITLE = "Design system";
-const SECTION_VISUAL_EVIDENCE_DOC_KEY = "section-visual-evidence";
-const SECTION_VISUAL_EVIDENCE_DOC_TITLE = "Section visual evidence";
 
 function makeSiteHierarchyDoc(
   ctx: DocGenerationContext,

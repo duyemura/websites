@@ -2,7 +2,8 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { SiteHierarchy } from "../types/site-hierarchy";
 
-const SITE_HIERARCHY_DOC_KEY = "site-hierarchy";
+export const SITE_HIERARCHY_DOC_KEY = "site-hierarchy";
+export const SITE_HIERARCHY_DOC_TITLE = "Site hierarchy";
 const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
 
 export async function loadSiteHierarchyDoc(
@@ -51,7 +52,7 @@ export async function saveSiteHierarchyDoc(
       workspaceUuid,
       siteUuid,
       key: SITE_HIERARCHY_DOC_KEY,
-      title: "Site hierarchy",
+      title: SITE_HIERARCHY_DOC_TITLE,
       content,
       source: "ai_extracted",
       status: "active",

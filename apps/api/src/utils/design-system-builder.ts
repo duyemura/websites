@@ -1,7 +1,7 @@
 import type { ScrapedWebsiteData } from "./scrape-docs";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { BrandLogo, HeadingStyle } from "./design-system";
-import { buildDesignSystem as buildLegacyDesignSystem } from "./design-system";
+import { buildDesignSystem as buildLegacyDesignSystem, sanitizeTokens } from "./design-system";
 import {
   deriveThemeTokens,
   detectHeadingStyle,
@@ -15,7 +15,7 @@ export function buildDesignSystemV2(
   screenshotUrl?: string | null,
   mode: DesignSystemV2["siteMetadata"]["mode"] = "replication",
 ): DesignSystemV2 {
-  const tokens = deriveThemeTokens(data);
+  const tokens = sanitizeTokens(deriveThemeTokens(data));
   const header = extractHeaderSection(data);
   const footer = extractFooterSection(data);
   const headingStyle: HeadingStyle = detectHeadingStyle(data);
