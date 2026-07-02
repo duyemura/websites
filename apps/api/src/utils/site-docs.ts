@@ -11,6 +11,7 @@ import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-doc
 import { buildSiteHierarchy } from "./site-hierarchy-builder";
 import { buildDesignSystemV2 } from "./design-system-builder";
 import { buildSectionVisualEvidence } from "./section-visual-evidence-builder";
+import { buildSiteBlueprint } from "./site-blueprint";
 import type { SiteHierarchy } from "../types/site-hierarchy";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { Config } from "../plugins/env";
@@ -402,6 +403,28 @@ Generate the homepage from the blueprint draft, workspace memory, business info,
   };
 }
 
+const BLUEPRINT_DRAFT_DOC_KEY = "blueprint-draft";
+const BLUEPRINT_DRAFT_DOC_TITLE = "Blueprint draft";
+
+function makeBlueprintDraftDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
+  const blueprint = buildSiteBlueprint(ctx.scraped);
+  return {
+    key: BLUEPRINT_DRAFT_DOC_KEY,
+    title: BLUEPRINT_DRAFT_DOC_TITLE,
+    content: `# Blueprint draft
+
+This doc holds the initial JSON blueprint derived from the scraped source site.
+
+## Site blueprint
+
+\`\`\`json
+${JSON.stringify(blueprint, null, 2)}
+\`\`\`
+`,
+    source: "ai_extracted",
+  };
+}
+
 const SITE_HIERARCHY_DOC_KEY = "site-hierarchy";
 const SITE_HIERARCHY_DOC_TITLE = "Site hierarchy";
 const DESIGN_SYSTEM_DOC_KEY = "design-system";
@@ -492,6 +515,7 @@ export async function generateSiteDocs(
     },
     await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
     makeSiteStrategyDoc(ctx),
+    makeBlueprintDraftDoc(ctx),
     makeDesignSystemDoc(ctx, screenshotUrl, mode),
     makeSiteHierarchyDoc(ctx, mode),
     makeSectionVisualEvidenceDoc(ctx),

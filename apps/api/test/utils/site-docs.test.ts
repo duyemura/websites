@@ -140,6 +140,7 @@ describe("generateSiteDocs", () => {
       BRAND_GUIDELINES_DOC_KEY,
       "business-info",
       "site-strategy",
+      "blueprint-draft",
       "design-system",
       "site-hierarchy",
       "section-visual-evidence",
@@ -294,7 +295,7 @@ describe("generateSiteDocs", () => {
     expect(keys).toContain("site-hierarchy");
     expect(keys).toContain("design-system");
     expect(keys).toContain("section-visual-evidence");
-    expect(keys).not.toContain("blueprint-draft");
+    expect(keys).toContain("blueprint-draft");
 
     const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
     const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
