@@ -2,9 +2,10 @@ import { describe, test, expect } from "vitest";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/utils/brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
-import { generateSiteDocs } from "../../src/utils/site-docs";
+import { generateSiteDocs, generateSiteDocsFromTemplate, generateSiteDocsForGreenfield } from "../../src/utils/site-docs";
 import type { SiteHierarchy } from "../../src/types/site-hierarchy";
 import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
+import type { TemplateShell } from "@ploy-gyms/shared-types";
 
 async function docKeys(docs: Promise<ReturnType<typeof generateSiteDocs>>): Promise<string[]> {
   return (await docs).map((d) => d.key);
@@ -321,5 +322,159 @@ describe("generateSiteDocs", () => {
     const evidence: SectionVisualEvidence = JSON.parse(evidenceDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
     expect(evidence.rows.length).toBeGreaterThan(0);
     expect(evidence.rows[0].boundingBox.width).toBeGreaterThan(0);
+  });
+});
+
+const templateShellFixture: TemplateShell = {
+  source: {
+    type: "url",
+    url: "https://template-source.example.com",
+    scrapedAt: new Date().toISOString(),
+  },
+  theme: {
+    colors: {
+      primary: "#111111",
+      primaryForeground: "#ffffff",
+      background: "#ffffff",
+      foreground: "#171717",
+      muted: "#f5f5f5",
+      mutedForeground: "#737373",
+      border: "#e5e5e5",
+    },
+    fonts: {
+      heading: "Inter",
+      body: "Inter",
+    },
+    radius: "0.5rem",
+  },
+  page: {
+    title: "Template homepage",
+    slug: "index",
+    isHomePage: true,
+    metaTitle: "Template homepage meta",
+    metaDescription: "Template homepage description",
+    sections: [
+      {
+        id: "header-shell",
+        type: "SiteHeader",
+        props: {
+          logo: { type: "text", value: "{{placeholder-001: business name}}" },
+          navLinks: [
+            { label: "Classes", href: "/classes" },
+            { label: "Coaches", href: "/coaches" },
+          ],
+          ctaLabel: "Join now",
+          ctaHref: "#cta",
+        },
+      },
+      {
+        id: "hero-shell",
+        type: "Hero",
+        props: {
+          title: "{{placeholder-002: headline}}",
+          subtitle: "{{placeholder-003: subheadline}}",
+          cta: { label: "{{placeholder-004: CTA}}", href: "#cta" },
+          backgroundImage: null,
+          layout: "center",
+        },
+      },
+      {
+        id: "features-shell",
+        type: "SiteCardGroup",
+        props: {
+          title: "{{placeholder-005: section title}}",
+          layout: "grid",
+          cards: [
+            { title: "{{placeholder-006: card title}}", description: "{{placeholder-007: card description}}" },
+          ],
+        },
+      },
+      {
+        id: "footer-shell",
+        type: "SiteFooter",
+        props: {
+          businessName: "{{placeholder-008: business name}}",
+          navLinks: [],
+          socialLinks: [],
+          copyright: "© 2026 {{placeholder-008: business name}}. All rights reserved.",
+        },
+      },
+    ],
+  },
+  placeholders: [
+    { key: "placeholder-001", label: "Logo / business name", sectionId: "header-shell", propPath: "logo.value" },
+    { key: "placeholder-002", label: "Hero headline", sectionId: "hero-shell", propPath: "title" },
+  ],
+  instructions: "Use the template structure and replace every placeholder.",
+};
+
+describe("generateSiteDocsFromTemplate", () => {
+  test("emits the six expected core docs", () => {
+    const docs = generateSiteDocsFromTemplate(
+      "Beta Template",
+      { key: "gym-neutro", name: "Gym Neutro", instructions: null },
+      templateShellFixture,
+    );
+    const keys = docs.map((d) => d.key);
+    expect(keys).toEqual([
+      "site-memory",
+      "site-strategy",
+      "business-info",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
+    ]);
+  });
+
+  test("parsed hierarchy has a homepage with sections in template order", () => {
+    const docs = generateSiteDocsFromTemplate(
+      "Beta Template",
+      { key: "gym-neutro", name: "Gym Neutro", instructions: null },
+      templateShellFixture,
+    );
+    const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
+    const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(hierarchy.pages[0].slug).toBe("index");
+    expect(hierarchy.pages[0].sections.length).toBe(templateShellFixture.page.sections.length);
+
+    const sectionTags = hierarchy.pages[0].sections.map((s) => s.tag);
+    expect(sectionTags).toContain("header");
+    expect(sectionTags).toContain("hero");
+    expect(sectionTags).toContain("feature-grid");
+    expect(sectionTags).toContain("footer");
+
+    const hero = hierarchy.pages[0].sections.find((s) => s.tag === "hero")!;
+    expect(hero.evidenceId).toBe("template-index-hero-shell");
+    expect(hero.content.heading).toMatch(/^\{\{placeholder-/);
+  });
+});
+
+describe("generateSiteDocsForGreenfield", () => {
+  test("emits the six expected core docs", () => {
+    const docs = generateSiteDocsForGreenfield(
+      { uuid: "site-uuid-1", name: "Greenfield Gym", workspaceUuid: "ws-uuid-1" },
+      { primaryColor: "#ff4d00", fontHeading: "Montserrat", fontBody: "Inter" },
+      { businessName: "Greenfield Gym", tagline: "Stronger every day.", description: "A fresh gym brand." },
+    );
+    const keys = docs.map((d) => d.key);
+    expect(keys).toEqual([
+      "site-memory",
+      "site-strategy",
+      "business-info",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
+    ]);
+  });
+
+  test("design system uses the provided primary color", () => {
+    const docs = generateSiteDocsForGreenfield(
+      { uuid: "site-uuid-2", name: "Greenfield Gym", workspaceUuid: "ws-uuid-2" },
+      { primaryColor: "#ff4d00" },
+      { businessName: "Greenfield Gym" },
+    );
+    const designSystemDoc = docs.find((d) => d.key === "design-system")!;
+    const designSystem = JSON.parse(designSystemDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(designSystem.global.tokens.colors.primary).toBe("#ff4d00");
   });
 });

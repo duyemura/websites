@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
-import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
+import { generateSiteDocs, generateSiteDocsFromTemplate, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { cropSectionScreenshots } from "../../utils/section-screenshots";
 import { HttpUrlSchema } from "../../utils/http-url";
@@ -177,84 +177,6 @@ function deriveSiteName(url: string, fallback?: string): string {
   } catch {
     return "Imported site";
   }
-}
-
-function generateSiteDocsFromTemplate(
-  siteName: string,
-  template: { key: string; name: string; instructions: string | null },
-  shell: TemplateShell,
-): import("../../utils/site-docs").GeneratedSiteDoc[] {
-  const now = new Date().toISOString();
-  const instructions = template.instructions ?? "No template instructions provided.";
-
-  const siteMemory = [
-    `# Site memory: ${siteName}`,
-    "",
-    `- **Created from template**: ${template.name} (${template.key})`,
-    `- **Created at**: ${now}`,
-    `- **Source URL**: ${shell.source.url}`,
-    "",
-    "## Template structure",
-    "",
-    shell.page.sections.map((s) => `- ${s.type} (${s.id})`).join("\n"),
-    "",
-    "## Placeholders",
-    "",
-    shell.placeholders.length > 0
-      ? shell.placeholders.map((p) => `- **${p.key}** — ${p.label}`).join("\n")
-      : "- No placeholders defined.",
-  ].join("\n");
-
-  const siteStrategy = [
-    `# Site strategy: ${siteName}`,
-    "",
-    `Build a site using the **${template.name}** template. The template's structure and spacing were extracted from ${shell.source.url}.`,
-    "",
-    "## AI instructions from template",
-    "",
-    instructions,
-    "",
-    "## Build plan",
-    "",
-    "1. Read [[workspace-memory]] and [[brand-guidelines]].",
-    "2. Use the business info below to replace every placeholder in the template.",
-    "3. Preserve section order from the template unless the user asks otherwise.",
-    "4. Generate real copy that matches the gym's tone, not the source website's brand.",
-    "",
-    "## Next action",
-    "",
-    "Fill out [[business-info]] with the gym's real details, then generate the homepage.",
-  ].join("\n");
-
-  const businessInfo = [
-    `# Business info: ${siteName}`,
-    "",
-    "Fill in the details below so the AI can replace the template placeholders with real copy.",
-    "",
-    "## Required information",
-    "",
-    "- **Business name**:",
-    "- **Tagline / one-liner**:",
-    "- **Address**:",
-    "- **Hours**:",
-    "- **Phone**:",
-    "- **Email**:",
-    "- **Primary offerings / classes**:",
-    "- **Coaches / team members**:",
-    "- **Member testimonials**:",
-    "",
-    "## Brand notes",
-    "",
-    "- **Tone**: (e.g., energetic, welcoming, elite, community-focused)",
-    "- **Colors**: (the template uses a neutral shell; apply brand colors from [[brand-guidelines]])",
-    "- **Hero image direction**: (describe the desired main photo)",
-  ].join("\n");
-
-  return [
-    { key: "site-memory", title: "Site memory", content: siteMemory, source: "ai_extracted" },
-    { key: "site-strategy", title: "Site strategy", content: siteStrategy, source: "ai_extracted" },
-    { key: "business-info", title: "Business info", content: businessInfo, source: "ai_extracted" },
-  ];
 }
 
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
