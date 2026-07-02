@@ -27,6 +27,9 @@ import {
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
 import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
 import { loadBlueprintDoc } from "../../utils/blueprint-io";
+import { loadSiteHierarchyDoc } from "../../utils/site-hierarchy-io";
+import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
+import { loadDesignSystemDoc } from "../../utils/design-system-io";
 import { jsonb } from "../../utils/jsonb";
 import { resolveBuildCommand } from "../../services/build-assistant/registry";
 
@@ -145,6 +148,12 @@ const BuildCommandResponseSchema = z.object({
     )
     .optional(),
   userMessage: z.string().optional(),
+});
+
+const HierarchyReviewResponseSchema = z.object({
+  hierarchy: z.any().nullable(),
+  visualEvidence: z.any().nullable(),
+  designSystem: z.any().nullable(),
 });
 
 function normalizeUrl(url: string): string {
@@ -383,6 +392,41 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/hierarchy-review",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: HierarchyReviewResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const [hierarchy, visualEvidence, designSystem] = await Promise.all([
+        loadSiteHierarchyDoc(fastify.db, workspaceUuid, siteUuid),
+        loadSectionVisualEvidenceDoc(fastify.db, workspaceUuid, siteUuid),
+        loadDesignSystemDoc(fastify.db, workspaceUuid, siteUuid),
+      ]);
+
+      return { hierarchy, visualEvidence, designSystem };
     },
   );
 

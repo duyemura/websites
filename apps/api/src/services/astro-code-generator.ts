@@ -5,11 +5,18 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { TemplateShellPage, SiteSection } from "@ploy-gyms/shared-types";
+import type { SiteSection } from "@ploy-gyms/shared-types";
 import type { DesignSystem } from "../utils/design-system";
-import { renderSectionComponent } from "../utils/section-component-registry";
+import type { DesignSystemV2 } from "../types/design-system-v2";
+import type { HierarchyPage, HierarchySection } from "../types/site-hierarchy";
 import { uploadBuildArtifacts } from "../utils/build-artifacts";
 import { getSignedDownloadUrl } from "../s3";
+import { renderSemanticSection } from "../utils/section-component-registry";
+
+export interface RenderedSection {
+  section: HierarchySection;
+  source: string;
+}
 
 export interface GeneratePageInput {
   db: Kysely<DB>;
@@ -17,8 +24,9 @@ export interface GeneratePageInput {
   workspaceUuid: string;
   siteUuid: string;
   pageSlug: string;
-  designSystem: DesignSystem;
-  page: TemplateShellPage;
+  designSystem: DesignSystemV2;
+  page: HierarchyPage;
+  renderedSections: RenderedSection[];
   mode: "replication" | "template" | "greenfield";
   attemptId: string;
 }
@@ -28,7 +36,7 @@ export interface GeneratePageOutput {
   sourceDir: string;
   distDir: string;
   previewUrl: string;
-  pageSections: SiteSection[];
+  pageSections: HierarchySection[];
   metaTitle: string;
   metaDescription: string;
   buildSuccess: boolean;
@@ -119,7 +127,7 @@ async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
 }
 
 export async function generateAstroPage(input: GeneratePageInput): Promise<GeneratePageOutput> {
-  const { config, workspaceUuid, siteUuid, pageSlug, designSystem, page, attemptId } = input;
+  const { config, workspaceUuid, siteUuid, pageSlug, designSystem, page, renderedSections, attemptId } = input;
 
   const sourceDir = path.join(os.tmpdir(), "ploy-gyms-build", siteUuid, attemptId, pageSlug);
   const distDir = path.join(sourceDir, "dist");
@@ -129,12 +137,12 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
 
   // Sign private S3 asset URLs so the single-URL preview can load images
   // (logos, hero backgrounds, etc.) without requiring a separate proxy.
-  const [signedDesignSystem, signedPage] = await Promise.all([
+  const [signedDesignSystem, signedRenderedSections] = await Promise.all([
     signS3AssetUrls(designSystem, config),
-    signS3AssetUrls(page, config),
+    signS3AssetUrls(renderedSections, config),
   ]);
 
-  await writeProjectFiles(sourceDir, signedDesignSystem, signedPage);
+  await writeProjectFiles(sourceDir, signedDesignSystem, page, signedRenderedSections);
 
   const installResult = await runCommand("pnpm", ["install"], sourceDir);
   if (installResult.exitCode !== 0) {
@@ -177,7 +185,7 @@ function failureOutput(
   attemptId: string,
   sourceDir: string,
   distDir: string,
-  page: TemplateShellPage,
+  page: HierarchyPage,
   buildLog: string,
 ): GeneratePageOutput {
   return {
@@ -195,8 +203,9 @@ function failureOutput(
 
 async function writeProjectFiles(
   sourceDir: string,
-  designSystem: DesignSystem,
-  page: TemplateShellPage,
+  designSystem: DesignSystemV2,
+  page: HierarchyPage,
+  renderedSections: RenderedSection[],
 ): Promise<void> {
   const dirs = [
     path.join(sourceDir, "src", "layouts"),
@@ -215,24 +224,24 @@ async function writeProjectFiles(
   await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem));
 
   const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-  const homePageCta = designSystem.reference.homePagePrimaryCta;
-  if (homePageCta?.label && homePageCta.href) {
-    headerSection.props.ctaLabel = homePageCta.label;
-    headerSection.props.ctaHref = homePageCta.href;
+  const primaryCta = page.primaryCta ?? (designSystem.reference as { homePagePrimaryCta?: { label?: string; href?: string } | null }).homePagePrimaryCta;
+  if (primaryCta?.label && primaryCta.href) {
+    headerSection.props.ctaLabel = primaryCta.label;
+    headerSection.props.ctaHref = primaryCta.href;
   }
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Header.astro"),
-    renderSectionComponent(headerSection),
+    renderSemanticSection(headerSection),
   );
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
-    renderSectionComponent(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
+    renderSemanticSection(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
   );
 
-  for (const section of page.sections) {
+  for (const { section, source } of renderedSections) {
     await writeFile(
       path.join(sourceDir, "src", "components", "sections", `${section.id}.astro`),
-      renderSectionComponent(section),
+      source,
     );
   }
 
@@ -352,7 +361,7 @@ function tsConfig(): string {
   );
 }
 
-function tokensCss(designSystem: DesignSystem): string {
+function tokensCss(designSystem: DesignSystem | DesignSystemV2): string {
   const tokens = designSystem.global.tokens;
   return `@tailwind base;
 @tailwind components;
@@ -383,7 +392,7 @@ h1, h2, h3, h4, h5, h6 {
 `;
 }
 
-function layoutAstro(designSystem: DesignSystem): string {
+function layoutAstro(designSystem: DesignSystem | DesignSystemV2): string {
   const businessName = designSystem.business.name ?? "Ploy for gyms";
   return `---
 import Header from "../components/shared/Header.astro";
@@ -416,7 +425,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
 `;
 }
 
-function makeDefaultHeader(designSystem: DesignSystem): SiteSection {
+export function makeDefaultHeader(designSystem: DesignSystem | DesignSystemV2): SiteSection {
   return {
     id: "header",
     type: "SiteHeader",
@@ -427,7 +436,7 @@ function makeDefaultHeader(designSystem: DesignSystem): SiteSection {
   };
 }
 
-function makeDefaultFooter(designSystem: DesignSystem): SiteSection {
+export function makeDefaultFooter(designSystem: DesignSystem | DesignSystemV2): SiteSection {
   const year = new Date().getFullYear();
   const businessName = designSystem.business.name ?? "";
   return {
@@ -450,7 +459,7 @@ function toComponentName(value: string): string {
     .replace(/^(?=[0-9])/, "_");
 }
 
-function pageAstro(page: TemplateShellPage): string {
+function pageAstro(page: HierarchyPage): string {
   const title = page.metaTitle ?? page.title;
   const description = page.metaDescription ?? "";
   const imports = page.sections
