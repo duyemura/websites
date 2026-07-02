@@ -13,8 +13,9 @@ export const ALLOWED_DOC_KEYS = [
   "brand-guidelines",
   "business-info",
   "site-strategy",
-  "blueprint-draft",
+  "site-hierarchy",
   "design-system",
+  "section-visual-evidence",
 ] as const;
 
 export type AllowedDocKey = (typeof ALLOWED_DOC_KEYS)[number];

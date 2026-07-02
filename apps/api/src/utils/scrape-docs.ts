@@ -7,6 +7,7 @@ import type {
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 
 export interface ScrapedSection {
   id: string;
@@ -15,6 +16,9 @@ export interface ScrapedSection {
   body?: string;
   address?: string;
   widgetUrl?: string;
+  intent?: string;
+  cta?: { label: string; href: string };
+  visualEvidence?: SectionVisualEvidenceRow;
   items?: { title?: string; description?: string; imageUrl?: string }[];
   images?: { url: string; alt?: string; context?: string }[];
   styleHint?: {
