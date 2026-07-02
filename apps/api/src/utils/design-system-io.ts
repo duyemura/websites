@@ -90,20 +90,30 @@ export async function loadOrBuildDesignSystem(
   _mode: "replication" | "template" | "greenfield",
   fallbackBlueprint?: SiteBlueprint,
   referenceScreenshotUrl?: string | null,
+  force = false,
 ): Promise<DesignSystem> {
-  const existing = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
-  if (existing) return existing;
-
-  if (!fallbackBlueprint) {
-    const blueprint = await loadBlueprintDoc(db, workspaceUuid, siteUuid);
-    if (!blueprint) {
-      throw new Error(`No design-system doc or blueprint found for site ${siteUuid}`);
-    }
-    return buildDesignSystem({ blueprint, referenceScreenshotUrl });
+  if (!force) {
+    const existing = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
+    if (existing) return existing;
   }
 
+  const blueprint = fallbackBlueprint ?? (await loadBlueprintDoc(db, workspaceUuid, siteUuid));
+  if (!blueprint) {
+    throw new Error(`No design-system doc or blueprint found for site ${siteUuid}`);
+  }
+
+  const brand = blueprint.brand_identity;
+  const homePage = blueprint.pages.find((p) => p.isHomePage);
   return buildDesignSystem({
-    blueprint: fallbackBlueprint,
+    blueprint,
+    brand: brand
+      ? {
+          logo: brand.logo,
+          headingStyle: brand.heading_style,
+        }
+      : undefined,
     referenceScreenshotUrl,
+    sectionOrder: blueprint.reference?.section_order,
+    homePagePrimaryCta: homePage?.primaryCta,
   });
 }

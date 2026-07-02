@@ -5,10 +5,12 @@ import path from "node:path";
 import { chromium } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
 import type { ChatContentPart } from "../ai/llm-client";
 import { callLlmAndLog } from "../ai/llm-with-logging";
+import { getS3Client } from "../s3";
 
 export interface QaIssue {
   component_id: string;
@@ -56,7 +58,7 @@ export async function runPageQa(input: PageQaInput): Promise<PageQaOutput> {
 
   let fidelityScore: number;
   if (mode === "replication" && referenceScreenshotUrl) {
-    const referenceBuffer = await fetchImageBuffer(referenceScreenshotUrl);
+    const referenceBuffer = await fetchImageBuffer(referenceScreenshotUrl, input.config);
     fidelityScore = referenceBuffer ? computeFidelity(currentScreenshot, referenceBuffer) : 0;
   } else {
     fidelityScore = 1;
@@ -118,7 +120,7 @@ async function captureScreenshot(url: string, viewport: { width: number; height:
   }
 }
 
-async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+async function fetchImageBuffer(url: string, config: Config): Promise<Buffer | null> {
   try {
     if (url.startsWith("data:")) {
       const comma = url.indexOf(",");
@@ -126,6 +128,25 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
       const base64 = url.slice(comma + 1);
       return Buffer.from(base64, "base64");
     }
+
+    if (config.S3_ENDPOINT) {
+      const parsed = new URL(url);
+      const key = parsed.pathname.replace(/^\//, "");
+      const bucket = key.split("/")[0] ?? "";
+      const objectKey = key.slice(bucket.length + 1);
+      if (bucket) {
+        const s3 = getS3Client({
+          endpoint: config.S3_ENDPOINT,
+          region: config.S3_REGION,
+          accessKeyId: config.S3_ACCESS_KEY,
+          secretAccessKey: config.S3_SECRET_KEY,
+        });
+        const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }));
+        const bytes = await response.Body?.transformToByteArray();
+        if (bytes) return Buffer.from(bytes);
+      }
+    }
+
     const response = await fetch(url);
     if (!response.ok) return null;
     return Buffer.from(await response.arrayBuffer());
@@ -256,27 +277,58 @@ function buildVisualQaPrompt(mode: string, fidelityScore: number): string {
     : `Review the generated page (first image) for build, content, and responsive quality.`;
 }
 
+function extractJsonObject(raw: string): string | null {
+  const firstBrace = raw.indexOf("{");
+  const lastBrace = raw.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+  return raw.slice(firstBrace, lastBrace + 1);
+}
+
 function parseQaIssues(raw: string): QaIssue[] | null {
+  const trimmed = raw.trim();
+  if (!trimmed || /^no\s+issues?$/i.test(trimmed)) {
+    return [];
+  }
+
+  let cleaned = trimmed.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
+  if (!cleaned || /^no\s+issues?$/i.test(cleaned)) {
+    return [];
+  }
+
+  let parsed: { issues?: unknown[] } | null = null;
   try {
-    const cleaned = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(cleaned) as { issues?: unknown[] };
-    if (!Array.isArray(parsed.issues)) return null;
-    return parsed.issues.filter(isQaIssue);
+    parsed = JSON.parse(cleaned) as { issues?: unknown[] };
   } catch {
+    const extracted = extractJsonObject(cleaned);
+    if (extracted) {
+      try {
+        parsed = JSON.parse(extracted) as { issues?: unknown[] };
+      } catch {
+        parsed = null;
+      }
+    }
+  }
+
+  if (!parsed || !Array.isArray(parsed.issues)) {
     return null;
   }
+
+  return parsed.issues.filter(isQaIssue);
 }
 
 function isQaIssue(value: unknown): value is QaIssue {
   if (!value || typeof value !== "object") return false;
   const issue = value as Record<string, unknown>;
-  return (
+  const hasRequiredFields =
     typeof issue.component_id === "string" &&
     typeof issue.category === "string" &&
     typeof issue.description === "string" &&
-    typeof issue.suggested_fix === "string" &&
-    ["high", "medium", "low"].includes(issue.severity as string)
-  );
+    ["high", "medium", "low"].includes(issue.severity as string);
+  if (!hasRequiredFields) return false;
+  if (typeof issue.suggested_fix !== "string" || !issue.suggested_fix) {
+    issue.suggested_fix = "Review and adjust the affected element to match the source.";
+  }
+  return true;
 }
 
 function contentTypeForPath(filePath: string): string {

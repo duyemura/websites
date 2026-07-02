@@ -678,7 +678,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               metadata: {
                 filename: "screenshot.png",
                 description: `Full-page screenshot of ${url} captured during scrape`,
-                tags: ["scrape", "screenshot"],
+                tags: ["scrape", "screenshot", "reference-screenshot", "index"],
               },
             })
             .returningAll()

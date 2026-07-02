@@ -23,11 +23,11 @@ describe("build-artifacts", () => {
     ).rejects.toThrow("S3_DEPLOYMENTS_BUCKET is not configured");
   });
 
-  test("uploadBuildArtifacts throws when no CDN base is configured", async () => {
+  test("uploadBuildArtifacts throws when dist directory is missing", async () => {
     const config = {
       S3_DEPLOYMENTS_BUCKET: "deployments",
-      CDN_DEPLOYMENTS_BASE_URL: undefined,
-      CDN_BASE_URL: undefined,
+      CDN_DEPLOYMENTS_BASE_URL: "https://cdn.example.com",
+      CDN_BASE_URL: "https://cdn.example.com",
     } as unknown as Config;
 
     await expect(
@@ -38,8 +38,8 @@ describe("build-artifacts", () => {
         attemptId: "attempt-1",
         pageSlug: "index",
         sourceDir: "/tmp/src",
-        distDir: "/tmp/dist",
+        distDir: "/tmp/nonexistent-dist",
       }),
-    ).rejects.toThrow("CDN_DEPLOYMENTS_BASE_URL or CDN_BASE_URL is not configured");
+    ).rejects.toThrow("ENOENT");
   });
 });

@@ -245,7 +245,7 @@ export async function startSiteBuild(input: StartSiteBuildInput): Promise<StartS
       ? (await resolveReferenceScreenshot(db, config, workspaceUuid, siteUuid, site.sourceUrl, "index"))?.url ?? null
       : null;
 
-  const designSystem = await loadOrBuildDesignSystem(db, config, workspaceUuid, siteUuid, mode, blueprint, referenceScreenshotUrl);
+  const designSystem = await loadOrBuildDesignSystem(db, config, workspaceUuid, siteUuid, mode, blueprint, referenceScreenshotUrl, true);
   await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
 
   const firstSlug = blueprint.build_plan.build_order[0] ?? "index";
@@ -345,6 +345,20 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
       })
       .where("uuid", "=", existingPage.uuid)
       .execute();
+  } else {
+    await db
+      .insertInto("pages")
+      .values({
+        siteUuid,
+        title: generated.metaTitle,
+        slug: pageSlug,
+        isHomePage: pageSlug === "index",
+        metaTitle: generated.metaTitle,
+        metaDescription: generated.metaDescription,
+        sections: jsonb(generated.pageSections),
+        status: "draft",
+      })
+      .execute();
   }
 
   if (pageSlug === "index") {
@@ -356,7 +370,12 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
         status: passed ? "success" : "failed",
         artifactUrl: generated.previewUrl,
         previewUrl: generated.previewUrl,
-        metadata: jsonb({ mode: resolvedMode, fidelityScore: qa.fidelityScore, issues: qa.issues }),
+        metadata: jsonb({
+          mode: resolvedMode,
+          fidelityScore: qa.fidelityScore,
+          issues: qa.issues,
+          s3: generated.s3,
+        }),
       })
       .execute();
   }

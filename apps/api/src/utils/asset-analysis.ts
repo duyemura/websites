@@ -113,103 +113,116 @@ export async function analyzeAsset(input: AnalyzeAssetInput): Promise<void> {
   // Serialize per-asset analysis to prevent concurrent vision-LLM calls for the
   // same asset. The advisory lock is transaction-scoped, so the entire body is
   // wrapped in a transaction; the lock is released on commit/rollback.
-  await db.transaction().execute(async (trx) => {
-    await acquireAssetAnalysisLock(trx, assetUuid);
+  try {
+    await db.transaction().execute(async (trx) => {
+      try {
+        await acquireAssetAnalysisLock(trx, assetUuid);
 
-    const asset = await trx
-      .selectFrom("assets")
-      .select(["uuid", "type", "source", "mimeType", "storageKey", "metadata"])
-      .where("uuid", "=", assetUuid)
-      .where("workspaceUuid", "=", workspaceUuid)
-      .executeTakeFirst();
+        const asset = await trx
+        .selectFrom("assets")
+        .select(["uuid", "type", "source", "mimeType", "storageKey", "metadata"])
+        .where("uuid", "=", assetUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
 
-    if (!asset) return;
-    if (asset.source === "screenshot") return;
-    if (!isAnalyzableImage(asset.type, asset.mimeType)) return;
+      if (!asset) return;
+      if (asset.source === "screenshot") return;
+      if (!isAnalyzableImage(asset.type, asset.mimeType)) return;
 
-    const metadata = (asset.metadata ?? {}) as Record<string, unknown>;
-    const existingAnalysis = metadata.analysis as
-      | { version?: number; analyzedAt?: string }
-      | undefined;
-    if (
-      existingAnalysis &&
-      existingAnalysis.version &&
-      existingAnalysis.version >= CURRENT_ANALYSIS_VERSION
-    ) {
-      return;
-    }
+      const metadata = (asset.metadata ?? {}) as Record<string, unknown>;
+      const existingAnalysis = metadata.analysis as
+        | { version?: number; analyzedAt?: string }
+        | undefined;
+      if (
+        existingAnalysis &&
+        existingAnalysis.version &&
+        existingAnalysis.version >= CURRENT_ANALYSIS_VERSION
+      ) {
+        return;
+      }
 
-    const buffer = await fetchAssetBuffer(config, asset.storageKey, log);
-    if (!buffer) return;
+      const buffer = await fetchAssetBuffer(config, asset.storageKey, log);
+      if (!buffer) return;
 
-    const localMetadata = await extractImageMetadata(
-      buffer,
-      asset.mimeType ?? undefined,
-    );
+      const localMetadata = await extractImageMetadata(
+        buffer,
+        asset.mimeType ?? undefined,
+      );
 
-    const llmResult: AssetAnalysisResult | null = localMetadata.format
-      ? await runVisionAnalysis(buffer, asset.mimeType ?? undefined, {
-          db: trx,
-          config,
-          workspaceUuid,
-          userUuid,
-          siteUuid,
-          aiJobUuid,
-        })
-      : null;
+      const llmResult: AssetAnalysisResult | null = localMetadata.format
+        ? await runVisionAnalysis(buffer, asset.mimeType ?? undefined, {
+            db: trx,
+            config,
+            workspaceUuid,
+            userUuid,
+            siteUuid,
+            aiJobUuid,
+          })
+        : null;
 
-    const analysis: AnalysisOutput | undefined = llmResult
-      ? {
-          analyzedAt: new Date().toISOString(),
-          model: config.VISION_LLM_MODEL,
-          version: CURRENT_ANALYSIS_VERSION,
-          description: llmResult.description,
-          altText: llmResult.altText,
-          context: llmResult.context,
-          confidence: llmResult.confidence,
-          tags: llmResult.tags,
-          technical: llmResult.technical,
-          quality: llmResult.quality,
-          marketing: llmResult.marketing,
-          safety: llmResult.safety,
-          technicalLocal: localMetadata,
-        }
-      : undefined;
+      const analysis: AnalysisOutput | undefined = llmResult
+        ? {
+            analyzedAt: new Date().toISOString(),
+            model: config.VISION_LLM_MODEL,
+            version: CURRENT_ANALYSIS_VERSION,
+            description: llmResult.description,
+            altText: llmResult.altText,
+            context: llmResult.context,
+            confidence: llmResult.confidence,
+            tags: llmResult.tags,
+            technical: llmResult.technical,
+            quality: llmResult.quality,
+            marketing: llmResult.marketing,
+            safety: llmResult.safety,
+            technicalLocal: localMetadata,
+          }
+        : undefined;
 
-    const updatedMetadata: Record<string, unknown> = {
-      ...metadata,
-      dimensions: {
-        width: localMetadata.width,
-        height: localMetadata.height,
-      },
-      fileSize: localMetadata.fileSize,
-      exif: localMetadata.exif,
-      technicalLocal: {
-        format: localMetadata.format,
-        hasTransparency: localMetadata.hasTransparency,
-        hasAnimation: localMetadata.hasAnimation,
-        channels: localMetadata.channels,
-        depth: localMetadata.depth,
-        density: localMetadata.density,
-        orientation: localMetadata.orientation,
-        dominantColors: localMetadata.dominantColors,
-      },
-      ...(analysis ? { analysis } : {}),
-    };
+      const updatedMetadata: Record<string, unknown> = {
+        ...metadata,
+        dimensions: {
+          width: localMetadata.width,
+          height: localMetadata.height,
+        },
+        fileSize: localMetadata.fileSize,
+        exif: localMetadata.exif,
+        technicalLocal: {
+          format: localMetadata.format,
+          hasTransparency: localMetadata.hasTransparency,
+          hasAnimation: localMetadata.hasAnimation,
+          channels: localMetadata.channels,
+          depth: localMetadata.depth,
+          density: localMetadata.density,
+          orientation: localMetadata.orientation,
+          dominantColors: localMetadata.dominantColors,
+        },
+        ...(analysis ? { analysis } : {}),
+      };
 
-    // Conditional update prevents a slow vision call from overwriting analysis
-    // produced by a faster concurrent worker that finished while this one ran.
-    await trx
-      .updateTable("assets")
-      .set({ metadata: updatedMetadata as import("../types/db").Json })
-      .where("uuid", "=", assetUuid)
-      .where(
-        sql<boolean>`metadata is null or not metadata @> ${sql.lit(
-          JSON.stringify({ analysis: {} }),
-        )} or coalesce((metadata -> 'analysis' ->> 'version')::int, 0) < ${CURRENT_ANALYSIS_VERSION}`,
-      )
-      .execute();
-  });
+      // Conditional update prevents a slow vision call from overwriting analysis
+      // produced by a faster concurrent worker that finished while this one ran.
+      await trx
+        .updateTable("assets")
+        .set({ metadata: updatedMetadata as import("../types/db").Json })
+        .where("uuid", "=", assetUuid)
+        .where(
+          sql<boolean>`metadata is null or not (metadata @> ${sql.lit(
+            JSON.stringify({ analysis: {} }),
+          )}) or coalesce((metadata -> 'analysis' ->> 'version')::int, 0) < ${CURRENT_ANALYSIS_VERSION}`,
+        )
+        .execute();
+      } catch (inner) {
+        log?.warn(
+          { err: inner, assetUuid },
+          "analyzeAsset first transactional query failed",
+        );
+        throw inner;
+      }
+    });
+  } catch (error) {
+    log?.warn({ err: error, assetUuid }, "analyzeAsset transaction failed");
+    throw error;
+  }
 }
 
 interface VisionContext extends LlmCallContext {

@@ -30,6 +30,7 @@ const options: AppOptions = {
   ignoreTrailingSlash: true,
   querystringParser: qs.parse,
   repl: false,
+  pluginTimeout: 120000,
 };
 
 const app: FastifyPluginAsync<AppOptions> = async (fastify, options) => {

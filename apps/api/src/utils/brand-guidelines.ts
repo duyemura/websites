@@ -206,6 +206,14 @@ ${renderExamples("Calls to action", ctas)}
 ${allExamples.length === 0 ? "- No example copy captured." : ""}`.trim();
 }
 
+function renderLogo(images: ScrapedBrandInput["images"], businessName: string): string {
+  const logo = images.find((img) => img.context === "logo");
+  if (!logo) return "- No logo detected.";
+  const url = logo.url;
+  const alt = logo.alt ?? businessName;
+  return `![${alt}](${url})`;
+}
+
 function renderImagery(input: ScrapedBrandInput): string {
   const lines: string[] = [];
   if (input.imageryStrategy) lines.push(`- **Imagery Style**: ${input.imageryStrategy}`);
@@ -218,9 +226,10 @@ function renderImagery(input: ScrapedBrandInput): string {
   if (input.promptKeywords && input.promptKeywords.length > 0) {
     lines.push("", `- **Prompt Keywords**: ${input.promptKeywords.join(", ")}.`);
   }
-  if (input.images.length > 0 && !input.imageryStrategy) {
+  const nonLogoImages = input.images.filter((img) => img.context !== "logo");
+  if (nonLogoImages.length > 0 && !input.imageryStrategy) {
     const byContext: Record<string, string[]> = {};
-    for (const img of input.images) {
+    for (const img of nonLogoImages) {
       const list = byContext[img.context] ?? [];
       list.push(img.promptKeywords?.join(", ") ?? img.alt ?? "visual");
       byContext[img.context] = list;
@@ -269,6 +278,10 @@ ${input.tagline ? `- **Tagline**: ${input.tagline}` : ""}
 ${input.industry ? `- **Industry**: ${input.industry}` : ""}
 ${input.description ? `- **Description**: ${input.description}` : ""}
 - **Source**: AI-extracted from reverse-engineered website.
+
+## Logo
+
+${renderLogo(input.images, input.businessName)}
 
 ## Color System
 

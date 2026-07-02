@@ -9,7 +9,7 @@ const booleanFromEnv = (defaultValue: boolean) =>
     .default(defaultValue ? "true" : "false")
     .transform((v) => v === "true");
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]),
   SERVICE: z.enum(Service.options as [string, ...string[]]),
   DB_HOST: z.string(),

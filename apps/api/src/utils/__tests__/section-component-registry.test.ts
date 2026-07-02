@@ -18,6 +18,54 @@ describe("section-component-registry", () => {
     expect(source).toContain("Book now");
   });
 
+  test("renders a hero section with background image and style hint", () => {
+    const source = renderSectionComponent({
+      id: "home-hero",
+      type: "Hero",
+      props: {
+        title: "Train with purpose",
+        backgroundImage: "https://example.com/hero.jpg",
+        styleHint: { theme: "dark", uppercase: true, bold: true, overlayOpacity: 0.4 },
+      },
+    });
+
+    expect(source).toContain("https://example.com/hero.jpg");
+    expect(source).toContain("uppercase");
+    expect(source).toContain("font-black");
+    expect(source).toContain("bg-black/[0.4]");
+    expect(source).toContain("text-white");
+  });
+
+  test("renders a header with an image logo", () => {
+    const source = renderSectionComponent({
+      id: "header",
+      type: "SiteHeader",
+      props: {
+        logo: { type: "image", value: "https://example.com/logo.png", alt: "Acme Gym" },
+        navLinks: [{ label: "About", href: "/about" }],
+      },
+    });
+
+    expect(source).toContain("https://example.com/logo.png");
+    expect(source).toContain('alt={logo.alt || ""}');
+    expect(source).not.toContain("Acme Gym</span>");
+  });
+
+  test("renders a header with a text logo fallback", () => {
+    const source = renderSectionComponent({
+      id: "header",
+      type: "SiteHeader",
+      props: {
+        logo: { type: "text", value: "Acme Gym" },
+        navLinks: [{ label: "About", href: "/about" }],
+      },
+    });
+
+    expect(source).toContain("Acme Gym");
+    expect(source).toContain('logo?.type === "image"');
+    expect(source).toContain('{logo?.value ?? ""}');
+  });
+
   test("renders a text section preserving body content", () => {
     const source = renderSectionComponent({
       id: "about",

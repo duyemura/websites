@@ -1,14 +1,15 @@
 import type { Kysely } from "kysely";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { TemplateShellPage, ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
+import type { TemplateShellPage, SiteSection } from "@ploy-gyms/shared-types";
 import type { DesignSystem } from "../utils/design-system";
 import { renderSectionComponent } from "../utils/section-component-registry";
 import { uploadBuildArtifacts } from "../utils/build-artifacts";
+import { getSignedDownloadUrl } from "../s3";
 
 export interface GeneratePageInput {
   db: Kysely<DB>;
@@ -32,11 +33,90 @@ export interface GeneratePageOutput {
   metaDescription: string;
   buildSuccess: boolean;
   buildLog?: string;
+  s3?: {
+    bucket: string;
+    previewKey: string;
+    artifactPrefix: string;
+  };
 }
 
 const ASTRO_VERSION = "^5.1.5";
 const TAILWIND_INTEGRATION_VERSION = "^5.1.3";
 const TAILWIND_VERSION = "3";
+const ASSET_URL_EXPIRY_SECONDS = 24 * 60 * 60; // 1 day
+
+function isAssetKey(key: string): boolean {
+  return key.startsWith("workspaces/");
+}
+
+function extractAssetKey(url: string, config: Config): string | null {
+  try {
+    const parsed = new URL(url);
+    const bucket = config.S3_ASSETS_BUCKET;
+    const region = config.S3_REGION;
+
+    // Virtual-hosted style: https://bucket.s3.region.amazonaws.com/key
+    if (parsed.hostname === `${bucket}.s3.${region}.amazonaws.com`) {
+      const key = decodeURIComponent(parsed.pathname.slice(1));
+      return isAssetKey(key) ? key : null;
+    }
+
+    // Path-style AWS: https://s3.region.amazonaws.com/bucket/key
+    if (parsed.hostname === `s3.${region}.amazonaws.com` && parsed.pathname.startsWith(`/${bucket}/`)) {
+      const key = decodeURIComponent(parsed.pathname.slice(`/${bucket}/`.length));
+      return isAssetKey(key) ? key : null;
+    }
+
+    // Path-style with custom endpoint: endpoint/bucket/key
+    if (config.S3_ENDPOINT) {
+      const base = config.S3_ENDPOINT.replace(/\/$/, "");
+      const prefix = `${base}/${bucket}/`;
+      if (url.startsWith(prefix)) {
+        const key = decodeURIComponent(url.slice(prefix.length));
+        return isAssetKey(key) ? key : null;
+      }
+    }
+  } catch {
+    // Not a URL we can parse; leave it alone.
+  }
+  return null;
+}
+
+async function signAssetUrl(url: string, config: Config): Promise<string> {
+  const key = extractAssetKey(url, config);
+  if (!key) return url;
+  return getSignedDownloadUrl({
+    endpoint: config.S3_ENDPOINT,
+    region: config.S3_REGION,
+    accessKeyId: config.S3_ACCESS_KEY,
+    secretAccessKey: config.S3_SECRET_KEY,
+    sessionToken: config.S3_SESSION_TOKEN,
+    bucket: config.S3_ASSETS_BUCKET,
+    key,
+    expiresIn: ASSET_URL_EXPIRY_SECONDS,
+  });
+}
+
+async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
+  if (typeof value === "string") {
+    return (await signAssetUrl(value, config)) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    for (const item of value) {
+      out.push(await signS3AssetUrls(item, config));
+    }
+    return out as unknown as T;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = await signS3AssetUrls(v, config);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
 
 export async function generateAstroPage(input: GeneratePageInput): Promise<GeneratePageOutput> {
   const { config, workspaceUuid, siteUuid, pageSlug, designSystem, page, attemptId } = input;
@@ -47,7 +127,14 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
   await rm(sourceDir, { recursive: true, force: true });
   await mkdir(sourceDir, { recursive: true });
 
-  await writeProjectFiles(sourceDir, designSystem, page);
+  // Sign private S3 asset URLs so the single-URL preview can load images
+  // (logos, hero backgrounds, etc.) without requiring a separate proxy.
+  const [signedDesignSystem, signedPage] = await Promise.all([
+    signS3AssetUrls(designSystem, config),
+    signS3AssetUrls(page, config),
+  ]);
+
+  await writeProjectFiles(sourceDir, signedDesignSystem, signedPage);
 
   const installResult = await runCommand("pnpm", ["install"], sourceDir);
   if (installResult.exitCode !== 0) {
@@ -59,7 +146,10 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
     return failureOutput(attemptId, sourceDir, distDir, page, `astro build failed:\n${buildResult.output}`);
   }
 
-  const { previewUrl } = await uploadBuildArtifacts({
+  await relativizeAssetPaths(distDir);
+  await inlineCssIntoHtml(distDir);
+
+  const artifactUrls = await uploadBuildArtifacts({
     config,
     workspaceUuid,
     siteUuid,
@@ -73,12 +163,13 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
     attemptId,
     sourceDir,
     distDir,
-    previewUrl,
+    previewUrl: artifactUrls.previewUrl,
     pageSections: page.sections,
     metaTitle: page.metaTitle ?? page.title,
     metaDescription: page.metaDescription ?? "",
     buildSuccess: true,
     buildLog: buildResult.output,
+    s3: artifactUrls.s3,
   };
 }
 
@@ -120,11 +211,18 @@ async function writeProjectFiles(
   await writeFile(path.join(sourceDir, "astro.config.mjs"), astroConfig());
   await writeFile(path.join(sourceDir, "tailwind.config.mjs"), tailwindConfig());
   await writeFile(path.join(sourceDir, "tsconfig.json"), tsConfig());
-  await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem.global.tokens));
+  await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem));
   await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem));
+
+  const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+  const homePageCta = designSystem.reference.homePagePrimaryCta;
+  if (homePageCta?.label && homePageCta.href) {
+    headerSection.props.ctaLabel = homePageCta.label;
+    headerSection.props.ctaHref = homePageCta.href;
+  }
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Header.astro"),
-    renderSectionComponent(designSystem.global.shell.header ?? makeDefaultHeader(designSystem)),
+    renderSectionComponent(headerSection),
   );
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
@@ -178,6 +276,53 @@ export default defineConfig({
 `;
 }
 
+async function relativizeAssetPaths(distDir: string): Promise<void> {
+  const entries = await readdir(distDir, { withFileTypes: true, recursive: true });
+  const htmlFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => path.join(entry.path ?? entry.parentPath ?? distDir, entry.name));
+
+  await Promise.all(
+    htmlFiles.map(async (filePath) => {
+      const content = await readFile(filePath, "utf8");
+      const updated = content
+        .replace(/href="\/_astro\//g, 'href="_astro/')
+        .replace(/href="\/styles\//g, 'href="styles/')
+        .replace(/src="\/_astro\//g, 'src="_astro/')
+        .replace(/src="\/styles\//g, 'src="styles/');
+      if (updated !== content) {
+        await writeFile(filePath, updated, "utf8");
+      }
+    }),
+  );
+}
+
+async function inlineCssIntoHtml(distDir: string): Promise<void> {
+  const entries = await readdir(distDir, { withFileTypes: true, recursive: true });
+  const htmlFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => path.join(entry.path ?? entry.parentPath ?? distDir, entry.name));
+
+  await Promise.all(
+    htmlFiles.map(async (filePath) => {
+      let content = await readFile(filePath, "utf8");
+      const linkTags = [...content.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)];
+      for (const match of linkTags) {
+        const [tag, href] = match;
+        if (!href) continue;
+        const cssPath = path.join(distDir, href);
+        try {
+          const css = await readFile(cssPath, "utf8");
+          content = content.replace(tag, `<style>${css}</style>`);
+        } catch {
+          // Leave the link tag if the CSS file cannot be read.
+        }
+      }
+      await writeFile(filePath, content, "utf8");
+    }),
+  );
+}
+
 function tailwindConfig(): string {
   return `/** @type {import('tailwindcss').Config} */
 export default {
@@ -207,8 +352,13 @@ function tsConfig(): string {
   );
 }
 
-function tokensCss(tokens: ThemeTokens): string {
-  return `:root {
+function tokensCss(designSystem: DesignSystem): string {
+  const tokens = designSystem.global.tokens;
+  return `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
   --color-primary: ${tokens.colors.primary};
   --color-primary-foreground: ${tokens.colors.primaryForeground};
   --color-background: ${tokens.colors.background};
@@ -238,6 +388,7 @@ function layoutAstro(designSystem: DesignSystem): string {
   return `---
 import Header from "../components/shared/Header.astro";
 import Footer from "../components/shared/Footer.astro";
+import "../styles/tokens.css";
 
 export interface Props {
   title?: string;
@@ -253,7 +404,6 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
-    <link rel="stylesheet" href="/styles/tokens.css" />
   </head>
   <body class="min-h-screen flex flex-col">
     <Header />
@@ -291,8 +441,13 @@ function makeDefaultFooter(designSystem: DesignSystem): SiteSection {
   };
 }
 
-function toIdentifier(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_$]/g, "_").replace(/^(?=[0-9])/, "_");
+function toComponentName(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("")
+    .replace(/[^a-zA-Z0-9_$]/g, "")
+    .replace(/^(?=[0-9])/, "_");
 }
 
 function pageAstro(page: TemplateShellPage): string {
@@ -300,15 +455,16 @@ function pageAstro(page: TemplateShellPage): string {
   const description = page.metaDescription ?? "";
   const imports = page.sections
     .map((section) => {
-      const id = toIdentifier(section.id);
-      return `import ${id} from "../components/sections/${section.id}.astro";`;
+      const componentName = toComponentName(section.id);
+      const fileName = section.id;
+      return `import ${componentName} from "../components/sections/${fileName}.astro";`;
     })
     .join("\n");
 
   const renderedSections = page.sections
     .map((section) => {
-      const id = toIdentifier(section.id);
-      return `    <${id} />`;
+      const componentName = toComponentName(section.id);
+      return `    <${componentName} />`;
     })
     .join("\n");
 

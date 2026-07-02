@@ -107,6 +107,21 @@ describe("POST /sites/:uuid/build-commands", () => {
       })
       .execute();
 
+    const aiJobUuid = crypto.randomUUID();
+    await db
+      .insertInto("aiJobs")
+      .values({
+        uuid: aiJobUuid,
+        workspaceUuid,
+        siteUuid,
+        type: "replicate_site",
+        status: "running",
+        state: jsonb({ phase: "review", currentSlug: "index" }),
+        steps: jsonb([{ name: "build_homepage", status: "completed" }]),
+        options: jsonb({ accuracy: "accurate" }),
+      })
+      .execute();
+
     const response = await app.inject({
       method: "POST",
       url: `/api/sites/${siteUuid}/build-commands`,
