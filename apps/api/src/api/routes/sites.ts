@@ -797,12 +797,19 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
 
-        const docs = await generateSiteDocs(data, gmbListing, fastify.config, {
-          db: fastify.db,
-          workspaceUuid: request.workspace.uuid,
-          userUuid: request.user.uuid,
-          siteUuid: newSiteUuid,
-        });
+        const docs = await generateSiteDocs(
+          data,
+          gmbListing,
+          fastify.config,
+          {
+            db: fastify.db,
+            workspaceUuid: request.workspace.uuid,
+            userUuid: request.user.uuid,
+            siteUuid: newSiteUuid,
+          },
+          screenshotAsset?.url ?? null,
+          "replication",
+        );
 
         // Find a unique slug in this workspace.
         let uniqueSlug = baseSlug;

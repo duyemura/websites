@@ -198,7 +198,7 @@ function scoreLogoImage(image: ScrapedImage): number {
   return score;
 }
 
-function extractLogo(data: ScrapedWebsiteData): BrandLogo {
+export function extractLogo(data: ScrapedWebsiteData): BrandLogo {
   const logoCandidates = data.images
     .filter((img) => img.context === "logo" || imageFileName(img).toLowerCase().includes("logo"))
     .sort((a, b) => scoreLogoImage(b) - scoreLogoImage(a));
@@ -599,6 +599,8 @@ function makeHeaderSection(data: ScrapedWebsiteData): SiteSection {
       navLinks: data.navLinks,
       variant: hasHeroImage ? "transparent" : "default",
       headerCtaStyle: data.headerCtaStyle,
+      ctaLabel: data.buttons[0] ?? undefined,
+      ctaHref: "#cta",
     },
   };
 }
@@ -1109,7 +1111,7 @@ function isInternalRelativeLink(href: string): boolean {
   return href.startsWith("/") && !href.startsWith("//");
 }
 
-function detectHeadingStyle(data: ScrapedWebsiteData): HeadingStyle {
+export function detectHeadingStyle(data: ScrapedWebsiteData): HeadingStyle {
   const headingFont = data.fonts.find((f) => f.role === "heading");
   const weights = headingFont?.weights ?? [];
   const textUppercaseFromScale = data.fontSizes.some(
@@ -1183,3 +1185,7 @@ export function buildSiteBlueprint(data: ScrapedWebsiteData): SiteBlueprint {
     },
   };
 }
+
+export const extractHeaderSection = makeHeaderSection;
+export const extractFooterSection = makeFooterSection;
+export const deriveThemeTokens = buildDesignTokens;

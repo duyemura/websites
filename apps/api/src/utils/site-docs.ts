@@ -8,7 +8,11 @@ import {
 import { assertAllowedDocKey } from "./doc-registry";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
-import { buildSiteBlueprint } from "./site-blueprint";
+import { buildSiteHierarchy } from "./site-hierarchy-builder";
+import { buildDesignSystemV2 } from "./design-system-builder";
+import { buildSectionVisualEvidence } from "./section-visual-evidence-builder";
+import type { SiteHierarchy } from "../types/site-hierarchy";
+import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { Config } from "../plugins/env";
 import {
   extractBusinessInfoFields,
@@ -398,21 +402,46 @@ Generate the homepage from the blueprint draft, workspace memory, business info,
   };
 }
 
-function makeBlueprintDraftDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
-  const blueprint = buildSiteBlueprint(ctx.scraped);
+const SITE_HIERARCHY_DOC_KEY = "site-hierarchy";
+const SITE_HIERARCHY_DOC_TITLE = "Site hierarchy";
+const DESIGN_SYSTEM_DOC_KEY = "design-system";
+const DESIGN_SYSTEM_DOC_TITLE = "Design system";
+const SECTION_VISUAL_EVIDENCE_DOC_KEY = "section-visual-evidence";
+const SECTION_VISUAL_EVIDENCE_DOC_TITLE = "Section visual evidence";
+
+function makeSiteHierarchyDoc(
+  ctx: DocGenerationContext,
+  mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
+): GeneratedSiteDoc {
+  const hierarchy = buildSiteHierarchy(ctx.scraped, mode);
   return {
-    key: "blueprint-draft",
-    title: "Blueprint draft",
-    content: `# Blueprint draft
+    key: SITE_HIERARCHY_DOC_KEY,
+    title: SITE_HIERARCHY_DOC_TITLE,
+    content: `# Site hierarchy\n\nThis doc holds the semantic page/section hierarchy.\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify(hierarchy, null, 2)}\n\`\`\`\n`,
+    source: "ai_extracted",
+  };
+}
 
-This doc holds the initial JSON blueprint derived from the scraped source site.
+function makeDesignSystemDoc(
+  ctx: DocGenerationContext,
+  screenshotUrl?: string | null,
+  mode: DesignSystemV2["siteMetadata"]["mode"] = "replication",
+): GeneratedSiteDoc {
+  const designSystem = buildDesignSystemV2(ctx.scraped, screenshotUrl, mode);
+  return {
+    key: DESIGN_SYSTEM_DOC_KEY,
+    title: DESIGN_SYSTEM_DOC_TITLE,
+    content: `# Design system\n\nThis doc holds the locked global design system used to build every page.\n\n## Design system\n\n\`\`\`json\n${JSON.stringify(designSystem, null, 2)}\n\`\`\`\n`,
+    source: "ai_extracted",
+  };
+}
 
-## Site blueprint
-
-\`\`\`json
-${JSON.stringify(blueprint, null, 2)}
-\`\`\`
-`,
+function makeSectionVisualEvidenceDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
+  const evidence = buildSectionVisualEvidence(ctx.scraped);
+  return {
+    key: SECTION_VISUAL_EVIDENCE_DOC_KEY,
+    title: SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+    content: `# Section visual evidence\n\nThis doc holds per-section screenshots, computed styles, and DOM snippets used by the generic visual block renderer.\n\n## Section visual evidence\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`,
     source: "ai_extracted",
   };
 }
@@ -422,6 +451,8 @@ export async function generateSiteDocs(
   gmb?: GmbListing,
   config?: Config,
   memoryCtx?: WorkspaceMemoryContext,
+  screenshotUrl?: string | null,
+  mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
 ): Promise<GeneratedSiteDoc[]> {
   const ctx: DocGenerationContext = { scraped: data, gmb };
   const brandInput = buildBrandGuidelinesInput(ctx);
@@ -461,7 +492,9 @@ export async function generateSiteDocs(
     },
     await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
     makeSiteStrategyDoc(ctx),
-    makeBlueprintDraftDoc(ctx),
+    makeDesignSystemDoc(ctx, screenshotUrl, mode),
+    makeSiteHierarchyDoc(ctx, mode),
+    makeSectionVisualEvidenceDoc(ctx),
   ];
 
   validateGeneratedDocs(docs);

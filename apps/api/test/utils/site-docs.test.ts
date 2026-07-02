@@ -3,6 +3,8 @@ import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/utils/brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { generateSiteDocs } from "../../src/utils/site-docs";
+import type { SiteHierarchy } from "../../src/types/site-hierarchy";
+import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
 
 async function docKeys(docs: Promise<ReturnType<typeof generateSiteDocs>>): Promise<string[]> {
   return (await docs).map((d) => d.key);
@@ -45,6 +47,35 @@ const baseScrape: ScrapedWebsiteData = {
     ],
   },
   screenshotUrls: ["https://example-gym.com/screenshot.png"],
+  sections: [
+    {
+      id: "section-hero",
+      type: "Hero",
+      heading: "Train with purpose",
+      body: "We build fitness for real life.",
+      cta: { label: "Book a class", href: "#cta" },
+      visualEvidence: {
+        evidenceId: "ev-hero",
+        pageSlug: "index",
+        sectionId: "section-hero",
+        boundingBox: { x: 0, y: 0, width: 1200, height: 600 },
+        computedStyles: [],
+      },
+    },
+    {
+      id: "section-features",
+      type: "SiteCardGroup",
+      heading: "What we offer",
+      items: [{ title: "Group class", description: "One hour" }],
+      visualEvidence: {
+        evidenceId: "ev-features",
+        pageSlug: "index",
+        sectionId: "section-features",
+        boundingBox: { x: 0, y: 600, width: 1200, height: 400 },
+        computedStyles: [],
+      },
+    },
+  ],
 };
 
 const baseGmb: GmbListing = {
@@ -109,7 +140,9 @@ describe("generateSiteDocs", () => {
       BRAND_GUIDELINES_DOC_KEY,
       "business-info",
       "site-strategy",
-      "blueprint-draft",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
     ]);
   });
 
@@ -255,16 +288,23 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("inclusive");
   });
 
-  test("blueprint draft doc contains a populated site blueprint, not an empty placeholder", async () => {
-    const docs = await generateSiteDocs(baseScrape);
-    const blueprint = docs.find((d) => d.key === "blueprint-draft")!;
-    expect(blueprint.content).toContain("## Site blueprint");
-    expect(blueprint.content).toContain('"site_metadata"');
-    expect(blueprint.content).toContain('"target_url": "https://example-gym.com"');
-    expect(blueprint.content).toContain('"pages"');
-    expect(blueprint.content).toContain('"slug": "index"');
-    expect(blueprint.content).toContain('"slug": "classes"');
-    expect(blueprint.content).not.toContain('"design_tokens": {}');
-    expect(blueprint.content).not.toContain('"pages": []');
+  test("emits site-hierarchy, design-system, and section-visual-evidence docs", async () => {
+    const docs = await generateSiteDocs(baseScrape, baseGmb);
+    const keys = docs.map((d) => d.key);
+    expect(keys).toContain("site-hierarchy");
+    expect(keys).toContain("design-system");
+    expect(keys).toContain("section-visual-evidence");
+    expect(keys).not.toContain("blueprint-draft");
+
+    const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
+    const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(hierarchy.pages[0].slug).toBe("index");
+    expect(hierarchy.pages[0].sections.length).toBeGreaterThan(0);
+    expect(hierarchy.pages[0].sections[0].intent).toBeDefined();
+
+    const evidenceDoc = docs.find((d) => d.key === "section-visual-evidence")!;
+    const evidence: SectionVisualEvidence = JSON.parse(evidenceDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(evidence.rows.length).toBeGreaterThan(0);
+    expect(evidence.rows[0].boundingBox.width).toBeGreaterThan(0);
   });
 });
