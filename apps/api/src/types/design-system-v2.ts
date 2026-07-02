@@ -1,15 +1,10 @@
 import type { SiteSection, ThemeTokens } from "@ploy-gyms/shared-types";
 import type { BrandLogo, HeadingStyle } from "../utils/design-system";
+import type { SiteDocMetadata } from "./site-doc-metadata";
 
 export interface DesignSystemV2 {
   version: "2";
-  siteMetadata: {
-    framework: "astro";
-    mode: "replication" | "template" | "greenfield";
-    targetUrl?: string;
-    businessName?: string;
-    generatedAt: string;
-  };
+  siteMetadata: SiteDocMetadata;
   global: {
     tokens: ThemeTokens;
     shell: {

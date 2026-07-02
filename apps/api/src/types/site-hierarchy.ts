@@ -46,15 +46,11 @@ export interface HierarchyPage {
   sections: HierarchySection[];
 }
 
+import type { SiteDocMetadata } from "./site-doc-metadata";
+
 export interface SiteHierarchy {
   version: "1";
-  siteMetadata: {
-    framework: "astro";
-    mode: "replication" | "template" | "greenfield";
-    targetUrl?: string;
-    businessName?: string;
-    generatedAt: string;
-  };
+  siteMetadata: SiteDocMetadata;
   pages: HierarchyPage[];
   buildPlan: {
     nextPage: string;

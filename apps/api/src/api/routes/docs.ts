@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ExpressionBuilder } from "kysely";
 import type { DB } from "../../types/db";
 import { makeDocKey } from "../../utils/docs";
-import { AllowedDocKeySchema } from "../../utils/doc-registry";
+import { AllowedDocKeySchema, ALLOWED_DOC_KEYS } from "../../utils/doc-registry";
 
 const DocSchema = z.object({
   uuid: z.string(),
@@ -190,7 +190,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         return reply.code(400).send({
           error:
             `Doc key "${generatedKey}" is not allowed. ` +
-            `Allowed keys: workspace-memory, site-memory, brand-guidelines, business-info, site-strategy, blueprint-draft.`,
+            `Allowed keys: ${ALLOWED_DOC_KEYS.join(", ")}.`,
         });
       }
       const key = keyParse.data;
