@@ -6,6 +6,7 @@ import type {
   ThemeTokens,
 } from "@ploy-gyms/shared-types";
 import type { BrandLogo, HeadingStyle } from "./design-system";
+import type { PageBuildStatus } from "../types/site-hierarchy";
 
 const CSS_ARTIFACT_PATTERN = /^\s*[*.#[@:\w-]+\s*\{/;
 const MAX_NAV_LABEL_LENGTH = 30;
@@ -56,7 +57,7 @@ const NEUTRAL_TOKENS: ThemeTokens = {
 
 const FALLBACK_PRIMARY = "#171717";
 
-export type PageBuildStatus = "planned" | "in_progress" | "built" | "approved" | "skipped";
+export type { PageBuildStatus };
 
 export interface SiteBlueprint {
   site_metadata: {
