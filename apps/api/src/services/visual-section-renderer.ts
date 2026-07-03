@@ -180,7 +180,26 @@ ${section.notes ? `- Notes: ${section.notes}` : ""}
 The component should match the screenshot's layout, typography, spacing, colors, and imagery as closely as possible while remaining fully responsive. Use CSS variables for colors via var(--color-*) references. Include frontmatter that declares any props/constants used. Preserve all visible text content from the screenshot and metadata. If the screenshot shows a grid, cards, columns, or a specific background treatment, replicate it. Avoid arbitrary inline styles unless necessary for a precise match.${responsiveBlock}${interactionBlock}${extraBlock}`;
 }
 
-export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<string> {
+export interface RenderVisualBlockResult {
+  /** Rendered Astro component source. */
+  code: string;
+  /** True when the LLM path was skipped or failed and the deterministic
+   *  fallback was returned instead. Callers that care about distinguishing a
+   *  successful LLM render from a silent fallback (e.g. astro-check retry)
+   *  can use this to log accurately. */
+  isFallback: boolean;
+}
+
+/**
+ * Same as {@link renderVisualBlock}, but returns a structured result that
+ * flags whether the LLM call fell back to the deterministic block. This is
+ * additive — existing callers can keep using `renderVisualBlock`; use this
+ * variant only when the fallback distinction matters (retry logging, QA
+ * accounting, etc.).
+ */
+export async function renderVisualBlockWithFlag(
+  input: RenderVisualBlockInput,
+): Promise<RenderVisualBlockResult> {
   const {
     section,
     evidence,
@@ -193,7 +212,7 @@ export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<
   } = input;
 
   if (!evidence?.screenshotUrl) {
-    return renderFallbackBlock(section, designSystem);
+    return { code: renderFallbackBlock(section, designSystem), isFallback: true };
   }
 
   try {
@@ -229,7 +248,7 @@ export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<
 
     let source = response.content.trim();
     if (!source) {
-      return renderFallbackBlock(section, designSystem);
+      return { code: renderFallbackBlock(section, designSystem), isFallback: true };
     }
 
     if (source.startsWith("```astro") && source.endsWith("```")) {
@@ -238,8 +257,13 @@ export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<
       source = source.slice(3, -3).trim();
     }
 
-    return source;
+    return { code: source, isFallback: false };
   } catch {
-    return renderFallbackBlock(section, designSystem);
+    return { code: renderFallbackBlock(section, designSystem), isFallback: true };
   }
+}
+
+export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<string> {
+  const result = await renderVisualBlockWithFlag(input);
+  return result.code;
 }

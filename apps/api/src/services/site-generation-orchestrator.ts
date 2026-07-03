@@ -25,6 +25,7 @@ import type { SectionVisualEvidence } from "../types/section-visual-evidence";
 import { renderVisualBlock } from "./visual-section-renderer";
 import { renderSemanticSection } from "../utils/section-component-registry";
 import { makeDefaultHeader, makeDefaultFooter } from "./astro-code-generator";
+import { renderSharedComponents } from "./pipeline/build-stage";
 
 export interface OrchestratorContext {
   db: Kysely<DB>;
@@ -384,6 +385,18 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     }
   }
 
+  // Render shared components used by this page (if any) so downstream imports
+  // in `generateAstroPage` resolve. Without this, sections with
+  // `sharedComponentId` are skipped above but the corresponding
+  // `src/components/shared/{id}.astro` files are never written and astro
+  // build fails with a missing-import error.
+  const sharedComponents = await renderSharedComponents(
+    [signedPage],
+    signedDesignSystem,
+    signedVisualEvidence,
+    config,
+  );
+
   const generated = await generateAstroPage({
     db,
     config,
@@ -395,6 +408,7 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     renderedSections,
     mode: resolvedMode,
     attemptId,
+    sharedComponents,
   });
 
   if (!generated.buildSuccess) {

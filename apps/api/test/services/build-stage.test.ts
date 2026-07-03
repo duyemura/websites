@@ -4,7 +4,10 @@ import path from "node:path";
 import os from "node:os";
 import { db } from "../../src/database";
 import { setupTestContext } from "../setup";
-import { runBuildStage } from "../../src/services/pipeline/build-stage";
+import {
+  runBuildStage,
+  renderSharedComponents,
+} from "../../src/services/pipeline/build-stage";
 import { saveSiteHierarchyDoc } from "../../src/utils/site-hierarchy-io";
 import { saveDesignSystemDoc } from "../../src/utils/design-system-io";
 import { saveSectionVisualEvidenceDoc } from "../../src/utils/section-visual-evidence-io";
@@ -329,5 +332,39 @@ describe("build stage", () => {
       }
     }
     expect(missing).toBe(2);
+  });
+
+  it("renderSharedComponents renders shared components for a single-page input (buildPage path)", async () => {
+    // Regression: the legacy `buildPage` orchestrator used to skip
+    // `sharedComponentId` sections without writing the shared component
+    // files, causing astro build to fail with a missing-import error. Both
+    // paths now use `renderSharedComponents` — this test locks in the
+    // single-page invocation the orchestrator uses.
+    const hierarchy = makeSharedHierarchy();
+    const designSystem = makeDesignSystem();
+    const evidence = makeEvidence([
+      "ev-home-hero",
+      "ev-home-locations",
+      "ev-about-hero",
+      "ev-about-locations",
+    ]);
+
+    const indexPage = hierarchy.pages.find((p) => p.slug === "index");
+    if (!indexPage) throw new Error("expected index page in shared hierarchy fixture");
+
+    const built = await renderSharedComponents(
+      [indexPage],
+      designSystem,
+      evidence,
+      config,
+    );
+
+    expect(built.size).toBe(1);
+    expect(built.has("shared-0")).toBe(true);
+    const source = built.get("shared-0") ?? "";
+    // The vitest mock at the top returns a minimal <section>-based Astro
+    // component; confirm we got Astro source back and not an empty string.
+    expect(source.length).toBeGreaterThan(0);
+    expect(source).toContain("<section");
   });
 });

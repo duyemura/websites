@@ -37,6 +37,7 @@ import {
 } from "../../utils/pipeline/breakpoint-tailwind";
 import {
   renderVisualBlock,
+  renderVisualBlockWithFlag,
   renderFallbackBlock,
 } from "../visual-section-renderer";
 import {
@@ -147,6 +148,34 @@ export async function rehostMedia(
   const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/build/media`;
   const seen = new Map<string, string>(); // original -> new URL
 
+  async function rehostUrl(original: string, pageSlug: string): Promise<string | undefined> {
+    const cached = seen.get(original);
+    if (cached) return cached;
+    try {
+      const res = await fetch(original);
+      if (!res.ok) throw new Error(`fetch ${original} → ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") ?? "image/jpeg";
+      const ext = extForContentType(contentType);
+      const key = `${prefix}/${hashFragment(original)}${ext}`;
+      const newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, contentType);
+      seen.set(original, newUrl);
+      log.push({
+        category: "performance",
+        description: `Re-hosted ${original} as ${newUrl}`,
+        page: pageSlug,
+      });
+      return newUrl;
+    } catch (err) {
+      log.push({
+        category: "performance",
+        description: `Failed to re-host ${original}: ${(err as Error).message}`,
+        page: pageSlug,
+      });
+      return undefined;
+    }
+  }
+
   for (const page of hierarchy.pages) {
     for (const section of page.sections) {
       const images = section.content.images ?? [];
@@ -155,31 +184,18 @@ export async function rehostMedia(
         if (!img) continue;
         const original = img.url;
         if (!original || original.startsWith("data:")) continue;
-        try {
-          let newUrl = seen.get(original);
-          if (!newUrl) {
-            const res = await fetch(original);
-            if (!res.ok) throw new Error(`fetch ${original} → ${res.status}`);
-            const buf = Buffer.from(await res.arrayBuffer());
-            const contentType = res.headers.get("content-type") ?? "image/jpeg";
-            const ext = extForContentType(contentType);
-            const key = `${prefix}/${hashFragment(original)}${ext}`;
-            newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, contentType);
-            seen.set(original, newUrl);
-            log.push({
-              category: "performance",
-              description: `Re-hosted ${original} as ${newUrl}`,
-              page: page.slug,
-            });
-          }
-          img.url = newUrl;
-        } catch (err) {
-          log.push({
-            category: "performance",
-            description: `Failed to re-host ${original}: ${(err as Error).message}`,
-            page: page.slug,
-          });
-        }
+        const newUrl = await rehostUrl(original, page.slug);
+        if (newUrl) img.url = newUrl;
+      }
+
+      const items = section.content.items ?? [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
+        const original = item.imageUrl;
+        if (!original || original.startsWith("data:")) continue;
+        const newUrl = await rehostUrl(original, page.slug);
+        if (newUrl) item.imageUrl = newUrl;
       }
     }
   }
@@ -204,11 +220,17 @@ function hashFragment(input: string): string {
 }
 
 /**
- * Render all shared components once. Returns a map of sharedComponentId →
- * rendered Astro source.
+ * Render all shared components once for a hierarchy (or a single page's
+ * worth of sections). Returns a map of sharedComponentId → rendered Astro
+ * source that `writeSharedComponents` / `generateAstroPage` can consume.
+ *
+ * Exported so both `runBuildStage` (whole-hierarchy build) and the legacy
+ * per-page `buildPage` orchestrator can share the same rendering path.
+ * Without this, page rendering that skips `sharedComponentId` sections
+ * would fail at astro build time with a missing-import error.
  */
-async function buildSharedComponents(
-  hierarchy: SiteHierarchy,
+export async function renderSharedComponents(
+  pages: HierarchyPage[],
   designSystem: DesignSystemV2,
   evidence: SectionVisualEvidence | null,
   config: Config,
@@ -221,7 +243,7 @@ async function buildSharedComponents(
     string,
     { section: HierarchySection; propFields?: string[] }
   >();
-  for (const page of hierarchy.pages) {
+  for (const page of pages) {
     for (const section of page.sections) {
       const id = section.sharedComponentId;
       if (!id || byId.has(id)) continue;
@@ -378,8 +400,8 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
 
   // 5. Shared components — render once for all pages in the hierarchy so
   //    downstream page imports always resolve.
-  const sharedComponents = await buildSharedComponents(
-    hierarchy,
+  const sharedComponents = await renderSharedComponents(
+    hierarchy.pages,
     designSystem,
     evidence,
     input.config,
@@ -438,7 +460,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
       const row = getEvidenceForSection(evidence, ownerSection);
       const tailwind = tailwindForSection(designSystem);
       try {
-        const retry = await renderVisualBlock({
+        const retry = await renderVisualBlockWithFlag({
           section: ownerSection,
           evidence: row,
           designSystem,
@@ -453,7 +475,19 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
           "sections",
           `${sectionId}.astro`,
         );
-        await writeFile(filePath, retry);
+        await writeFile(filePath, retry.code);
+        // If renderVisualBlock silently fell back (missing evidence, empty LLM
+        // response, or thrown LLM error) we still overwrote the file — but
+        // with deterministic content, not a fixed LLM output. Record it so
+        // callers know the retry didn't actually succeed.
+        if (retry.isFallback) {
+          fallbacks.push({ sectionId, page: ownerPage.slug });
+          buildLog.push({
+            category: "consistency",
+            description: `LLM retry fell back to deterministic block for ${sectionId}`,
+            page: ownerPage.slug,
+          });
+        }
       } catch {
         const filePath = path.join(
           sourceDir,
