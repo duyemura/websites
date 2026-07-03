@@ -27,6 +27,7 @@ import {
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
+import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
 
@@ -282,7 +283,7 @@ async function visionSegment(
               { type: "text", text: prompt },
               {
                 type: "image_url",
-                image_url: { url: fullPageScreenshotUrl },
+                image_url: { url: await imageUrlToDataUri(fullPageScreenshotUrl) },
               },
             ],
           },

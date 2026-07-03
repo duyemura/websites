@@ -61,6 +61,7 @@ import {
 import { generateSiteDocsForGreenfield } from "../../utils/site-docs";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
+import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
 import type { SectionVisualEvidence, InteractionEvidenceCapture, InteractionComponentPattern } from "../../types/section-visual-evidence";
 import type { SiteHierarchy } from "../../types/site-hierarchy";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
@@ -209,8 +210,8 @@ async function classifyInteraction(
                 type: "text",
                 text: "Compare these before/after screenshots of a UI interaction. Return one word: dropdown, accordion, tab, modal, drawer, tooltip, or other.",
               },
-              { type: "image_url", image_url: { url: capture.beforeUrl } },
-              { type: "image_url", image_url: { url: capture.afterUrl } },
+              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.beforeUrl) } },
+              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.afterUrl) } },
             ],
           },
         ],

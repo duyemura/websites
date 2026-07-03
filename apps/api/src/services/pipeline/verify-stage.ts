@@ -37,6 +37,7 @@ import {
 import { runAxeBaseline, runLighthouse } from "../../utils/pipeline/source-baseline";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
+import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
 
 export interface VerifyStageInput {
   db: Kysely<DB>;
@@ -448,7 +449,7 @@ async function visionCompare(
                 "Rate visual similarity 0–100 (100 = identical), and list up to 5 concrete " +
                 'differences. Respond as JSON only: {"score": number, "differences": string[]}.',
             },
-            { type: "image_url", image_url: { url: originalUrl } },
+            { type: "image_url", image_url: { url: await imageUrlToDataUri(originalUrl) } },
             { type: "image_url", image_url: { url: cloneDataUrl } },
           ],
         },
