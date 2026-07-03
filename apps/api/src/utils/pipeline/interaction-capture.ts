@@ -151,12 +151,13 @@ function diffSnapshots(
     const a = afterMap.get(b.selector);
     if (!a) continue;
     for (const [property, beforeVal] of Object.entries(b.styles)) {
-      if (a[property] !== beforeVal) {
+      const afterVal = a[property];
+      if (afterVal !== undefined && afterVal !== beforeVal) {
         diff.push({
           selector: b.selector,
           property,
           before: beforeVal,
-          after: a[property],
+          after: afterVal,
         });
       }
     }
