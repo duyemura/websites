@@ -293,7 +293,7 @@ async function discoverPages(
 ): Promise<DiscoveryInputs> {
   const page = await context.newPage();
   const base = new URL(url);
-  let sitemapUrls: string[] = [];
+  const sitemapUrls: string[] = [];
   let navLinks: DiscoveryInputs["navLinks"] = [];
   let footerLinks: DiscoveryInputs["footerLinks"] = [];
   let sweepLinks: string[] = [];
