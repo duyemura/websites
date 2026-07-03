@@ -1,0 +1,360 @@
+import { chromium, type Page } from "playwright";
+import type { Kysely } from "kysely";
+import type { S3Client } from "@aws-sdk/client-s3";
+
+import type { DB } from "../../types/db";
+import type { Config } from "../../plugins/env";
+import {
+  SegmentArtifactSchema,
+  type ExtractArtifact,
+  type SegmentArtifact,
+  type SegmentSection,
+  type CanonicalSectionTag,
+} from "../../types/pipeline-artifacts";
+import {
+  runLadder,
+  type SectionCandidate,
+} from "../../utils/pipeline/segment-ladder";
+import { fillGaps } from "../../utils/pipeline/segment-merge";
+import { classifySections } from "../../utils/pipeline/section-classifier";
+import {
+  fingerprintSections,
+  resolveSharedComponents,
+} from "../../utils/pipeline/shared-components";
+import {
+  saveArtifact,
+  loadArtifact,
+  type ArtifactContext,
+} from "../../utils/pipeline/artifact-store";
+import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
+import { chatCompletion } from "../../ai/llm-client";
+import { modelForTask } from "../../ai/model-picker";
+
+export interface SegmentStageInput {
+  db: Kysely<DB>;
+  config: Config;
+  s3: S3Client;
+  siteUuid: string;
+  workspaceUuid: string;
+  pages?: string[];
+}
+
+/**
+ * Runs the segment stage: for every in-scope page from the extract artifact,
+ * segments the page into candidate sections via the ladder (semantic → visual
+ * → vision), classifies each section, crops it at 1440 and 375, uploads the
+ * crops to S3, then cross-page fingerprints and resolves shared components.
+ * Merges with any prior segment artifact (fresh overwrites by path).
+ */
+export async function runSegmentStage(
+  input: SegmentStageInput,
+): Promise<SegmentArtifact> {
+  const ctx: ArtifactContext = {
+    siteUuid: input.siteUuid,
+    workspaceUuid: input.workspaceUuid,
+  };
+
+  const extract = await loadArtifact<ExtractArtifact>(input.db, ctx, "extract");
+  if (!extract) {
+    throw new Error("No extract artifact found — run the extract stage first.");
+  }
+
+  const scope = input.pages
+    ? extract.payload.pages.filter((p) => input.pages!.includes(p.path))
+    : extract.payload.pages;
+
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
+  const artifactPages: SegmentArtifact["pages"] = [];
+
+  const chatFn = (req: {
+    model?: string;
+    messages: Array<{ role: "user"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+  }) =>
+    chatCompletion(
+      {
+        model: req.model ?? modelForTask("default", input.config),
+        messages: req.messages,
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+      },
+      input.config,
+    );
+
+  try {
+    for (const extractPage of scope) {
+      const pageUrl = new URL(
+        extractPage.path,
+        extract.payload.url,
+      ).toString();
+      const page = await context.newPage();
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(pageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      await page.waitForTimeout(2000);
+
+      // ---- ladder with real vision fallback ----
+      const ladderResult = await runLadder(page, {
+        needsVisionSegmentation: extractPage.flags.needsVisionSegmentation,
+        visionSegment: () =>
+          visionSegment(
+            input.config,
+            extractPage.screenshots.full1440,
+            page,
+          ),
+      });
+
+      const pageHeight = await page.evaluate(
+        () => document.documentElement.scrollHeight,
+      );
+      const filled = fillGaps(ladderResult.candidates, pageHeight, 1440);
+
+      // ---- classify ----
+      const tags = await classifySections(
+        filled.map((c) => ({
+          headingText: c.headingText,
+          innerText: c.innerText,
+          landmarkTag: c.landmarkTag,
+        })),
+        chatFn,
+      );
+
+      // ---- desktop crops ----
+      const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/segment`;
+      const pageKey =
+        extractPage.path === "/"
+          ? "index"
+          : extractPage.path
+              .replace(/^\/+|\/+$/g, "")
+              .replace(/[^\w.-]+/g, "-");
+      const sections: SegmentSection[] = [];
+
+      for (let i = 0; i < filled.length; i++) {
+        const cand = filled[i]!;
+        const clip = clampClip(cand.boundingBox, 1440, pageHeight);
+        const desktopCrop = await page.screenshot({ fullPage: true, clip });
+        const desktop = await uploadPipelineImage(
+          input.s3,
+          input.config,
+          `${prefix}/${pageKey}-${i}-1440.png`,
+          desktopCrop,
+        );
+        const tag: CanonicalSectionTag =
+          cand.source === "gap-fill" ? "unknown" : tags[i] ?? "unknown";
+        const source: SegmentSection["source"] =
+          cand.source === "gap-fill" ? "visual-boundary" : cand.source;
+        sections.push({
+          id: `${pageKey}-seg-${i}`,
+          tag,
+          order: i,
+          confidence: cand.confidence,
+          source,
+          boundingBox: cand.boundingBox,
+          crops: { desktop, mobile: "" },
+          innerText: cand.innerText,
+          headingText: cand.headingText,
+          mediaUrls: mediaInBox(extractPage.media, cand.boundingBox),
+          interactionIds: interactionsInBox(
+            extractPage.interactions,
+            cand.boundingBox,
+          ),
+        });
+      }
+
+      // ---- mobile crops (proportional mapping) ----
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.waitForTimeout(500);
+      const mobileHeight = await page.evaluate(
+        () => document.documentElement.scrollHeight,
+      );
+      const ratio = mobileHeight / Math.max(1, pageHeight);
+      for (const section of sections) {
+        const box375 = {
+          x: 0,
+          y: Math.round(section.boundingBox.y * ratio),
+          width: 375,
+          height: Math.max(
+            60,
+            Math.round(section.boundingBox.height * ratio),
+          ),
+        };
+        const mobileClip = clampClip(box375, 375, mobileHeight);
+        const mobileCrop = await page.screenshot({
+          fullPage: true,
+          clip: mobileClip,
+        });
+        section.boundingBox375 = box375;
+        section.crops.mobile = await uploadPipelineImage(
+          input.s3,
+          input.config,
+          `${prefix}/${section.id}-375.png`,
+          mobileCrop,
+        );
+      }
+
+      await page.close();
+      artifactPages.push({
+        path: extractPage.path,
+        sections,
+        ladder: ladderResult.ladder,
+      });
+    }
+  } finally {
+    await context.close().catch(() => {});
+    await browser.close();
+  }
+
+  // ---- cross-page fingerprinting (merge with previously segmented pages) ----
+  const existing = await loadArtifact<SegmentArtifact>(input.db, ctx, "segment");
+  const freshPaths = new Set(artifactPages.map((p) => p.path));
+  const allPages: SegmentArtifact["pages"] = [
+    ...artifactPages,
+    ...(existing?.payload.pages.filter((p) => !freshPaths.has(p.path)) ?? []),
+  ];
+
+  const prints = fingerprintSections(
+    allPages.flatMap((p) =>
+      p.sections.map((s) => ({
+        pageId: p.path,
+        sectionId: s.id,
+        tag: s.tag,
+        innerText: s.innerText,
+        mediaUrls: s.mediaUrls,
+        aspectRatio: s.boundingBox.width / Math.max(1, s.boundingBox.height),
+      })),
+    ),
+  );
+  const shared = resolveSharedComponents(prints);
+
+  // Map "pageId:sectionId" → shared component id so we can annotate.
+  const sharedByMember = new Map<string, string>();
+  for (const comp of shared) {
+    for (const member of comp.memberSectionIds) {
+      sharedByMember.set(member, comp.id);
+    }
+  }
+  for (const p of allPages) {
+    for (const s of p.sections) {
+      const id = sharedByMember.get(`${p.path}:${s.id}`);
+      if (id) s.sharedComponentId = id;
+    }
+  }
+
+  const artifact = SegmentArtifactSchema.parse({
+    siteUuid: input.siteUuid,
+    sourceExtractAt: extract.payload.extractedAt,
+    pages: allPages,
+    sharedComponents: shared.map((c) => ({
+      id: c.id,
+      tag: c.tag as CanonicalSectionTag,
+      memberSectionIds: c.memberSectionIds,
+      resolution: c.resolution,
+      propFields: c.propFields,
+    })),
+  });
+  await saveArtifact(input.db, ctx, "segment", artifact);
+  return artifact;
+}
+
+async function visionSegment(
+  config: Config,
+  fullPageScreenshotUrl: string,
+  page: Page,
+): Promise<SectionCandidate[]> {
+  const pageHeight = await page.evaluate(
+    () => document.documentElement.scrollHeight,
+  );
+  const prompt = `This is a full-page screenshot of a gym website. Identify each visually distinct content section top to bottom. Return ONLY a JSON array: [{"type": "hero|feature-grid|testimonial-band|cta-band|content-block|media-block|location-block|faq-block|schedule|team|contact|unknown", "y_start_pct": number, "y_end_pct": number}] where percentages are 0-100 of total page height.`;
+  try {
+    const response = await chatCompletion(
+      {
+        model: modelForTask("vision", config),
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "image_url",
+                image_url: { url: fullPageScreenshotUrl },
+              },
+            ],
+          },
+        ],
+        temperature: 0,
+        maxTokens: 1024,
+      },
+      config,
+    );
+    const match = response.content.match(/\[[\s\S]*\]/);
+    const parsed = JSON.parse(match ? match[0] : "[]") as Array<{
+      type: string;
+      y_start_pct: number;
+      y_end_pct: number;
+    }>;
+    return parsed.map((entry) => ({
+      boundingBox: {
+        x: 0,
+        y: Math.round((entry.y_start_pct / 100) * pageHeight),
+        width: 1440,
+        height: Math.round(
+          ((entry.y_end_pct - entry.y_start_pct) / 100) * pageHeight,
+        ),
+      },
+      confidence: 0.75,
+      source: "vision" as const,
+      innerText: "",
+      headingText: undefined,
+    }));
+  } catch {
+    // Vision unavailable — ladder proceeds with what it has; gap-fill covers
+    // the rest.
+    return [];
+  }
+}
+
+function clampClip(
+  box: { x: number; y: number; width: number; height: number },
+  maxWidth: number,
+  maxHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const x = Math.max(0, Math.min(box.x, Math.max(0, maxWidth - 1)));
+  const y = Math.max(0, Math.min(box.y, Math.max(0, maxHeight - 1)));
+  return {
+    x,
+    y,
+    width: Math.max(1, Math.min(box.width, maxWidth - x)),
+    height: Math.max(1, Math.min(box.height, maxHeight - y)),
+  };
+}
+
+function mediaInBox(
+  media: ExtractArtifact["pages"][number]["media"],
+  _box: { y: number; height: number },
+): string[] {
+  // Network capture has no position info; return image/video URLs page-wide.
+  // Position attribution happens naturally because the crop shows the actual
+  // imagery.
+  return media
+    .filter((m) => m.resourceType === "image" || m.resourceType === "video")
+    .map((m) => m.url);
+}
+
+function interactionsInBox(
+  interactions: ExtractArtifact["pages"][number]["interactions"],
+  box: { y: number; height: number },
+): string[] {
+  return interactions
+    .filter(
+      (i) =>
+        i.boundingBox.y >= box.y &&
+        i.boundingBox.y < box.y + box.height,
+    )
+    .map((i) => i.id);
+}
