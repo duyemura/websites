@@ -162,6 +162,57 @@ describe("visual-section-renderer", () => {
     expect(source).not.toContain("```");
   });
 
+  test("includes tailwind instructions and mobile crop when provided", async () => {
+    const captured: { messages: unknown; prompt: string } = { messages: null, prompt: "" };
+    vi.spyOn(llmClient, "chatCompletion").mockImplementationOnce(async (opts) => {
+      captured.messages = opts.messages;
+      const first = opts.messages[0];
+      if (first && Array.isArray(first.content)) {
+        const textPart = first.content.find((c) => c.type === "text");
+        if (textPart && "text" in textPart) captured.prompt = textPart.text;
+      }
+      return { content: "<section>ok</section>" };
+    });
+
+    const section = makeHierarchySection();
+    const designSystem = makeDesignSystem();
+    const evidence = {
+      evidenceId: "ev-1",
+      pageSlug: "index",
+      sectionId: "section-1",
+      boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+      computedStyles: [],
+      screenshotUrl: "https://example.com/desktop.png",
+      mobileScreenshotUrl: "https://example.com/mobile.png",
+      interactionCaptures: [
+        {
+          trigger: "click" as const,
+          beforeUrl: "https://x/b.png",
+          afterUrl: "https://x/a.png",
+          styleDiff: [{ selector: ".menu", property: "display", before: "none", after: "flex" }],
+          componentPattern: "dropdown" as const,
+        },
+      ],
+    };
+
+    await renderVisualBlock({
+      section,
+      evidence,
+      designSystem,
+      tailwindInstructions: [{ selector: ".features", instruction: "use `flex-col md:flex-row`" }],
+      config: makeConfig(),
+    });
+
+    expect(captured.prompt).toContain("Responsive behavior");
+    expect(captured.prompt).toContain("use `flex-col md:flex-row`");
+    expect(captured.prompt).toContain("Interactive components");
+    expect(captured.prompt).toContain("dropdown");
+    const msgs = captured.messages as { content: unknown[] }[];
+    const parts = msgs[0]?.content as { type: string }[];
+    const imageParts = parts.filter((p) => p.type === "image_url");
+    expect(imageParts).toHaveLength(2);
+  });
+
   test("falls back to deterministic block when the LLM call fails", async () => {
     vi.spyOn(llmClient, "chatCompletion").mockRejectedValueOnce(new Error("LLM unavailable"));
 

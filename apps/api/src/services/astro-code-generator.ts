@@ -29,6 +29,8 @@ export interface GeneratePageInput {
   renderedSections: RenderedSection[];
   mode: "replication" | "template" | "greenfield";
   attemptId: string;
+  /** Map of sharedComponentId → rendered Astro component source. */
+  sharedComponents?: Map<string, string>;
 }
 
 export interface GeneratePageOutput {
@@ -138,7 +140,7 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
 
   // Callers must sign private S3 asset URLs before passing rendered sections
   // and the design system in; buildPage already does this.
-  await writeProjectFiles(sourceDir, designSystem, page, renderedSections);
+  await writeProjectFiles(sourceDir, designSystem, page, renderedSections, input.sharedComponents);
 
   const installResult = await runCommand("pnpm", ["install"], sourceDir);
   if (installResult.exitCode !== 0) {
@@ -202,6 +204,22 @@ async function writeProjectFiles(
   designSystem: DesignSystemV2,
   page: HierarchyPage,
   renderedSections: RenderedSection[],
+  sharedComponents?: Map<string, string>,
+): Promise<void> {
+  await writeProjectScaffold(sourceDir, designSystem);
+  await writeSharedComponents(sourceDir, designSystem, page, sharedComponents);
+  await writePageFiles(sourceDir, page, renderedSections);
+}
+
+/**
+ * Write the top-level Astro project scaffold (package.json, config, tokens,
+ * layout, tsconfig). Safe to call multiple times — later calls overwrite the
+ * same files with identical content. Exposed for the build stage which writes
+ * an N-page project.
+ */
+export async function writeProjectScaffold(
+  sourceDir: string,
+  designSystem: DesignSystemV2,
 ): Promise<void> {
   const dirs = [
     path.join(sourceDir, "src", "layouts"),
@@ -218,9 +236,18 @@ async function writeProjectFiles(
   await writeFile(path.join(sourceDir, "tsconfig.json"), tsConfig());
   await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem));
   await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem));
+}
 
+async function writeSharedComponents(
+  sourceDir: string,
+  designSystem: DesignSystemV2,
+  page: HierarchyPage,
+  sharedComponents?: Map<string, string>,
+): Promise<void> {
   const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-  const primaryCta = page.primaryCta ?? (designSystem.reference as { homePagePrimaryCta?: { label?: string; href?: string } | null }).homePagePrimaryCta;
+  const primaryCta =
+    page.primaryCta ??
+    (designSystem.reference as { homePagePrimaryCta?: { label?: string; href?: string } | null }).homePagePrimaryCta;
   if (primaryCta?.label && primaryCta.href) {
     headerSection.props.ctaLabel = primaryCta.label;
     headerSection.props.ctaHref = primaryCta.href;
@@ -234,7 +261,35 @@ async function writeProjectFiles(
     renderSemanticSection(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
   );
 
+  if (sharedComponents) {
+    for (const [id, source] of sharedComponents) {
+      await writeFile(
+        path.join(sourceDir, "src", "components", "shared", `${sharedComponentFileName(id)}.astro`),
+        source,
+      );
+    }
+  }
+}
+
+/**
+ * Write the section files for one page + the top-level page file. Section
+ * components with a `sharedComponentId` are NOT written here — the page file
+ * imports them from `../components/shared/{id}.astro`. Safe to call once per
+ * page in a multi-page project.
+ */
+export async function writePageFiles(
+  sourceDir: string,
+  page: HierarchyPage,
+  renderedSections: RenderedSection[],
+): Promise<void> {
+  const sharedIds = new Set(
+    page.sections.filter((s) => s.sharedComponentId).map((s) => s.sharedComponentId as string),
+  );
+
   for (const { section, source } of renderedSections) {
+    // Skip writing per-section files for sections that resolve to a shared
+    // component — the page imports the shared file directly.
+    if (section.sharedComponentId) continue;
     await writeFile(
       path.join(sourceDir, "src", "components", "sections", `${section.id}.astro`),
       source,
@@ -242,7 +297,14 @@ async function writeProjectFiles(
   }
 
   const pageFileName = page.isHomePage ? "index.astro" : `${page.slug}.astro`;
-  await writeFile(path.join(sourceDir, "src", "pages", pageFileName), pageAstro(page));
+  await writeFile(
+    path.join(sourceDir, "src", "pages", pageFileName),
+    pageAstro(page, sharedIds),
+  );
+}
+
+export function sharedComponentFileName(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function packageJson(): string {
@@ -455,27 +517,60 @@ function toComponentName(value: string): string {
     .replace(/^(?=[0-9])/, "_");
 }
 
-function pageAstro(page: HierarchyPage): string {
+function pageAstro(page: HierarchyPage, sharedIds?: Set<string>): string {
   const title = page.metaTitle ?? page.title;
   const description = page.metaDescription ?? "";
-  const imports = page.sections
-    .map((section) => {
+  const shared = sharedIds ?? new Set<string>();
+
+  // De-dupe imports: multiple sections on a page may reference the same
+  // shared component id and only one `import` line should be emitted.
+  const seenImports = new Set<string>();
+  const importLines: string[] = [];
+  for (const section of page.sections) {
+    if (section.sharedComponentId) {
+      const id = section.sharedComponentId;
+      const componentName = toComponentName(id);
+      const key = `shared:${componentName}`;
+      if (seenImports.has(key)) continue;
+      seenImports.add(key);
+      importLines.push(
+        `import ${componentName} from "../components/shared/${sharedComponentFileName(id)}.astro";`,
+      );
+    } else {
       const componentName = toComponentName(section.id);
-      const fileName = section.id;
-      return `import ${componentName} from "../components/sections/${fileName}.astro";`;
-    })
-    .join("\n");
+      const key = `section:${componentName}`;
+      if (seenImports.has(key)) continue;
+      seenImports.add(key);
+      importLines.push(
+        `import ${componentName} from "../components/sections/${section.id}.astro";`,
+      );
+    }
+  }
 
   const renderedSections = page.sections
     .map((section) => {
+      if (section.sharedComponentId) {
+        const componentName = toComponentName(section.sharedComponentId);
+        const propsInline = section.sharedProps
+          ? " " +
+            Object.entries(section.sharedProps)
+              .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+              .join(" ")
+          : "";
+        return `    <${componentName}${propsInline} />`;
+      }
       const componentName = toComponentName(section.id);
       return `    <${componentName} />`;
     })
     .join("\n");
 
+  // Silence unused-var warnings for shared imports when the component set
+  // ends up not referenced on a particular page (defensive; normally not hit).
+  void shared;
+
   return `---
 import Layout from "../layouts/Layout.astro";
-${imports}
+${importLines.join("\n")}
 ---
 
 <Layout title=${JSON.stringify(title)} description=${JSON.stringify(description)}>

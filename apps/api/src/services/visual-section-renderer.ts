@@ -3,12 +3,18 @@ import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { HierarchySection } from "../types/site-hierarchy";
 import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 import { modelForTask } from "../ai/model-picker";
-import { chatCompletion } from "../ai/llm-client";
+import { chatCompletion, type ChatContentPart } from "../ai/llm-client";
+import type { TailwindInstruction } from "../utils/pipeline/breakpoint-tailwind";
 
 export interface RenderVisualBlockInput {
   section: HierarchySection;
   evidence?: SectionVisualEvidenceRow;
   designSystem: DesignSystemV2;
+  /** Pre-computed responsive tailwind instructions from breakpoint deltas. */
+  tailwindInstructions?: TailwindInstruction[];
+  /** Optional extra prompt text appended to the base prompt (e.g. astro check
+   *  errors on retry, or shared-component prop expectations). */
+  extraInstructions?: string;
   previousTag?: string;
   nextTag?: string;
   config: Config;
@@ -31,7 +37,7 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function renderFallbackBlock(section: HierarchySection, designSystem: DesignSystemV2): string {
+export function renderFallbackBlock(section: HierarchySection, designSystem: DesignSystemV2): string {
   const heading = str(section.content.heading) || section.tag;
   const body = escapeHtml(str(section.content.body));
   const eyebrow = escapeHtml(str(section.content.eyebrow));
@@ -105,9 +111,38 @@ const cta = ${json(cta)};
 </section>`;
 }
 
-function buildVisualPrompt(section: HierarchySection, designSystem: DesignSystemV2, previousTag?: string, nextTag?: string): string {
+function buildVisualPrompt(
+  section: HierarchySection,
+  designSystem: DesignSystemV2,
+  previousTag?: string,
+  nextTag?: string,
+  tailwindInstructions?: TailwindInstruction[],
+  evidence?: SectionVisualEvidenceRow,
+  extraInstructions?: string,
+): string {
   const tokens = designSystem.global.tokens;
   const rules = designSystem.global.rules;
+
+  const instructions = tailwindInstructions ?? [];
+  const responsiveBlock = instructions.length
+    ? `\n\nResponsive behavior (REQUIRED — derived from the source site's actual breakpoints):\n${instructions
+        .map((t) => `- ${t.selector}: ${t.instruction}`)
+        .join("\n")}`
+    : "";
+
+  const captures = evidence?.interactionCaptures ?? [];
+  const interactionBlock = captures.length
+    ? `\n\nInteractive components in this section (implement with Alpine.js x-data/x-show + CSS transitions):\n${captures
+        .map(
+          (c) =>
+            `- ${c.componentPattern ?? "toggle"} triggered by ${c.trigger}; observed style changes: ${JSON.stringify(
+              c.styleDiff.slice(0, 5),
+            )}`,
+        )
+        .join("\n")}`
+    : "";
+
+  const extraBlock = extraInstructions ? `\n\n${extraInstructions}` : "";
 
   return `You are an expert Astro + Tailwind CSS frontend developer. Replicate the visual design of the attached reference screenshot as a single self-contained Astro component.
 
@@ -142,11 +177,20 @@ ${previousTag ? `- Previous section tag: ${previousTag}` : ""}
 ${nextTag ? `- Next section tag: ${nextTag}` : ""}
 ${section.notes ? `- Notes: ${section.notes}` : ""}
 
-The component should match the screenshot's layout, typography, spacing, colors, and imagery as closely as possible while remaining fully responsive. Use CSS variables for colors via var(--color-*) references. Include frontmatter that declares any props/constants used. Preserve all visible text content from the screenshot and metadata. If the screenshot shows a grid, cards, columns, or a specific background treatment, replicate it. Avoid arbitrary inline styles unless necessary for a precise match.`;
+The component should match the screenshot's layout, typography, spacing, colors, and imagery as closely as possible while remaining fully responsive. Use CSS variables for colors via var(--color-*) references. Include frontmatter that declares any props/constants used. Preserve all visible text content from the screenshot and metadata. If the screenshot shows a grid, cards, columns, or a specific background treatment, replicate it. Avoid arbitrary inline styles unless necessary for a precise match.${responsiveBlock}${interactionBlock}${extraBlock}`;
 }
 
 export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<string> {
-  const { section, evidence, designSystem, previousTag, nextTag, config } = input;
+  const {
+    section,
+    evidence,
+    designSystem,
+    previousTag,
+    nextTag,
+    tailwindInstructions,
+    extraInstructions,
+    config,
+  } = input;
 
   if (!evidence?.screenshotUrl) {
     return renderFallbackBlock(section, designSystem);
@@ -154,20 +198,29 @@ export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<
 
   try {
     const model = modelForTask("vision", config);
-    const prompt = buildVisualPrompt(section, designSystem, previousTag, nextTag);
+    const prompt = buildVisualPrompt(
+      section,
+      designSystem,
+      previousTag,
+      nextTag,
+      tailwindInstructions,
+      evidence,
+      extraInstructions,
+    );
+
+    const content: ChatContentPart[] = [
+      { type: "text", text: prompt },
+      { type: "image_url", image_url: { url: evidence.screenshotUrl } },
+    ];
+    if (evidence.mobileScreenshotUrl) {
+      content.push({ type: "text", text: "Mobile (375px) rendering of the same section:" });
+      content.push({ type: "image_url", image_url: { url: evidence.mobileScreenshotUrl } });
+    }
 
     const response = await chatCompletion(
       {
         model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: evidence.screenshotUrl } },
-            ],
-          },
-        ],
+        messages: [{ role: "user", content }],
         temperature: 0.2,
         maxTokens: 4096,
       },

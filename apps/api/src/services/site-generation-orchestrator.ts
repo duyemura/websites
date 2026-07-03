@@ -354,6 +354,11 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
   for (let i = 0; i < signedPage.sections.length; i++) {
     const section = signedPage.sections[i];
     if (!section) continue;
+    // Sections that resolve to a shared component don't get an individual
+    // section file — the astro code generator writes them to
+    // `src/components/shared/{id}.astro` and imports them in the page. Skip
+    // rendering here to avoid unnecessary work / redundant LLM calls.
+    if (section.sharedComponentId) continue;
     const previousTag = signedPage.sections[i - 1]?.tag;
     const nextTag = signedPage.sections[i + 1]?.tag;
 

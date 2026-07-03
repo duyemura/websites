@@ -1,0 +1,542 @@
+import path from "node:path";
+import os from "node:os";
+import { spawn } from "node:child_process";
+import type { Kysely } from "kysely";
+import type { S3Client } from "@aws-sdk/client-s3";
+
+import type { DB } from "../../types/db";
+import type { Config } from "../../plugins/env";
+import type {
+  DesignSystemV2,
+  ResponsiveRule,
+} from "../../types/design-system-v2";
+import type {
+  HierarchyPage,
+  HierarchySection,
+  SiteHierarchy,
+} from "../../types/site-hierarchy";
+import type {
+  SectionVisualEvidence,
+  SectionVisualEvidenceRow,
+} from "../../types/section-visual-evidence";
+import {
+  loadSiteHierarchyDoc,
+  saveSiteHierarchyDoc,
+  updatePageStatus,
+} from "../../utils/site-hierarchy-io";
+import { loadDesignSystemDoc } from "../../utils/design-system-io";
+import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
+import {
+  saveArtifact,
+  type ArtifactContext,
+} from "../../utils/pipeline/artifact-store";
+import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
+import {
+  breakpointDeltasToTailwind,
+  type TailwindInstruction,
+} from "../../utils/pipeline/breakpoint-tailwind";
+import {
+  renderVisualBlock,
+  renderFallbackBlock,
+} from "../visual-section-renderer";
+import {
+  writeProjectScaffold,
+  writePageFiles,
+  sharedComponentFileName,
+} from "../astro-code-generator";
+import { renderSemanticSection } from "../../utils/section-component-registry";
+import { makeDefaultHeader, makeDefaultFooter } from "../astro-code-generator";
+import type { SiteSection } from "@ploy-gyms/shared-types";
+import { mkdir, writeFile, stat } from "node:fs/promises";
+
+export type BuildLogCategory =
+  | "consistency"
+  | "seo"
+  | "accessibility"
+  | "performance"
+  | "semantics";
+
+export interface BuildLogEntry {
+  category: BuildLogCategory;
+  description: string;
+  page?: string;
+}
+
+export interface BuildStageInput {
+  db: Kysely<DB>;
+  config: Config;
+  s3: S3Client;
+  siteUuid: string;
+  workspaceUuid: string;
+  /** Optional scope: only build these page slugs. Defaults to
+   *  `hierarchy.buildPlan.buildOrder`. */
+  pages?: string[];
+  /** Optional override for the output source dir; primarily for tests. */
+  sourceDir?: string;
+  /** Whether to run `astro check` as a post-pass. Defaults to false (opt-in)
+   *  because it requires the Astro project to have `node_modules` installed.
+   *  Callers that install deps first can set this true. */
+  runAstroCheck?: boolean;
+}
+
+export interface BuildStageResult {
+  builtPages: string[];
+  sharedComponentsBuilt: string[];
+  buildLog: BuildLogEntry[];
+  fallbacks: Array<{ sectionId: string; page: string }>;
+  sourceDir: string;
+}
+
+interface AstroCheckError {
+  file: string;
+  message: string;
+}
+
+function hierarchyHeroToSiteSection(section: HierarchySection): SiteSection {
+  return {
+    id: section.id,
+    type: "Hero",
+    props: {
+      title: section.content.heading ?? "",
+      subtitle: section.content.body ?? "",
+      eyebrow: section.content.eyebrow ?? null,
+      cta: section.content.cta ?? null,
+      backgroundImage: section.content.images?.[0]?.url ?? null,
+      styleHint: section.styleHint ?? null,
+    },
+  };
+}
+
+function getEvidenceForSection(
+  visualEvidence: SectionVisualEvidence | null,
+  section: HierarchySection,
+): SectionVisualEvidenceRow | undefined {
+  return visualEvidence?.rows.find(
+    (row) => row.evidenceId === section.evidenceId,
+  );
+}
+
+/**
+ * Build the responsive rule set for a section from the (site-wide) design
+ * system rules. Rules from the design system apply globally; we return them
+ * all — the LLM prompt lists them per selector so it can pick the ones that
+ * matter for this section.
+ */
+function tailwindForSection(designSystem: DesignSystemV2): TailwindInstruction[] {
+  const rules: ResponsiveRule[] = designSystem.responsive?.rules ?? [];
+  if (rules.length === 0) return [];
+  return breakpointDeltasToTailwind(rules);
+}
+
+/**
+ * Media re-hosting pre-pass: downloads every mediaUrls entry across the
+ * hierarchy pages, uploads to S3 under the pipeline build prefix, and rewrites
+ * the URL in-place. Failed downloads are skipped with a build-log warning.
+ * Returns the log entries appended.
+ */
+export async function rehostMedia(
+  hierarchy: SiteHierarchy,
+  input: {
+    s3: S3Client;
+    config: Config;
+    workspaceUuid: string;
+    siteUuid: string;
+  },
+): Promise<BuildLogEntry[]> {
+  const log: BuildLogEntry[] = [];
+  const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/build/media`;
+  const seen = new Map<string, string>(); // original -> new URL
+
+  for (const page of hierarchy.pages) {
+    for (const section of page.sections) {
+      const images = section.content.images ?? [];
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        if (!img) continue;
+        const original = img.url;
+        if (!original || original.startsWith("data:")) continue;
+        try {
+          let newUrl = seen.get(original);
+          if (!newUrl) {
+            const res = await fetch(original);
+            if (!res.ok) throw new Error(`fetch ${original} → ${res.status}`);
+            const buf = Buffer.from(await res.arrayBuffer());
+            const contentType = res.headers.get("content-type") ?? "image/jpeg";
+            const ext = extForContentType(contentType);
+            const key = `${prefix}/${hashFragment(original)}${ext}`;
+            newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, contentType);
+            seen.set(original, newUrl);
+            log.push({
+              category: "performance",
+              description: `Re-hosted ${original} as ${newUrl}`,
+              page: page.slug,
+            });
+          }
+          img.url = newUrl;
+        } catch (err) {
+          log.push({
+            category: "performance",
+            description: `Failed to re-host ${original}: ${(err as Error).message}`,
+            page: page.slug,
+          });
+        }
+      }
+    }
+  }
+  return log;
+}
+
+function extForContentType(ct: string): string {
+  if (ct.includes("png")) return ".png";
+  if (ct.includes("webp")) return ".webp";
+  if (ct.includes("gif")) return ".gif";
+  if (ct.includes("svg")) return ".svg";
+  return ".jpg";
+}
+
+function hashFragment(input: string): string {
+  // Simple non-crypto hash; the goal is stable naming for cache identity.
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Render all shared components once. Returns a map of sharedComponentId →
+ * rendered Astro source.
+ */
+async function buildSharedComponents(
+  hierarchy: SiteHierarchy,
+  designSystem: DesignSystemV2,
+  evidence: SectionVisualEvidence | null,
+  config: Config,
+): Promise<Map<string, string>> {
+  const built = new Map<string, string>();
+  const tailwind = tailwindForSection(designSystem);
+
+  // Collect first-member sections for each unique sharedComponentId.
+  const byId = new Map<
+    string,
+    { section: HierarchySection; propFields?: string[] }
+  >();
+  for (const page of hierarchy.pages) {
+    for (const section of page.sections) {
+      const id = section.sharedComponentId;
+      if (!id || byId.has(id)) continue;
+      const propFields = section.sharedProps ? Object.keys(section.sharedProps) : undefined;
+      byId.set(id, { section, propFields });
+    }
+  }
+
+  for (const [id, { section, propFields }] of byId) {
+    const row = getEvidenceForSection(evidence, section);
+    const extraInstructions =
+      propFields && propFields.length
+        ? `Expose these as Astro props with the shown defaults: ${JSON.stringify(propFields)}. Use \`Astro.props\` in the frontmatter and destructure each prop with a sensible default.`
+        : undefined;
+    const source = await renderVisualBlock({
+      section,
+      evidence: row,
+      designSystem,
+      tailwindInstructions: tailwind,
+      extraInstructions,
+      config,
+    });
+    built.set(id, source);
+  }
+
+  return built;
+}
+
+/**
+ * Render one page's non-shared section files. Returns { section, source }
+ * tuples — the caller passes them to `writePageFiles`.
+ */
+async function renderPageSections(
+  page: HierarchyPage,
+  designSystem: DesignSystemV2,
+  evidence: SectionVisualEvidence | null,
+  config: Config,
+): Promise<{ section: HierarchySection; source: string }[]> {
+  const tailwind = tailwindForSection(designSystem);
+  const out: { section: HierarchySection; source: string }[] = [];
+  for (let i = 0; i < page.sections.length; i++) {
+    const section = page.sections[i];
+    if (!section) continue;
+    if (section.sharedComponentId) continue; // handled by shared build
+    const previousTag = page.sections[i - 1]?.tag;
+    const nextTag = page.sections[i + 1]?.tag;
+
+    if (section.tag === "header") {
+      const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+      out.push({ section, source: renderSemanticSection(headerSection) });
+    } else if (section.tag === "footer") {
+      const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
+      out.push({ section, source: renderSemanticSection(footerSection) });
+    } else if (section.tag === "hero") {
+      out.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)) });
+    } else {
+      const row = getEvidenceForSection(evidence, section);
+      const source = await renderVisualBlock({
+        section,
+        evidence: row,
+        designSystem,
+        tailwindInstructions: tailwind,
+        previousTag,
+        nextTag,
+        config,
+      });
+      out.push({ section, source });
+    }
+  }
+  return out;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Run `astro check` in the given source dir. Returns an empty array if the
+ *  Astro CLI is not installed (best-effort). */
+async function runAstroCheck(sourceDir: string): Promise<AstroCheckError[]> {
+  const astroBin = path.join(sourceDir, "node_modules", ".bin", "astro");
+  if (!(await fileExists(astroBin))) return [];
+  return new Promise((resolve) => {
+    const child = spawn(astroBin, ["check"], { cwd: sourceDir, env: process.env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("close", () => {
+      resolve(parseAstroCheckOutput(`${stdout}\n${stderr}`));
+    });
+    child.on("error", () => resolve([]));
+  });
+}
+
+function parseAstroCheckOutput(output: string): AstroCheckError[] {
+  const errors: AstroCheckError[] = [];
+  // Rough parser: match lines like "src/pages/index.astro:12:5 - ..."
+  const re = /(src\/(?:pages|components)\/[^\s:]+\.astro)[:\s]+([^\n]+)/g;
+  for (const match of output.matchAll(re)) {
+    errors.push({ file: match[1] as string, message: match[2] as string });
+  }
+  return errors;
+}
+
+export async function runBuildStage(input: BuildStageInput): Promise<BuildStageResult> {
+  const ctx: ArtifactContext = {
+    siteUuid: input.siteUuid,
+    workspaceUuid: input.workspaceUuid,
+  };
+
+  // 1. Load docs.
+  const hierarchy = await loadSiteHierarchyDoc(input.db, input.workspaceUuid, input.siteUuid);
+  if (!hierarchy) {
+    throw new Error(`Site hierarchy not found for site ${input.siteUuid}`);
+  }
+  const designSystemDoc = await loadDesignSystemDoc(input.db, input.workspaceUuid, input.siteUuid);
+  if (!designSystemDoc || designSystemDoc.version !== "2") {
+    throw new Error(`Design system v2 not found for site ${input.siteUuid}`);
+  }
+  const designSystem = designSystemDoc as DesignSystemV2;
+  const evidence = await loadSectionVisualEvidenceDoc(input.db, input.workspaceUuid, input.siteUuid);
+
+  const buildLog: BuildLogEntry[] = [];
+  const fallbacks: Array<{ sectionId: string; page: string }> = [];
+
+  // 2. Media re-hosting pre-pass.
+  const mediaLog = await rehostMedia(hierarchy, {
+    s3: input.s3,
+    config: input.config,
+    workspaceUuid: input.workspaceUuid,
+    siteUuid: input.siteUuid,
+  });
+  buildLog.push(...mediaLog);
+
+  // 3. Determine scope.
+  const scope = input.pages ?? hierarchy.buildPlan.buildOrder;
+  const scopedPages = hierarchy.pages.filter((p) => scope.includes(p.slug));
+
+  // 4. Prepare source dir + scaffold.
+  const sourceDir =
+    input.sourceDir ??
+    path.join(os.tmpdir(), "ploy-gyms-build", input.siteUuid, "build");
+  await mkdir(sourceDir, { recursive: true });
+  await writeProjectScaffold(sourceDir, designSystem);
+
+  // 5. Shared components — render once for all pages in the hierarchy so
+  //    downstream page imports always resolve.
+  const sharedComponents = await buildSharedComponents(
+    hierarchy,
+    designSystem,
+    evidence,
+    input.config,
+  );
+  const sharedComponentsBuilt: string[] = [];
+  // Write shared components (plus Header/Footer) into the scaffold via
+  // writePageFiles' scaffold write path — but shared components are file-level
+  // artifacts, not tied to a specific page. Write them directly.
+  for (const [id, source] of sharedComponents) {
+    const filePath = path.join(
+      sourceDir,
+      "src",
+      "components",
+      "shared",
+      `${sharedComponentFileName(id)}.astro`,
+    );
+    await writeFile(filePath, source);
+    sharedComponentsBuilt.push(id);
+  }
+
+  // Also emit the Header / Footer semantic files so page-level imports
+  // succeed; these mirror what `writeProjectFiles` does per-page.
+  await writeHeaderFooter(sourceDir, designSystem);
+
+  // 6. Per-page loop.
+  const builtPages: string[] = [];
+  let currentHierarchy = hierarchy;
+  for (const page of scopedPages) {
+    currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
+    const rendered = await renderPageSections(page, designSystem, evidence, input.config);
+    await writePageFiles(sourceDir, page, rendered);
+    currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "built");
+    builtPages.push(page.slug);
+  }
+
+  // 7. astro check post-pass (best-effort, opt-in).
+  if (input.runAstroCheck) {
+    const errors = await runAstroCheck(sourceDir);
+    for (const err of errors) {
+      const match = err.file.match(/components\/sections\/([^/]+)\.astro$/);
+      const sectionId = match?.[1];
+      if (!sectionId) continue;
+      // Find the page + section this file came from.
+      let ownerPage: HierarchyPage | undefined;
+      let ownerSection: HierarchySection | undefined;
+      for (const p of scopedPages) {
+        const s = p.sections.find((sec) => sec.id === sectionId);
+        if (s) {
+          ownerPage = p;
+          ownerSection = s;
+          break;
+        }
+      }
+      if (!ownerPage || !ownerSection) continue;
+
+      const row = getEvidenceForSection(evidence, ownerSection);
+      const tailwind = tailwindForSection(designSystem);
+      try {
+        const retry = await renderVisualBlock({
+          section: ownerSection,
+          evidence: row,
+          designSystem,
+          tailwindInstructions: tailwind,
+          extraInstructions: `Your previous output failed astro check with: ${err.message}. Fix and return the corrected component.`,
+          config: input.config,
+        });
+        const filePath = path.join(
+          sourceDir,
+          "src",
+          "components",
+          "sections",
+          `${sectionId}.astro`,
+        );
+        await writeFile(filePath, retry);
+      } catch {
+        const filePath = path.join(
+          sourceDir,
+          "src",
+          "components",
+          "sections",
+          `${sectionId}.astro`,
+        );
+        await writeFile(filePath, renderFallbackBlock(ownerSection, designSystem));
+        fallbacks.push({ sectionId, page: ownerPage.slug });
+        buildLog.push({
+          category: "semantics",
+          description: `Fell back to deterministic block for section ${sectionId} after astro check failure`,
+          page: ownerPage.slug,
+        });
+      }
+    }
+
+    // Second astro check to catch retries that still failed → fall back.
+    const errors2 = await runAstroCheck(sourceDir);
+    for (const err of errors2) {
+      const match = err.file.match(/components\/sections\/([^/]+)\.astro$/);
+      const sectionId = match?.[1];
+      if (!sectionId) continue;
+      let ownerPage: HierarchyPage | undefined;
+      let ownerSection: HierarchySection | undefined;
+      for (const p of scopedPages) {
+        const s = p.sections.find((sec) => sec.id === sectionId);
+        if (s) {
+          ownerPage = p;
+          ownerSection = s;
+          break;
+        }
+      }
+      if (!ownerPage || !ownerSection) continue;
+      const filePath = path.join(
+        sourceDir,
+        "src",
+        "components",
+        "sections",
+        `${sectionId}.astro`,
+      );
+      await writeFile(filePath, renderFallbackBlock(ownerSection, designSystem));
+      if (!fallbacks.some((f) => f.sectionId === sectionId && f.page === ownerPage!.slug)) {
+        fallbacks.push({ sectionId, page: ownerPage.slug });
+        buildLog.push({
+          category: "semantics",
+          description: `Second astro check failure for section ${sectionId} — using fallback`,
+          page: ownerPage.slug,
+        });
+      }
+    }
+  }
+
+  // 8. Save updated hierarchy.
+  await saveSiteHierarchyDoc(input.db, input.workspaceUuid, input.siteUuid, currentHierarchy);
+
+  // 9. Persist build artifact.
+  const artifactPayload = {
+    builtPages,
+    sharedComponentsBuilt,
+    buildLog,
+    fallbacks,
+  };
+  await saveArtifact(input.db, ctx, "build", artifactPayload);
+
+  return {
+    builtPages,
+    sharedComponentsBuilt,
+    buildLog,
+    fallbacks,
+    sourceDir,
+  };
+}
+
+async function writeHeaderFooter(sourceDir: string, designSystem: DesignSystemV2): Promise<void> {
+  const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+  await writeFile(
+    path.join(sourceDir, "src", "components", "shared", "Header.astro"),
+    renderSemanticSection(headerSection),
+  );
+  await writeFile(
+    path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
+    renderSemanticSection(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
+  );
+}
