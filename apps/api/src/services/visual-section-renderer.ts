@@ -261,10 +261,31 @@ export async function renderVisualBlockWithFlag(
       source = source.slice(3, -3).trim();
     }
 
-    return { code: source, isFallback: false };
+    return { code: sanitizeAstroFrontmatter(source), isFallback: false };
   } catch {
     return { code: renderFallbackBlock(section, designSystem), isFallback: true };
   }
+}
+
+/**
+ * Convert any `# comment` lines inside the Astro frontmatter (the --- block)
+ * to `// comment`. LLMs sometimes emit YAML-style hash comments in the JS
+ * frontmatter which Vite/esbuild rejects with a syntax error.
+ */
+function sanitizeAstroFrontmatter(source: string): string {
+  const FENCE = "---";
+  const firstFence = source.indexOf(FENCE);
+  if (firstFence === -1) return source;
+  const afterFirst = firstFence + FENCE.length;
+  const secondFence = source.indexOf(FENCE, afterFirst);
+  if (secondFence === -1) return source;
+
+  const before = source.slice(0, afterFirst);
+  const frontmatter = source.slice(afterFirst, secondFence);
+  const after = source.slice(secondFence);
+
+  const sanitized = frontmatter.replace(/^([ \t]*)#(?!!) /gm, "$1// ");
+  return before + sanitized + after;
 }
 
 export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<string> {
