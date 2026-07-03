@@ -10,6 +10,7 @@ export default fp(
     const replicateSite = bull.build("replicate_site");
     const sitePublish = bull.build("site_publish");
     const playbookRun = bull.build("playbook_run");
+    const pipeline = bull.build("pipeline");
 
     fastify.decorate("queues", {
       classifyAssets,
@@ -19,6 +20,7 @@ export default fp(
       replicateSite,
       sitePublish,
       playbookRun,
+      pipeline,
     });
 
     done();
@@ -77,6 +79,35 @@ declare module "../bullmq" {
       data: { workspaceUuid: string; playbookUuid: string; aiJobUuid?: string };
       result: unknown;
     };
+    pipeline: {
+      data:
+        | {
+            kind: "stage";
+            stage: "extract" | "segment" | "docgen" | "build" | "verify";
+            siteUuid: string;
+            workspaceUuid: string;
+            input: {
+              url?: string;
+              pages?: string[];
+              maxPages?: number;
+              contentSiteUuid?: string;
+              designSiteUuid?: string;
+              mode?: "replication" | "template" | "greenfield";
+            };
+          }
+        | {
+            kind: "run";
+            siteUuid: string;
+            workspaceUuid: string;
+            input: {
+              url: string;
+              pages?: string[];
+              maxPages?: number;
+              mode?: "replication" | "template" | "greenfield";
+            };
+          };
+      result: unknown;
+    };
   }
 }
 
@@ -90,6 +121,7 @@ declare module "fastify" {
       replicateSite: ReturnType<typeof bull.build<"replicate_site">>;
       sitePublish: ReturnType<typeof bull.build<"site_publish">>;
       playbookRun: ReturnType<typeof bull.build<"playbook_run">>;
+      pipeline: ReturnType<typeof bull.build<"pipeline">>;
     };
   }
 }
