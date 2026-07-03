@@ -188,7 +188,7 @@ async function extractContent(page: Page): Promise<CapturedPage["content"]> {
       .map((b) => (b as { name?: string })?.name)
       .find((n) => typeof n === "string" && n.length > 0);
     const businessName =
-      ldName ?? meta["og:site_name"] ?? meta["og:title"] ?? document.title ?? undefined;
+      ldName ?? meta["og:site_name"] ?? meta["og:title"] ?? (document.title || undefined);
 
     const classify = (src: string): "map" | "schedule" | "form" | "video" | "other" =>
       /google\.[^/]*\/maps|maps\.google/.test(src)
