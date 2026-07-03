@@ -129,7 +129,7 @@ async function runStage(
         workspaceUuid: job.workspaceUuid,
         pages: job.input.pages,
       });
-      await saveArtifact(fastify.db, ctx, "verify", artifact);
+      // runVerifyStage persists the artifact itself; no need to double-save.
       return artifact;
     }
     default: {
