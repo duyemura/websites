@@ -31,8 +31,8 @@ export const DesignSystemV2Schema = z.object({
   siteMetadata: z.object({
     framework: z.literal("astro"),
     mode: z.enum(["replication", "template", "greenfield"]),
-    targetUrl: z.string().optional().nullable(),
-    businessName: z.string().optional().nullable(),
+    targetUrl: z.string().optional(),
+    businessName: z.string().optional(),
     generatedAt: z.string(),
   }),
   global: z.object({
