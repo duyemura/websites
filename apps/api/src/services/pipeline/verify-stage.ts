@@ -37,7 +37,7 @@ import {
 import { runAxeBaseline, runLighthouse } from "../../utils/pipeline/source-baseline";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
-import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
+import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
 
 export interface VerifyStageInput {
   db: Kysely<DB>;
@@ -158,6 +158,12 @@ export async function runVerifyStage(
       allFailed.push(...mechanical.failed);
 
       // 2. Vision compare at 1440 and 375.
+      const s3ctx: S3Context = {
+        s3: input.s3,
+        bucket: input.config.S3_ASSETS_BUCKET,
+        region: input.config.S3_REGION,
+        endpoint: input.config.S3_ENDPOINT,
+      };
       let score1440 = 0;
       let score375 = 0;
       const differences: string[] = [];
@@ -166,6 +172,7 @@ export async function runVerifyStage(
           extractPage.screenshots.full1440,
           await captureCurrent(page, cloneUrl, pagePath, 1440),
           input.config,
+          s3ctx,
         );
         score1440 = vision1440.score;
         differences.push(...vision1440.differences);
@@ -178,6 +185,7 @@ export async function runVerifyStage(
           extractPage.screenshots.vp375,
           await captureCurrent(page, cloneUrl, pagePath, 375),
           input.config,
+          s3ctx,
         );
         score375 = vision375.score;
         differences.push(...vision375.differences);
@@ -433,6 +441,7 @@ async function visionCompare(
   originalUrl: string,
   cloneBuffer: Buffer,
   config: Config,
+  s3ctx?: S3Context,
 ): Promise<VisionCallResult> {
   const cloneDataUrl = `data:image/png;base64,${cloneBuffer.toString("base64")}`;
   const response = await chatCompletion(
@@ -449,7 +458,7 @@ async function visionCompare(
                 "Rate visual similarity 0–100 (100 = identical), and list up to 5 concrete " +
                 'differences. Respond as JSON only: {"score": number, "differences": string[]}.',
             },
-            { type: "image_url", image_url: { url: await imageUrlToDataUri(originalUrl) } },
+            { type: "image_url", image_url: { url: await imageUrlToDataUri(originalUrl, s3ctx) } },
             { type: "image_url", image_url: { url: cloneDataUrl } },
           ],
         },

@@ -61,7 +61,7 @@ import {
 import { generateSiteDocsForGreenfield } from "../../utils/site-docs";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
-import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
+import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
 import type { SectionVisualEvidence, InteractionEvidenceCapture, InteractionComponentPattern } from "../../types/section-visual-evidence";
 import type { SiteHierarchy } from "../../types/site-hierarchy";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
@@ -75,6 +75,7 @@ const BUSINESS_INFO_DOC_TITLE = "Business info";
 export interface DocgenStageInput {
   db: Kysely<DB>;
   config: Config;
+  s3: import("@aws-sdk/client-s3").S3Client;
   siteUuid: string;
   workspaceUuid: string;
   /** Site-generation mode: replication (clone), template (hybrid), or greenfield. */
@@ -195,6 +196,7 @@ const VALID_PATTERNS: InteractionComponentPattern[] = [
 async function classifyInteraction(
   capture: InteractionCapture,
   config: Config,
+  s3ctx?: S3Context,
 ): Promise<InteractionComponentPattern | undefined> {
   try {
     const response = await chatCompletion(
@@ -210,8 +212,8 @@ async function classifyInteraction(
                 type: "text",
                 text: "Compare these before/after screenshots of a UI interaction. Return one word: dropdown, accordion, tab, modal, drawer, tooltip, or other.",
               },
-              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.beforeUrl) } },
-              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.afterUrl) } },
+              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.beforeUrl, s3ctx) } },
+              { type: "image_url", image_url: { url: await imageUrlToDataUri(capture.afterUrl, s3ctx) } },
             ],
           },
         ],
@@ -268,6 +270,7 @@ async function classifyAllInteractions(
   evidence: SectionVisualEvidence,
   extract: ExtractArtifact,
   config: Config,
+  s3ctx?: S3Context,
 ): Promise<SectionVisualEvidence> {
   const captureById = new Map<string, InteractionCapture>();
   for (const page of extract.pages) {
@@ -303,7 +306,7 @@ async function classifyAllInteractions(
   await runPool(neededIds, MAX_CONCURRENT_VISION, async (id) => {
     const cap = captureById.get(id);
     if (!cap) return;
-    const pattern = await classifyInteraction(cap, config);
+    const pattern = await classifyInteraction(cap, config, s3ctx);
     patternById.set(id, pattern);
   });
 
@@ -559,10 +562,17 @@ export async function runDocgenStage(
   const alignedEvidence = isHybrid
     ? mapEvidenceForHybrid(hierarchy, designSegment, rawEvidence)
     : rawEvidence;
+  const s3ctx: S3Context = {
+    s3: input.s3,
+    bucket: config.S3_ASSETS_BUCKET,
+    region: config.S3_REGION,
+    endpoint: config.S3_ENDPOINT,
+  };
   const enrichedEvidence = await classifyAllInteractions(
     alignedEvidence,
     designExtract,
     config,
+    s3ctx,
   );
 
   const searchPresence = buildSearchPresence(contentExtract);

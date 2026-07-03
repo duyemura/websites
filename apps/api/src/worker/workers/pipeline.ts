@@ -90,6 +90,7 @@ async function runStage(
       const docs = await runDocgenStage({
         db: fastify.db,
         config: fastify.config,
+        s3,
         siteUuid: job.siteUuid,
         workspaceUuid: job.workspaceUuid,
         mode: job.input.mode ?? "replication",

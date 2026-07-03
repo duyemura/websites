@@ -42,6 +42,10 @@ function loadConfig(): Config {
   return ConfigSchema.parse(process.env);
 }
 
+// Stub S3 client for docgen tests — chatCompletion is already mocked at module level
+// so classifyInteraction never actually downloads images via S3.
+const stubS3 = {} as import("@aws-sdk/client-s3").S3Client;
+
 function stubExtract(overrides: Partial<ExtractArtifact> = {}): ExtractArtifact {
   const now = "2026-07-03T00:00:00.000Z";
   return {
@@ -243,6 +247,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
       mode: "replication",
@@ -271,6 +276,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
       mode: "replication",
@@ -296,6 +302,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
       mode: "replication",
@@ -338,6 +345,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: contentCtx.siteUuid,
       workspaceUuid: contentCtx.workspaceUuid,
       mode: "template",
@@ -455,6 +463,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: contentCtx.siteUuid,
       workspaceUuid: contentCtx.workspaceUuid,
       mode: "template",
@@ -490,6 +499,7 @@ describe("docgen stage", () => {
     const docs = await runDocgenStage({
       db,
       config,
+      s3: stubS3,
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
       mode: "greenfield",

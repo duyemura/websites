@@ -318,6 +318,7 @@ async function runStages(opts: {
       const input: DocgenStageInput = {
         db,
         config,
+        s3,
         siteUuid,
         workspaceUuid,
         mode: "replication",

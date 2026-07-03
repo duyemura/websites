@@ -27,7 +27,7 @@ import {
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
-import { imageUrlToDataUri } from "../../utils/pipeline/image-to-data-url";
+import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
 
@@ -101,6 +101,12 @@ export async function runSegmentStage(
       await page.waitForTimeout(2000);
 
       // ---- ladder with real vision fallback ----
+      const s3ctx: S3Context = {
+        s3: input.s3,
+        bucket: input.config.S3_ASSETS_BUCKET,
+        region: input.config.S3_REGION,
+        endpoint: input.config.S3_ENDPOINT,
+      };
       const ladderResult = await runLadder(page, {
         needsVisionSegmentation: extractPage.flags.needsVisionSegmentation,
         visionSegment: () =>
@@ -108,6 +114,7 @@ export async function runSegmentStage(
             input.config,
             extractPage.screenshots.full1440,
             page,
+            s3ctx,
           ),
       });
 
@@ -267,6 +274,7 @@ async function visionSegment(
   config: Config,
   fullPageScreenshotUrl: string,
   page: Page,
+  s3ctx?: S3Context,
 ): Promise<SectionCandidate[]> {
   const pageHeight = await page.evaluate(
     () => document.documentElement.scrollHeight,
@@ -283,7 +291,7 @@ async function visionSegment(
               { type: "text", text: prompt },
               {
                 type: "image_url",
-                image_url: { url: await imageUrlToDataUri(fullPageScreenshotUrl) },
+                image_url: { url: await imageUrlToDataUri(fullPageScreenshotUrl, s3ctx) },
               },
             ],
           },
