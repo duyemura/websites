@@ -148,6 +148,8 @@ function buildVisualPrompt(
 
 Output ONLY the Astro component source code. Do not wrap it in markdown fences. The component must be valid Astro syntax and use Tailwind CSS utility classes.
 
+The frontmatter (between the --- delimiters) is JavaScript — use // for comments, NEVER use # which is not valid JS syntax.
+
 Use these locked design tokens and rules from the site's design system:
 - Primary color: ${tokens.colors.primary}
 - Primary foreground: ${tokens.colors.primaryForeground}

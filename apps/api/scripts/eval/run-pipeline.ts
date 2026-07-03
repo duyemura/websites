@@ -336,6 +336,7 @@ async function runStages(opts: {
         workspaceUuid,
         pages: pages ?? undefined,
         runAstroBuild: true,
+        runAstroCheck: true,
       };
       await runBuildStage(input);
     }
