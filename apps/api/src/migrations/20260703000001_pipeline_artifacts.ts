@@ -18,6 +18,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
   await db.schema
     .createIndex("pipeline_artifacts_site_stage_idx")
+    .unique()
     .on("pipelineArtifacts")
     .columns(["siteUuid", "stage", "version"])
     .execute();

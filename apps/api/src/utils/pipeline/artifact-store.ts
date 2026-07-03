@@ -70,7 +70,7 @@ export async function loadArtifact<T = unknown>(
   return {
     version: row.version,
     payload: row.payload as T,
-    createdAt: row.createdAt as unknown as Date,
+    createdAt: row.createdAt,
   };
 }
 
@@ -91,6 +91,6 @@ export async function loadArtifactVersion<T = unknown>(
   return {
     version: row.version,
     payload: row.payload as T,
-    createdAt: row.createdAt as unknown as Date,
+    createdAt: row.createdAt,
   };
 }

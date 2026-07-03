@@ -7,6 +7,7 @@ import {
   loadArtifactVersion,
   type ArtifactContext,
 } from "../../src/utils/pipeline/artifact-store";
+import { jsonb } from "../../src/utils/jsonb";
 
 async function seedContext(): Promise<ArtifactContext> {
   const { workspace } = await setupTestContext();
@@ -49,5 +50,21 @@ describe("artifact-store", () => {
 
   it("returns null when no artifact exists", async () => {
     expect(await loadArtifact(db, ctx, "verify")).toBeNull();
+  });
+
+  it("rejects duplicate versions via unique constraint", async () => {
+    await saveArtifact(db, ctx, "extract", { a: 1 });
+    await expect(
+      db
+        .insertInto("pipelineArtifacts")
+        .values({
+          siteUuid: ctx.siteUuid,
+          workspaceUuid: ctx.workspaceUuid,
+          stage: "extract",
+          version: 1,
+          payload: jsonb({ a: 2 }),
+        })
+        .execute(),
+    ).rejects.toThrow(/unique|duplicate/i);
   });
 });
