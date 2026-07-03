@@ -44,6 +44,15 @@ function migrateSection(section: { id: string; type: string; props?: Record<stri
   if (typeof props.eyebrow === "string") content.eyebrow = props.eyebrow;
   else if (typeof props.kicker === "string") content.eyebrow = props.kicker;
   else if (typeof props.label === "string") content.eyebrow = props.label;
+
+  const styleHint =
+    props.styleHint && typeof props.styleHint === "object"
+      ? (props.styleHint as HierarchySection["styleHint"])
+      : undefined;
+  if (!content.eyebrow && typeof styleHint?.eyebrow === "string") {
+    content.eyebrow = styleHint.eyebrow;
+  }
+
   if (Array.isArray(props.items) && props.items.length > 0) {
     content.items = props.items.map((item: { title?: string; description?: string; imageUrl?: string }) => ({
       title: item.title,
@@ -72,6 +81,7 @@ function migrateSection(section: { id: string; type: string; props?: Record<stri
     tag,
     intent: `Migrated from legacy blueprint section type ${section.type}`,
     content,
+    styleHint,
     evidenceId: `legacy-${pageSlug}-${section.id}`,
   };
 }
@@ -84,7 +94,9 @@ function migratePage(page: TemplateShellPage): HierarchyPage {
     metaTitle: page.metaTitle,
     metaDescription: page.metaDescription,
     primaryCta: page.primaryCta,
-    sections: page.sections.map((s) => migrateSection(s as { id: string; type: string; props?: Record<string, unknown> }, page.slug)),
+    sections: page.sections
+      .map((s) => migrateSection(s as { id: string; type: string; props?: Record<string, unknown> }, page.slug))
+      .filter((s) => s.tag !== "header" && s.tag !== "footer"),
   };
 }
 

@@ -8,6 +8,81 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function pickValidCta(value: unknown): { label: string; href: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const cta = value as Record<string, unknown>;
+  if (typeof cta.label === "string" && typeof cta.href === "string") {
+    return { label: cta.label, href: cta.href };
+  }
+  return null;
+}
+
+function pickValidNavLinks(value: unknown): { label: string; href: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === "object")
+    .map((item) => ({
+      label: typeof item.label === "string" ? item.label : "",
+      href: typeof item.href === "string" ? item.href : "",
+    }))
+    .filter((item) => item.label || item.href);
+}
+
+function pickValidLogo(value: unknown): { type: string; value: string; alt?: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const logo = value as Record<string, unknown>;
+  if (typeof logo.value === "string") {
+    return {
+      type: typeof logo.type === "string" ? logo.type : "text",
+      value: logo.value,
+      alt: typeof logo.alt === "string" ? logo.alt : undefined,
+    };
+  }
+  return null;
+}
+
+type SocialLink = { platform: string; url: string } | { label: string; href: string };
+
+function pickValidSocialLinks(value: unknown): SocialLink[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === "object")
+    .map((item) => {
+      if (typeof item.platform === "string" && typeof item.url === "string") {
+        return { platform: item.platform, url: item.url };
+      }
+      if (typeof item.label === "string" && typeof item.href === "string") {
+        return { label: item.label, href: item.href };
+      }
+      return null;
+    })
+    .filter((item): item is SocialLink => item !== null);
+}
+
+function pickValidHeaderCtaStyle(value: unknown): {
+  bg?: string;
+  color?: string;
+  radius?: string;
+  padding?: string;
+  uppercase?: boolean;
+  bold?: boolean;
+  light?: boolean;
+  fontSize?: string;
+} | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const style = value as Record<string, unknown>;
+  const result: ReturnType<typeof pickValidHeaderCtaStyle> = {};
+  if (typeof style.bg === "string") result.bg = style.bg;
+  if (typeof style.color === "string") result.color = style.color;
+  if (typeof style.radius === "string") result.radius = style.radius;
+  if (typeof style.padding === "string") result.padding = style.padding;
+  if (typeof style.fontSize === "string") result.fontSize = style.fontSize;
+  if (typeof style.uppercase === "boolean") result.uppercase = style.uppercase;
+  if (typeof style.bold === "boolean") result.bold = style.bold;
+  if (typeof style.light === "boolean") result.light = style.light;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 export function renderSemanticSection(section: SiteSection): string {
   switch (section.type) {
     case "Hero":
@@ -25,9 +100,12 @@ function renderHero(props: Record<string, unknown>): string {
   const title = str(props.title);
   const subtitle = str(props.subtitle);
   const eyebrow = str(props.eyebrow);
-  const cta = props.cta as { label?: string; href?: string } | null | undefined;
-  const backgroundImage = props.backgroundImage as string | null | undefined;
-  const styleHint = props.styleHint as Record<string, unknown> | undefined;
+  const cta = pickValidCta(props.cta);
+  const backgroundImage = typeof props.backgroundImage === "string" ? props.backgroundImage : null;
+  const styleHint =
+    props.styleHint && typeof props.styleHint === "object"
+      ? (props.styleHint as Record<string, unknown>)
+      : undefined;
   const isUppercase = styleHint?.uppercase === true;
   const isBold = styleHint?.bold !== false;
   const align = str(styleHint?.align) || "center";
@@ -139,22 +217,12 @@ const backgroundImage = ${json(backgroundImage)};
 }
 
 function renderHeader(props: Record<string, unknown>): string {
-  const logo = props.logo as { type?: string; value?: string; alt?: string } | null | undefined;
-  const navLinks = (props.navLinks ?? []) as { label?: string; href?: string }[];
-  const ctaLabel = str(props.ctaLabel);
-  const ctaHref = str(props.ctaHref);
+  const logo = pickValidLogo(props.logo);
+  const navLinks = pickValidNavLinks(props.navLinks);
+  const cta = pickValidCta(props.cta);
   const variant = str(props.variant);
   const isTransparent = variant === "transparent";
-  const style = props.headerCtaStyle as {
-    bg?: string;
-    color?: string;
-    radius?: string;
-    padding?: string;
-    uppercase?: boolean;
-    bold?: boolean;
-    light?: boolean;
-    fontSize?: string;
-  } | undefined;
+  const style = pickValidHeaderCtaStyle(props.headerCtaStyle);
 
   const ctaStyleEntries: [string, string][] = [];
   if (style?.bg) ctaStyleEntries.push(["backgroundColor", style.bg]);
@@ -179,8 +247,7 @@ function renderHeader(props: Record<string, unknown>): string {
   return `---
 const logo = ${json(logo)};
 const navLinks = ${json(navLinks)};
-const ctaLabel = ${json(ctaLabel)};
-const ctaHref = ${json(ctaHref)};
+const cta = ${json(cta)};
 const ctaStyle = ${json(ctaStyleObject)};
 ---
 
@@ -200,12 +267,12 @@ const ctaStyle = ${json(ctaStyleObject)};
         </a>
       ))}
     </nav>
-    {ctaHref && ctaLabel && (
+    {cta?.href && cta?.label && (
       <a
-        href={ctaHref}
+        href={cta.href}
         class="${ctaClass}"${ctaStyleObject ? " style={ctaStyle}" : ""}
       >
-        {ctaLabel}
+        {cta.label}
       </a>
     )}
   </div>
@@ -214,8 +281,8 @@ const ctaStyle = ${json(ctaStyleObject)};
 
 function renderFooter(props: Record<string, unknown>): string {
   const businessName = str(props.businessName);
-  const navLinks = (props.navLinks ?? []) as { label?: string; href?: string }[];
-  const socialLinks = props.socialLinks as { platform?: string; url?: string }[] | { label?: string; href?: string }[] | undefined;
+  const navLinks = pickValidNavLinks(props.navLinks);
+  const socialLinks = pickValidSocialLinks(props.socialLinks);
   const copyright = str(props.copyright);
 
   return `---

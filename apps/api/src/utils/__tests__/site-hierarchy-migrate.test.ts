@@ -133,9 +133,30 @@ describe("migrateBlueprintToHierarchy", () => {
     expect(hierarchy.pages[0]?.sections.some((s) => s.tag === "footer")).toBe(false);
   });
 
+  test("drops legacy header and footer sections from page sections", () => {
+    const blueprint = makeBlueprint();
+    const page = blueprint.pages[0] as unknown as {
+      sections: { id: string; type: string; props?: Record<string, unknown> }[];
+    };
+    page.sections = [
+      { id: "hdr", type: "SiteHeader", props: { logo: { type: "text", value: "X" } } },
+      { id: "ftr", type: "SiteFooter", props: { businessName: "X" } },
+      { id: "hero-2", type: "Hero", props: { title: "Welcome" } },
+    ];
+
+    const { hierarchy, designSystem } = migrateBlueprintToHierarchy(blueprint);
+
+    expect(hierarchy.pages[0]?.sections.map((s) => s.tag)).toEqual(["hero"]);
+    expect(designSystem.global.shell.header).toBeDefined();
+    expect(designSystem.global.shell.footer).toBeDefined();
+  });
+
   test("maps unknown section types to unknown content sections", () => {
     const blueprint = makeBlueprint();
-    (blueprint.pages[0] as any).sections = [
+    const page = blueprint.pages[0] as unknown as {
+      sections: { id: string; type: string; props?: Record<string, unknown> }[];
+    };
+    page.sections = [
       { id: "map-1", type: "Map", props: { heading: "Find us" } },
       { id: "calendar-1", type: "EventCalendar", props: { title: "Schedule" } },
     ];
@@ -148,7 +169,10 @@ describe("migrateBlueprintToHierarchy", () => {
 
   test("ignores malformed CTAs", () => {
     const blueprint = makeBlueprint();
-    (blueprint.pages[0] as any).sections[0] = {
+    const page = blueprint.pages[0] as unknown as {
+      sections: { id: string; type: string; props?: Record<string, unknown> }[];
+    };
+    page.sections[0] = {
       id: "hero-bad-cta",
       type: "Hero",
       props: { title: "Train", cta: { label: "Join" } },
@@ -173,5 +197,30 @@ describe("migrateBlueprintToHierarchy", () => {
     expect(designSystem.business.name).toBeUndefined();
     expect(designSystem.global.shell.header).toBeUndefined();
     expect(designSystem.global.shell.footer).toBeUndefined();
+  });
+
+  test("preserves hero style hints and eyebrow from legacy props", () => {
+    const blueprint = makeBlueprint();
+    const page = blueprint.pages[0] as unknown as {
+      sections: { id: string; type: string; props?: Record<string, unknown> }[];
+    };
+    page.sections[0] = {
+      id: "hero-1",
+      type: "Hero",
+      props: {
+        title: "Train hard",
+        subtitle: "Get results",
+        cta: { label: "Join", href: "#join" },
+        styleHint: { heroTextColor: "#ffffff", align: "left", eyebrow: "Welcome" },
+      },
+    };
+
+    const { hierarchy } = migrateBlueprintToHierarchy(blueprint);
+    const hero = hierarchy.pages[0]?.sections.find((s) => s.tag === "hero");
+
+    expect(hero).toBeDefined();
+    expect(hero?.styleHint?.heroTextColor).toBe("#ffffff");
+    expect(hero?.styleHint?.align).toBe("left");
+    expect(hero?.content.eyebrow).toBe("Welcome");
   });
 });
