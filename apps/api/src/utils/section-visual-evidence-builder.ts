@@ -42,6 +42,7 @@ export function buildSectionVisualEvidenceFromSegments(
           .map((id) => interactionsById.get(id))
           .filter((i): i is NonNullable<typeof i> => Boolean(i))
           .map((i) => ({
+            id: i.id,
             trigger: i.trigger,
             beforeUrl: i.beforeUrl,
             afterUrl: i.afterUrl,

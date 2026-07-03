@@ -359,6 +359,133 @@ describe("docgen stage", () => {
     expect(hierParsed.siteMetadata.targetUrl).toBe("https://content.example");
   });
 
+  it("hybrid mode remaps evidence rows so every hierarchy section's evidenceId resolves", async () => {
+    // Content site uses stubSegment() ids ("home-hero", "home-features",
+    // "about-hero"). Design site uses distinct ids ("d-home-hero",
+    // "d-home-features", "d-about-hero") on the same canonical tags. Without
+    // remapping, content-side hierarchy evidenceIds would dangle against the
+    // emitted design-keyed evidence rows.
+    const contentCtx = ctx;
+    const designSite = await db
+      .insertInto("sites")
+      .values({
+        workspaceUuid: contentCtx.workspaceUuid,
+        name: "Design Source Distinct",
+        slug: `design-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      })
+      .returning("uuid")
+      .executeTakeFirstOrThrow();
+    const designCtx: ArtifactContext = {
+      siteUuid: designSite.uuid,
+      workspaceUuid: contentCtx.workspaceUuid,
+    };
+
+    const designSegment: SegmentArtifact = {
+      siteUuid: "unused",
+      sourceExtractAt: "2026-07-03T00:00:00.000Z",
+      pages: [
+        {
+          path: "/",
+          sections: [
+            {
+              id: "d-home-hero",
+              tag: "hero",
+              order: 0,
+              confidence: 0.9,
+              source: "semantic",
+              boundingBox: { x: 0, y: 0, width: 1440, height: 600 },
+              crops: {
+                desktop: "https://cdn/design/home-hero-1440.png",
+                mobile: "https://cdn/design/home-hero-375.png",
+              },
+              innerText: "Design hero",
+              headingText: "Design hero",
+              mediaUrls: ["https://cdn/design/hero.jpg"],
+              interactionIds: [],
+            },
+            {
+              id: "d-home-features",
+              tag: "feature-grid",
+              order: 1,
+              confidence: 0.85,
+              source: "semantic",
+              boundingBox: { x: 0, y: 600, width: 1440, height: 400 },
+              crops: {
+                desktop: "https://cdn/design/home-features-1440.png",
+                mobile: "https://cdn/design/home-features-375.png",
+              },
+              innerText: "Design features",
+              mediaUrls: [],
+              interactionIds: [],
+            },
+          ],
+          ladder: { rung1Count: 2, rung2Used: false, visionUsed: false },
+        },
+        {
+          path: "/about",
+          sections: [
+            {
+              id: "d-about-hero",
+              tag: "hero",
+              order: 0,
+              confidence: 0.8,
+              source: "semantic",
+              boundingBox: { x: 0, y: 0, width: 1440, height: 400 },
+              crops: {
+                desktop: "https://cdn/design/about-hero-1440.png",
+                mobile: "https://cdn/design/about-hero-375.png",
+              },
+              innerText: "Design about",
+              headingText: "Design about",
+              mediaUrls: [],
+              interactionIds: [],
+            },
+          ],
+          ladder: { rung1Count: 1, rung2Used: false, visionUsed: false },
+        },
+      ],
+      sharedComponents: [],
+    };
+
+    await saveArtifact(db, contentCtx, "extract", stubExtract({ url: "https://content.example" }));
+    await saveArtifact(db, contentCtx, "segment", stubSegment());
+    await saveArtifact(db, designCtx, "extract", stubExtract({ url: "https://design.example" }));
+    await saveArtifact(db, designCtx, "segment", designSegment);
+
+    const docs = await runDocgenStage({
+      db,
+      config,
+      siteUuid: contentCtx.siteUuid,
+      workspaceUuid: contentCtx.workspaceUuid,
+      mode: "template",
+      contentSiteUuid: contentCtx.siteUuid,
+      designSiteUuid: designCtx.siteUuid,
+    });
+
+    const hier = docs.find((d) => d.key === "site-hierarchy")!;
+    const evidenceDoc = docs.find((d) => d.key === "section-visual-evidence")!;
+    const hierParsed = parseJsonBlock<{
+      pages: { slug: string; sections: { id: string; evidenceId: string; tag: string }[] }[];
+    }>(hier.content);
+    const evidenceParsed = parseJsonBlock<{
+      rows: { evidenceId: string; sectionId: string; pageSlug: string; screenshotUrl?: string }[];
+    }>(evidenceDoc.content);
+
+    const evidenceIds = new Set(evidenceParsed.rows.map((r) => r.evidenceId));
+    // Every content-side hierarchy section's evidenceId must resolve against the
+    // emitted evidence doc's rows.
+    for (const page of hierParsed.pages) {
+      for (const section of page.sections) {
+        expect(evidenceIds.has(section.evidenceId)).toBe(true);
+      }
+    }
+    // And each remapped row must carry a design-side screenshot url (proving
+    // the design row was actually copied, not the content-side raw evidence).
+    for (const row of evidenceParsed.rows) {
+      expect(row.screenshotUrl).toMatch(/\/design\//);
+    }
+  });
+
   it("greenfield mode emits the greenfield-plus-search-presence doc set", async () => {
     const docs = await runDocgenStage({
       db,

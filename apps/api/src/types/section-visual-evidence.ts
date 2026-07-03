@@ -32,6 +32,12 @@ export type InteractionComponentPattern =
   | "other";
 
 export interface InteractionEvidenceCapture {
+  /**
+   * Stable id from the source InteractionCapture in the extract artifact.
+   * Optional for backwards compat with older evidence rows that predate
+   * this field; new rows written by the pipeline always populate it.
+   */
+  id?: string;
   trigger: "click" | "hover";
   beforeUrl: string;
   afterUrl: string;

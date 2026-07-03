@@ -31,7 +31,10 @@ import {
   buildBrandGuidelinesInput,
   type ScrapedWebsiteData,
 } from "../../utils/scrape-docs";
-import { buildSiteHierarchyFromSegments } from "../../utils/site-hierarchy-builder";
+import {
+  buildSiteHierarchyFromSegments,
+  pathToSlug,
+} from "../../utils/site-hierarchy-builder";
 import { buildDesignSystemFromExtract } from "../../utils/design-system-builder";
 import { buildSectionVisualEvidenceFromSegments } from "../../utils/section-visual-evidence-builder";
 import {
@@ -230,6 +233,36 @@ async function classifyInteraction(
   }
 }
 
+/** Bounded concurrency ceiling for vision classification. */
+const MAX_CONCURRENT_VISION = 6;
+/** Hard ceiling on total classifications per docgen run to bound LLM spend. */
+const MAX_CLASSIFICATIONS_PER_RUN = 100;
+
+/**
+ * Run an async worker across `items` with at most `concurrency` in-flight at
+ * once. Exceptions from the worker propagate (worker is expected to swallow
+ * its own errors and set fallback state).
+ */
+async function runPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const active: Promise<void>[] = [];
+  while (queue.length > 0 || active.length > 0) {
+    while (active.length < concurrency && queue.length > 0) {
+      const item = queue.shift() as T;
+      const p = worker(item).finally(() => {
+        const i = active.indexOf(p);
+        if (i >= 0) active.splice(i, 1);
+      });
+      active.push(p);
+    }
+    if (active.length > 0) await Promise.race(active);
+  }
+}
+
 async function classifyAllInteractions(
   evidence: SectionVisualEvidence,
   extract: ExtractArtifact,
@@ -246,41 +279,123 @@ async function classifyAllInteractions(
   const patternById = new Map<string, InteractionComponentPattern | undefined>();
 
   // Kick off classification only for interactions that actually appear on an
-  // evidence row.
+  // evidence row. Evidence rows carry the source InteractionCapture id, so we
+  // can key directly by id (O(N)) instead of scanning captures by URL (O(N·M)).
   const needed = new Set<string>();
   for (const row of evidence.rows) {
     if (!row.interactionCaptures) continue;
-    for (let i = 0; i < row.interactionCaptures.length; i += 1) {
-      // Interaction rows carry the capture object but not the id, so match by
-      // beforeUrl/afterUrl against the extract capture map.
-      const target = row.interactionCaptures[i]!;
-      const source = [...captureById.values()].find(
-        (c) => c.beforeUrl === target.beforeUrl && c.afterUrl === target.afterUrl,
-      );
-      if (source) needed.add(source.id);
+    for (const target of row.interactionCaptures) {
+      if (target.id && captureById.has(target.id)) needed.add(target.id);
     }
   }
 
-  for (const id of needed) {
-    const cap = captureById.get(id);
-    if (!cap) continue;
-    patternById.set(id, await classifyInteraction(cap, config));
+  // Bound total classifications per run so a pathological site (dozens of
+  // pages × dozens of interactions) cannot blow up vision-model spend.
+  let neededIds = [...needed];
+  if (neededIds.length > MAX_CLASSIFICATIONS_PER_RUN) {
+    console.warn(
+      `[docgen] classification queue length ${neededIds.length} exceeds cap ${MAX_CLASSIFICATIONS_PER_RUN}; truncating`,
+    );
+    neededIds = neededIds.slice(0, MAX_CLASSIFICATIONS_PER_RUN);
   }
+
+  await runPool(neededIds, MAX_CONCURRENT_VISION, async (id) => {
+    const cap = captureById.get(id);
+    if (!cap) return;
+    const pattern = await classifyInteraction(cap, config);
+    patternById.set(id, pattern);
+  });
 
   const rows = evidence.rows.map((row) => {
     if (!row.interactionCaptures || row.interactionCaptures.length === 0) return row;
     const enriched: InteractionEvidenceCapture[] = row.interactionCaptures.map((cap) => {
-      const source = [...captureById.values()].find(
-        (c) => c.beforeUrl === cap.beforeUrl && c.afterUrl === cap.afterUrl,
-      );
-      if (!source) return cap;
-      const pattern = patternById.get(source.id);
+      if (!cap.id) return cap;
+      const pattern = patternById.get(cap.id);
       return pattern ? { ...cap, componentPattern: pattern } : cap;
     });
     return { ...row, interactionCaptures: enriched };
   });
 
   return { version: evidence.version, rows };
+}
+
+/**
+ * Hybrid-mode evidence remap.
+ *
+ * In hybrid ("template") mode the site hierarchy is built from the content
+ * site's segments (content-side section ids), but the raw section-visual-
+ * evidence is built from the design site's segments (design-side section ids).
+ * Those id spaces are disjoint, so every content-side `HierarchySection.
+ * evidenceId` would dangle against the emitted evidence doc.
+ *
+ * Fix: for each content-side section, look up a design-side evidence row with
+ * the same canonical `tag`. Prefer a same-slug match; fall back to the first
+ * globally. Emit a copy of that design row keyed by the CONTENT-side section
+ * id (evidenceId + sectionId) so the join lines up. Content sections without
+ * a tag-matching design row emit no evidence row — renderVisualBlock falls
+ * back to design-system rules.
+ */
+export function mapEvidenceForHybrid(
+  hierarchy: SiteHierarchy,
+  designSegment: SegmentArtifact,
+  designEvidence: SectionVisualEvidence,
+): SectionVisualEvidence {
+  // Build a design-side lookup: design section id -> tag, and design section
+  // id -> pageSlug (via the design segment). This lets us match by tag with a
+  // same-slug preference without depending on evidence row ordering.
+  const designTagById = new Map<string, string>();
+  const designSlugById = new Map<string, string>();
+  for (const dp of designSegment.pages) {
+    const slug = pathToSlug(dp.path);
+    for (const s of dp.sections) {
+      designTagById.set(s.id, s.tag);
+      designSlugById.set(s.id, slug);
+    }
+  }
+  // Evidence rows keyed by design section id for quick lookup.
+  const designRowById = new Map(
+    designEvidence.rows.map((r) => [r.sectionId, r] as const),
+  );
+  // Group design rows by tag, preserving per-slug order, so we can prefer a
+  // same-slug match.
+  const rowsByTag = new Map<string, typeof designEvidence.rows>();
+  for (const row of designEvidence.rows) {
+    const tag = designTagById.get(row.sectionId);
+    if (!tag) continue;
+    const bucket = rowsByTag.get(tag);
+    if (bucket) bucket.push(row);
+    else rowsByTag.set(tag, [row]);
+  }
+
+  const mapped: SectionVisualEvidence["rows"] = [];
+  for (const page of hierarchy.pages) {
+    for (const section of page.sections) {
+      const bucket = rowsByTag.get(section.tag);
+      if (!bucket || bucket.length === 0) continue;
+      // Prefer a design row on the same slug when one exists.
+      const sameSlug = bucket.find(
+        (r) => designSlugById.get(r.sectionId) === page.slug,
+      );
+      const chosen = sameSlug ?? bucket[0]!;
+      const source = designRowById.get(chosen.sectionId) ?? chosen;
+      mapped.push({
+        evidenceId: section.evidenceId,
+        pageSlug: page.slug,
+        sectionId: section.id,
+        screenshotUrl: source.screenshotUrl,
+        mobileScreenshotUrl: source.mobileScreenshotUrl,
+        contextScreenshotUrl: source.contextScreenshotUrl,
+        boundingBox: source.boundingBox,
+        computedStyles: source.computedStyles,
+        domSnippet: source.domSnippet,
+        layoutHint: source.layoutHint,
+        mediaUrls: source.mediaUrls,
+        interactionCaptures: source.interactionCaptures,
+      });
+    }
+  }
+
+  return { version: designEvidence.version, rows: mapped };
 }
 
 function makeSiteStrategyDoc(
@@ -435,8 +550,16 @@ export async function runDocgenStage(
     designSegment,
     designExtract,
   );
+  // Hybrid mode (content site !== design site): remap design-side evidence
+  // rows so their evidenceId/sectionId keys line up with the content-side
+  // hierarchy sections. Otherwise every hierarchy section's evidenceId would
+  // dangle against the emitted evidence doc.
+  const isHybrid = contentCtx.siteUuid !== designCtx.siteUuid;
+  const alignedEvidence = isHybrid
+    ? mapEvidenceForHybrid(hierarchy, designSegment, rawEvidence)
+    : rawEvidence;
   const enrichedEvidence = await classifyAllInteractions(
-    rawEvidence,
+    alignedEvidence,
     designExtract,
     config,
   );
