@@ -4,6 +4,7 @@ import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/uti
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { generateSiteDocs, generateSiteDocsFromTemplate, generateSiteDocsForGreenfield } from "../../src/utils/site-docs";
 import type { SiteHierarchy } from "../../src/types/site-hierarchy";
+import type { DesignSystemV2 } from "../../src/types/design-system-v2";
 import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
 
@@ -435,13 +436,18 @@ describe("generateSiteDocsFromTemplate", () => {
     const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
     const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
     expect(hierarchy.pages[0].slug).toBe("index");
-    expect(hierarchy.pages[0].sections.length).toBe(templateShellFixture.page.sections.length);
+    expect(hierarchy.pages[0].sections.length).toBe(templateShellFixture.page.sections.length - 2);
 
     const sectionTags = hierarchy.pages[0].sections.map((s) => s.tag);
-    expect(sectionTags).toContain("header");
+    expect(sectionTags).not.toContain("header");
     expect(sectionTags).toContain("hero");
     expect(sectionTags).toContain("feature-grid");
-    expect(sectionTags).toContain("footer");
+    expect(sectionTags).not.toContain("footer");
+
+    const designSystemDoc = docs.find((d) => d.key === "design-system")!;
+    const designSystem: DesignSystemV2 = JSON.parse(designSystemDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(designSystem.global.shell.header).toBeDefined();
+    expect(designSystem.global.shell.footer).toBeDefined();
 
     const hero = hierarchy.pages[0].sections.find((s) => s.tag === "hero")!;
     expect(hero.evidenceId).toBe("template-index-hero-shell");

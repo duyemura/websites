@@ -20,6 +20,31 @@ export type CanonicalSectionTag =
   | "steps-band"
   | "unknown";
 
+export interface SectionStyleHint {
+  theme?: "dark" | "light";
+  centered?: boolean;
+  columns?: number;
+  imagePosition?: "left" | "right" | "background" | "none";
+  sourceOrder?: number;
+  align?: "left" | "center" | "right";
+  eyebrow?: string;
+  uppercase?: boolean;
+  ctaStyle?: "primary" | "dark" | "outline";
+  heroTextColor?: string;
+  heroCtaBg?: string;
+  heroCtaColor?: string;
+  heroCtaRadius?: string;
+  heroCtaHasIcon?: boolean;
+  heroCtaUppercase?: boolean;
+  heroCtaBold?: boolean;
+  heroCtaTransform?: string;
+  heroCtaPadding?: string;
+  subtitleUppercase?: boolean;
+  eyebrowBg?: string;
+  eyebrowColor?: string;
+  eyebrowPadding?: string;
+}
+
 export interface HierarchySection {
   id: string;
   tag: CanonicalSectionTag;
@@ -32,6 +57,7 @@ export interface HierarchySection {
     images?: { url: string; alt?: string; context?: string }[];
     cta?: { label: string; href: string };
   };
+  styleHint?: SectionStyleHint;
   evidenceId: string;
   notes?: string;
 }

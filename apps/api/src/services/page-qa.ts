@@ -290,7 +290,7 @@ function parseQaIssues(raw: string): QaIssue[] | null {
     return [];
   }
 
-  let cleaned = trimmed.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
+  const cleaned = trimmed.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
   if (!cleaned || /^no\s+issues?$/i.test(cleaned)) {
     return [];
   }

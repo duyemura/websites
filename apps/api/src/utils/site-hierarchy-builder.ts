@@ -54,10 +54,12 @@ export function buildSiteHierarchy(
       content: {
         heading: s.heading,
         body: s.body,
+        eyebrow: s.styleHint?.eyebrow,
         items: s.items,
         images: s.images,
         cta: s.cta,
       },
+      styleHint: s.styleHint,
       evidenceId: s.visualEvidence.evidenceId,
     })) ?? [];
 

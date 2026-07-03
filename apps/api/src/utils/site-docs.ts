@@ -619,6 +619,7 @@ function buildTemplateDesignSystem(
 ): DesignSystemV2 {
   const tokens = sanitizeTokens(shell.theme);
   const headerSection = shell.page.sections.find((s) => s.type === "SiteHeader");
+  const footerSection = shell.page.sections.find((s) => s.type === "SiteFooter");
 
   const navLinks = Array.isArray(headerSection?.props.navLinks)
     ? headerSection.props.navLinks
@@ -647,8 +648,8 @@ function buildTemplateDesignSystem(
     global: {
       tokens,
       shell: {
-        header: undefined,
-        footer: undefined,
+        header: headerSection,
+        footer: footerSection,
         navLinks,
       },
       rules: {
@@ -670,7 +671,10 @@ function buildTemplateSiteHierarchy(
   siteName: string,
 ): SiteHierarchy {
   const pageSlug = shell.page.slug || "index";
-  const pageSections: HierarchySection[] = shell.page.sections.map((section) => {
+  const contentSections = shell.page.sections.filter(
+    (section) => section.type !== "SiteHeader" && section.type !== "SiteFooter",
+  );
+  const pageSections: HierarchySection[] = contentSections.map((section) => {
     const tag = mapSiteSectionTypeToTag(section.type);
     return {
       id: section.id,

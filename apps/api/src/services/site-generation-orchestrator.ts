@@ -238,8 +238,10 @@ function hierarchyHeroToSiteSection(section: HierarchySection): SiteSection {
     props: {
       title: section.content.heading ?? "",
       subtitle: section.content.body ?? "",
+      eyebrow: section.content.eyebrow ?? null,
       cta: section.content.cta ?? null,
       backgroundImage: section.content.images?.[0]?.url ?? null,
+      styleHint: section.styleHint ?? null,
     },
   };
 }
