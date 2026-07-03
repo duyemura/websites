@@ -93,14 +93,13 @@ describe("POST /sites/:uuid/build-commands", () => {
       .values({
         workspaceUuid,
         siteUuid,
-        key: "blueprint-draft",
-        title: "Blueprint draft",
-        content: `# Blueprint draft\n\n## Site blueprint\n\n\`\`\`json\n${JSON.stringify({
-          site_metadata: { framework: "astro", mode: "replication", target_url: "https://example.com", generated_at: new Date().toISOString() },
-          design_tokens: {},
-          global_shell: {},
+        key: "site-hierarchy",
+        title: "Site hierarchy",
+        content: `# Site hierarchy\n\nThis doc holds the current semantic page/section hierarchy for the site.\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify({
+          version: "1",
+          siteMetadata: { framework: "astro", mode: "replication", targetUrl: "https://example.com", generatedAt: new Date().toISOString() },
           pages: [],
-          build_plan: { next_page: "about", page_status: { index: "built", about: "planned" }, build_order: ["index", "about"] },
+          buildPlan: { nextPage: "about", pageStatus: { index: "built", about: "planned" }, buildOrder: ["index", "about"] },
         })}\n\`\`\``,
         source: "ai_extracted",
         status: "active",

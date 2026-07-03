@@ -1,5 +1,6 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { renderVisualBlock } from "../visual-section-renderer";
+import * as llmClient from "../../ai/llm-client";
 import type { HierarchySection } from "../../types/site-hierarchy";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { Config } from "../../plugins/env";
@@ -131,5 +132,59 @@ describe("visual-section-renderer", () => {
     });
 
     expect(source).toContain("content-block");
+  });
+
+  test("returns LLM-generated source and strips markdown fences when screenshot evidence is provided", async () => {
+    vi.spyOn(llmClient, "chatCompletion").mockResolvedValueOnce({
+      content: "```astro\n<section class=\"hero\">\n  <h1>About us</h1>\n</section>\n```",
+    });
+
+    const section = makeHierarchySection();
+    const designSystem = makeDesignSystem();
+    const evidence = {
+      evidenceId: "ev-1",
+      pageSlug: "index",
+      sectionId: "section-1",
+      boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+      computedStyles: [],
+      screenshotUrl: "https://example.com/section.png",
+    };
+
+    const source = await renderVisualBlock({
+      section,
+      evidence,
+      designSystem,
+      config: makeConfig(),
+    });
+
+    expect(source).toContain("<section class=\"hero\">");
+    expect(source).toContain("<h1>About us</h1>");
+    expect(source).not.toContain("```");
+  });
+
+  test("falls back to deterministic block when the LLM call fails", async () => {
+    vi.spyOn(llmClient, "chatCompletion").mockRejectedValueOnce(new Error("LLM unavailable"));
+
+    const section = makeHierarchySection();
+    const designSystem = makeDesignSystem();
+    const evidence = {
+      evidenceId: "ev-1",
+      pageSlug: "index",
+      sectionId: "section-1",
+      boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+      computedStyles: [],
+      screenshotUrl: "https://example.com/section.png",
+    };
+
+    const source = await renderVisualBlock({
+      section,
+      evidence,
+      designSystem,
+      config: makeConfig(),
+    });
+
+    expect(source).toContain("About us");
+    expect(source).toContain("Join today");
+    expect(source).not.toContain("```");
   });
 });

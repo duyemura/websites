@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { buildDesignSystem, type DesignSystem } from "../design-system";
+import { buildDesignSystem, sanitizeTokens, type DesignSystem } from "../design-system";
 import type { ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
 
 const tokens: ThemeTokens = {
@@ -61,7 +61,7 @@ describe("design-system", () => {
     expect(designSystem.version).toBe("1");
     expect(designSystem.siteMetadata.framework).toBe("astro");
     expect(designSystem.siteMetadata.mode).toBe("replication");
-    expect(designSystem.global.tokens).toEqual(tokens);
+    expect(designSystem.global.tokens).toEqual(sanitizeTokens(tokens));
     expect(designSystem.global.shell.header).toEqual(header);
     expect(designSystem.global.shell.footer).toEqual(footer);
     expect(designSystem.global.shell.navLinks).toEqual([{ label: "Home", href: "/" }]);

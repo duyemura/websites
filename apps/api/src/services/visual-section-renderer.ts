@@ -32,7 +32,7 @@ function escapeHtml(text: string): string {
 }
 
 function renderFallbackBlock(section: HierarchySection, designSystem: DesignSystemV2): string {
-  const heading = escapeHtml(str(section.content.heading) || section.tag);
+  const heading = str(section.content.heading) || section.tag;
   const body = escapeHtml(str(section.content.body));
   const eyebrow = escapeHtml(str(section.content.eyebrow));
   const items = section.content.items ?? [];
@@ -152,34 +152,41 @@ export async function renderVisualBlock(input: RenderVisualBlockInput): Promise<
     return renderFallbackBlock(section, designSystem);
   }
 
-  const model = modelForTask("vision", config);
-  const prompt = buildVisualPrompt(section, designSystem, previousTag, nextTag);
+  try {
+    const model = modelForTask("vision", config);
+    const prompt = buildVisualPrompt(section, designSystem, previousTag, nextTag);
 
-  const response = await chatCompletion(
-    {
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: evidence.screenshotUrl } },
-          ],
-        },
-      ],
-      temperature: 0.2,
-      maxTokens: 4096,
-    },
-    config,
-  );
+    const response = await chatCompletion(
+      {
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: evidence.screenshotUrl } },
+            ],
+          },
+        ],
+        temperature: 0.2,
+        maxTokens: 4096,
+      },
+      config,
+    );
 
-  let source = response.content.trim();
-  // Strip markdown fences if the model wrapped the Astro source in them.
-  if (source.startsWith("```astro") && source.endsWith("```")) {
-    source = source.slice(7, -3).trim();
-  } else if (source.startsWith("```") && source.endsWith("```")) {
-    source = source.slice(3, -3).trim();
+    let source = response.content.trim();
+    if (!source) {
+      return renderFallbackBlock(section, designSystem);
+    }
+
+    if (source.startsWith("```astro") && source.endsWith("```")) {
+      source = source.slice(7, -3).trim();
+    } else if (source.startsWith("```") && source.endsWith("```")) {
+      source = source.slice(3, -3).trim();
+    }
+
+    return source;
+  } catch {
+    return renderFallbackBlock(section, designSystem);
   }
-
-  return source;
 }

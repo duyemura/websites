@@ -629,6 +629,9 @@ function buildTemplateDesignSystem(
         .map((item) => ({ label: item.label, href: item.href }))
     : [];
 
+  const heroSection = shell.page.sections.find((s) => s.type === "Hero");
+  const homePagePrimaryCta = isCta(heroSection?.props.cta) ? heroSection.props.cta : undefined;
+
   const logo: BrandLogo = { type: "text", value: siteName };
   const headingStyle: HeadingStyle = { uppercase: false, bold: true };
 
@@ -658,7 +661,7 @@ function buildTemplateDesignSystem(
     },
     business: { name: siteName },
     brand: { logo, headingStyle },
-    reference: { screenshotUrl },
+    reference: { screenshotUrl, homePagePrimaryCta },
   };
 }
 
@@ -886,6 +889,7 @@ export function generateSiteDocsForGreenfield(
 
   const logo: BrandLogo = { type: "text", value: businessInput.businessName };
   const headingStyle: HeadingStyle = { uppercase: false, bold: true };
+  const homePagePrimaryCta = { label: "Get started", href: "#cta" };
 
   const designSystem: DesignSystemV2 = {
     version: "2",
@@ -915,7 +919,7 @@ export function generateSiteDocsForGreenfield(
       tagline: businessInput.tagline,
     },
     brand: { logo, headingStyle },
-    reference: { screenshotUrl: null },
+    reference: { screenshotUrl: null, homePagePrimaryCta },
   };
 
   const heroSection: HierarchySection = {
@@ -925,7 +929,7 @@ export function generateSiteDocsForGreenfield(
     content: {
       heading: businessInput.businessName,
       body: businessInput.tagline ?? businessInput.description ?? "",
-      cta: { label: "Get started", href: "#cta" },
+      cta: homePagePrimaryCta,
     },
     evidenceId: "greenfield-index-hero-greenfield",
   };

@@ -30,5 +30,7 @@ export interface DesignSystemV2 {
   };
   reference: {
     screenshotUrl?: string | null;
+    /** Homepage primary CTA, reused in the global header. */
+    homePagePrimaryCta?: { label: string; href: string } | null;
   };
 }

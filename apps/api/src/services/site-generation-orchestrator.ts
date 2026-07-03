@@ -16,7 +16,7 @@ import { loadDesignSystemDoc, saveDesignSystemDoc } from "../utils/design-system
 import { loadSectionVisualEvidenceDoc } from "../utils/section-visual-evidence-io";
 import { resolveReferenceScreenshot } from "../utils/screenshot-assets";
 import { getJobCostUsd } from "../utils/job-budget";
-import { generateAstroPage } from "./astro-code-generator";
+import { generateAstroPage, signS3AssetUrls } from "./astro-code-generator";
 import { runPageQa, type QaIssue } from "./page-qa";
 import { logAiActivity } from "./ai-activity";
 import { jsonb } from "../utils/jsonb";
@@ -339,30 +339,36 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     throw new Error(`Page ${pageSlug} not found in site hierarchy`);
   }
 
+  // Sign private S3 asset URLs before rendering so the generic visual block
+  // renderer and semantic shell renderers receive usable image URLs.
+  const signedDesignSystem = await signS3AssetUrls(designSystem, config);
+  const signedPage = await signS3AssetUrls(page, config);
+  const signedVisualEvidence = visualEvidence ? await signS3AssetUrls(visualEvidence, config) : visualEvidence;
+
   let currentHierarchy = updatePageStatus(hierarchy, pageSlug, "in_progress");
   await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, currentHierarchy);
 
   const renderedSections: { section: HierarchySection; source: string }[] = [];
-  for (let i = 0; i < page.sections.length; i++) {
-    const section = page.sections[i];
+  for (let i = 0; i < signedPage.sections.length; i++) {
+    const section = signedPage.sections[i];
     if (!section) continue;
-    const previousTag = page.sections[i - 1]?.tag;
-    const nextTag = page.sections[i + 1]?.tag;
+    const previousTag = signedPage.sections[i - 1]?.tag;
+    const nextTag = signedPage.sections[i + 1]?.tag;
 
     if (section.tag === "header") {
-      const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+      const headerSection = signedDesignSystem.global.shell.header ?? makeDefaultHeader(signedDesignSystem);
       renderedSections.push({ section, source: renderSemanticSection(headerSection) });
     } else if (section.tag === "footer") {
-      const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
+      const footerSection = signedDesignSystem.global.shell.footer ?? makeDefaultFooter(signedDesignSystem);
       renderedSections.push({ section, source: renderSemanticSection(footerSection) });
     } else if (section.tag === "hero") {
       renderedSections.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)) });
     } else {
-      const evidence = getEvidenceForSection(visualEvidence, section);
+      const evidence = getEvidenceForSection(signedVisualEvidence, section);
       const source = await renderVisualBlock({
         section,
         evidence,
-        designSystem,
+        designSystem: signedDesignSystem,
         previousTag,
         nextTag,
         config,
@@ -377,8 +383,8 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     workspaceUuid,
     siteUuid,
     pageSlug,
-    designSystem,
-    page,
+    designSystem: signedDesignSystem,
+    page: signedPage,
     renderedSections,
     mode: resolvedMode,
     attemptId,

@@ -20,6 +20,7 @@ export function buildDesignSystemV2(
   const footer = extractFooterSection(data);
   const headingStyle: HeadingStyle = detectHeadingStyle(data);
   const logo: BrandLogo = extractLogo(data);
+  const homePagePrimaryCta = data.sections?.find((s) => s.type.toLowerCase().includes("hero"))?.cta;
 
   const legacy = buildLegacyDesignSystem({
     blueprint: {
@@ -39,6 +40,7 @@ export function buildDesignSystemV2(
     },
     brand: { logo, headingStyle },
     referenceScreenshotUrl: screenshotUrl,
+    homePagePrimaryCta,
   });
 
   return {
@@ -61,6 +63,6 @@ export function buildDesignSystemV2(
     },
     business: legacy.business,
     brand: legacy.brand,
-    reference: { screenshotUrl },
+    reference: { screenshotUrl, homePagePrimaryCta: legacy.reference.homePagePrimaryCta },
   };
 }

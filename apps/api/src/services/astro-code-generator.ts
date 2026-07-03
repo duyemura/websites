@@ -105,7 +105,7 @@ async function signAssetUrl(url: string, config: Config): Promise<string> {
   });
 }
 
-async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
+export async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
   if (typeof value === "string") {
     return (await signAssetUrl(value, config)) as unknown as T;
   }
