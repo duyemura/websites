@@ -135,14 +135,9 @@ export async function generateAstroPage(input: GeneratePageInput): Promise<Gener
   await rm(sourceDir, { recursive: true, force: true });
   await mkdir(sourceDir, { recursive: true });
 
-  // Sign private S3 asset URLs so the single-URL preview can load images
-  // (logos, hero backgrounds, etc.) without requiring a separate proxy.
-  const [signedDesignSystem, signedRenderedSections] = await Promise.all([
-    signS3AssetUrls(designSystem, config),
-    signS3AssetUrls(renderedSections, config),
-  ]);
-
-  await writeProjectFiles(sourceDir, signedDesignSystem, page, signedRenderedSections);
+  // Callers must sign private S3 asset URLs before passing rendered sections
+  // and the design system in; buildPage already does this.
+  await writeProjectFiles(sourceDir, designSystem, page, renderedSections);
 
   const installResult = await runCommand("pnpm", ["install"], sourceDir);
   if (installResult.exitCode !== 0) {

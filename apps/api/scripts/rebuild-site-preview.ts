@@ -1,5 +1,5 @@
 /**
- * Re-run the Astro build for an existing site using its current blueprint,
+ * Re-run the Astro build for an existing site using its current locked docs,
  * without re-scraping the source. Useful for iterating on renderer/extraction
  * code and comparing the new preview to a previous screenshot.
  *
@@ -11,10 +11,7 @@
  */
 import "dotenv/config";
 import { db, config } from "../src/database";
-import { loadBlueprintDoc, saveBlueprintDoc, updatePageStatus } from "../src/utils/blueprint-io";
-import { loadOrBuildDesignSystem, saveDesignSystemDoc } from "../src/utils/design-system-io";
 import { buildPage } from "../src/services/site-generation-orchestrator";
-import { resolveReferenceScreenshot } from "../src/utils/screenshot-assets";
 import bull from "../src/bullmq";
 import { jsonb } from "../src/utils/jsonb";
 
@@ -36,12 +33,6 @@ async function main() {
 
   console.log(`Rebuilding homepage for ${site.name} (${siteUuid}) in workspace ${workspaceUuid}`);
 
-  const blueprint = await loadBlueprintDoc(db, workspaceUuid, siteUuid);
-  if (!blueprint) {
-    console.error(`Blueprint not found for site ${siteUuid}`);
-    process.exit(1);
-  }
-
   // Create a fresh parent aiJob for this incremental run.
   const aiJob = await db
     .insertInto("aiJobs")
@@ -59,20 +50,6 @@ async function main() {
     .executeTakeFirstOrThrow();
   const aiJobUuid = aiJob.uuid;
 
-  // Rebuild the design system from the existing blueprint so renderer changes take effect.
-  const referenceScreenshotUrl =
-    mode === "replication" && site.sourceUrl
-      ? (await resolveReferenceScreenshot(db, config, workspaceUuid, siteUuid, site.sourceUrl, "index"))?.url ?? null
-      : null;
-
-  const designSystem = await loadOrBuildDesignSystem(db, config, workspaceUuid, siteUuid, mode, blueprint, referenceScreenshotUrl, true);
-  await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
-
-  // Reset the homepage to planned so buildPage can move it through in_progress → built/failed.
-  let currentBlueprint = updatePageStatus(blueprint, "index", "planned");
-  await saveBlueprintDoc(db, workspaceUuid, siteUuid, currentBlueprint);
-
-  // Build the generate_page queue that buildPage expects.
   const queues = {
     classifyAssets: bull.build("classify_assets"),
     unclassifiedAssets: bull.build("unclassified_assets"),
@@ -95,7 +72,6 @@ async function main() {
     aiJobUuid,
     attemptId,
     mode,
-    referenceScreenshotUrl,
   });
 
   console.log("\nBuild result:");
