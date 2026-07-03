@@ -286,9 +286,9 @@ async function renderPageSections(
   designSystem: DesignSystemV2,
   evidence: SectionVisualEvidence | null,
   config: Config,
-): Promise<{ section: HierarchySection; source: string }[]> {
+): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
   const tailwind = tailwindForSection(designSystem);
-  const out: { section: HierarchySection; source: string }[] = [];
+  const out: { section: HierarchySection; source: string; isFallback: boolean }[] = [];
   for (let i = 0; i < page.sections.length; i++) {
     const section = page.sections[i];
     if (!section) continue;
@@ -298,15 +298,15 @@ async function renderPageSections(
 
     if (section.tag === "header") {
       const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-      out.push({ section, source: renderSemanticSection(headerSection) });
+      out.push({ section, source: renderSemanticSection(headerSection), isFallback: false });
     } else if (section.tag === "footer") {
       const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
-      out.push({ section, source: renderSemanticSection(footerSection) });
+      out.push({ section, source: renderSemanticSection(footerSection), isFallback: false });
     } else if (section.tag === "hero") {
-      out.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)) });
+      out.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)), isFallback: false });
     } else {
       const row = getEvidenceForSection(evidence, section);
-      const source = await renderVisualBlock({
+      const result = await renderVisualBlockWithFlag({
         section,
         evidence: row,
         designSystem,
@@ -315,7 +315,7 @@ async function renderPageSections(
         nextTag,
         config,
       });
-      out.push({ section, source });
+      out.push({ section, source: result.code, isFallback: result.isFallback });
     }
   }
   return out;
@@ -459,8 +459,17 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   const builtPages: string[] = [];
   let currentHierarchy = hierarchy;
   for (const page of scopedPages) {
+    console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
     const rendered = await renderPageSections(page, designSystem, evidence, input.config);
+    // Log per-section outcome.
+    for (const { section, isFallback } of rendered) {
+      if (isFallback) {
+        console.log(`[build]   ⚠  ${section.id} (${section.tag}) — fallback block`);
+      } else {
+        console.log(`[build]   ✓  ${section.id} (${section.tag})`);
+      }
+    }
     await writePageFiles(sourceDir, page, rendered);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "built");
     builtPages.push(page.slug);
@@ -571,11 +580,17 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     }
   }
 
+  if (fallbacks.length > 0) {
+    console.log(`[build] ⚠  ${fallbacks.length} section(s) fell back to deterministic block: ${fallbacks.map(f => f.sectionId).join(", ")}`);
+  }
+
   // 7b. Install deps + compile Astro to dist/ so verify can serve the clone.
   // Opt-in: tests skip this because they use synthetic scaffolds without real lockfiles.
   if (input.runAstroBuild) {
+    console.log(`[build] running pnpm install + astro build in ${sourceDir}`);
     await runProcess("pnpm", ["install"], sourceDir);
     await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
+    console.log(`[build] astro build complete`);
   }
 
   // 8. Save updated hierarchy.

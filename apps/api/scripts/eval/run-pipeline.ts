@@ -271,6 +271,7 @@ async function ensureEvalWorkspace(): Promise<string> {
 interface StageOutcome {
   extract?: ExtractArtifact;
   segment?: SegmentArtifact;
+  buildArtifact?: BuildArtifactPayload;
   verify?: VerifyArtifact;
   failedStage?: PipelineStage;
   error?: string;
@@ -338,7 +339,13 @@ async function runStages(opts: {
         runAstroBuild: true,
         runAstroCheck: true,
       };
-      await runBuildStage(input);
+      const buildResult = await runBuildStage(input);
+      outcome.buildArtifact = {
+        builtPages: buildResult.builtPages,
+        sharedComponentsBuilt: buildResult.sharedComponentsBuilt,
+        buildLog: buildResult.buildLog,
+        fallbacks: buildResult.fallbacks,
+      };
     }
 
     if (stages.includes("verify")) {
@@ -402,12 +409,20 @@ async function selfHeal(opts: {
 
 // ---------- Aggregation ----------
 
+interface BuildArtifactPayload {
+  builtPages: string[];
+  sharedComponentsBuilt: string[];
+  buildLog: Array<{ category: string; description: string; page?: string }>;
+  fallbacks: Array<{ sectionId: string; page: string }>;
+}
+
 interface PerUrlRow {
   url: string;
   slug: string;
   stagesRun: PipelineStage[];
   extract?: ExtractArtifact;
   segment?: SegmentArtifact;
+  buildArtifact?: BuildArtifactPayload;
   verify?: VerifyArtifact;
   verifyPostHeal?: VerifyArtifact;
   failedStage?: PipelineStage;
@@ -606,6 +621,34 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
     lines.push("");
   }
 
+  // Build logs — only emit for rows that ran the build stage.
+  const rowsWithBuild = rows.filter((r) => r.buildArtifact);
+  if (rowsWithBuild.length > 0) {
+    lines.push("## 6. Build logs");
+    lines.push("");
+    for (const r of rowsWithBuild) {
+      const b = r.buildArtifact!;
+      lines.push(`### ${r.url}`);
+      lines.push("");
+      lines.push(`- Pages built: ${b.builtPages.join(", ") || "none"}`);
+      lines.push(`- Shared components: ${b.sharedComponentsBuilt.join(", ") || "none"}`);
+      lines.push(`- Fallbacks (LLM retry exhausted): ${b.fallbacks.length > 0 ? b.fallbacks.map(f => `\`${f.sectionId}\``).join(", ") : "none"}`);
+      lines.push("");
+      if (b.buildLog.length > 0) {
+        lines.push("| Category | Description | Page |");
+        lines.push("|---|---|---|");
+        for (const entry of b.buildLog) {
+          const desc = entry.description.replace(/\|/g, "\\|").slice(0, 120);
+          lines.push(`| ${entry.category} | ${desc} | ${entry.page ?? ""} |`);
+        }
+        lines.push("");
+      } else {
+        lines.push("_No build log entries._");
+        lines.push("");
+      }
+    }
+  }
+
   return lines.join("\n") + "\n";
 }
 
@@ -687,6 +730,7 @@ async function main() {
       });
       row.extract = outcome.extract;
       row.segment = outcome.segment;
+      row.buildArtifact = outcome.buildArtifact;
       row.verify = outcome.verify;
       row.failedStage = outcome.failedStage;
       row.error = outcome.error;
