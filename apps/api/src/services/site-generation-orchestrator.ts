@@ -565,3 +565,48 @@ export async function approvePage(input: ApprovePageInput): Promise<ApprovePageO
 
   return { approved: pageSlug, remainingPagesEnqueued: remaining };
 }
+
+export interface ReSkinSiteInput extends Pick<OrchestratorContext, "db" | "queues" | "config" | "workspaceUuid" | "siteUuid" | "userUuid"> {
+  designSystem: DesignSystemV2;
+}
+
+export async function reSkinSite(input: ReSkinSiteInput): Promise<{ enqueued: string[] }> {
+  const { db, queues, workspaceUuid, siteUuid, userUuid, designSystem } = input;
+
+  await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
+
+  const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
+  if (!hierarchy) {
+    throw new Error(`Site hierarchy not found for site ${siteUuid}`);
+  }
+
+  const slugs = hierarchy.buildPlan.buildOrder.filter((slug) => {
+    const status = hierarchy.buildPlan.pageStatus[slug];
+    return status === "built" || status === "approved";
+  });
+
+  if (slugs.length === 0) {
+    return { enqueued: [] };
+  }
+
+  const options = { accuracy: "accurate", mode: hierarchy.siteMetadata.mode, reskin: true };
+  const aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options);
+
+  for (const slug of slugs) {
+    const attemptId = generateAttemptId();
+    await queues.generatePage.queue.add("generate_page", {
+      workspaceUuid,
+      siteUuid,
+      pageSlug: slug,
+      aiJobUuid,
+      attemptId,
+      mode: hierarchy.siteMetadata.mode,
+    });
+  }
+
+  await updateSiteMemory(db, workspaceUuid, siteUuid, {
+    recentEdits: [`${new Date().toISOString()} - Re-skinned site with new design system by ${userUuid ?? "system"}`],
+  });
+
+  return { enqueued: slugs };
+}
