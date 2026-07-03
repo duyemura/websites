@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><title>Semantic Gym</title>
+<meta name="description" content="A well-built gym site">
+<script type="application/ld+json">{"@type":"LocalBusiness","name":"Semantic Gym"}</script>
+<style>
+:root { --brand: #e63946; --bg: #ffffff; }
+h1 { font-family: Oswald, sans-serif; color: var(--brand); }
+.features { display: flex; gap: 24px; }
+@media (max-width: 768px) { .features { flex-direction: column; } }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+</style></head>
+<body>
+<header><nav><a href="/">Home</a><a href="/about">About</a><a href="/pricing">Pricing</a></nav></header>
+<main>
+  <section id="hero"><h1>Train Harder</h1><p>The best gym in town.</p><a href="/join" class="cta">Join now</a></section>
+  <section id="features" class="features">
+    <div><h2>CrossFit</h2><p>Group classes daily.</p></div>
+    <div><h2>Yoga</h2><p>Recover and stretch.</p></div>
+    <div><h2>Open Gym</h2><p>Train on your time.</p></div>
+  </section>
+  <section id="faq">
+    <h2>FAQ</h2>
+    <details><summary>What should I bring?</summary><p>Water and shoes.</p></details>
+  </section>
+</main>
+<footer><p>123 Main St · (555) 555-5555</p></footer>
+</body></html>
