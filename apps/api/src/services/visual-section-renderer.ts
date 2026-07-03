@@ -95,7 +95,7 @@ const images = ${json(images)};
 const cta = ${json(cta)};
 ---
 
-<section class="py-20 px-6 bg-[var(--color-background)] text-[var(--color-foreground)]">
+<section data-section-id="${section.id}" class="py-20 px-6 bg-[var(--color-background)] text-[var(--color-foreground)]">
   <div class="max-w-6xl mx-auto">
     <div class="${imageBlock ? "grid gap-10 items-center lg:grid-cols-[1fr_1.25fr]" : ""}">
       ${imageBlock}
@@ -176,6 +176,8 @@ ${section.content.cta ? `- CTA: ${JSON.stringify(section.content.cta)}` : ""}
 ${previousTag ? `- Previous section tag: ${previousTag}` : ""}
 ${nextTag ? `- Next section tag: ${nextTag}` : ""}
 ${section.notes ? `- Notes: ${section.notes}` : ""}
+
+CRITICAL: The outermost element of the component MUST include the attribute data-section-id="${section.id}" (literal string value hardcoded to this exact value, not a variable). This is required for automated quality checks.
 
 The component should match the screenshot's layout, typography, spacing, colors, and imagery as closely as possible while remaining fully responsive. Use CSS variables for colors via var(--color-*) references. Include frontmatter that declares any props/constants used. Preserve all visible text content from the screenshot and metadata. If the screenshot shows a grid, cards, columns, or a specific background treatment, replicate it. Avoid arbitrary inline styles unless necessary for a precise match.${responsiveBlock}${interactionBlock}${extraBlock}`;
 }

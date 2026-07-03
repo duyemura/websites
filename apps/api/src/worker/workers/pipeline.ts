@@ -4,6 +4,7 @@ import type { QueueConfig } from "../../bullmq";
 import { getS3Client } from "../../s3";
 import type { PipelineStage } from "../../types/pipeline-artifacts";
 import { saveArtifact } from "../../utils/pipeline/artifact-store";
+import { saveSiteDocs } from "../../utils/site-docs";
 
 interface StageJobPayload {
   kind: "stage";
@@ -95,8 +96,9 @@ async function runStage(
         contentSiteUuid: job.input.contentSiteUuid,
         designSiteUuid: job.input.designSiteUuid,
       });
-      // docgen returns an array of docs; persist a marker artifact so status
-      // can report a version + createdAt for the docgen stage.
+      // Persist the docs to the docs table so the build stage can load them.
+      await saveSiteDocs(fastify.db, job.workspaceUuid, docs, job.siteUuid);
+      // Also persist a marker artifact so pipeline/status can report a version.
       await saveArtifact(fastify.db, ctx, "docgen", {
         docCount: docs.length,
         docKeys: docs.map((d) => d.key),
@@ -114,6 +116,7 @@ async function runStage(
         siteUuid: job.siteUuid,
         workspaceUuid: job.workspaceUuid,
         pages: job.input.pages,
+        runAstroBuild: true,
       });
       return result;
     }

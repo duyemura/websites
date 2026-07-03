@@ -208,6 +208,7 @@ export function buildSiteHierarchyFromSegments(
 
     return {
       slug,
+      path: sp.path,
       isHomePage,
       title:
         ep?.content.businessName ??

@@ -71,6 +71,8 @@ export interface HierarchySection {
 
 export interface HierarchyPage {
   slug: string;
+  /** Original URL path (e.g. "/programs/kids") — preserved for exact path matching in verify. */
+  path?: string;
   isHomePage: boolean;
   title: string;
   metaTitle?: string;

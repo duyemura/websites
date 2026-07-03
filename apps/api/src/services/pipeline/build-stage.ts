@@ -74,6 +74,11 @@ export interface BuildStageInput {
   pages?: string[];
   /** Optional override for the output source dir; primarily for tests. */
   sourceDir?: string;
+  /** Whether to run `pnpm install` + `astro build` after writing source files,
+   *  producing a `dist/` for the verify stage. Defaults to false for backwards
+   *  compatibility with tests that don't have real Astro scaffolds; production
+   *  pipeline runs (eval harness, HTTP worker) should set this to true. */
+  runAstroBuild?: boolean;
   /** Whether to run `astro check` as a post-pass. Defaults to false (opt-in)
    *  because it requires the Astro project to have `node_modules` installed.
    *  Callers that install deps first can set this true. */
@@ -325,6 +330,18 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+/** Run a subprocess in the given directory; resolves when done. Throws on non-zero exit. */
+async function runProcess(cmd: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, env: process.env, stdio: "inherit" });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code ?? "null"} in ${cwd}`));
+    });
+    child.on("error", reject);
+  });
+}
+
 /** Run `astro check` in the given source dir. Returns an empty array if the
  *  Astro CLI is not installed (best-effort). */
 async function runAstroCheck(sourceDir: string): Promise<AstroCheckError[]> {
@@ -540,6 +557,13 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
         });
       }
     }
+  }
+
+  // 7b. Install deps + compile Astro to dist/ so verify can serve the clone.
+  // Opt-in: tests skip this because they use synthetic scaffolds without real lockfiles.
+  if (input.runAstroBuild) {
+    await runProcess("pnpm", ["install"], sourceDir);
+    await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
   }
 
   // 8. Save updated hierarchy.

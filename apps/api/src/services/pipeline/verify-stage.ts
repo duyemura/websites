@@ -137,7 +137,7 @@ export async function runVerifyStage(
       // a single DOM produced false-critical failures and capped fidelity at
       // 79 on any multi-page site.
       const hierarchyPage = hierarchy.pages.find(
-        (hp) => slugToPath(hp.slug) === pagePath,
+        (hp) => (hp.path ?? slugToPath(hp.slug)) === pagePath,
       );
       if (!hierarchyPage) continue;
 
@@ -243,7 +243,10 @@ export async function runVerifyStage(
     // 9. Fallbacks from the build artifact.
     for (const fb of build?.payload.fallbacks ?? []) {
       actionable.push({
-        page: slugToPath(fb.page),
+        page: (() => {
+          const hp = hierarchy.pages.find((p) => p.slug === fb.page);
+          return hp?.path ?? slugToPath(fb.page);
+        })(),
         sectionId: fb.sectionId,
         issue: "section fell back to generic block",
         suggestedStage: "build",
