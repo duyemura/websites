@@ -19,7 +19,7 @@ export interface DiscoveryInputs {
   pageTitles: Record<string, string>;
 }
 
-const BOILERPLATE_RE = /(privacy|terms|cookie|legal|accessibility-statement)/i;
+const BOILERPLATE_RE = /(?:^|\/)(privacy|privacy-policy|terms|terms-of-service|terms-of-use|cookie-policy|cookies|legal|legal-notice|accessibility|accessibility-statement)(?:\/|$)/i;
 const UGC_PATH_RE = /\/(blog|news|articles?|events?|posts?)\/.+/i;
 const DATED_URL_RE = /\/\d{4}\/\d{2}\//;
 const COLLECTION_MIN_CHILDREN = 4;

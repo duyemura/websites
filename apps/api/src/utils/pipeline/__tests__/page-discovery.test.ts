@@ -11,12 +11,27 @@ describe("classifyUrl", () => {
     ["/blog", "structural"],            // blog INDEX is structural
     ["/privacy-policy", "boilerplate"],
     ["/terms", "boilerplate"],
+    // negatives — must NOT be boilerplate
+    ["/our-privacy-approach", "structural"],
+    ["/legal-services", "structural"],
+    ["/terms-of-fitness", "structural"],
+    ["/cookies-recipe", "structural"],
+    // additional positives — must be boilerplate
+    ["/privacy", "boilerplate"],
+    ["/cookie-policy", "boilerplate"],
+    ["/accessibility-statement", "boilerplate"],
+    ["/legal-notice", "boilerplate"],
   ])("classifies %s as %s", (path, expected) => {
     expect(classifyUrl(path, { collectionPrefixes: [] })).toBe(expected);
   });
 
   it("classifies collection members as ugc-instance", () => {
     expect(classifyUrl("/blog/5-tips-for-squats", { collectionPrefixes: ["/blog/"] })).toBe("ugc-instance");
+  });
+
+  it("does not classify hyphen-adjacent paths as ugc-instance", () => {
+    // '/news-events' should NOT match /news/... prefix
+    expect(classifyUrl("/news-events/leadership-summit", { collectionPrefixes: [] })).toBe("structural");
   });
 });
 
@@ -45,11 +60,19 @@ describe("buildSiteMap", () => {
     pageTitles: {},
   };
 
-  it("merges sources, dedupes, ranks nav > footer > sweep", () => {
-    const map = buildSiteMap(inputs, { maxPages: 50 });
-    const paths = map.filter((e) => e.status === "captured").map((e) => e.path);
-    expect(paths.indexOf("/about")).toBeLessThan(paths.indexOf("/contact"));
-    expect(paths).toContain("/blog");                    // index captured
+  it("merges sources, dedupes, ranks nav > footer > sitemap > sweep", () => {
+    const withFooterOverlap = {
+      ...inputs,
+      footerLinks: [{ label: "About", href: "/about" }, { label: "Privacy", href: "/privacy" }],  // /about is also in nav
+      sitemapUrls: ["https://example.com/", "https://example.com/about", "https://example.com/sitemap-only"],
+    };
+    const map = buildSiteMap(withFooterOverlap, { maxPages: 50 });
+    // /about appears in nav AND footer AND sitemap — nav wins
+    expect(map.find((e) => e.path === "/about")?.source).toBe("nav");
+    // sitemap-only path stays sitemap-sourced
+    expect(map.find((e) => e.path === "/sitemap-only")?.source).toBe("sitemap");
+    // sweep-only path stays link-sweep-sourced
+    expect(map.find((e) => e.path === "/contact")?.source).toBe("link-sweep");
   });
 
   it("captures exactly one collection exemplar and skips the rest", () => {
@@ -58,12 +81,15 @@ describe("buildSiteMap", () => {
     const skippedUgc = map.filter((e) => e.classification === "ugc-instance" && e.status === "skipped");
     expect(exemplars).toHaveLength(1);
     expect(skippedUgc.length).toBe(3);
-    expect(skippedUgc[0].skipReason).toBe("user-generated-content");
+    expect(skippedUgc.every((e) => e.skipReason === "user-generated-content")).toBe(true);
   });
 
   it("respects the maxPages cap", () => {
     const many = { ...inputs, sweepLinks: Array.from({ length: 80 }, (_, i) => `/landing-${i}`) };
     const map = buildSiteMap(many, { maxPages: 50 });
-    expect(map.filter((e) => e.status === "captured").length).toBeLessThanOrEqual(50);
+    const captured = map.filter((e) => e.status === "captured");
+    expect(captured).toHaveLength(50);
+    const overflow = map.filter((e) => e.status === "skipped" && e.skipReason === "page-cap-exceeded");
+    expect(overflow.length).toBeGreaterThan(0);
   });
 });
