@@ -25,7 +25,7 @@ import {
   approvePage,
   reSkinSite,
 } from "../../services/site-generation-orchestrator";
-import type { DesignSystemV2 } from "../../types/design-system-v2";
+import { DesignSystemV2Schema } from "../../types/design-system-v2";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
 import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
 import { loadBlueprintDoc } from "../../utils/blueprint-io";
@@ -1013,7 +1013,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     {
       schema: {
         params: z.object({ uuid: z.string().uuid() }),
-        body: z.object({ designSystem: z.any() }),
+        body: z.object({ designSystem: DesignSystemV2Schema }),
         response: {
           202: z.object({ success: z.boolean(), enqueued: z.array(z.string()) }),
           404: z.object({ error: z.string() }),
@@ -1041,7 +1041,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         workspaceUuid,
         siteUuid,
         userUuid: request.user.uuid,
-        designSystem: request.body.designSystem as DesignSystemV2,
+        designSystem: request.body.designSystem,
       });
 
       return reply.status(202).send({ success: true, enqueued: result.enqueued });
