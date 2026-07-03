@@ -2,11 +2,10 @@ import type { Page } from "playwright";
 import type {
   BreakpointDelta,
   Check,
-  InteractionCapture,
+  ExtractPage,
 } from "../../types/pipeline-artifacts";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
-import type { SiteHierarchy } from "../../types/site-hierarchy";
-import type { SectionVisualEvidence } from "../../types/section-visual-evidence";
+import type { HierarchyPage } from "../../types/site-hierarchy";
 
 /**
  * Verify-stage mechanical check runners + score computation. The runners are
@@ -115,32 +114,36 @@ export async function checkPagesRender(
 }
 
 /**
- * Every section from the hierarchy for the current page must be present in
- * the DOM. We look for `[data-section-id]` first (canonical marker), then a
- * plain `#<id>` fallback. Missing sections are critical.
+ * Every section from THIS page's hierarchy entry must be present in the DOM.
+ * We look for `[data-section-id]` first (canonical marker), then a plain
+ * `#<id>` fallback. Missing sections are critical.
+ *
+ * The caller must resolve the current path → the matching HierarchyPage and
+ * pass only that. Iterating every page's sections against a single DOM was
+ * the bug fixed in Task 17's follow-up: on multi-page sites, sections that
+ * legitimately live on other pages were recorded as critical failures when
+ * verifying `/`, capping master fidelity at 79.
  */
 export async function checkSectionsPresent(
   page: Page,
-  hierarchy: SiteHierarchy,
+  hierarchyPage: HierarchyPage,
 ): Promise<CheckResults> {
   const passed: Check[] = [];
   const failed: Check[] = [];
-  for (const p of hierarchy.pages) {
-    for (const section of p.sections) {
-      const found = await page.evaluate((id: string) => {
-        return Boolean(
-          document.querySelector(`[data-section-id="${id}"]`) ??
-            document.getElementById(id),
-        );
-      }, section.id);
-      const check: Check = {
-        id: `section-${section.id}`,
-        label: `Section ${section.id} present in DOM`,
-        critical: true,
-      };
-      if (found) passed.push(check);
-      else failed.push({ ...check, detail: `not found on ${p.slug}` });
-    }
+  for (const section of hierarchyPage.sections) {
+    const found = await page.evaluate((id: string) => {
+      return Boolean(
+        document.querySelector(`[data-section-id="${id}"]`) ??
+          document.getElementById(id),
+      );
+    }, section.id);
+    const check: Check = {
+      id: `section-${section.id}`,
+      label: `Section ${section.id} present in DOM`,
+      critical: true,
+    };
+    if (found) passed.push(check);
+    else failed.push({ ...check, detail: `not found on ${hierarchyPage.slug}` });
   }
   return { passed, failed };
 }
@@ -310,23 +313,21 @@ export async function checkBreakpoints(
 
 /**
  * Replay each captured interaction (click/hover) and assert that *something*
- * measurably changed — either the DOM (elements added/removed) or the
- * computed style on the target. Critical: dead interactions imply broken
- * behavior in the clone.
+ * measurably changed in the DOM after triggering. Critical: dead interactions
+ * imply broken behavior in the clone. A "0 interactions to replay" state
+ * produces 0 passed + 0 failed (not a critical fail) — only actual replay
+ * misses count.
+ *
+ * Interactions come from the extract artifact's per-page capture (which has
+ * `selector` + `trigger`), NOT the section-visual-evidence doc — that field
+ * shape doesn't carry a replayable selector.
  */
 export async function checkInteractions(
   page: Page,
-  evidence: SectionVisualEvidence,
+  interactions: ExtractPage["interactions"],
 ): Promise<CheckResults> {
   const passed: Check[] = [];
   const failed: Check[] = [];
-
-  // Collect interactions from evidence rows (defensive against schema shape).
-  const rows = evidence?.rows ?? [];
-  interface EvRow {
-    interactions?: Array<Pick<InteractionCapture, "id" | "trigger" | "selector">>;
-  }
-  const interactions = rows.flatMap((r) => (r as unknown as EvRow).interactions ?? []);
 
   for (const interaction of interactions.slice(0, 20)) {
     const check: Check = {
@@ -335,15 +336,32 @@ export async function checkInteractions(
       critical: true,
     };
     try {
-      const changed = await page.evaluate(async (sel: string) => {
-        const el = document.querySelector(sel);
-        if (!el) return { found: false, changed: false };
-        const before = document.body.innerHTML.length;
-        (el as HTMLElement).click();
-        await new Promise((r) => setTimeout(r, 300));
-        const after = document.body.innerHTML.length;
-        return { found: true, changed: before !== after };
-      }, interaction.selector);
+      const changed = await page.evaluate(
+        async ({ sel, trigger }: { sel: string; trigger: "click" | "hover" }) => {
+          const el = document.querySelector(sel);
+          if (!el) return { found: false, changed: false };
+          const beforeHtml = document.body.innerHTML.length;
+          const beforeStyle = getComputedStyle(el as Element).cssText;
+          if (trigger === "hover") {
+            (el as HTMLElement).dispatchEvent(
+              new MouseEvent("mouseover", { bubbles: true }),
+            );
+            (el as HTMLElement).dispatchEvent(
+              new MouseEvent("mouseenter", { bubbles: true }),
+            );
+          } else {
+            (el as HTMLElement).click();
+          }
+          await new Promise((r) => setTimeout(r, 300));
+          const afterHtml = document.body.innerHTML.length;
+          const afterStyle = getComputedStyle(el as Element).cssText;
+          return {
+            found: true,
+            changed: beforeHtml !== afterHtml || beforeStyle !== afterStyle,
+          };
+        },
+        { sel: interaction.selector, trigger: interaction.trigger },
+      );
       if (!changed.found) {
         failed.push({ ...check, detail: `selector ${interaction.selector} not found` });
       } else if (!changed.changed) {
@@ -367,11 +385,11 @@ export async function runAllMechanicalChecks(input: {
   page: Page;
   baseUrl: string;
   paths: string[];
-  hierarchy: SiteHierarchy;
+  hierarchyPage: HierarchyPage;
   designSystem: DesignSystemV2;
   sourceHost: string;
   breakpoints: BreakpointDelta[];
-  evidence: SectionVisualEvidence | null;
+  interactions: ExtractPage["interactions"];
 }): Promise<CheckResults> {
   let out: CheckResults = { passed: [], failed: [] };
   out = mergeResults(
@@ -380,7 +398,7 @@ export async function runAllMechanicalChecks(input: {
   );
   out = mergeResults(
     out,
-    await checkSectionsPresent(input.page, input.hierarchy),
+    await checkSectionsPresent(input.page, input.hierarchyPage),
   );
   out = mergeResults(out, await checkTokens(input.page, input.designSystem));
   out = mergeResults(out, await checkMedia(input.page, input.sourceHost));
@@ -388,11 +406,9 @@ export async function runAllMechanicalChecks(input: {
     out,
     await checkBreakpoints(input.page, input.breakpoints),
   );
-  if (input.evidence) {
-    out = mergeResults(
-      out,
-      await checkInteractions(input.page, input.evidence),
-    );
-  }
+  out = mergeResults(
+    out,
+    await checkInteractions(input.page, input.interactions),
+  );
   return out;
 }

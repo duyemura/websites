@@ -24,7 +24,6 @@ import {
 } from "../../utils/pipeline/artifact-store";
 import { loadSiteHierarchyDoc } from "../../utils/site-hierarchy-io";
 import { loadDesignSystemDoc } from "../../utils/design-system-io";
-import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
 import type { BuildLogEntry } from "./build-stage";
 import {
   computeScores,
@@ -109,11 +108,6 @@ export async function runVerifyStage(
     throw new Error(`Design system v2 missing for site ${input.siteUuid}`);
   }
   const designSystem = designSystemDoc as DesignSystemV2;
-  const evidence = await loadSectionVisualEvidenceDoc(
-    input.db,
-    input.workspaceUuid,
-    input.siteUuid,
-  );
 
   const scope = input.pages ?? extract.payload.pages.map((p) => p.path);
   const sourceHost = new URL(extract.payload.url).host;
@@ -138,17 +132,26 @@ export async function runVerifyStage(
       const extractPage = extract.payload.pages.find((p) => p.path === pagePath);
       if (!extractPage) continue;
 
+      // Resolve the current path to its matching HierarchyPage so we only
+      // assert THIS page's sections. Iterating every page's sections against
+      // a single DOM produced false-critical failures and capped fidelity at
+      // 79 on any multi-page site.
+      const hierarchyPage = hierarchy.pages.find(
+        (hp) => slugToPath(hp.slug) === pagePath,
+      );
+      if (!hierarchyPage) continue;
+
       // 1. Mechanical checks for this page.
       const paths = [pagePath];
       const mechanical = await runAllMechanicalChecks({
         page,
         baseUrl: cloneUrl,
         paths,
-        hierarchy,
+        hierarchyPage,
         designSystem,
         sourceHost,
         breakpoints: extractPage.responsive,
-        evidence,
+        interactions: extractPage.interactions,
       });
       allPassed.push(...mechanical.passed);
       allFailed.push(...mechanical.failed);
