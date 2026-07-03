@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium, type BrowserContext, type Page } from "playwright";
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 
@@ -63,9 +63,10 @@ export async function runExtractStage(
       maxPages: input.maxPages ?? DEFAULT_MAX_PAGES,
     });
 
-    const scope = input.pages
+    const requested = input.pages;
+    const scope = requested
       ? siteMap.filter(
-          (e) => input.pages!.includes(e.path) && e.status === "captured",
+          (e) => requested.includes(e.path) && e.status === "captured",
         )
       : siteMap.filter((e) => e.status === "captured");
 
@@ -85,99 +86,115 @@ export async function runExtractStage(
         body,
       );
 
+    const failedPaths = new Set<string>();
     for (const entry of scope) {
-      const captured = await capturePage(context, entry.url);
+      try {
+        const captured = await capturePage(context, entry.url);
 
-      // CSS: full extraction on first page (site-global), skip on the rest.
-      if (!cssGlobal) {
-        const cssPage = await context.newPage();
+        // CSS: full extraction on first page (site-global), skip on the rest.
+        if (!cssGlobal) {
+          const cssPage = await context.newPage();
+          try {
+            await cssPage.goto(entry.url, { waitUntil: "domcontentloaded" });
+            cssGlobal = await extractCss(cssPage);
+          } finally {
+            await cssPage.close();
+          }
+        }
+
+        // Fresh page at 1440 for interactions + axe (capturePage leaves the
+        // viewport at 375).
+        const intPage = await context.newPage();
+        let interactionsBefore: Awaited<
+          ReturnType<typeof captureInteractions>
+        > = [];
+        let axe: Awaited<ReturnType<typeof runAxeBaseline>> = {
+          path: entry.path,
+          violations: [],
+        };
         try {
-          await cssPage.goto(entry.url, { waitUntil: "domcontentloaded" });
-          cssGlobal = await extractCss(cssPage);
+          await intPage.setViewportSize({ width: 1440, height: 900 });
+          await intPage.goto(entry.url, { waitUntil: "domcontentloaded" });
+          await intPage.waitForTimeout(1500);
+          interactionsBefore = await captureInteractions(intPage);
+          axe = await runAxeBaseline(intPage, entry.path);
         } finally {
-          await cssPage.close();
+          await intPage.close();
+        }
+
+        const pageKey =
+          entry.path === "/"
+            ? "index"
+            : entry.path.replace(/^\/+|\/+$/g, "").replace(/[^\w.-]+/g, "-");
+
+        const screenshots = {
+          full1440: await upload(`${pageKey}-1440.png`, captured.screenshots.full1440),
+          vp768: await upload(`${pageKey}-768.png`, captured.screenshots.vp768),
+          vp375: await upload(`${pageKey}-375.png`, captured.screenshots.vp375),
+        };
+        screenshotCount += 3;
+
+        const interactions: ExtractArtifact["pages"][number]["interactions"] = [];
+        for (const raw of interactionsBefore) {
+          const beforeUrl = await upload(
+            `${pageKey}-${raw.id}-before.png`,
+            raw.before,
+          );
+          const afterUrl = await upload(
+            `${pageKey}-${raw.id}-after.png`,
+            raw.after,
+          );
+          interactions.push({
+            id: raw.id,
+            trigger: raw.trigger,
+            selector: raw.selector,
+            beforeUrl,
+            afterUrl,
+            styleDiff: raw.styleDiff,
+            boundingBox: raw.boundingBox,
+          });
+          screenshotCount += 2;
+        }
+
+        axeResults.push(axe);
+        networkResults.push(
+          networkStatsFromCapture(entry.path, captured.networkStats),
+        );
+
+        // ExtractPage.content omits rawText — strip it before persisting.
+        const {
+          rawText: _rawText,
+          ...contentForArtifact
+        } = captured.content;
+
+        pages.push({
+          path: entry.path,
+          media: captured.media,
+          screenshots,
+          content: contentForArtifact,
+          interactions,
+          responsive: captured.responsive,
+          pixelSamples: captured.pixelSamples,
+          flags: captured.flags,
+        });
+      } catch (err) {
+        failedPaths.add(entry.path);
+        const logger = (input.config as unknown as { logger?: { error: (...args: unknown[]) => void } }).logger;
+        if (logger?.error) {
+          logger.error({ err, path: entry.path }, "[extract] per-page capture failed");
+        } else {
+          console.error(`[extract] page ${entry.path} failed:`, err);
         }
       }
-
-      // Fresh page at 1440 for interactions + axe (capturePage leaves the
-      // viewport at 375).
-      const intPage = await context.newPage();
-      let interactionsBefore: Awaited<
-        ReturnType<typeof captureInteractions>
-      > = [];
-      let axe: Awaited<ReturnType<typeof runAxeBaseline>> = {
-        path: entry.path,
-        violations: [],
-      };
-      try {
-        await intPage.setViewportSize({ width: 1440, height: 900 });
-        await intPage.goto(entry.url, { waitUntil: "domcontentloaded" });
-        await intPage.waitForTimeout(1500);
-        interactionsBefore = await captureInteractions(intPage);
-        axe = await runAxeBaseline(intPage, entry.path);
-      } finally {
-        await intPage.close();
-      }
-
-      const pageKey = entry.path === "/" ? "index" : entry.path.replace(/\//g, "_");
-
-      const screenshots = {
-        full1440: await upload(`${pageKey}-1440.png`, captured.screenshots.full1440),
-        vp768: await upload(`${pageKey}-768.png`, captured.screenshots.vp768),
-        vp375: await upload(`${pageKey}-375.png`, captured.screenshots.vp375),
-      };
-      screenshotCount += 3;
-
-      const interactions: ExtractArtifact["pages"][number]["interactions"] = [];
-      for (const raw of interactionsBefore) {
-        const beforeUrl = await upload(
-          `${pageKey}-${raw.id}-before.png`,
-          raw.before,
-        );
-        const afterUrl = await upload(
-          `${pageKey}-${raw.id}-after.png`,
-          raw.after,
-        );
-        interactions.push({
-          id: raw.id,
-          trigger: raw.trigger,
-          selector: raw.selector,
-          beforeUrl,
-          afterUrl,
-          styleDiff: raw.styleDiff,
-          boundingBox: raw.boundingBox,
-        });
-        screenshotCount += 2;
-      }
-
-      axeResults.push(axe);
-      networkResults.push(
-        networkStatsFromCapture(entry.path, captured.networkStats),
-      );
-
-      // ExtractPage.content omits rawText — strip it before persisting.
-      const {
-        rawText: _rawText,
-        ...contentForArtifact
-      } = captured.content;
-
-      pages.push({
-        path: entry.path,
-        media: captured.media,
-        screenshots,
-        content: contentForArtifact,
-        interactions,
-        responsive: captured.responsive,
-        pixelSamples: captured.pixelSamples,
-        flags: captured.flags,
-      });
     }
 
     // ---- Lighthouse against the shared debug port ----
     const lighthouse: ExtractArtifact["sourceBaseline"]["lighthouse"] = [];
-    const debugPort = await resolveDebugPort(browser, context);
+    const lhPage = context.pages()[0] ?? (await context.newPage());
+    const debugPort = await resolveDebugPort(lhPage);
     if (debugPort) {
       for (const entry of scope.slice(0, LIGHTHOUSE_PAGE_CAP)) {
+        if (failedPaths.has(entry.path)) continue;
         for (const preset of ["mobile", "desktop"] as const) {
           const lh = await runLighthouse(
             entry.url,
@@ -190,12 +207,19 @@ export async function runExtractStage(
       }
     }
 
+    // ---- annotate failed captures on the site map ----
+    const annotatedSiteMap = siteMap.map((e) =>
+      failedPaths.has(e.path)
+        ? { ...e, status: "skipped" as const, skipReason: "capture-failed" }
+        : e,
+    );
+
     // ---- merge-on-write with any prior extract artifact ----
     const existing = await loadArtifact<ExtractArtifact>(input.db, ctx, "extract");
     const fresh: ExtractArtifact = {
       url: input.url,
       extractedAt: new Date().toISOString(),
-      siteMap,
+      siteMap: annotatedSiteMap,
       css: cssGlobal ?? { tokens: {}, breakpoints: [], animations: [] },
       pages,
       sourceBaseline: {
@@ -212,6 +236,7 @@ export async function runExtractStage(
     await saveArtifact(input.db, ctx, "extract", artifact);
     return artifact;
   } finally {
+    await context.close().catch(() => {});
     await browser.close();
   }
 }
@@ -247,15 +272,17 @@ function mergePages(
       ...fresh.sourceBaseline,
       axe: [...fresh.sourceBaseline.axe, ...preservedAxe],
       network: [...fresh.sourceBaseline.network, ...preservedNetwork],
-      lighthouse:
-        fresh.sourceBaseline.lighthouse.length > 0
-          ? fresh.sourceBaseline.lighthouse
-          : existing.sourceBaseline.lighthouse,
+      lighthouse: [
+        ...fresh.sourceBaseline.lighthouse,
+        ...existing.sourceBaseline.lighthouse.filter(
+          (lh) => !freshPaths.has(lh.path),
+        ),
+      ],
     },
     usage: {
       pagesCaptured: mergedPages.length,
-      screenshotCount:
-        fresh.usage.screenshotCount + (existing.usage.screenshotCount ?? 0),
+      // Per-run screenshot count; not cumulative across historical runs.
+      screenshotCount: fresh.usage.screenshotCount,
     },
   };
 }
@@ -333,23 +360,29 @@ async function discoverPages(
  * over a CDP session (Browser.getVersion returns webSocketDebuggerUrl) and parse
  * the port out. If anything fails Lighthouse is best-effort and gets skipped.
  */
-async function resolveDebugPort(
-  browser: Browser,
-  context: BrowserContext,
-): Promise<number | null> {
+async function resolveDebugPort(page: Page): Promise<number | null> {
   try {
-    // A CDP session needs a target — grab or create a page in the shared context.
-    const [page] = context.pages();
-    const target = page ?? (await context.newPage());
-    const session = await context.newCDPSession(target);
+    const session = await page.context().newCDPSession(page);
     const info = (await session.send("Browser.getVersion")) as {
       webSocketDebuggerUrl?: string;
     };
     await session.detach().catch(() => {});
-    const url = info?.webSocketDebuggerUrl ?? "";
-    const m = url.match(/:\/\/[^:]+:(\d+)/);
-    return m ? Number(m[1]) : null;
-  } catch {
+    if (!info.webSocketDebuggerUrl) return null;
+    const port = new URL(info.webSocketDebuggerUrl).port;
+    const num = port ? Number(port) : NaN;
+    if (!Number.isFinite(num) || num <= 0) {
+      console.warn(
+        "[extract] resolveDebugPort: could not parse port from",
+        info.webSocketDebuggerUrl,
+      );
+      return null;
+    }
+    return num;
+  } catch (err) {
+    console.warn(
+      "[extract] resolveDebugPort failed — Lighthouse will be skipped:",
+      err,
+    );
     return null;
   }
 }
