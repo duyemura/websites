@@ -225,6 +225,16 @@ export interface Pages {
   uuid: Generated<string>;
 }
 
+export interface PipelineArtifacts {
+  createdAt: Generated<Timestamp>;
+  payload: Json;
+  siteUuid: string;
+  stage: string;
+  uuid: Generated<string>;
+  version: number;
+  workspaceUuid: string;
+}
+
 export interface Playbooks {
   category: string | null;
   createdAt: Generated<Timestamp>;
@@ -358,6 +368,7 @@ export interface DB {
   organizationMemberships: OrganizationMemberships;
   organizations: Organizations;
   pages: Pages;
+  pipelineArtifacts: PipelineArtifacts;
   playbooks: Playbooks;
   sites: Sites;
   templates: Templates;

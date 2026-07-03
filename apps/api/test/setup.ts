@@ -11,6 +11,7 @@ async function resetDatabase() {
     "deployments",
     "playbooks",
     "templates",
+    "pipeline_artifacts",
     "assets",
     "docs",
     "pages",
