@@ -153,9 +153,9 @@ const BuildCommandResponseSchema = z.object({
 });
 
 const HierarchyReviewResponseSchema = z.object({
-  hierarchy: z.any().nullable(),
-  visualEvidence: z.any().nullable(),
-  designSystem: z.any().nullable(),
+  hierarchy: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+  visualEvidence: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+  designSystem: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
 });
 
 function normalizeUrl(url: string): string {
