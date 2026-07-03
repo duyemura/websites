@@ -179,7 +179,7 @@ export async function generateWorkspaceMemory(
       "brand-guidelines",
       "business-info",
       "site-strategy",
-      "blueprint-draft",
+      "site-hierarchy",
     ],
   };
 

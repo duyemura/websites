@@ -142,7 +142,6 @@ describe("generateSiteDocs", () => {
       BRAND_GUIDELINES_DOC_KEY,
       "business-info",
       "site-strategy",
-      "blueprint-draft",
       "design-system",
       "site-hierarchy",
       "section-visual-evidence",
@@ -291,18 +290,10 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("inclusive");
   });
 
-  test("emits blueprint-draft doc with usable blueprint JSON", async () => {
+  test("no longer emits the retired blueprint-draft doc", async () => {
     const docs = await generateSiteDocs(baseScrape, baseGmb);
-    const blueprintDoc = docs.find((d) => d.key === "blueprint-draft")!;
-    expect(blueprintDoc.content).toContain("## Site blueprint");
-
-    const match = blueprintDoc.content.match(/```json\n([\s\S]*?)\n```/);
-    expect(match).toBeTruthy();
-    const blueprint = JSON.parse(match![1]);
-    expect(blueprint.site_metadata.framework).toBe("astro");
-    expect(Array.isArray(blueprint.pages)).toBe(true);
-    expect(blueprint.pages.length).toBeGreaterThan(0);
-    expect(blueprint.design_tokens.colors.primary).toBeDefined();
+    const keys = docs.map((d) => d.key);
+    expect(keys).not.toContain("blueprint-draft");
   });
 
   test("emits site-hierarchy, design-system, and section-visual-evidence docs", async () => {
@@ -311,7 +302,6 @@ describe("generateSiteDocs", () => {
     expect(keys).toContain("site-hierarchy");
     expect(keys).toContain("design-system");
     expect(keys).toContain("section-visual-evidence");
-    expect(keys).toContain("blueprint-draft");
 
     const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
     const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);

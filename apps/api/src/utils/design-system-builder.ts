@@ -1,5 +1,9 @@
 import type { ScrapedWebsiteData } from "./scrape-docs";
-import type { DesignSystemV2 } from "../types/design-system-v2";
+import type {
+  DesignSystemV2,
+  InteractionStyle,
+  ResponsiveRule,
+} from "../types/design-system-v2";
 import type { BrandLogo, HeadingStyle } from "./design-system";
 import { buildDesignSystem as buildLegacyDesignSystem, sanitizeTokens } from "./design-system";
 import {
@@ -9,6 +13,10 @@ import {
   extractFooterSection,
   extractLogo,
 } from "./site-blueprint";
+import type {
+  ExtractArtifact,
+  SegmentArtifact,
+} from "../types/pipeline-artifacts";
 
 export function buildDesignSystemV2(
   data: ScrapedWebsiteData,
@@ -64,5 +72,179 @@ export function buildDesignSystemV2(
     business: legacy.business,
     brand: legacy.brand,
     reference: { screenshotUrl, homePagePrimaryCta: legacy.reference.homePagePrimaryCta },
+  };
+}
+
+function dedupeResponsiveRules(rules: ResponsiveRule[]): ResponsiveRule[] {
+  const seen = new Set<string>();
+  const out: ResponsiveRule[] = [];
+  for (const r of rules) {
+    const key = `${r.selector}::${r.property}::${r.at1440}::${r.at768 ?? ""}::${r.at375 ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
+function summarizeStyleDiff(
+  styleDiff: Array<{
+    selector: string;
+    property: string;
+    before: string;
+    after: string;
+  }>,
+): { pattern: string; cssHint: string } {
+  if (styleDiff.length === 0) {
+    return { pattern: "generic-toggle", cssHint: "no captured diff" };
+  }
+  const props = styleDiff.map((d) => d.property);
+  const propSet = new Set(props);
+  let pattern = "generic-toggle";
+  if (propSet.has("opacity") && propSet.has("transform")) pattern = "reveal-transform";
+  else if (propSet.has("opacity")) pattern = "fade";
+  else if (propSet.has("display") || propSet.has("visibility")) pattern = "toggle-visibility";
+  else if (propSet.has("height") || propSet.has("max-height")) pattern = "expand";
+  else if (propSet.has("background-color") || propSet.has("color")) pattern = "color-shift";
+
+  const cssHint = styleDiff
+    .slice(0, 3)
+    .map((d) => `${d.property}: ${d.before} → ${d.after}`)
+    .join("; ");
+  return { pattern, cssHint };
+}
+
+/**
+ * Build a DesignSystemV2 from the Extract artifact (and optionally the segment
+ * artifact for header/footer shells). Unlike the scrape-based builder, this
+ * consumes the full breakpoint + interaction data captured by the pipeline
+ * extract stage.
+ */
+export function buildDesignSystemFromExtract(
+  extract: ExtractArtifact,
+  segment?: SegmentArtifact,
+  screenshotUrl?: string | null,
+  mode: DesignSystemV2["siteMetadata"]["mode"] = "replication",
+): DesignSystemV2 {
+  const now = new Date().toISOString();
+  const firstPage = extract.pages[0];
+  const businessName = firstPage?.content.businessName;
+
+  // Build a light-weight ScrapedWebsiteData-like adapter to reuse
+  // deriveThemeTokens/detectHeadingStyle/extractHeaderSection helpers where
+  // possible. Only the fields the helpers touch need to be populated.
+  const adapter: ScrapedWebsiteData = {
+    url: extract.url,
+    title: firstPage?.content.title ?? "",
+    businessName,
+    headings: firstPage?.content.headings.map((h) => h.text) ?? [],
+    paragraphs: [],
+    buttons: [],
+    navLinks: firstPage?.content.navLinks ?? [],
+    colors: [],
+    fonts: [],
+    fontSizes: [],
+    images: [],
+    layoutRules: [],
+    faqs: [],
+    testimonials: [],
+    locations: [],
+    team: [],
+    offerings: [],
+    contact: {},
+  };
+
+  const tokens = sanitizeTokens(deriveThemeTokens(adapter));
+  const headingStyle: HeadingStyle = detectHeadingStyle(adapter);
+  const logo: BrandLogo = extractLogo(adapter);
+  const header = extractHeaderSection(adapter);
+  const footer = extractFooterSection(adapter);
+
+  const responsive = {
+    breakpoints: extract.css.breakpoints,
+    rules: dedupeResponsiveRules(
+      extract.pages.flatMap((p) =>
+        p.responsive.map((r) => ({
+          selector: r.selector,
+          property: r.property,
+          at1440: r.at1440,
+          at768: r.at768,
+          at375: r.at375,
+        })),
+      ),
+    ),
+  };
+
+  const interactionGroups = new Map<
+    string,
+    InteractionStyle & { _count: number }
+  >();
+  for (const p of extract.pages) {
+    for (const interaction of p.interactions) {
+      const { pattern, cssHint } = summarizeStyleDiff(interaction.styleDiff);
+      const key = `${pattern}::${interaction.trigger}::${cssHint}`;
+      const existing = interactionGroups.get(key);
+      if (existing) {
+        existing.occurrences += 1;
+      } else {
+        interactionGroups.set(key, {
+          pattern,
+          trigger: interaction.trigger,
+          cssHint,
+          occurrences: 1,
+          _count: 0,
+        });
+      }
+    }
+  }
+  const interactionStyles: InteractionStyle[] = [...interactionGroups.values()].map(
+    ({ pattern, trigger, cssHint, occurrences }) => ({
+      pattern,
+      trigger,
+      cssHint,
+      occurrences,
+    }),
+  );
+
+  // segment currently unused for shell derivation (Playwright extract already
+  // carries navLinks); keep the argument for future header/footer segment-
+  // driven refinements without breaking callers.
+  void segment;
+
+  return {
+    version: "2",
+    siteMetadata: {
+      framework: "astro",
+      mode,
+      targetUrl: extract.url,
+      businessName,
+      generatedAt: now,
+    },
+    global: {
+      tokens,
+      shell: {
+        header,
+        footer,
+        navLinks: firstPage?.content.navLinks ?? [],
+      },
+      rules: {
+        spacing: "Default section vertical padding derived from source; hero uses larger vertical spacing.",
+        radius: tokens.radius,
+        maxWidth: "max-w-6xl with responsive gutters.",
+        grid: "2–3 column grids for feature lists; single column on mobile.",
+        defaultTheme: tokens.colors.background === "#0A0A0A" ? "dark" : "light",
+      },
+    },
+    responsive,
+    interactionStyles,
+    business: {
+      name: businessName,
+      tagline: undefined,
+    },
+    brand: { logo, headingStyle },
+    reference: {
+      screenshotUrl: screenshotUrl ?? firstPage?.screenshots.full1440 ?? null,
+      homePagePrimaryCta: null,
+    },
   };
 }

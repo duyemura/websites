@@ -22,11 +22,35 @@ export interface ComputedStyleSnapshot {
   gap?: string;
 }
 
+export type InteractionComponentPattern =
+  | "dropdown"
+  | "accordion"
+  | "tab"
+  | "modal"
+  | "drawer"
+  | "tooltip"
+  | "other";
+
+export interface InteractionEvidenceCapture {
+  trigger: "click" | "hover";
+  beforeUrl: string;
+  afterUrl: string;
+  styleDiff: Array<{
+    selector: string;
+    property: string;
+    before: string;
+    after: string;
+  }>;
+  componentPattern?: InteractionComponentPattern;
+}
+
 export interface SectionVisualEvidenceRow {
   evidenceId: string;
   pageSlug: string;
   sectionId: string;
   screenshotUrl?: string;
+  /** Mobile (375px viewport) crop of the section. */
+  mobileScreenshotUrl?: string;
   contextScreenshotUrl?: string;
   boundingBox: { x: number; y: number; width: number; height: number };
   computedStyles: ComputedStyleSnapshot[];
@@ -41,6 +65,8 @@ export interface SectionVisualEvidenceRow {
     hasBorder?: boolean;
     hasOverlay?: boolean;
   };
+  mediaUrls?: string[];
+  interactionCaptures?: InteractionEvidenceCapture[];
 }
 
 export interface SectionVisualEvidence {

@@ -26,6 +26,21 @@ const HomePagePrimaryCtaSchema = z.object({
   href: z.string(),
 });
 
+const ResponsiveRuleSchema = z.object({
+  selector: z.string(),
+  property: z.string(),
+  at1440: z.string(),
+  at768: z.string().optional(),
+  at375: z.string().optional(),
+});
+
+const InteractionStyleSchema = z.object({
+  pattern: z.string(),
+  trigger: z.enum(["click", "hover"]),
+  cssHint: z.string(),
+  occurrences: z.number().int().nonnegative(),
+});
+
 export const DesignSystemV2Schema = z.object({
   version: z.literal("2"),
   siteMetadata: z.object({
@@ -50,6 +65,13 @@ export const DesignSystemV2Schema = z.object({
       defaultTheme: z.enum(["dark", "light"]).optional(),
     }),
   }),
+  responsive: z
+    .object({
+      breakpoints: z.array(z.string()),
+      rules: z.array(ResponsiveRuleSchema),
+    })
+    .optional(),
+  interactionStyles: z.array(InteractionStyleSchema).optional(),
   business: z.object({
     name: z.string().optional(),
     tagline: z.string().optional(),
@@ -63,6 +85,21 @@ export const DesignSystemV2Schema = z.object({
     homePagePrimaryCta: HomePagePrimaryCtaSchema.nullable().optional(),
   }),
 });
+
+export interface ResponsiveRule {
+  selector: string;
+  property: string;
+  at1440: string;
+  at768?: string;
+  at375?: string;
+}
+
+export interface InteractionStyle {
+  pattern: string;
+  trigger: "click" | "hover";
+  cssHint: string;
+  occurrences: number;
+}
 
 export interface DesignSystemV2 {
   version: "2";
@@ -82,6 +119,11 @@ export interface DesignSystemV2 {
       defaultTheme?: "dark" | "light";
     };
   };
+  responsive?: {
+    breakpoints: string[];
+    rules: ResponsiveRule[];
+  };
+  interactionStyles?: InteractionStyle[];
   business: {
     name?: string;
     tagline?: string;

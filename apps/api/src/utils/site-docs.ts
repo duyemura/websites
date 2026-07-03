@@ -11,11 +11,6 @@ import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-doc
 import { buildSiteHierarchy } from "./site-hierarchy-builder";
 import { buildDesignSystemV2 } from "./design-system-builder";
 import { buildSectionVisualEvidence } from "./section-visual-evidence-builder";
-import { buildSiteBlueprint } from "./site-blueprint";
-import {
-  BLUEPRINT_DOC_KEY,
-  BLUEPRINT_DOC_TITLE,
-} from "./blueprint-io";
 import {
   SITE_HIERARCHY_DOC_KEY,
   SITE_HIERARCHY_DOC_TITLE,
@@ -428,25 +423,6 @@ Generate the homepage from the blueprint draft, workspace memory, business info,
   };
 }
 
-function makeBlueprintDraftDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
-  const blueprint = buildSiteBlueprint(ctx.scraped);
-  return {
-    key: BLUEPRINT_DOC_KEY,
-    title: BLUEPRINT_DOC_TITLE,
-    content: `# Blueprint draft
-
-This doc holds the initial JSON blueprint derived from the scraped source site.
-
-## Site blueprint
-
-\`\`\`json
-${JSON.stringify(blueprint, null, 2)}
-\`\`\`
-`,
-    source: "ai_extracted",
-  };
-}
-
 function makeSiteHierarchyDoc(
   ctx: DocGenerationContext,
   mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
@@ -533,6 +509,9 @@ function sectionTagIntent(tag: CanonicalSectionTag): string {
     "faq-block": "Address common objections with collapsible answers.",
     "social-proof-band": "Reinforce credibility via logos, stats, or community signals.",
     "steps-band": "Explain a process in sequential steps.",
+    schedule: "Display schedule details or booking availability.",
+    team: "Introduce the coaches, instructors, or team members.",
+    contact: "Provide primary contact channels and next steps.",
     unknown: "Present the captured content in a layout faithful to the source.",
   };
   return intents[tag];
@@ -1042,7 +1021,6 @@ export async function generateSiteDocs(
     },
     await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
     makeSiteStrategyDoc(ctx),
-    makeBlueprintDraftDoc(ctx),
     makeDesignSystemDoc(ctx, screenshotUrl, mode),
     makeSiteHierarchyDoc(ctx, mode),
     makeSectionVisualEvidenceDoc(ctx),

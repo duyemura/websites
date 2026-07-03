@@ -3,8 +3,15 @@ import type {
   CanonicalSectionTag,
   HierarchyPage,
   HierarchySection,
+  PageBuildStatus,
   SiteHierarchy,
 } from "../types/site-hierarchy";
+import type {
+  ExtractArtifact,
+  ExtractPage,
+  SegmentArtifact,
+  SegmentSection,
+} from "../types/pipeline-artifacts";
 
 function inferTag(scraped: ScrapedSection): CanonicalSectionTag {
   const type = scraped.type.toLowerCase();
@@ -19,6 +26,24 @@ function inferTag(scraped: ScrapedSection): CanonicalSectionTag {
   if (type.includes("step") || type.includes("process")) return "steps-band";
   if (type.includes("image") || type.includes("gallery") || type.includes("media")) return "media-block";
   if (scraped.images && scraped.images.length > 0 && (scraped.heading || scraped.body)) return "content-block";
+
+  // Fallback: classify by heading/body content when type-based matching yields nothing.
+  // This handles generic scraper types like "Text" that carry structured content.
+  const heading = (scraped.heading ?? "").toLowerCase();
+  const body = (scraped.body ?? "").toLowerCase();
+  const combined = heading + " " + body;
+
+  if (/\bfaq\b|frequentl|question|answer/.test(combined)) return "faq-block";
+  if (/testimonial|review|real result|what (our|client|member)|said about|trust/.test(combined)) return "testimonial-band";
+  if (/our (location|address|gym|studio|facility)|located|visit us|find us|where we are/.test(combined)) return "location-block";
+  if (/step \d|how (it works|to (start|join|get started))|process|next step/.test(combined)) return "steps-band";
+  if (/\b(download|get the) (app|application)\b/.test(combined)) return "content-block";
+  if (/\b(about|philosophy|vision|mission|story|who we are|our team|instructors?|coaches?)\b/.test(combined) && body.length > 30) return "content-block";
+  if ((heading || body) && (scraped.images ?? []).length > 0) return "content-block";
+  if (heading && body.length > 30) return "content-block";
+  // A section with image(s) but no text is a visual accent — classify as media-block rather than unknown.
+  if ((scraped.images ?? []).length > 0) return "media-block";
+
   return "unknown";
 }
 
@@ -37,9 +62,35 @@ function inferIntent(scraped: ScrapedSection): string {
     "faq-block": "Address common objections with collapsible answers.",
     "social-proof-band": "Reinforce credibility via logos, stats, or community signals.",
     "steps-band": "Explain a process in sequential steps.",
+    schedule: "Display schedule details or booking availability.",
+    team: "Introduce the coaches, instructors, or team members.",
+    contact: "Provide primary contact channels and next steps.",
     unknown: "Present the captured content in a layout faithful to the source.",
   };
   return intents[tag];
+}
+
+const SEGMENT_INTENTS: Record<CanonicalSectionTag, string> = {
+  hero: "Introduce the brand, state the core promise, and drive the primary conversion action.",
+  header: "Global site navigation and brand identity.",
+  footer: "Contact, legal, and secondary navigation.",
+  "cta-band": "Isolate a single high-priority conversion action.",
+  "content-block": "Communicate a message with text and supporting imagery.",
+  "media-block": "Showcase media to set tone or demonstrate the experience.",
+  "feature-grid": "Present multiple offerings or benefits in a scannable grid.",
+  "testimonial-band": "Build trust through social proof.",
+  "location-block": "Provide location and visit details.",
+  "faq-block": "Address common objections with collapsible answers.",
+  "social-proof-band": "Reinforce credibility via logos, stats, or community signals.",
+  "steps-band": "Explain a process in sequential steps.",
+  schedule: "Display schedule details or booking availability.",
+  team: "Introduce the coaches, instructors, or team members.",
+  contact: "Provide primary contact channels and next steps.",
+  unknown: "Present the captured content in a layout faithful to the source.",
+};
+
+export function intentForSegmentTag(tag: CanonicalSectionTag): string {
+  return SEGMENT_INTENTS[tag];
 }
 
 export function buildSiteHierarchy(
@@ -87,6 +138,115 @@ export function buildSiteHierarchy(
       nextPage: "index",
       pageStatus: { index: "in_progress" },
       buildOrder: ["index"],
+    },
+  };
+}
+
+/** Convert a URL path (e.g. "/", "/about", "/programs/kids") into a slug. */
+export function pathToSlug(path: string): string {
+  const trimmed = path.replace(/^\/+|\/+$/g, "");
+  if (trimmed === "") return "index";
+  return trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function pickHeadingText(section: SegmentSection): string | undefined {
+  if (section.headingText && section.headingText.trim()) return section.headingText;
+  return undefined;
+}
+
+function bodyPreview(section: SegmentSection): string | undefined {
+  const inner = section.innerText?.trim();
+  if (!inner) return undefined;
+  // Trim to a reasonable preview length so build prompts stay compact; the
+  // full content is available via the visual evidence + shared component
+  // registry.
+  return inner.length > 600 ? `${inner.slice(0, 600).trim()}…` : inner;
+}
+
+export function buildSiteHierarchyFromSegments(
+  segment: SegmentArtifact,
+  extract: ExtractArtifact,
+  mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
+): SiteHierarchy {
+  const extractPageByPath = new Map<string, ExtractPage>();
+  for (const p of extract.pages) extractPageByPath.set(p.path, p);
+
+  const pages: HierarchyPage[] = segment.pages.map((sp) => {
+    const slug = pathToSlug(sp.path);
+    const isHomePage = sp.path === "/" || slug === "index";
+    const ep = extractPageByPath.get(sp.path);
+    const meta = ep?.content.meta ?? {};
+
+    const nonShellSections = sp.sections.filter(
+      (s) => s.tag !== "header" && s.tag !== "footer",
+    );
+
+    const hierarchySections: HierarchySection[] = nonShellSections.map((s) => {
+      const section: HierarchySection = {
+        id: s.id,
+        tag: s.tag,
+        intent: intentForSegmentTag(s.tag),
+        content: {
+          heading: pickHeadingText(s),
+          body: bodyPreview(s),
+          images:
+            s.mediaUrls.length > 0
+              ? s.mediaUrls.map((url) => ({ url }))
+              : undefined,
+        },
+        evidenceId: s.id,
+      };
+      if (s.sharedComponentId) section.sharedComponentId = s.sharedComponentId;
+      if (s.sharedProps) section.sharedProps = s.sharedProps;
+      return section;
+    });
+
+    const heroCta = hierarchySections.find((h) => h.tag === "hero")?.content.cta;
+
+    return {
+      slug,
+      isHomePage,
+      title:
+        ep?.content.businessName ??
+        ep?.content.title ??
+        (isHomePage ? "Home" : slug),
+      metaTitle: ep?.content.title ?? meta["og:title"],
+      metaDescription: meta["description"] ?? meta["og:description"],
+      primaryCta: heroCta,
+      sections: hierarchySections,
+    };
+  });
+
+  // Ensure index is present + first in build order when a home page exists.
+  const homeIndex = pages.findIndex((p) => p.isHomePage);
+  const orderedPages =
+    homeIndex > 0
+      ? [pages[homeIndex]!, ...pages.filter((_, i) => i !== homeIndex)]
+      : pages;
+
+  const buildOrder = orderedPages.map((p) => p.slug);
+  const pageStatus: Record<string, PageBuildStatus> = {};
+  for (const slug of buildOrder) {
+    pageStatus[slug] = slug === "index" ? "in_progress" : "planned";
+  }
+
+  return {
+    version: "1",
+    siteMetadata: {
+      framework: "astro",
+      mode,
+      targetUrl: extract.url,
+      businessName: extract.pages[0]?.content.businessName,
+      generatedAt: new Date().toISOString(),
+    },
+    pages: orderedPages,
+    buildPlan: {
+      nextPage: buildOrder[0] ?? "index",
+      pageStatus,
+      buildOrder,
     },
   };
 }

@@ -18,6 +18,9 @@ export type CanonicalSectionTag =
   | "faq-block"
   | "social-proof-band"
   | "steps-band"
+  | "schedule"
+  | "team"
+  | "contact"
   | "unknown";
 
 export interface SectionStyleHint {
@@ -60,6 +63,10 @@ export interface HierarchySection {
   styleHint?: SectionStyleHint;
   evidenceId: string;
   notes?: string;
+  /** ID of the shared component this section maps to (from segment artifact). */
+  sharedComponentId?: string;
+  /** Prop overrides when this section renders a shared component. */
+  sharedProps?: Record<string, string>;
 }
 
 export interface HierarchyPage {
