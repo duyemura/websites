@@ -405,8 +405,20 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   buildLog.push(...mediaLog);
 
   // 3. Determine scope.
-  const scope = input.pages ?? hierarchy.buildPlan.buildOrder;
-  const scopedPages = hierarchy.pages.filter((p) => scope.includes(p.slug));
+  // input.pages may be URL-path form ("/", "/about") or slug form ("index", "about").
+  // Normalise to slug form so the filter works regardless of which the caller passes.
+  const rawScope = input.pages ?? hierarchy.buildPlan.buildOrder;
+  const scope = new Set(rawScope.map((s) => {
+    if (s === "/" || s === "index") return "index";
+    const withoutLeading = s.replace(/^\//, "");
+    // If it looks like a slug already (no slashes, lowercase, hyphens), keep it.
+    // Otherwise treat it as a path and slugify it via the same rules pathToSlug uses.
+    return withoutLeading
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "index";
+  }));
+  const scopedPages = hierarchy.pages.filter((p) => scope.has(p.slug));
 
   // 4. Prepare source dir + scaffold.
   const sourceDir =
