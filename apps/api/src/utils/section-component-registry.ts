@@ -171,7 +171,7 @@ function renderHero(props: Record<string, unknown>): string {
       : "";
 
   const bgStyle = backgroundImage
-    ? `style="background-image: url(${backgroundImage}); background-size: cover; background-position: center;"`
+    ? `style="background-image: url(${JSON.stringify(backgroundImage)}); background-size: cover; background-position: center;"`
     : "";
 
   const effectiveOverlay = backgroundImage ? Math.max(overlayOpacity, 0.5) : overlayOpacity;

@@ -124,7 +124,7 @@ function renderExtractedBusinessInfo(extracted: BusinessInfoExtractionResult): s
 
   if (extracted.location) {
     lines.push("## Location", "", `- **Address**: ${extracted.location.address}`, "");
-    if (extracted.location.hours.length > 0) {
+    if ((extracted.location.hours ?? []).length > 0) {
       lines.push("**Hours**", "");
       for (const h of extracted.location.hours) {
         lines.push(`- ${h.day}: ${h.hours}`);

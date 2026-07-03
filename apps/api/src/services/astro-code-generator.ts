@@ -80,7 +80,8 @@ function extractAssetKey(url: string, config: Config): string | null {
       const base = config.S3_ENDPOINT.replace(/\/$/, "");
       const prefix = `${base}/${bucket}/`;
       if (url.startsWith(prefix)) {
-        const key = decodeURIComponent(url.slice(prefix.length));
+        const rest = url.slice(prefix.length);
+        const key = decodeURIComponent((rest.split("?")[0] ?? ""));
         return isAssetKey(key) ? key : null;
       }
     }

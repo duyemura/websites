@@ -1046,14 +1046,20 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
   function findFAQItems(el) {
     const out = [];
     const seen = new Set();
-    const toggles = el.querySelectorAll("[data-click='faq'], .dropdown-primary, details, [class*='faq-item']");
+    const toggles = el.querySelectorAll("details, [class*='faq'], [class*='accordion']");
     for (const toggle of Array.from(toggles)) {
-      const parent = toggle.closest(".dropdown-primary") || toggle;
-      const questionEl = parent.querySelector(".dropdown-heading, summary, [class*='question'], h3, h4");
+      const questionEl = toggle.tagName === "DETAILS"
+        ? toggle.querySelector(":scope > summary")
+        : toggle.querySelector("summary, [class*='question'], h3, h4, button");
       const question = (questionEl?.textContent || "").trim();
-      // Answers live in a sibling body container, not inside the toggle.
-      const answerEl = parent.querySelector(".dp-body p, .dp-content p, [class*='answer'] p, details > :not(summary) p");
-      const answer = (answerEl?.textContent || "").trim();
+      let answer = "";
+      if (toggle.tagName === "DETAILS") {
+        const answerContainer = toggle.querySelector(":scope > :not(summary)");
+        answer = (answerContainer?.textContent || "").trim();
+      } else {
+        const answerEl = toggle.querySelector("[class*='answer'] p, p, div");
+        answer = (answerEl?.textContent || "").trim();
+      }
       if (!question || !answer || answer === question) continue;
       if (seen.has(question)) continue;
       seen.add(question);
@@ -1508,7 +1514,6 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
       }
     }
     collectRoots(bodyEl);
-    console.log("[extract] roots found:", roots.length, roots.map(function(r) { return r.tagName + (r.className ? '.' + String(r.className).split(' ').slice(0,3).join('.') : ''); }).join(', '));
 
     // If no explicit section roots, fall back to top-level direct children of body/main.
     if (roots.length === 0) {
@@ -1522,7 +1527,6 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     let order = 0;
     for (const root of roots) {
       const rect = root.getBoundingClientRect();
-      console.log("[extract] root", root.tagName, String(root.className).split(' ').slice(0,3).join('.'), "height", rect.height);
       if (rect.height < 80) continue; // Skip tiny wrappers.
       const heading = findHeading(root);
       const body = findBody(root, heading);

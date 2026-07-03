@@ -166,7 +166,7 @@ async function updateSiteMemory(
   if (updates.qaIssues && updates.qaIssues.length > 0) {
     const issuesBlock = `\n\n## QA issues\n\n${updates.qaIssues.map((i) => `- ${i}`).join("\n")}`;
     if (content.includes("## QA issues")) {
-      content = content.replace(/## QA issues\n\n[\s\S]*?(?=\n## |$)/, issuesBlock.trim());
+      content = content.replace(/## QA issues\n\n[\s\S]*?(?=\n## |$)/, () => issuesBlock.trim());
     } else {
       content += issuesBlock;
     }
@@ -175,7 +175,7 @@ async function updateSiteMemory(
   if (updates.recentEdits && updates.recentEdits.length > 0) {
     const editsBlock = `\n\n## Recent edits\n\n${updates.recentEdits.map((e) => `- ${e}`).join("\n")}`;
     if (content.includes("## Recent edits")) {
-      content = content.replace(/## Recent edits\n\n[\s\S]*?(?=\n## |$)/, editsBlock.trim());
+      content = content.replace(/## Recent edits\n\n[\s\S]*?(?=\n## |$)/, () => editsBlock.trim());
     } else {
       content += editsBlock;
     }
@@ -529,6 +529,10 @@ export async function approvePage(input: ApprovePageInput): Promise<ApprovePageO
   const { db, queues, workspaceUuid, siteUuid, pageSlug, userUuid } = input;
   const { hierarchy } = await loadSiteAndHierarchy(db, workspaceUuid, siteUuid);
 
+  const page = pageBySlug(hierarchy, pageSlug);
+  if (!page) {
+    throw new Error(`Page ${pageSlug} not found in site hierarchy`);
+  }
   if (hierarchy.buildPlan.pageStatus[pageSlug] !== "built") {
     throw new Error(`Page ${pageSlug} is not built yet and cannot be approved`);
   }

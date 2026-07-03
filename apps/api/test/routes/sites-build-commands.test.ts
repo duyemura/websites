@@ -98,7 +98,10 @@ describe("POST /sites/:uuid/build-commands", () => {
         content: `# Site hierarchy\n\nThis doc holds the current semantic page/section hierarchy for the site.\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify({
           version: "1",
           siteMetadata: { framework: "astro", mode: "replication", targetUrl: "https://example.com", generatedAt: new Date().toISOString() },
-          pages: [],
+          pages: [
+            { slug: "index", isHomePage: true, title: "Home", sections: [] },
+            { slug: "about", isHomePage: false, title: "About", sections: [] },
+          ],
           buildPlan: { nextPage: "about", pageStatus: { index: "built", about: "planned" }, buildOrder: ["index", "about"] },
         })}\n\`\`\``,
         source: "ai_extracted",

@@ -314,6 +314,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           slug,
           status: "draft",
           themeUuid,
+          ...(templateRecord ? { mode: "template" as const } : {}),
         })
         .returningAll()
         .executeTakeFirstOrThrow();
