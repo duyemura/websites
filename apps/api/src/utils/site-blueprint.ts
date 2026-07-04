@@ -93,17 +93,6 @@ export interface SiteBlueprint {
   };
 }
 
-function isLinkBlue(hex: string | undefined): boolean {
-  if (!hex) return false;
-  const normalized = hex.toLowerCase().replace("#", "");
-  if (normalized.length < 3) return false;
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return false;
-  // treat saturated blues/cyans commonly used for links as non-brand
-  return b > r + 40 && b > g + 20;
-}
 
 function hexLuminance(hex: string): number {
   const clean = hex.replace("#", "");
