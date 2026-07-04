@@ -1,3 +1,4 @@
+import type { ExtractedNav, NavLink } from "../types/pipeline-artifacts";
 import type { Kysely } from "kysely";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -242,17 +243,10 @@ export async function writeProjectScaffold(
 async function writeSharedComponents(
   sourceDir: string,
   designSystem: DesignSystemV2,
-  page: HierarchyPage,
+  _page: HierarchyPage,
   sharedComponents?: Map<string, string>,
 ): Promise<void> {
   const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-  const primaryCta =
-    page.primaryCta ??
-    (designSystem.reference as { homePagePrimaryCta?: { label?: string; href?: string } | null }).homePagePrimaryCta;
-  if (primaryCta?.label && primaryCta.href) {
-    headerSection.props.ctaLabel = primaryCta.label;
-    headerSection.props.ctaHref = primaryCta.href;
-  }
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Header.astro"),
     renderSemanticSection(headerSection),
@@ -511,13 +505,187 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
 `;
 }
 
+/**
+ * Render a complete, self-contained Astro nav component from deterministically
+ * extracted nav data. No LLM involved — uses exact computed values from the DOM.
+ * Uses Alpine.js for mobile toggle and dropdown interactivity.
+ */
+export function renderNavComponent(nav: ExtractedNav): string {
+  const logoHtml =
+    nav.logo.type === "image"
+      ? `<img src="${nav.logo.value}" alt="${nav.logo.alt ?? ""}" class="h-8 w-auto" />`
+      : `<span class="font-bold text-lg" style="color:${nav.textColor}">${nav.logo.value}</span>`;
+
+  function renderNavLink(link: NavLink, depth = 0): string {
+    if (link.children && link.children.length > 0) {
+      const childItems = link.children.map((c: NavLink) => renderNavLink(c, depth + 1)).join("\n          ");
+      return `<li class="relative" x-data="{ open: false }">
+          <button
+            @click="open = !open"
+            @mouseenter="open = true"
+            @mouseleave="open = false"
+            class="flex items-center gap-1 px-3 py-2 hover:opacity-80 transition-opacity"
+            style="color:${nav.textColor}"
+          >
+            ${link.label}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <ul
+            x-show="open"
+            @mouseenter="open = true"
+            @mouseleave="open = false"
+            x-transition
+            class="absolute top-full left-0 z-50 min-w-48 py-1 shadow-lg rounded"
+            style="background:${nav.background}"
+          >
+            ${childItems}
+          </ul>
+        </li>`;
+    }
+    const isTopLevel = depth === 0;
+    return `<li>
+          <a
+            href="${link.href}"
+            class="${isTopLevel ? "px-3 py-2 hover:opacity-80 transition-opacity" : "block px-4 py-2 hover:opacity-80 transition-opacity"}"
+            style="color:${nav.textColor}"
+          >${link.label}</a>
+        </li>`;
+  }
+
+  const desktopLinks = nav.links.map((l) => renderNavLink(l, 0)).join("\n        ");
+
+  function renderMobileLink(link: NavLink): string {
+    if (link.children && link.children.length > 0) {
+      const childItems = link.children
+        .map(
+          (c: NavLink) =>
+            `<a href="${c.href}" class="block pl-6 pr-4 py-2 text-sm hover:opacity-80 transition-opacity" style="color:${nav.textColor}">${c.label}</a>`,
+        )
+        .join("\n              ");
+      return `<div x-data="{ open: false }">
+              <button
+                @click="open = !open"
+                class="flex items-center justify-between w-full px-4 py-2 hover:opacity-80 transition-opacity"
+                style="color:${nav.textColor}"
+              >
+                ${link.label}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <div x-show="open" x-transition>
+                ${childItems}
+              </div>
+            </div>`;
+    }
+    return `<a href="${link.href}" class="block px-4 py-2 hover:opacity-80 transition-opacity" style="color:${nav.textColor}">${link.label}</a>`;
+  }
+
+  const mobileLinks = nav.links.map((l) => renderMobileLink(l)).join("\n            ");
+
+  const ctaHtml = nav.cta
+    ? `<a
+            href="${nav.cta.href}"
+            class="ml-4 px-4 py-2 rounded font-medium transition-opacity hover:opacity-90"
+            style="background:${nav.cta.background};color:${nav.cta.color};border-radius:${nav.cta.borderRadius}"
+          >${nav.cta.label}</a>`
+    : "";
+
+  const mobileCtaHtml = nav.cta
+    ? `<a
+              href="${nav.cta.href}"
+              class="block mx-4 mt-2 mb-1 px-4 py-2 rounded font-medium text-center transition-opacity hover:opacity-90"
+              style="background:${nav.cta.background};color:${nav.cta.color};border-radius:${nav.cta.borderRadius}"
+            >${nav.cta.label}</a>`
+    : "";
+
+  const positionClass =
+    nav.position === "top-fixed"
+      ? "fixed top-0 left-0 right-0 z-50"
+      : nav.position === "top-sticky"
+        ? "sticky top-0 z-50"
+        : "relative";
+
+  return `---
+// Deterministically generated nav — do not edit by hand.
+// Source: ExtractedNav from extract stage.
+---
+
+<header
+  data-section-id="shell-header"
+  class="${positionClass} w-full"
+  style="background:${nav.background}"
+  x-data="{ mobileOpen: false }"
+>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav class="flex items-center justify-between h-16">
+
+      <!-- Logo -->
+      <div class="flex-shrink-0">
+        <a href="/" aria-label="Home">
+          ${logoHtml}
+        </a>
+      </div>
+
+      <!-- Desktop links -->
+      <ul class="hidden md:flex items-center list-none m-0 p-0 gap-1">
+        ${desktopLinks}
+        ${ctaHtml ? `<li>${ctaHtml}</li>` : ""}
+      </ul>
+
+      <!-- Mobile hamburger -->
+      <button
+        class="md:hidden flex items-center justify-center w-10 h-10 rounded hover:opacity-80 transition-opacity"
+        style="color:${nav.textColor}"
+        @click="mobileOpen = !mobileOpen"
+        aria-label="Toggle menu"
+        :aria-expanded="mobileOpen"
+      >
+        <svg x-show="!mobileOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <svg x-show="mobileOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+    </nav>
+  </div>
+
+  <!-- Mobile menu panel -->
+  <div
+    x-show="mobileOpen"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 -translate-y-2"
+    x-transition:enter-end="opacity-100 translate-y-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-y-0"
+    x-transition:leave-end="opacity-0 -translate-y-2"
+    class="md:hidden pb-3 border-t"
+    style="background:${nav.mobileMenuBackground};border-color:${nav.textColor}22"
+  >
+    <div class="flex flex-col pt-2">
+      ${mobileLinks}
+      ${mobileCtaHtml}
+    </div>
+  </div>
+</header>
+`;
+}
+
 export function makeDefaultHeader(designSystem: DesignSystem | DesignSystemV2): SiteSection {
+  // v1 DesignSystem still carries navLinks on the shell; v2 does not (nav links
+  // now come from ExtractedNav). Access via type assertion to avoid errors on v2.
+  const shellNavLinks =
+    (designSystem.global.shell as { navLinks?: { label: string; href: string }[] }).navLinks ?? [];
   return {
     id: "header",
     type: "SiteHeader",
     props: {
       logo: { type: "text", value: designSystem.business.name ?? "Home" },
-      navLinks: designSystem.global.shell.navLinks ?? [],
+      navLinks: shellNavLinks,
     },
   };
 }
@@ -525,12 +693,15 @@ export function makeDefaultHeader(designSystem: DesignSystem | DesignSystemV2): 
 export function makeDefaultFooter(designSystem: DesignSystem | DesignSystemV2): SiteSection {
   const year = new Date().getFullYear();
   const businessName = designSystem.business.name ?? "";
+  // v1 DesignSystem still carries navLinks on the shell; v2 does not.
+  const shellNavLinks =
+    (designSystem.global.shell as { navLinks?: { label: string; href: string }[] }).navLinks ?? [];
   return {
     id: "footer",
     type: "SiteFooter",
     props: {
       businessName,
-      navLinks: designSystem.global.shell.navLinks ?? [],
+      navLinks: shellNavLinks,
       copyright: businessName ? `© ${year} ${businessName}. All rights reserved.` : `© ${year}`,
     },
   };

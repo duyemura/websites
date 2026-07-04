@@ -600,15 +600,6 @@ function buildTemplateDesignSystem(
   const headerSection = shell.page.sections.find((s) => s.type === "SiteHeader");
   const footerSection = shell.page.sections.find((s) => s.type === "SiteFooter");
 
-  const navLinks = Array.isArray(headerSection?.props.navLinks)
-    ? headerSection.props.navLinks
-        .filter(
-          (item): item is { label: string; href: string } =>
-            item !== null && typeof item === "object" && isString(item.label) && isString(item.href),
-        )
-        .map((item) => ({ label: item.label, href: item.href }))
-    : [];
-
   const heroSection = shell.page.sections.find((s) => s.type === "Hero");
   const homePagePrimaryCta = isCta(heroSection?.props.cta) ? heroSection.props.cta : undefined;
 
@@ -629,7 +620,6 @@ function buildTemplateDesignSystem(
       shell: {
         header: headerSection,
         footer: footerSection,
-        navLinks,
       },
       rules: {
         spacing: "Default section vertical padding derived from the template; hero uses larger vertical spacing.",
@@ -887,7 +877,6 @@ export function generateSiteDocsForGreenfield(
       shell: {
         header: undefined,
         footer: undefined,
-        navLinks: [],
       },
       rules: {
         spacing: "Default section vertical padding; hero uses larger vertical spacing.",

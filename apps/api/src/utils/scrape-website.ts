@@ -420,6 +420,13 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     const lastWord = lower.split(/\s+/).pop() || "";
     if (genericSuffixes.includes(lastWord) && unique.size <= 2) score -= 1;
 
+    // Penalty when the candidate contains UI-descriptive phrases that appear in
+    // decorative image alt attributes (e.g. "main navigation logo", "header logo",
+    // "company logo", "site logo"). These indicate the alt text describes the
+    // image element itself rather than the brand name.
+    if (/\b(navigation|header|footer|company|main|primary)\s+(logo|icon)\b/.test(lower)) score -= 5;
+    if (/\b(logo|icon)\b/.test(lower) && source === "logo") score -= 2;
+
     // Slight penalty for very long names
     if (name.length > 60) score -= 1;
 
@@ -961,7 +968,7 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     const tag = el.tagName ? el.tagName.toLowerCase() : "";
     if (tag === "section" || tag === "article") return true;
     const cls = (el.className || "").toString().toLowerCase();
-    const id = (el.id || "").toLowerCase();
+    const id = String(el.id || "").toLowerCase();
     // Some builders (Webflow) wrap the hero in a <header> tag. Treat it as a
     // section root only when it carries the primary heading.
     if (tag === "header" && (el.querySelector("h1") || /hero/i.test(cls) || /hero/i.test(id))) return true;
@@ -1496,6 +1503,24 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     return root.querySelector("a[class*='button'], a[class*='btn'], a[class*='cta'], button") || null;
   }
 
+  // Returns true for global chrome elements (site header nav, site footer, cookie banners,
+  // marquee tickers) that should not be treated as content sections, regardless of their
+  // class names. This prevents site-builder-specific chrome (Shopify header-group,
+  // genesis footer-aside, etc.) from appearing in the section list.
+  function isGlobalChromeEl(el) {
+    const cls = (el.className || "").toString().toLowerCase();
+    const id = String(el.id || "").toLowerCase();
+    // Global nav / header groups (Shopify, Webflow, generic)
+    if (/\b(header-group|nav-group|section-header(?!\w)|site-header|masthead|topbar|top-bar)\b/.test(cls + " " + id)) return true;
+    // Global footer groups
+    if (/\b(footer-group|section-footer(?!\w)|site-footer|footer-section(?!\w))\b/.test(cls + " " + id)) return true;
+    // Cookie / consent banners
+    if (/\b(cookie|consent|gdpr|privacy-banner|cc-window|pc-banner|onetrust)\b/.test(cls + " " + id)) return true;
+    // Marquee / scrolling tickers (decorative, no real content)
+    if (/\b(marquee|ticker|scrolling-banner|scroll-banner|scroller)\b/.test(cls + " " + id)) return true;
+    return false;
+  }
+
   function extractGenericSections() {
     const roots = [];
     const bodyEl = document.body;
@@ -1505,6 +1530,7 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
     function collectRoots(el) {
       if (el.tagName === "NAV" || el.tagName === "FOOTER") return;
       if (el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+      if (isGlobalChromeEl(el)) return; // skip site chrome (nav bars, footers, cookie banners, marquees)
       if (isLikelySectionRoot(el)) {
         roots.push(el);
         return;

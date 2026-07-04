@@ -1,5 +1,45 @@
 import { z } from "zod";
 
+// ---------- nav extraction ----------
+export interface NavLink {
+  label: string;
+  href: string;
+  children?: NavLink[];
+}
+
+// Non-recursive Zod schema for NavLink — children validated as unknown[] at
+// runtime (deep recursion is rarely needed at the boundary; the extractor
+// limits depth naturally).
+export const NavLinkSchema: z.ZodType<NavLink> = z.lazy(() =>
+  z.object({
+    label: z.string(),
+    href: z.string(),
+    children: z.array(NavLinkSchema).optional(),
+  }),
+);
+
+export const ExtractedNavSchema = z.object({
+  position: z.enum(["top-fixed", "top-sticky", "top-static", "left-sidebar"]),
+  background: z.string(),
+  textColor: z.string(),
+  logo: z.object({
+    type: z.enum(["image", "text"]),
+    value: z.string(),
+    alt: z.string().optional(),
+  }),
+  links: z.array(NavLinkSchema),
+  cta: z.object({
+    label: z.string(),
+    href: z.string(),
+    background: z.string(),
+    color: z.string(),
+    borderRadius: z.string(),
+  }).optional(),
+  hasMobileToggle: z.boolean(),
+  mobileMenuBackground: z.string(),
+});
+export type ExtractedNav = z.infer<typeof ExtractedNavSchema>;
+
 // ---------- shared primitives ----------
 export const BBoxSchema = z.object({
   x: z.number(), y: z.number(), width: z.number(), height: z.number(),
@@ -112,6 +152,7 @@ export const ExtractArtifactSchema = z.object({
     })),
   }),
   usage: z.object({ pagesCaptured: z.number(), screenshotCount: z.number() }),
+  extractedNav: ExtractedNavSchema.optional(),
 });
 export type ExtractArtifact = z.infer<typeof ExtractArtifactSchema>;
 export type ExtractPage = z.infer<typeof ExtractPageSchema>;

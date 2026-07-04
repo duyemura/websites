@@ -48,9 +48,12 @@ import {
   sharedComponentFileName,
   relativizeAssetPaths,
   inlineCssIntoHtml,
+  renderNavComponent,
+  makeDefaultHeader,
+  makeDefaultFooter,
 } from "../astro-code-generator";
 import { renderSemanticSection } from "../../utils/section-component-registry";
-import { makeDefaultHeader, makeDefaultFooter } from "../astro-code-generator";
+import type { ExtractedNav } from "../../types/pipeline-artifacts";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 
 export type BuildLogCategory =
@@ -356,6 +359,7 @@ async function renderPageSections(
   designSystem: DesignSystemV2,
   evidence: SectionVisualEvidence | null,
   config: Config,
+  extractedNav: ExtractedNav | null,
 ): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
   const tailwind = tailwindForSection(designSystem);
 
@@ -368,14 +372,16 @@ async function renderPageSections(
       const nextTag = page.sections[i + 1]?.tag;
 
       if (section.tag === "header") {
+        // Deterministic nav renderer: uses extracted DOM data, no LLM.
+        if (extractedNav) {
+          return { section, source: renderNavComponent(extractedNav), isFallback: false };
+        }
+        // Fall back to semantic renderer if no extractedNav available.
         const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
         return { section, source: renderSemanticSection(headerSection), isFallback: false };
       } else if (section.tag === "footer") {
         const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
         return { section, source: renderSemanticSection(footerSection), isFallback: false };
-      } else if (i === 0 && section.tag === "unknown" && !getEvidenceForSection(evidence, section)?.screenshotUrl) {
-        // First section with no evidence and no tag is likely a nav duplicate of the shell.
-        return null;
       } else {
         // For cloning, all non-shell sections go through the LLM with the
         // screenshot — the tag is provided as context in the prompt but we
@@ -556,11 +562,12 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     input.sourceDir ??
     path.join(os.tmpdir(), "ploy-gyms-build", input.siteUuid, "build");
   await mkdir(sourceDir, { recursive: true });
-  // Load web font URLs from the extract artifact so fonts render in the built site.
-  const extractArtifact = await loadArtifact<{ css?: { webFontUrls?: string[] } }>(
+  // Load web font URLs and extractedNav from the extract artifact.
+  const extractArtifact = await loadArtifact<{ css?: { webFontUrls?: string[] }; extractedNav?: ExtractedNav }>(
     input.db, { siteUuid: input.siteUuid, workspaceUuid: input.workspaceUuid }, "extract",
   );
   const webFontUrls = extractArtifact?.payload?.css?.webFontUrls ?? [];
+  const extractedNav: ExtractedNav | null = extractArtifact?.payload?.extractedNav ?? null;
   await writeProjectScaffold(sourceDir, designSystem, { webFontUrls });
 
   // 5. Shared components — render once for all pages in the hierarchy so
@@ -599,7 +606,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     const pageT = Date.now();
     console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections, parallel)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
-    const rendered = await renderPageSections(page, designSystem, evidence, input.config);
+    const rendered = await renderPageSections(page, designSystem, evidence, input.config, extractedNav);
     // Apply re-hosted URL substitution: swap original CDN URLs → S3 URLs in the
     // generated code so the deployed site doesn't depend on the source CDN.
     const renderedWithUrls = rendered.map(({ section, source, isFallback }) => ({

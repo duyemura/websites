@@ -16,11 +16,6 @@ const HeadingStyleSchema = z.object({
   condensed: z.boolean().optional(),
 });
 
-const NavLinkSchema = z.object({
-  label: z.string(),
-  href: z.string(),
-});
-
 const HomePagePrimaryCtaSchema = z.object({
   label: z.string(),
   href: z.string(),
@@ -55,7 +50,6 @@ export const DesignSystemV2Schema = z.object({
     shell: z.object({
       header: SiteSectionSchema.optional(),
       footer: SiteSectionSchema.optional(),
-      navLinks: z.array(NavLinkSchema),
     }),
     rules: z.object({
       spacing: z.string().optional(),
@@ -109,7 +103,6 @@ export interface DesignSystemV2 {
     shell: {
       header?: SiteSection; // SiteHeader only
       footer?: SiteSection; // SiteFooter only
-      navLinks: { label: string; href: string }[];
     };
     rules: {
       spacing?: string;

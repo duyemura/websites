@@ -7,12 +7,13 @@ import type { Config } from "../../plugins/env";
 import {
   ExtractArtifactSchema,
   type ExtractArtifact,
+  type ExtractedNav,
 } from "../../types/pipeline-artifacts";
 import {
   buildSiteMap,
   type DiscoveryInputs,
 } from "../../utils/pipeline/page-discovery";
-import { capturePage } from "../../utils/pipeline/capture-page";
+import { capturePage, extractNavData } from "../../utils/pipeline/capture-page";
 import { extractCss } from "../../utils/pipeline/css-extraction";
 import { captureInteractions } from "../../utils/pipeline/interaction-capture";
 import {
@@ -86,6 +87,7 @@ export async function runExtractStage(
         body,
       );
 
+    let extractedNav: ExtractedNav | null = null;
     const failedPaths = new Set<string>();
     for (const entry of scope) {
       try {
@@ -116,6 +118,10 @@ export async function runExtractStage(
           await intPage.setViewportSize({ width: 1440, height: 900 });
           await intPage.goto(entry.url, { waitUntil: "domcontentloaded" });
           await intPage.waitForTimeout(1500);
+          // Extract nav data once from the home page (nav is site-wide).
+          if (!extractedNav) {
+            extractedNav = await extractNavData(intPage);
+          }
           interactionsBefore = await captureInteractions(intPage);
           axe = await runAxeBaseline(intPage, entry.path);
         } finally {
@@ -230,6 +236,7 @@ export async function runExtractStage(
         network: networkResults,
       },
       usage: { pagesCaptured: pages.length, screenshotCount },
+      ...(extractedNav ? { extractedNav } : {}),
     };
     const merged = mergePages(existing?.payload ?? null, fresh);
 
@@ -285,6 +292,8 @@ function mergePages(
       // Per-run screenshot count; not cumulative across historical runs.
       screenshotCount: fresh.usage.screenshotCount,
     },
+    // Prefer the fresh extractedNav; fall back to existing if the new run didn't capture one.
+    extractedNav: fresh.extractedNav ?? existing.extractedNav,
   };
 }
 

@@ -145,7 +145,6 @@ export function migrateBlueprintToHierarchy(blueprint: SiteBlueprint): {
       shell: {
         header: headerSection,
         footer: footerSection,
-        navLinks: blueprint.global_shell.navLinks,
       },
       rules: {
         spacing: "Default section vertical padding derived from source; hero uses larger vertical spacing.",

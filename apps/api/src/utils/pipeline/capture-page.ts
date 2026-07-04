@@ -1,5 +1,5 @@
 import type { BrowserContext, Page } from "playwright";
-import type { BreakpointDelta } from "../../types/pipeline-artifacts";
+import type { BreakpointDelta, ExtractedNav } from "../../types/pipeline-artifacts";
 
 /** Computed theme values read directly from the rendered DOM via getComputedStyle.
  *  Framework-agnostic: works for any site regardless of how styles are applied
@@ -376,6 +376,171 @@ function diffStyles(
     }
   }
   return deltas;
+}
+
+/**
+ * Extract deterministic nav data from the rendered page at 1440px viewport.
+ * Reads computed styles directly from the DOM — no LLM involved. Returns null
+ * if no nav/header element is found on the page.
+ */
+export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
+  // Ensure we're at desktop width for the nav extraction.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(500);
+
+  type NavLinkRaw = { label: string; href: string; children?: NavLinkRaw[] };
+
+  type ExtractedNavRaw = {
+    position: "top-fixed" | "top-sticky" | "top-static" | "left-sidebar";
+    background: string;
+    textColor: string;
+    logo: { type: "image" | "text"; value: string; alt?: string };
+    links: NavLinkRaw[];
+    cta?: { label: string; href: string; background: string; color: string; borderRadius: string };
+    hasMobileToggle: boolean;
+    mobileMenuBackground: string;
+  };
+
+  const result = await page.evaluate((): ExtractedNavRaw | null => {
+    // ---- find the nav/header element ----
+    const navEl =
+      document.querySelector("nav") ??
+      document.querySelector('[role="navigation"]') ??
+      document.querySelector("header");
+    if (!navEl) return null;
+
+    const navStyle = getComputedStyle(navEl as Element);
+
+    // ---- position ----
+    const pos = navStyle.position;
+    const position: "top-fixed" | "top-sticky" | "top-static" | "left-sidebar" =
+      pos === "fixed"
+        ? "top-fixed"
+        : pos === "sticky"
+          ? "top-sticky"
+          : navStyle.left !== "auto" && parseInt(navStyle.width) < 300
+            ? "left-sidebar"
+            : "top-static";
+
+    const background = navStyle.backgroundColor;
+    const textColor = navStyle.color;
+
+    // ---- logo ----
+    const imgEl = navEl.querySelector("img") as HTMLImageElement | null;
+    let logo: { type: "image" | "text"; value: string; alt?: string };
+    if (imgEl) {
+      logo = {
+        type: "image",
+        value: imgEl.src,
+        alt: imgEl.alt || undefined,
+      };
+    } else {
+      const brandEl = navEl.querySelector(
+        '[class*="logo"],[class*="brand"],[class*="Logo"],[class*="Brand"]',
+      ) as HTMLElement | null;
+      logo = {
+        type: "text",
+        value: brandEl?.innerText?.trim() ?? (navEl as HTMLElement).innerText?.split("\n")[0]?.trim() ?? "",
+      };
+    }
+
+    // ---- saturation helper (same as computedTheme) ----
+    const rgbSaturation = (rgb: string): number => {
+      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!m) return 0;
+      const r = +(m[1] ?? 0) / 255, g = +(m[2] ?? 0) / 255, b = +(m[3] ?? 0) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max === min) return 0;
+      const l = (max + min) / 2;
+      return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+    };
+
+    // ---- CTA: most-saturated background button/link in nav ----
+    let cta: ExtractedNavRaw["cta"] | undefined;
+    let bestSat = 0.15;
+    const ctaCandidates = Array.from(
+      navEl.querySelectorAll("a, button, [class*='btn'], [class*='cta'], [class*='button']"),
+    );
+    for (const el of ctaCandidates) {
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      if (rect.width < 40 || rect.height < 16) continue;
+      const s = getComputedStyle(el as Element);
+      const sat = rgbSaturation(s.backgroundColor);
+      if (sat > bestSat) {
+        bestSat = sat;
+        cta = {
+          label: (el as HTMLElement).innerText?.trim() ?? "",
+          href: (el as HTMLAnchorElement).href ?? (el as HTMLElement).getAttribute("href") ?? "#",
+          background: s.backgroundColor,
+          color: s.color,
+          borderRadius: s.borderRadius,
+        };
+      }
+    }
+
+    // ---- links: walk list items in the nav ----
+    function extractLinks(container: Element): NavLinkRaw[] {
+      const items = Array.from(
+        container.querySelectorAll(":scope > li, :scope > ul > li"),
+      );
+      if (items.length === 0) {
+        // Fallback: direct anchor children if no <li>
+        return Array.from(container.querySelectorAll(":scope > a[href]")).map((a) => ({
+          label: (a as HTMLElement).innerText?.trim() ?? "",
+          href: (a as HTMLAnchorElement).getAttribute("href") ?? "",
+        })).filter((l) => l.label.length > 0 && l.href.length > 0);
+      }
+      const result: NavLinkRaw[] = [];
+      for (const li of items) {
+        const anchor = li.querySelector(":scope > a[href]") as HTMLAnchorElement | null;
+        if (!anchor) continue;
+        const label = anchor.innerText?.trim() ?? "";
+        const href = anchor.getAttribute("href") ?? "";
+        if (!label) continue;
+        // Detect dropdown children: nested <ul> or [class*=dropdown] / [class*=submenu]
+        const subList =
+          li.querySelector(":scope > ul") ??
+          li.querySelector('[class*="dropdown"],[class*="submenu"],[class*="sub-menu"]');
+        const children = subList ? extractLinks(subList) : undefined;
+        result.push({ label, href, ...(children && children.length ? { children } : {}) });
+      }
+      return result;
+    }
+
+    // Find the primary <ul> in nav (skip logo area)
+    const primaryList =
+      navEl.querySelector("nav > ul") ??
+      navEl.querySelector("ul") ??
+      navEl;
+    const links = extractLinks(primaryList);
+
+    // ---- mobile toggle ----
+    const toggleEl = navEl.querySelector(
+      '[class*="hamburger"],[class*="menu-toggle"],[class*="nav-toggle"],[aria-controls],[class*="mobile-nav"],[class*="burger"]',
+    );
+    const hasMobileToggle = toggleEl !== null;
+
+    // ---- mobile menu background ----
+    const mobileMenuEl = document.querySelector(
+      '[class*="mobile-menu"],[class*="drawer"],[class*="mobile-nav"],[class*="nav-drawer"]',
+    ) as HTMLElement | null;
+    const mobileMenuBackground = mobileMenuEl
+      ? getComputedStyle(mobileMenuEl).backgroundColor
+      : background;
+
+    return {
+      position,
+      background,
+      textColor,
+      logo,
+      links,
+      cta,
+      hasMobileToggle,
+      mobileMenuBackground,
+    };
+  });
+
+  return result;
 }
 
 async function samplePixels(

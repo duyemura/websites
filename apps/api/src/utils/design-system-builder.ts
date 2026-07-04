@@ -59,7 +59,6 @@ export function buildDesignSystemV2(
       shell: {
         header: legacy.global.shell.header,
         footer: legacy.global.shell.footer,
-        navLinks: legacy.global.shell.navLinks,
       },
       rules: {
         spacing: "Default section vertical padding derived from source; hero uses larger vertical spacing.",
@@ -257,7 +256,6 @@ export function buildDesignSystemFromExtract(
       shell: {
         header,
         footer,
-        navLinks: firstPage?.content.navLinks ?? [],
       },
       rules: {
         spacing: "Default section vertical padding derived from source; hero uses larger vertical spacing.",
