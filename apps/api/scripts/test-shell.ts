@@ -1,41 +1,39 @@
 /**
- * Site shell mini-pipeline — rapid feedback for fixing nav/hero/footer rendering.
- *
- * Uses the EXACT same functions as the real build pipeline. Fixing a renderer
- * here fixes it in production. Re-runs in ~30-60s instead of 10+ minutes.
+ * Site shell mini-pipeline — builds nav + hero + footer using the EXACT
+ * same functions as the real build pipeline, then runs astro build to
+ * produce compiled output you can open in a browser.
  *
  * Usage (from apps/api):
- *   DOTENV_CONFIG_PATH=../../.env pnpm tsx scripts/test-shell.ts <url> [out.html]
+ *   DOTENV_CONFIG_PATH=../../.env pnpm tsx scripts/test-shell.ts <url>
  *
- * What it runs:
- *   1. Extract  — capturePage() + extractNavData() (Playwright)
- *   2. Segment  — runLadder() to find hero + footer section boundaries
- *   3. Design system — buildDesignSystemFromExtract() (same as real docgen)
- *   4. Nav      — renderNavComponent() (deterministic, same as build stage)
- *   5. Hero     — screenshot crop → renderVisualBlockWithFlag() (LLM, same as build)
- *   6. Footer   — extractFooterData() + renderFooterComponent() (deterministic)
- *   7. Output   — single HTML with page switcher
+ * Output: opens /tmp/test-shell-dist/index.html in the browser.
+ * ~60s on first run (pnpm install), ~30s after (cached node_modules).
  */
 import "dotenv/config";
 import { chromium, type BrowserContext } from "playwright";
-import { writeFile, mkdir } from "fs/promises";
+import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 import os from "os";
+import { spawn } from "child_process";
 
-// ── Same functions as the real pipeline ──────────────────────────────────
+// ── Same functions as the real build pipeline ──────────────────────────────
 import { capturePage, extractNavData } from "../src/utils/pipeline/capture-page";
-import { renderNavComponent, renderFooterComponent } from "../src/services/astro-code-generator";
+import {
+  renderNavComponent,
+  renderFooterComponent,
+  writeProjectScaffold,
+  relativizeAssetPaths,
+  inlineCssIntoHtml,
+} from "../src/services/astro-code-generator";
 import { buildDesignSystemFromExtract } from "../src/utils/design-system-builder";
 import { renderVisualBlockWithFlag } from "../src/services/visual-section-renderer";
 import { breakpointDeltasToTailwind } from "../src/utils/pipeline/breakpoint-tailwind";
-import type { ExtractedNav, ExtractArtifact } from "../src/types/pipeline-artifacts";
-import type { DesignSystemV2, ResponsiveRule } from "../src/types/design-system-v2";
+import type { ExtractArtifact, ResponsiveRule } from "../src/types/pipeline-artifacts";
+import type { DesignSystemV2 } from "../src/types/design-system-v2";
 import type { HierarchySection } from "../src/types/site-hierarchy";
 import type { SectionVisualEvidenceRow } from "../src/types/section-visual-evidence";
 
-// ── Minimal S3 stub (no uploads needed for test) ─────────────────────────
-// Screenshots stay as local base64 data URIs.
-const noopS3 = {} as any;
+// ── Config stub matching real pipeline ────────────────────────────────────
 const noopConfig = {
   LLM_PROVIDER: (process.env.LLM_PROVIDER ?? "openrouter") as "openrouter" | "ollama",
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
@@ -50,14 +48,13 @@ const noopConfig = {
   REASONING_LLM_MODEL: process.env.REASONING_LLM_MODEL ?? "google/gemini-2.5-flash",
   S3_ASSETS_BUCKET: process.env.S3_ASSETS_BUCKET ?? "",
   S3_REGION: process.env.S3_REGION ?? "us-east-1",
-  S3_ENDPOINT: process.env.S3_ENDPOINT,
-  S3_DEPLOYMENTS_BUCKET: process.env.S3_DEPLOYMENTS_BUCKET,
 } as any;
 
 // ── Args ──────────────────────────────────────────────────────────────────
 const rawUrl = process.argv[2] ?? "https://www.torrancetraininglab.com/";
 const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
-const out = process.argv[3] ?? "/tmp/test-shell.html";
+const sourceDir = path.join(os.tmpdir(), "test-shell-build");
+const distDir = path.join(sourceDir, "dist");
 
 // ── tsx __name patch ──────────────────────────────────────────────────────
 const origLaunch = chromium.launch.bind(chromium);
@@ -72,58 +69,44 @@ chromium.launch = async (...args: Parameters<typeof chromium.launch>) => {
   return browser;
 };
 
-// ── Footer extraction (Playwright) ───────────────────────────────────────
-interface FooterData {
-  background: string;
-  textColor: string;
-  brandName: string;
-  logoUrl?: string;
-  links: { label: string; href: string }[];
-  copyright: string;
+// ── Subprocess runner (same as build-stage) ───────────────────────────────
+function runProcess(cmd: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, env: process.env, stdio: "inherit" });
+    child.on("close", code => code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`)));
+    child.on("error", reject);
+  });
 }
 
-async function extractFooterData(ctx: BrowserContext, pageUrl: string): Promise<FooterData> {
+// ── Footer extraction ─────────────────────────────────────────────────────
+async function extractFooterData(ctx: BrowserContext, pageUrl: string) {
   const page = await ctx.newPage();
   await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
-  const data = await page.evaluate((): FooterData => {
+  await page.waitForTimeout(1000);
+  const data = await page.evaluate(() => {
     const getText = (el: Element | null) => el?.textContent?.trim() ?? "";
     const footer = document.querySelector("footer, [role='contentinfo'], [class*='footer']") as HTMLElement | null;
-    if (!footer) return { background: "#1a1a1a", textColor: "#fff", brandName: "", links: [], copyright: "" };
+    if (!footer) return { background: "#1a1a1a", textColor: "#fff", brandName: "", logoUrl: undefined as string|undefined, links: [] as {label:string;href:string}[], copyright: "" };
     const s = getComputedStyle(footer);
     const imgEl = footer.querySelector("img") as HTMLImageElement | null;
     const links = Array.from(footer.querySelectorAll("a[href]"))
       .filter(a => { const h = (a as HTMLAnchorElement).getAttribute("href") ?? ""; return h && !h.startsWith("mailto:") && !h.startsWith("tel:"); })
       .map(a => ({ label: getText(a), href: (a as HTMLAnchorElement).getAttribute("href") ?? "" }))
-      .filter(l => l.label)
-      .slice(0, 16);
-    const copyright = footer.textContent?.match(/©[^<\n]{0,100}/)?.[ 0]?.trim() ?? "";
-    const brandEl = footer.querySelector("[class*='logo'],[class*='brand']") as HTMLElement | null;
-    return {
-      background: s.backgroundColor || "#1a1a1a",
-      textColor: s.color || "#fff",
-      brandName: imgEl?.alt || getText(brandEl) || "",
-      logoUrl: imgEl?.src || undefined,
-      links,
-      copyright,
-    };
+      .filter(l => l.label).slice(0, 16);
+    const copyright = footer.textContent?.match(/©[^<\n]{0,100}/)?.[0]?.trim() ?? "";
+    return { background: s.backgroundColor || "#1a1a1a", textColor: s.color || "#fff",
+      brandName: imgEl?.alt || "", logoUrl: imgEl?.src || undefined, links, copyright };
   });
   await page.close();
   return data;
 }
 
-// ── Hero section rendering ────────────────────────────────────────────────
-async function renderHeroSection(
-  ctx: BrowserContext,
-  pageUrl: string,
-  designSystem: DesignSystemV2,
-): Promise<{ html: string; isFallback: boolean }> {
+// ── Hero extraction + render ──────────────────────────────────────────────
+async function renderHero(ctx: BrowserContext, pageUrl: string, designSystem: DesignSystemV2): Promise<string> {
   const page = await ctx.newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 30_000 });
   await page.waitForTimeout(1500);
-
-  // Scroll to trigger any lazy images
   await page.evaluate(() => window.scrollTo(0, 300));
   await page.waitForTimeout(300);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -131,56 +114,37 @@ async function renderHeroSection(
 
   const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
 
-  // Find the hero: prefer the first element with a background-image below the nav.
-  // This is more reliable than the ladder for background-image-based heroes.
-  const heroBbox = await page.evaluate((): { x:number; y:number; width:number; height:number } | null => {
+  // Find hero bounding box — prefer bg-image elements
+  const heroBbox = await page.evaluate(() => {
     const navEl = document.querySelector('[role="banner"], header');
     const navBottom = navEl ? navEl.getBoundingClientRect().bottom + window.scrollY : 80;
-    // Look for elements with background-image in the hero area
-    const allEls = Array.from(document.querySelectorAll('section,[class*="hero"],[class*="banner"],main>div,body>div,div'));
-    for (const el of allEls) {
+    for (const el of Array.from(document.querySelectorAll('*'))) {
       const r = el.getBoundingClientRect();
       const absTop = r.top + window.scrollY;
       if (absTop < navBottom - 5 || r.height < 200 || r.width < 800) continue;
       const s = getComputedStyle(el as Element);
-      if (s.backgroundImage && s.backgroundImage !== 'none') {
+      if (s.backgroundImage && s.backgroundImage !== 'none')
         return { x: 0, y: Math.round(absTop), width: 1440, height: Math.round(r.height) };
-      }
     }
-    // Fallback: first large section below nav
-    for (const el of allEls) {
+    for (const el of Array.from(document.querySelectorAll('section,[class*="hero"],main>div'))) {
       const r = el.getBoundingClientRect();
       const absTop = r.top + window.scrollY;
-      if (absTop >= navBottom && r.height > 300 && r.width > 800) {
+      if (absTop >= navBottom && r.height > 300 && r.width > 800)
         return { x: 0, y: Math.round(absTop), width: 1440, height: Math.round(r.height) };
-      }
     }
     return null;
   });
 
-  const heroCand = heroBbox ? { boundingBox: heroBbox } : null;
+  if (!heroBbox) { await page.close(); return ""; }
 
-  if (!heroCand) {
-    await page.close();
-    return { html: "<div style='padding:4rem;background:#1a1a2e;color:#fff;text-align:center'><h2>Hero section not found</h2></div>", isFallback: true };
-  }
-
-  // Take a screenshot crop of the hero area — cap at 900px to stay within LLM token limits
-  const clip = {
-    x: Math.max(0, heroCand.boundingBox.x),
-    y: Math.max(0, heroCand.boundingBox.y),
-    width: Math.min(1440, heroCand.boundingBox.width || 1440),
-    height: Math.min(900, pageHeight - heroCand.boundingBox.y, heroCand.boundingBox.height),
-  };
+  const clip = { x: 0, y: heroBbox.y, width: 1440, height: Math.min(900, pageHeight - heroBbox.y, heroBbox.height) };
   const cropBuf = await page.screenshot({ fullPage: true, clip });
   const screenshotDataUri = `data:image/png;base64,${cropBuf.toString("base64")}`;
 
-  // Extract hero DOM data BEFORE closing the page — background image, CTA color/position.
-  // Uses getComputedStyle (same as extractSectionDomStyles in the real pipeline).
-  const herodomData = await page.evaluate((heroY: number) => {
-    // ── Background image: largest bg-image element on page ──
-    let bgUrl: string | null = null;
-    let bestArea = 0;
+  // Extract hero DOM data while page is still open
+  const heroData = await page.evaluate((heroY: number) => {
+    // Background image (largest)
+    let bgUrl: string | null = null, bestArea = 0;
     for (const el of Array.from(document.querySelectorAll('*'))) {
       const s = getComputedStyle(el as Element);
       if (!s.backgroundImage || s.backgroundImage === 'none') continue;
@@ -191,107 +155,61 @@ async function renderHeroSection(
         if (m?.[1]) { bestArea = area; bgUrl = m[1]; }
       }
     }
-
-    // ── CTA: most-saturated button/link in hero area ──
-    const rgbSat = (rgb: string) => {
+    // CTA: most saturated button in hero area
+    const sat = (rgb: string) => {
       const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
       if (!m) return 0;
-      const r = +(m[1]!)/255, g = +(m[2]!)/255, b = +(m[3]!)/255;
-      const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l=(mx+mn)/2;
-      return mx===mn ? 0 : (mx-mn)/(l>0.5 ? 2-mx-mn : mx+mn);
+      const r=+(m[1]!)/255,g=+(m[2]!)/255,b=+(m[3]!)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;
+      return mx===mn?0:(mx-mn)/(l>0.5?2-mx-mn:mx+mn);
     };
-    let ctaEl: Element | null = null, bestSat = 0.15;
+    let ctaEl:Element|null=null, bestSat=0.15;
     for (const el of Array.from(document.querySelectorAll('a, button'))) {
-      const r = (el as HTMLElement).getBoundingClientRect();
-      const absTop = r.top + window.scrollY;
-      if (absTop < heroY || absTop > heroY + 1200) continue; // in hero area
-      if (r.width < 40 || r.height < 24) continue;
-      const bg = getComputedStyle(el as Element).backgroundColor;
-      const sat = rgbSat(bg);
-      if (sat > bestSat) { bestSat = sat; ctaEl = el; }
+      const r=(el as HTMLElement).getBoundingClientRect();
+      if (r.top+window.scrollY<heroY||r.top+window.scrollY>heroY+1200) continue;
+      if (r.width<40||r.height<24) continue;
+      const s=sat(getComputedStyle(el as Element).backgroundColor);
+      if (s>bestSat){bestSat=s;ctaEl=el;}
     }
-
-    // CTA position relative to page center (left/right/center)
-    let ctaPositionSide: 'left'|'right'|'center' = 'center';
-    if (ctaEl) {
-      const cr = (ctaEl as HTMLElement).getBoundingClientRect();
-      const pageW = document.documentElement.clientWidth;
-      if (cr.left > pageW * 0.55) ctaPositionSide = 'right';
-      else if (cr.right < pageW * 0.45) ctaPositionSide = 'left';
-    }
-
-    const ctaS = ctaEl ? getComputedStyle(ctaEl) : null;
-    return {
-      bgUrl,
-      ctaBackground: ctaS?.backgroundColor ?? null,
-      ctaColor: ctaS?.color ?? null,
-      ctaBorderRadius: ctaS?.borderRadius ?? null,
-      ctaLabel: ctaEl ? (ctaEl as HTMLElement).textContent?.trim() ?? '' : '',
-      ctaHref: ctaEl ? (ctaEl as HTMLAnchorElement).getAttribute('href') ?? '#' : '#',
-      ctaPositionSide,
-    };
-  }, clip.y);
-
-  const heroBgImageUrl = herodomData.bgUrl;
+    const ctaS=ctaEl?getComputedStyle(ctaEl):null;
+    const pw=document.documentElement.clientWidth;
+    let ctaPos:'left'|'right'|'center'='center';
+    if (ctaEl){const cr=(ctaEl as HTMLElement).getBoundingClientRect();if(cr.left>pw*0.55)ctaPos='right';else if(cr.right<pw*0.45)ctaPos='left';}
+    return { bgUrl, ctaBg:ctaS?.backgroundColor??null, ctaColor:ctaS?.color??null, ctaRadius:ctaS?.borderRadius??null,
+      ctaLabel:ctaEl?(ctaEl as HTMLElement).textContent?.trim()??'':'', ctaHref:ctaEl?(ctaEl as HTMLAnchorElement).getAttribute('href')??'#':'#', ctaPos };
+  }, heroBbox.y);
 
   await page.close();
 
-  // Build a minimal HierarchySection for the hero
+  console.log(`  BG image: ${heroData.bgUrl ? heroData.bgUrl.slice(0,70) : "not found"}`);
+  console.log(`  CTA: "${heroData.ctaLabel}" bg=${heroData.ctaBg} pos=${heroData.ctaPos}`);
+
   const heroSection: HierarchySection = {
-    id: "test-hero",
-    tag: "hero",
-    intent: "hero",
-    content: { heading: "", body: "", images: [] },
+    id: "test-hero", tag: "hero", intent: "hero",
+    content: {
+      heading: "", body: "",
+      images: heroData.bgUrl ? [{ url: heroData.bgUrl }] : [],
+      cta: heroData.ctaLabel ? { label: heroData.ctaLabel, href: heroData.ctaHref } : undefined,
+    },
     evidenceId: "test-hero",
   };
 
   const evidence: SectionVisualEvidenceRow = {
-    evidenceId: "test-hero",
-    pageSlug: "index",
-    sectionId: "test-hero",
-    screenshotUrl: screenshotDataUri,
-    boundingBox: heroCand.boundingBox,
-    computedStyles: [],
+    evidenceId: "test-hero", pageSlug: "index", sectionId: "test-hero",
+    screenshotUrl: screenshotDataUri, boundingBox: heroBbox, computedStyles: [],
+    domStyles: {
+      ctaBackground: heroData.ctaBg ?? undefined, ctaColor: heroData.ctaColor ?? undefined,
+      ctaBorderRadius: heroData.ctaRadius ?? undefined, ctaPositionSide: heroData.ctaPos,
+    },
   };
 
   const rules: ResponsiveRule[] = designSystem.responsive?.rules ?? [];
-  const tailwindInstructions = breakpointDeltasToTailwind(rules);
-
-  console.log(`  Background image: ${heroBgImageUrl ? heroBgImageUrl.slice(0, 70) : "not found"}`);
-  console.log(`  CTA: "${herodomData.ctaLabel}" bg=${herodomData.ctaBackground} position=${herodomData.ctaPositionSide}`);
-
-  if (heroBgImageUrl) heroSection.content.images = [{ url: heroBgImageUrl }];
-  if (herodomData.ctaLabel) {
-    heroSection.content.cta = { label: herodomData.ctaLabel, href: herodomData.ctaHref };
-  }
-
-  // Pass CTA DOM facts into evidence.domStyles so buildVisualPrompt adds them
-  // to the "Exact computed values from live DOM" block — same path as real pipeline
-  if (herodomData.ctaBackground || herodomData.ctaPositionSide) {
-    evidence.domStyles = {
-      ctaBackground: herodomData.ctaBackground ?? undefined,
-      ctaColor: herodomData.ctaColor ?? undefined,
-      ctaBorderRadius: herodomData.ctaBorderRadius ?? undefined,
-      ctaPositionSide: herodomData.ctaPositionSide ?? undefined,
-    };
-  }
-
-  console.log(`  Hero bbox: y=${clip.y}, h=${clip.height}, screenshotSize=${cropBuf.length} bytes`);
-  console.log("  Calling LLM for hero section...");
   const result = await renderVisualBlockWithFlag({
-    section: heroSection,
-    evidence,
-    designSystem,
-    tailwindInstructions,
-    config: noopConfig,
+    section: heroSection, evidence, designSystem,
+    tailwindInstructions: breakpointDeltasToTailwind(rules), config: noopConfig,
   });
 
-  if (result.isFallback) {
-    console.log("  ⚠ Fell back — screenshot may not have reached LLM or response was truncated");
-  } else {
-    console.log(`  ✓ LLM rendered (${result.code.length} chars)`);
-  }
-  return { html: result.code, isFallback: result.isFallback, sectionHeight: heroCand.boundingBox.height };
+  console.log(`  Hero: ${result.isFallback ? "⚠ fallback" : `✓ LLM rendered (${result.code.length} chars)`}`);
+  return result.code;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -303,164 +221,93 @@ async function main() {
   const ctx = await browser.newContext();
 
   // ── Step 1: Extract ────────────────────────────────────────────────────
-  console.log("\n[1/5] Extracting page (Playwright)...");
+  console.log("\n[1/6] Extracting page (Playwright)...");
   const captured = await capturePage(ctx, url);
-  const nav = await extractNavData(await ctx.newPage().then(async p => {
-    await p.goto(url, { waitUntil: "networkidle" });
-    await p.waitForTimeout(1000);
-    return p;
-  }));
+  const navPage = await ctx.newPage();
+  await navPage.goto(url, { waitUntil: "networkidle" });
+  await navPage.waitForTimeout(1000);
+  const nav = await extractNavData(navPage);
+  await navPage.close();
 
   // ── Step 2: Build design system ────────────────────────────────────────
-  console.log("[2/5] Building design system...");
-  // Build a minimal valid ExtractArtifact from the captured page data
-  const extractArtifact: ExtractArtifact = {
-    url,
-    extractedAt: new Date().toISOString(),
-    css: {
-      tokens: {},
-      breakpoints: captured.responsive.map(r => r.selector).filter(Boolean),
-      animations: [],
-      webFontUrls: captured.media
-        .filter(m => m.resourceType === "stylesheet" &&
-          ["fonts.googleapis.com", "font-awesome", "typekit"].some(p => m.url.includes(p)))
-        .map(m => m.url),
-    },
-    pages: [{
-      path: "/",
-      media: captured.media,
-      screenshots: {
-        full1440: captured.screenshots.full1440.toString("base64"),
-        vp375: captured.screenshots.vp375.toString("base64"),
-        vp768: captured.screenshots.vp768.toString("base64"),
-      },
+  console.log("[2/6] Building design system...");
+  const extract: ExtractArtifact = {
+    url, extractedAt: new Date().toISOString(),
+    css: { tokens: {}, breakpoints: [], animations: [], webFontUrls: captured.media
+      .filter(m => m.resourceType === "stylesheet" && ["fonts.googleapis.com","font-awesome","typekit"].some(p=>m.url.includes(p)))
+      .map(m => m.url) },
+    pages: [{ path: "/", media: captured.media,
+      screenshots: { full1440: captured.screenshots.full1440.toString("base64"), vp375: captured.screenshots.vp375.toString("base64"), vp768: captured.screenshots.vp768.toString("base64") },
       content: { ...captured.content, rawText: "" } as any,
-      interactions: [],
-      responsive: captured.responsive,
-      pixelSamples: captured.pixelSamples,
-      computedTheme: captured.computedTheme,
-      flags: captured.flags,
-    }],
-    siteMap: [],
-    sourceBaseline: {
-      capturedAt: new Date().toISOString(),
-      lighthouse: [],
-      axe: [],
-      network: [{ path: "/", totalBytes: captured.networkStats.totalBytes, requestCount: captured.networkStats.requestCount, imageBytes: captured.networkStats.imageBytes }],
-    },
+      interactions: [], responsive: captured.responsive, pixelSamples: captured.pixelSamples,
+      computedTheme: captured.computedTheme, flags: captured.flags }],
+    siteMap: [], extractedNav: nav ?? undefined,
+    sourceBaseline: { capturedAt: new Date().toISOString(), lighthouse: [], axe: [],
+      network: [{ path: "/", totalBytes: captured.networkStats.totalBytes, requestCount: captured.networkStats.requestCount, imageBytes: captured.networkStats.imageBytes }] },
     usage: { pagesCaptured: 1, screenshotCount: 3 },
-    extractedNav: nav ?? undefined,
   };
-  const designSystem = buildDesignSystemFromExtract(extractArtifact);
+  const designSystem = buildDesignSystemFromExtract(extract);
 
-  // ── Step 3: Render nav ─────────────────────────────────────────────────
-  console.log("[3/5] Rendering nav (deterministic)...");
-  /** Strip Astro frontmatter + template expressions so it renders in a browser */
-  const toHtml = (astro: string) => astro
-    .replace(/^---[\s\S]*?---\n?/m, "")  // strip frontmatter
-    .trim();
+  // ── Step 3: Render shell sections ──────────────────────────────────────
+  console.log("[3/6] Rendering nav (deterministic)...");
+  const navSource = nav ? renderNavComponent(nav) : "---\n---\n<nav>No nav found</nav>";
 
-  const navAstroSource = nav ? renderNavComponent(nav) : "<nav>No nav found</nav>";
-  const navHtml = toHtml(navAstroSource);
+  console.log("[4/6] Rendering hero (LLM + screenshot)...");
+  const heroSource = await renderHero(ctx, url, designSystem);
 
-  // ── Step 4: Render hero (LLM) ──────────────────────────────────────────
-  console.log("[4/5] Rendering hero (LLM + screenshot)...");
-  const { html: heroHtmlRaw, isFallback: heroFallback, sectionHeight: heroSectionHeight } = await renderHeroSection(ctx, url, designSystem);
-  // Strip frontmatter from rendered Astro; if fallback show placeholder
-  const heroHtml = heroFallback
-    ? `<div style="background:#1a1a2e;min-height:500px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:1rem;">Hero section — LLM render pending</div>`
-    : toHtml(heroHtmlRaw)
-        // Inject actual DOM-measured height as a CSS variable so Tailwind arbitrary
-        // values that the CDN can't process fall back to the real section height.
-        .replace(/(<section[^>]*data-section-id[^>]*>)/, `$1\n<style>[data-section-id="test-hero"]{min-height:${heroSectionHeight}px}</style>`);
-  if (heroFallback) console.log("  ⚠ Hero fell back to placeholder");
-
-  // ── Step 5: Render footer ──────────────────────────────────────────────
-  console.log("[5/5] Rendering footer (deterministic)...");
+  console.log("[5/6] Rendering footer (deterministic)...");
   const footerData = await extractFooterData(ctx, url);
-  const footerHtml = toHtml(renderFooterComponent(footerData));
+  const footerSource = renderFooterComponent(footerData);
 
   await browser.close();
 
-  // ── Page switcher from nav links ───────────────────────────────────────
-  const allNavLinks: { label: string; href: string }[] = [];
-  const collectLinks = (links: ExtractedNav["links"]) => {
-    for (const l of links) {
-      if (l.href && l.href !== "#" && l.href.startsWith("/")) allNavLinks.push({ label: l.label, href: l.href });
-      if (l.children) collectLinks(l.children);
-    }
-  };
-  if (nav) collectLinks(nav.links);
-  const uniquePages = [{ label: "Home", href: "/" }, ...new Map(allNavLinks.map(p => [p.href, p])).values()];
-  const origin = new URL(url).origin;
-  const pageOptions = uniquePages.map(p =>
-    `<option value="${origin}${p.href}">${p.label} — ${p.href}</option>`
-  ).join("\n");
+  // ── Step 6: Build real Astro project ───────────────────────────────────
+  console.log("[6/6] Building Astro project...");
+  await rm(sourceDir, { recursive: true, force: true });
+  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls: extract.css.webFontUrls });
 
-  // ── Write HTML ─────────────────────────────────────────────────────────
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Shell Preview — ${url}</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { margin: 0; font-family: sans-serif; }
-    .switcher { background: #0f172a; color: #94a3b8; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; position: sticky; top: 0; z-index: 200; }
-    .switcher select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 0.25rem 0.5rem; }
-    .switcher label { color: #64748b; }
-    .page-gap { padding: 4rem 2rem; text-align: center; background: #f8fafc; color: #94a3b8; border-top: 1px dashed #e2e8f0; border-bottom: 1px dashed #e2e8f0; }
-    .page-gap strong { color: #64748b; display: block; margin-bottom: 0.5rem; }
-  </style>
-</head>
-<body>
+  // Write shell components
+  const sectionsDir = path.join(sourceDir, "src", "components", "sections");
+  await mkdir(sectionsDir, { recursive: true });
+  await writeFile(path.join(sourceDir, "src", "components", "shared", "Header.astro"), navSource);
+  await writeFile(path.join(sourceDir, "src", "components", "shared", "Footer.astro"), footerSource);
 
-<div class="switcher">
-  <span>🔧 Shell Preview</span>
-  <label>Switch page:</label>
-  <select id="pageswitcher">
-    ${pageOptions}
-  </select>
-  <span style="margin-left:auto;opacity:0.5">${url}</span>
-</div>
+  // Write a single index page: nav (via layout) + hero + placeholder + footer (via layout)
+  const heroComponentPath = path.join(sectionsDir, "shell-hero.astro");
+  await writeFile(heroComponentPath, heroSource || `---\n---\n<div style="min-height:500px;background:#1a1a2e;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4)">Hero section</div>`);
 
-${navHtml}
+  const indexPage = `---
+import Layout from "../layouts/Layout.astro";
+import Hero from "../components/sections/shell-hero.astro";
+---
+<Layout title="${new URL(url).hostname}">
+  <Hero />
+  <div style="padding:3rem 2rem;text-align:center;background:#f8fafc;color:#94a3b8;border-top:1px dashed #e2e8f0">
+    <strong style="display:block;color:#64748b;margin-bottom:0.5rem">Page content sections</strong>
+    Full build renders all sections here
+  </div>
+</Layout>
+`;
+  await writeFile(path.join(sourceDir, "src", "pages", "index.astro"), indexPage);
 
-<!-- HERO — rendered by same LLM + renderVisualBlockWithFlag() as real build -->
-${heroHtml}
+  // pnpm install + astro build
+  await runProcess("pnpm", ["install"], sourceDir);
+  await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
+  await relativizeAssetPaths(distDir);
+  await inlineCssIntoHtml(distDir);
 
-<!-- PAGE CONTENT PLACEHOLDER -->
-<div class="page-gap">
-  <strong>Page content sections</strong>
-  Rendered sections would appear here in the full build
-</div>
-
-<!-- FOOTER — rendered by renderFooterComponent() same as real build -->
-${footerHtml}
-
-<script>
-document.getElementById('pageswitcher').addEventListener('change', function() {
-  const newUrl = this.value;
-  // Re-run the script with this URL (user would do this manually or via API)
-  console.log('Switch to:', newUrl);
-  window.open(newUrl, '_blank');
-});
-</script>
-</body>
-</html>`;
-
-  await writeFile(out, html);
-
-  console.log(`\n✓ Done → ${out}`);
-  console.log(`  open ${out}`);
+  const outFile = path.join(distDir, "index.html");
+  console.log(`\n✓ Built → ${outFile}`);
+  console.log(`  open ${outFile}`);
   console.log(`\nPipeline:`);
-  console.log(`  Nav:   ${nav ? `${nav.links.length} links, ${nav.links.filter(l=>l.children?.length).length} dropdowns` : "not found"}`);
-  console.log(`  Hero:  ${heroFallback ? "⚠ fallback" : "✓ LLM rendered"}`);
+  console.log(`  Nav:    ${nav ? `${nav.links.length} links, ${nav.links.filter(l=>l.children?.length).length} dropdowns` : "not found"}`);
   console.log(`  Footer: ${footerData.links.length} links`);
-  console.log(`  Primary color: ${designSystem.global.tokens.colors.primary}`);
-  console.log(`  Font: ${designSystem.global.tokens.fonts.heading}`);
+  console.log(`  Primary: ${designSystem.global.tokens.colors.primary}`);
+  console.log(`  Font:    ${designSystem.global.tokens.fonts.heading}`);
+
+  // Open in browser
+  const { exec } = await import("child_process");
+  exec(`open ${outFile}`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
