@@ -254,7 +254,7 @@ export async function renderVisualBlockWithFlag(
       {
         model,
         messages: [{ role: "user", content }],
-        temperature: 0.2,
+        temperature: 0,
         maxTokens: 8192,
       },
       config,
