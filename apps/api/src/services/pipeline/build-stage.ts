@@ -373,6 +373,9 @@ async function renderPageSections(
       } else if (section.tag === "footer") {
         const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
         return { section, source: renderSemanticSection(footerSection), isFallback: false };
+      } else if (i === 0 && section.tag === "unknown" && !getEvidenceForSection(evidence, section)?.screenshotUrl) {
+        // First section with no evidence and no tag is likely a nav duplicate of the shell.
+        return null;
       } else {
         // For cloning, all non-shell sections go through the LLM with the
         // screenshot — the tag is provided as context in the prompt but we

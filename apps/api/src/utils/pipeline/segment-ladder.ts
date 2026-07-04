@@ -131,16 +131,47 @@ export async function runLadder(
     candidates = mergeCandidates(candidates, rung2);
   }
 
-  if (candidates.length < 3 || opts.needsVisionSegmentation) {
+  // Trigger vision if: too few candidates, SPA flag, OR any single candidate
+  // is taller than 800px (too large to render in one LLM call). Vision will
+  // subdivide oversized sections that Rung 2 merged due to same background color.
+  const MAX_SECTION_HEIGHT = 800;
+  const hasOversizedSegment = candidates.some(c => c.boundingBox.height > MAX_SECTION_HEIGHT);
+
+  if (candidates.length < 3 || opts.needsVisionSegmentation || hasOversizedSegment) {
     visionUsed = true;
     const rung3 = await opts.visionSegment();
-    candidates = mergeCandidates(candidates, rung3);
+    // For oversized candidates: remove them and let vision candidates replace them.
+    // mergeWithReplacement gives Rung 3 priority over Rung 2 segments > MAX_SECTION_HEIGHT.
+    candidates = mergeWithVisionReplacement(candidates, rung3, MAX_SECTION_HEIGHT);
   }
 
   return {
     candidates: candidates.sort((a, b) => a.boundingBox.y - b.boundingBox.y),
     ladder: { rung1Count: rung1.length, rung2Used, visionUsed },
   };
+}
+
+/**
+ * Like mergeCandidates but vision candidates replace Rung 2 candidates that
+ * exceed maxHeight — oversized visual-boundary segments get subdivided by vision.
+ */
+function mergeWithVisionReplacement(
+  existing: SectionCandidate[],
+  vision: SectionCandidate[],
+  maxHeight: number,
+): SectionCandidate[] {
+  // Keep existing candidates that are within size bounds or from semantic scan.
+  const kept = existing.filter(
+    (c) => c.source === "semantic" || c.boundingBox.height <= maxHeight,
+  );
+  // Add all vision candidates that don't overlap with kept semantic candidates.
+  for (const v of vision) {
+    const overlapsSemantic = kept.some(
+      (k) => k.source === "semantic" && verticalOverlap(k.boundingBox, v.boundingBox) > 0.5,
+    );
+    if (!overlapsSemantic) kept.push(v);
+  }
+  return kept;
 }
 
 // Higher-confidence candidate wins when vertical overlap > 70%.
