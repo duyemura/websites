@@ -171,7 +171,7 @@ IMPORTANT CONSTRAINTS:
 - For icons: use inline SVG that semantically matches what the icon represents (calendar for scheduling, dumbbell for equipment, location pin for maps, etc.). Match the visual style shown — outline vs filled, stroke color, size. NEVER use a social media icon (Facebook, Instagram, phone, email) for non-social content like "Weekend Classes" or "Outdoor Fitness Area".
 - If the page loaded an icon font (Font Awesome, etc.) it will be available — use fa-* class names where appropriate.
 - For interactivity, use Alpine.js via CDN script tag or vanilla JS in a <script> tag — do not import it.
-- The only valid imports in the frontmatter are local .astro files (e.g. ../shared/Header.astro).
+- The only valid imports in the frontmatter are shared section components (e.g. ../shared/MyComponent.astro). NEVER import Header.astro or Footer.astro — those are rendered by the Layout wrapper automatically and must not appear inside section components.
 
 Authoritative design tokens (computed from the live DOM). These are available as named Tailwind utilities — use them directly:
 - bg-primary / text-primary → ${tokens.colors.primary} (brand accent, CTAs, links)
@@ -301,7 +301,7 @@ export async function renderVisualBlockWithFlag(
       return { code: renderFallbackBlock(section, designSystem), isFallback: true };
     }
 
-    return { code: sanitizeAstroFrontmatter(source), isFallback: false };
+    return { code: sanitizeAstroFrontmatter(sanitizeSectionImports(source)), isFallback: false };
   } catch {
     return { code: renderFallbackBlock(section, designSystem), isFallback: true };
   }
@@ -312,6 +312,15 @@ export async function renderVisualBlockWithFlag(
  * to `// comment`. LLMs sometimes emit YAML-style hash comments in the JS
  * frontmatter which Vite/esbuild rejects with a syntax error.
  */
+/** Strip imports of Header.astro / Footer.astro from section components.
+ *  Sections must not import shell components — the Layout wrapper renders them. */
+function sanitizeSectionImports(source: string): string {
+  return source.replace(
+    /^import\s+\w+\s+from\s+['"][^'"]*(?:Header|Footer)\.astro['"]\s*;?\s*$/gm,
+    "",
+  );
+}
+
 function sanitizeAstroFrontmatter(source: string): string {
   const FENCE = "---";
   const firstFence = source.indexOf(FENCE);
