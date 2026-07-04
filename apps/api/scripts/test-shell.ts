@@ -178,21 +178,24 @@ async function main() {
     const addrEl = footer.querySelector("address, [class*='address']") as HTMLElement | null;
     const address = addrEl ? getText(addrEl) : "";
 
-    // Link columns: look for div/section groupings with headings + links
+    // Link columns: find all containers that have a heading + at least 2 links.
+    // Works generically: Webflow, Bootstrap, hand-coded, any framework.
     const linkGroups: { heading?: string; links: { label: string; href: string }[] }[] = [];
-    const colEls = footer.querySelectorAll("div > div, section > div, [class*='col']");
     const processedLinks = new Set<string>();
+    const isSocialUrl = (h: string) => h.includes("facebook") || h.includes("instagram")
+      || h.includes("twitter") || h.includes("youtube") || h.includes("linkedin");
 
-    for (const col of Array.from(colEls).slice(0, 8)) {
-      const heading = col.querySelector("h1,h2,h3,h4,h5,h6,[class*='heading'],[class*='title']");
+    // Walk all divs in the footer, find those with a heading + multiple links
+    const allDivs = Array.from(footer.querySelectorAll("div, section, nav, ul"));
+    for (const col of allDivs) {
+      const heading = col.querySelector(":scope > h1,:scope > h2,:scope > h3,:scope > h4,:scope > h5,:scope > h6,:scope > [class*='heading'],:scope > [class*='title'],[class*='footer-link-title']");
+      if (!heading) continue;
       const links = Array.from(col.querySelectorAll("a[href]"))
         .map(a => ({ label: getText(a), href: (a as HTMLAnchorElement).getAttribute("href") ?? "" }))
-        .filter(l => l.label && l.href && !l.href.includes("facebook") && !l.href.includes("instagram")
-          && !processedLinks.has(l.label) && l.label.length < 50);
-
+        .filter(l => l.label && l.href && !isSocialUrl(l.href) && !processedLinks.has(l.label) && l.label.length < 60);
       if (links.length >= 2) {
         links.forEach(l => processedLinks.add(l.label));
-        linkGroups.push({ heading: heading ? getText(heading) : undefined, links });
+        linkGroups.push({ heading: getText(heading), links });
       }
     }
 
