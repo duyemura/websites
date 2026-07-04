@@ -325,7 +325,9 @@ function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
   const text = data.colors.find((c) => c.role === "text")?.hex;
   const bg = data.colors.find((c) => c.role === "background")?.hex;
   const accentCandidate = data.colors.find((c) => c.role === "accent")?.hex;
-  const accent = isLinkBlue(accentCandidate) ? undefined : accentCandidate;
+  // No longer filtering by isLinkBlue — the computedTheme extraction now uses
+  // saturation to find the brand accent, so high-saturation blues ARE brand colors.
+  const accent = accentCandidate;
   const surface = data.colors.find((c) => c.role === "surface")?.hex;
   const textMuted = data.colors.find((c) => c.role === "textMuted")?.hex;
   const border = data.colors.find((c) => c.role === "border")?.hex;
