@@ -31,6 +31,7 @@ import {
   writeProjectScaffold,
   relativizeAssetPaths,
   inlineCssIntoHtml,
+  type FooterLinkGroup,
 } from "../src/services/astro-code-generator";
 import { renderVisualBlockWithFlag } from "../src/services/visual-section-renderer";
 import { breakpointDeltasToTailwind } from "../src/utils/pipeline/breakpoint-tailwind";
@@ -144,11 +145,90 @@ async function main() {
     }
   }
 
-  // Footer — deterministic from design system shell
-  const footerSection = designSystem?.global?.shell?.footer;
-  const footerSource = footerSection
-    ? renderFooterComponent({ background: designSystem.global.tokens.colors.background, textColor: designSystem.global.tokens.colors.foreground, brandName: designSystem.business.name ?? "", links: nav?.links.slice(0,12).map(l => ({ label: l.label, href: l.href })) ?? [], copyright: "" })
-    : "---\n---\n<footer></footer>";
+  // Footer — extract rich structure from live DOM (columns, logo, social links)
+  const footerBrowser = await chromium.launch();
+  const footerCtx = await footerBrowser.newContext();
+  await footerCtx.addInitScript(() => { (globalThis as any).__name ??= (fn: unknown) => fn; });
+  const footerPage = await footerCtx.newPage();
+  await footerPage.goto(url, { waitUntil: "domcontentloaded" });
+  await footerPage.waitForTimeout(1500);
+
+  const footerData = await footerPage.evaluate(() => {
+    const getText = (el: Element | null) => el?.textContent?.trim() ?? "";
+    const footer = document.querySelector("footer, [role='contentinfo'], [class*='footer']") as HTMLElement | null;
+    if (!footer) return null;
+
+    const s = getComputedStyle(footer);
+    const logoImg = footer.querySelector("img") as HTMLImageElement | null;
+
+    // Social links: look for anchor elements containing social media URLs
+    const socialLinks: { platform: string; href: string }[] = [];
+    for (const a of Array.from(footer.querySelectorAll("a[href]"))) {
+      const href = (a as HTMLAnchorElement).getAttribute("href") ?? "";
+      const platform = href.includes("facebook") ? "Facebook"
+        : href.includes("instagram") ? "Instagram"
+        : href.includes("twitter") || href.includes("x.com") ? "Twitter"
+        : href.includes("youtube") ? "YouTube"
+        : href.includes("linkedin") ? "LinkedIn"
+        : null;
+      if (platform) socialLinks.push({ platform, href });
+    }
+
+    // Address: look for address-like text
+    const addrEl = footer.querySelector("address, [class*='address']") as HTMLElement | null;
+    const address = addrEl ? getText(addrEl) : "";
+
+    // Link columns: look for div/section groupings with headings + links
+    const linkGroups: { heading?: string; links: { label: string; href: string }[] }[] = [];
+    const colEls = footer.querySelectorAll("div > div, section > div, [class*='col']");
+    const processedLinks = new Set<string>();
+
+    for (const col of Array.from(colEls).slice(0, 8)) {
+      const heading = col.querySelector("h1,h2,h3,h4,h5,h6,[class*='heading'],[class*='title']");
+      const links = Array.from(col.querySelectorAll("a[href]"))
+        .map(a => ({ label: getText(a), href: (a as HTMLAnchorElement).getAttribute("href") ?? "" }))
+        .filter(l => l.label && l.href && !l.href.includes("facebook") && !l.href.includes("instagram")
+          && !processedLinks.has(l.label) && l.label.length < 50);
+
+      if (links.length >= 2) {
+        links.forEach(l => processedLinks.add(l.label));
+        linkGroups.push({ heading: heading ? getText(heading) : undefined, links });
+      }
+    }
+
+    // Flat fallback if no groups found
+    const flatLinks = linkGroups.length === 0
+      ? Array.from(footer.querySelectorAll("a[href]"))
+          .filter(a => { const h = (a as HTMLAnchorElement).getAttribute("href") ?? ""; return h && !h.includes("facebook") && !h.includes("instagram"); })
+          .map(a => ({ label: getText(a), href: (a as HTMLAnchorElement).getAttribute("href") ?? "" }))
+          .filter(l => l.label)
+          .slice(0, 16)
+      : [];
+
+    const copyright = footer.textContent?.match(/©[^<\n]{0,120}/)?.[0]?.trim() ?? "";
+
+    return {
+      background: s.backgroundColor,
+      textColor: s.color,
+      brandName: logoImg?.alt || "",
+      logoUrl: logoImg?.src || undefined,
+      links: flatLinks,
+      linkGroups,
+      socialLinks,
+      address,
+      copyright,
+    };
+  });
+
+  await footerPage.close();
+  await footerCtx.close();
+  await footerBrowser.close();
+
+  console.log(`  Footer: bg=${footerData?.background}, groups=${footerData?.linkGroups?.length ?? 0}, social=${footerData?.socialLinks?.length ?? 0}`);
+
+  const footerSource = footerData
+    ? renderFooterComponent(footerData)
+    : "---\n---\n<footer style='background:#00040d;padding:3rem'></footer>";
 
   // Write real Astro project
   const webFontUrls = extract.css.webFontUrls ?? [];

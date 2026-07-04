@@ -675,8 +675,13 @@ export function renderNavComponent(nav: ExtractedNav): string {
 `;
 }
 
+export interface FooterLinkGroup {
+  heading?: string;
+  links: { label: string; href: string }[];
+}
+
 /** Deterministic footer renderer from extracted DOM data.
- *  Same pattern as renderNavComponent — no LLM, exact computed values. */
+ *  Supports column groups (PROGRAMS/ABOUT/LEGAL), logo, social links. */
 export function renderFooterComponent(footer: {
   background: string;
   textColor: string;
@@ -684,27 +689,65 @@ export function renderFooterComponent(footer: {
   logoUrl?: string;
   links: { label: string; href: string }[];
   copyright: string;
+  /** Grouped link columns — extracted from DOM structure when available. */
+  linkGroups?: FooterLinkGroup[];
+  /** Social links (Facebook, Instagram, etc.) */
+  socialLinks?: { platform: string; href: string; iconSvg?: string }[];
+  /** Physical address text if present */
+  address?: string;
 }): string {
+  // Link text color: on dark backgrounds use white, on light use dark
+  const bg = footer.background;
+  const isDark = bg.match(/rgba?\((\d+)/) ? +bg.match(/rgba?\((\d+)/)![1] < 128 : true;
+  const linkColor = isDark ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.7)";
+  const headingColor = isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)";
+  const dividerColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
+  const textColor = isDark ? "#fff" : footer.textColor;
+
   const logoHtml = footer.logoUrl
-    ? `<img src="${footer.logoUrl}" alt="${footer.brandName}" class="h-8 w-auto mb-4" />`
+    ? `<img src="${footer.logoUrl}" alt="${footer.brandName}" class="h-12 w-auto mb-3" style="filter:${isDark ? "brightness(10)" : "none"}" />`
     : footer.brandName
-      ? `<div class="text-lg font-bold mb-4" style="color:${footer.textColor}">${footer.brandName}</div>`
+      ? `<div class="text-base font-bold mb-3" style="color:${textColor}">${footer.brandName}</div>`
       : "";
 
-  const linkItems = footer.links
-    .map(l => `<a href="${l.href}" class="hover:opacity-80 transition-opacity" style="color:${footer.textColor};opacity:0.7;text-decoration:none;font-size:0.875rem;">${l.label}</a>`)
-    .join("\n    ");
+  // Social links
+  const socialHtml = (footer.socialLinks ?? []).map(s => `<a href="${s.href}" aria-label="${s.platform}" class="hover:opacity-60 transition-opacity" style="color:${textColor};text-decoration:none;font-size:0.875rem;">${s.platform}</a>`).join(" · ");
+
+  // Columns: use groups if available, otherwise split flat links into one column
+  const groups: FooterLinkGroup[] = footer.linkGroups?.length
+    ? footer.linkGroups
+    : [{ links: footer.links }];
+
+  const columnsHtml = groups.map(g => `
+    <div>
+      ${g.heading ? `<div class="mb-3 text-xs font-semibold uppercase tracking-widest" style="color:${headingColor}">${g.heading}</div>` : ""}
+      <ul class="space-y-2 list-none p-0 m-0">
+        ${g.links.map(l => `<li><a href="${l.href}" class="hover:opacity-80 transition-opacity" style="color:${linkColor};text-decoration:none;font-size:0.875rem;">${l.label}</a></li>`).join("\n        ")}
+      </ul>
+    </div>`).join("\n  ");
+
+  const addressHtml = footer.address
+    ? `<div style="color:${linkColor};font-size:0.875rem;line-height:1.6;">${footer.address.replace(/\n/g, "<br/>")}</div>`
+    : "";
 
   return `---
 // Footer component — generated deterministically from live DOM computed styles
 ---
-<footer data-section-id="shell-footer" style="background:${footer.background};color:${footer.textColor};">
-  <div class="mx-auto max-w-6xl px-6 py-12">
-    ${logoHtml}
-    <nav class="flex flex-wrap gap-x-6 gap-y-2 mb-8">
-      ${linkItems}
-    </nav>
-    ${footer.copyright ? `<p class="text-sm" style="opacity:0.4;color:${footer.textColor};border-top:1px solid rgba(128,128,128,0.2);padding-top:1.5rem;">${footer.copyright}</p>` : ""}
+<footer data-section-id="shell-footer" style="background:${bg};">
+  <div class="mx-auto max-w-6xl px-6 py-14">
+    <div class="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-12 mb-10">
+      <!-- Brand column -->
+      <div class="flex flex-col gap-4 min-w-[140px]">
+        ${logoHtml}
+        ${socialHtml ? `<div class="flex gap-3 text-sm">${socialHtml}</div>` : ""}
+        ${addressHtml}
+      </div>
+      <!-- Link columns -->
+      <div class="grid grid-cols-2 md:grid-cols-${Math.min(groups.length, 4)} gap-8">
+        ${columnsHtml}
+      </div>
+    </div>
+    ${footer.copyright ? `<div class="text-xs pt-6" style="color:${headingColor};border-top:1px solid ${dividerColor};">${footer.copyright}</div>` : ""}
   </div>
 </footer>
 `;
