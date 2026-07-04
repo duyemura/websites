@@ -9,6 +9,7 @@ import type {
 import type {
   ExtractArtifact,
   ExtractPage,
+  NavLink,
   SegmentArtifact,
   SegmentSection,
 } from "../types/pipeline-artifacts";
@@ -166,6 +167,25 @@ function bodyPreview(section: SegmentSection): string | undefined {
   return inner.length > 600 ? `${inner.slice(0, 600).trim()}…` : inner;
 }
 
+/** Convert a nav href to a page slug, e.g. "/schedule" → "schedule" */
+function hrefToSlug(href: string): string | null {
+  if (!href || href === "#" || href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:")) return null;
+  const path = href.split("?")[0]?.split("#")[0] ?? "";
+  if (!path || path === "/") return "index";
+  return pathToSlug(path);
+}
+
+/** Recursively collect all slugs from nav links so the build plan includes them. */
+function collectNavSlugs(links: NavLink[]): string[] {
+  const slugs: string[] = [];
+  for (const link of links) {
+    const slug = hrefToSlug(link.href);
+    if (slug) slugs.push(slug);
+    if (link.children?.length) slugs.push(...collectNavSlugs(link.children));
+  }
+  return [...new Set(slugs)];
+}
+
 export function buildSiteHierarchyFromSegments(
   segment: SegmentArtifact,
   extract: ExtractArtifact,
@@ -229,6 +249,20 @@ export function buildSiteHierarchyFromSegments(
       : pages;
 
   const buildOrder = orderedPages.map((p) => p.slug);
+
+  // Augment buildOrder with pages linked from the extracted nav that weren't
+  // captured in the segment. These get stub redirect pages so nav links resolve.
+  if (extract.extractedNav) {
+    const navSlugs = collectNavSlugs(extract.extractedNav.links);
+    const existing = new Set(buildOrder);
+    for (const slug of navSlugs) {
+      if (!existing.has(slug)) {
+        buildOrder.push(slug);
+        existing.add(slug);
+      }
+    }
+  }
+
   const pageStatus: Record<string, PageBuildStatus> = {};
   for (const slug of buildOrder) {
     pageStatus[slug] = slug === "index" ? "in_progress" : "planned";

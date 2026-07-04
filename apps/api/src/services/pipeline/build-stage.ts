@@ -631,6 +631,30 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   }
   console.log(`[build] ⏱ all pages rendered in ${((Date.now()-t0)/1000).toFixed(1)}s`);
 
+  // 6b. Write stub redirect pages for nav-linked pages not in the current build scope.
+  // These ensure nav links resolve (no 404s) — unbuilt pages redirect to the original site.
+  const builtSet = new Set(builtPages);
+  const unbuiltNavPages = hierarchy.buildPlan.buildOrder.filter(
+    (slug) => !builtSet.has(slug) && slug !== "index",
+  );
+  if (unbuiltNavPages.length > 0) {
+    const sourceUrl = hierarchy.siteMetadata.targetUrl?.replace(/\/$/, "") ?? "";
+    for (const slug of unbuiltNavPages) {
+      const originalPath = slug === "index" ? "/" : `/${slug.replace(/-/g, "/")}`;
+      const redirectUrl = sourceUrl ? `${sourceUrl}${originalPath}` : originalPath;
+      const stubFile = slug === "index"
+        ? path.join(sourceDir, "src", "pages", "index.astro")
+        : path.join(sourceDir, "src", "pages", `${slug}.astro`);
+      const stubSource = `---\n// Stub: redirects to original site until this page is cloned\n---\n<meta http-equiv="refresh" content="0; url=${redirectUrl}" />\n<link rel="canonical" href="${redirectUrl}" />\n`;
+      // Don't overwrite pages that were already built
+      if (!builtSet.has(slug)) {
+        await mkdir(path.dirname(stubFile), { recursive: true });
+        await writeFile(stubFile, stubSource);
+      }
+    }
+    console.log(`[build] ↪ ${unbuiltNavPages.length} stub redirect page(s) for unbuilt nav targets`);
+  }
+
   // 7. Install deps so `astro check` has the packages it needs. This must run
   //    before the check passes — without node_modules astro check exits immediately
   //    and skips real validation, but with a stale node_modules from a prior run
