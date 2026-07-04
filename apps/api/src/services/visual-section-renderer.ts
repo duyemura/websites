@@ -185,12 +185,11 @@ ${section.notes ? `- Notes: ${section.notes}` : ""}
 CRITICAL: The outermost element of the component MUST include the attribute data-section-id="${section.id}" (literal string value hardcoded to this exact value, not a variable). This is required for automated quality checks.
 
 Replicate EVERY visual detail visible in the screenshot:
-- Background colors, gradients, and overlays (dark semi-transparent overlay on background images, colored backgrounds behind eyebrow labels)
-- Exact left/right layout orientation — if text is on the left and image on the right in the screenshot, keep that. Do not mirror or flip.
-- Exact CTA button colors, border-radius, padding, and icon placement
-- Section overlap effects — if a section visually overlaps the one above it, use negative Tailwind margin (e.g. -mt-16)
-- Card styling — if cards have a slightly-different-shade background inside a dark section, replicate that subtle card treatment
-- Text alignment, maximum width constraints, and exact padding/margin values visible in the screenshot
+- Background overlays: if the screenshot shows text over an image with a darkening layer, match the darkness/opacity you see — a layer that makes text readable is dark (use bg-black/[opacity]), not a brand color
+- Layout arrangement: replicate the exact spatial arrangement from the screenshot — if content is left-aligned with a button on the right, use a horizontal flexbox; if stacked, use column. Never flip or rearrange
+- CTA buttons: match the exact color, width, shape, icon, and position visible in the screenshot. If the screenshot shows the button on the right side of the hero, position it there
+- URLs: ONLY use URLs from the provided Images and CTA metadata — do not construct or guess URLs from the screenshot. The screenshot is for visual reference only
+- Section overlaps, card treatments, badge backgrounds: derive from the screenshot — match what you see, not what seems typical
 
 Use CSS variables for brand colors (var(--color-*)) and load fonts from the heading/body font stack. Include frontmatter that declares any props or constants. Preserve all visible text.${responsiveBlock}${interactionBlock}${extraBlock}`;
 }

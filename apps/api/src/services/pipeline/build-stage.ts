@@ -513,6 +513,25 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   });
   buildLog.push(...mediaLog);
 
+  // Also re-host the brand logo URL so the nav component gets a valid public URL.
+  // The LLM may reference the logo from the design system or from the screenshot,
+  // but the original URL may be on a restricted CDN. Re-hosting ensures it's public.
+  const logoUrl = designSystem.brand.logo.type === "image" ? designSystem.brand.logo.value : null;
+  if (logoUrl && !logoUrl.startsWith("data:") && !rehostUrlMap.has(logoUrl)) {
+    try {
+      const res = await fetch(logoUrl);
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        const ct = res.headers.get("content-type") ?? "image/png";
+        const ext = ct.includes("svg") ? ".svg" : ct.includes("png") ? ".png" : ".jpg";
+        const key = `sites/${input.siteUuid}/media/logo${ext}`;
+        const newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, ct);
+        rehostUrlMap.set(logoUrl, newUrl);
+        buildLog.push({ category: "performance", description: `Re-hosted logo ${logoUrl} as ${newUrl}` });
+      }
+    } catch { /* non-fatal — logo stays as original */ }
+  }
+
   // 3. Determine scope.
   // input.pages may be URL-path form ("/", "/about") or slug form ("index", "about").
   // Normalise to slug form so the filter works regardless of which the caller passes.
