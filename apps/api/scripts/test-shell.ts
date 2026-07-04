@@ -24,6 +24,7 @@ import { runDocgenStage } from "../src/services/pipeline/docgen-stage";
 import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import { loadSectionVisualEvidenceDoc } from "../src/utils/section-visual-evidence-io";
 import { loadDesignSystemDoc } from "../src/utils/design-system-io";
+import { loadSiteHierarchyDoc } from "../src/utils/site-hierarchy-io";
 import { getS3Client, ensureBuckets } from "../src/s3";
 import {
   renderNavComponent,
@@ -125,21 +126,26 @@ async function main() {
   // Nav — deterministic from extractedNav
   const navSource = nav ? renderNavComponent(nav) : "---\n---\n<nav>No nav</nav>";
 
-  // Hero — find the hero section in evidence, use its S3 screenshot
+  // Hero — load the real hierarchy section (has actual heading/body/cta from docgen)
+  // then pair with the S3 segment screenshot for visual context
+  const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
   const heroPage = segment.pages[0];
-  const heroSection = heroPage?.sections.find(s => s.tag === "hero" || s.tag === "unknown")
-    ?? heroPage?.sections[0];
+  const heroSegSection = heroPage?.sections.find(s => s.tag === "hero" || s.tag === "unknown") ?? heroPage?.sections[0];
+  // Real hierarchy section has content.heading, content.body, content.cta populated by docgen
+  const realHeroSection = hierarchy?.pages[0]?.sections.find(s => s.id === heroSegSection?.id)
+    ?? hierarchy?.pages[0]?.sections.find(s => s.tag === "hero");
   let heroAstroSource = "";
-  if (heroSection && evidenceDoc) {
-    const evidenceRow = evidenceDoc.rows.find(r => r.evidenceId === heroSection.id);
+  if (heroSegSection && evidenceDoc && realHeroSection) {
+    const evidenceRow = evidenceDoc.rows.find(r => r.evidenceId === heroSegSection.id);
     if (evidenceRow?.screenshotUrl) {
       const { imageUrlToDataUri } = await import("../src/utils/pipeline/image-to-data-url");
       const s3ctx = { s3, bucket: config.S3_ASSETS_BUCKET, region: config.S3_REGION, endpoint: config.S3_ENDPOINT };
       const screenshotDataUri = await imageUrlToDataUri(evidenceRow.screenshotUrl, s3ctx);
-      const section: HierarchySection = { id: heroSection.id, tag: heroSection.tag, intent: "hero", content: { heading: heroSection.headingText ?? "", body: "", images: heroSection.mediaUrls.slice(0,1).map(u => ({ url: u })) }, evidenceId: heroSection.id };
-      const evidence: SectionVisualEvidenceRow = { evidenceId: heroSection.id, pageSlug: "index", sectionId: heroSection.id, screenshotUrl: screenshotDataUri, boundingBox: heroSection.boundingBox, computedStyles: [], domStyles: evidenceRow.domStyles };
+      // Use the REAL hierarchy section — heading/body/cta/eyebrow from docgen, not empty
+      const evidence: SectionVisualEvidenceRow = { evidenceId: realHeroSection.id, pageSlug: "index", sectionId: realHeroSection.id, screenshotUrl: screenshotDataUri, boundingBox: heroSegSection.boundingBox, computedStyles: [], domStyles: evidenceRow.domStyles };
       const rules: ResponsiveRule[] = designSystem?.responsive?.rules ?? [];
-      const result = await renderVisualBlockWithFlag({ section, evidence, designSystem, tailwindInstructions: breakpointDeltasToTailwind(rules), config });
+      console.log(`  Hero content: heading="${realHeroSection.content.heading?.slice(0,40)}", cta="${realHeroSection.content.cta?.label}"`);
+      const result = await renderVisualBlockWithFlag({ section: realHeroSection, evidence, designSystem, tailwindInstructions: breakpointDeltasToTailwind(rules), config });
       heroAstroSource = result.code;
       console.log(`  Hero: ${result.isFallback ? "⚠ fallback" : `✓ LLM rendered (${result.code.length} chars)`}`);
     }

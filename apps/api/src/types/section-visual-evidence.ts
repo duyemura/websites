@@ -91,6 +91,9 @@ export interface SectionVisualEvidenceRow {
     ctaColor?: string;
     ctaBorderRadius?: string;
     ctaPositionSide?: "left" | "right" | "center";
+    ctaLabel?: string;
+    ctaHref?: string;
+    eyebrowText?: string;
     flexDirection?: string;
     textAlign?: string;
     padding?: string;

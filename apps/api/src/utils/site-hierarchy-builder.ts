@@ -214,18 +214,34 @@ export function buildSiteHierarchyFromSegments(
       (s) => s.tag !== "header" && s.tag !== "footer",
     );
 
+    // Extract page-level headings for fallback (hero sections often have empty headingText
+    // because the heading is in a complex DOM structure that the segmenter misses)
+    const pageHeadings = ep?.content.headings ?? [];
+    const pageH1 = pageHeadings.find(h => h.level === 1)?.text;
+    const pageH2 = pageHeadings.find(h => h.level === 2)?.text;
+
     const hierarchySections: HierarchySection[] = nonShellSections.map((s) => {
+      // For hero sections with no extracted heading, fall back to the page's H1/H2
+      const headingFromSection = pickHeadingText(s);
+      const heading = headingFromSection
+        ?? (s.tag === "hero" ? (pageH2 ?? pageH1) : undefined);
+
       const section: HierarchySection = {
         id: s.id,
         tag: s.tag,
         intent: intentForSegmentTag(s.tag),
         content: {
-          heading: pickHeadingText(s),
+          heading,
           body: bodyPreview(s),
           images:
             s.mediaUrls.length > 0
               ? s.mediaUrls.map((url) => ({ url }))
               : undefined,
+          // CTA and eyebrow from DOM extraction — generic for any site
+          cta: s.domStyles?.ctaLabel
+            ? { label: s.domStyles.ctaLabel, href: s.domStyles.ctaHref ?? "#" }
+            : undefined,
+          eyebrow: s.domStyles?.eyebrowText ?? undefined,
         },
         evidenceId: s.id,
       };

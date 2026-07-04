@@ -418,6 +418,26 @@ async function extractSectionDomStyles(
           else if (cr.right < hr.left + 50) ctaPositionSide = "left";
         }
 
+        // CTA label and href — extracted from the same element we found by saturation
+        const ctaLabel = ctaEl ? (ctaEl as HTMLElement).textContent?.trim() ?? undefined : undefined;
+        const ctaHref = ctaEl ? (ctaEl as HTMLAnchorElement).getAttribute("href") ?? undefined : undefined;
+
+        // Eyebrow: small uppercase text near the top of the section, often in a badge/pill
+        let eyebrowText: string | undefined;
+        const eyebrowCandidates = [
+          el.querySelector("[class*='eyebrow'],[class*='badge'],[class*='label'],[class*='tag'],[class*='pill']"),
+          el.querySelector("p + h1, p + h2"), // <p> before a heading is often an eyebrow
+        ];
+        for (const ec of eyebrowCandidates) {
+          if (!ec) continue;
+          const t = (ec as HTMLElement).textContent?.trim() ?? "";
+          // Eyebrows are short (< 60 chars) and appear before the main heading
+          if (t && t.length < 60 && t !== (hEl?.textContent?.trim() ?? "")) {
+            eyebrowText = t;
+            break;
+          }
+        }
+
         const bgImg = s.backgroundImage;
         return {
           containerBackground: s.backgroundColor,
@@ -431,6 +451,9 @@ async function extractSectionDomStyles(
           ctaColor: ctaS?.color,
           ctaBorderRadius: ctaS?.borderRadius,
           ctaPositionSide: ctaEl ? ctaPositionSide : undefined,
+          ctaLabel,
+          ctaHref,
+          eyebrowText,
           flexDirection: s.flexDirection !== "row" ? s.flexDirection : undefined,
           textAlign: s.textAlign !== "start" && s.textAlign !== "left" ? s.textAlign : undefined,
           padding: s.padding !== "0px" ? s.padding : undefined,
