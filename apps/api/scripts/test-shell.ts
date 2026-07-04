@@ -165,15 +165,74 @@ async function renderHeroSection(
     return { html: "<div style='padding:4rem;background:#1a1a2e;color:#fff;text-align:center'><h2>Hero section not found</h2></div>", isFallback: true };
   }
 
-  // Take a screenshot crop of the hero area
+  // Take a screenshot crop of the hero area — cap at 900px to stay within LLM token limits
   const clip = {
     x: Math.max(0, heroCand.boundingBox.x),
     y: Math.max(0, heroCand.boundingBox.y),
     width: Math.min(1440, heroCand.boundingBox.width || 1440),
-    height: Math.min(pageHeight - heroCand.boundingBox.y, heroCand.boundingBox.height),
+    height: Math.min(900, pageHeight - heroCand.boundingBox.y, heroCand.boundingBox.height),
   };
   const cropBuf = await page.screenshot({ fullPage: true, clip });
   const screenshotDataUri = `data:image/png;base64,${cropBuf.toString("base64")}`;
+
+  // Extract hero DOM data BEFORE closing the page — background image, CTA color/position.
+  // Uses getComputedStyle (same as extractSectionDomStyles in the real pipeline).
+  const herodomData = await page.evaluate((heroY: number) => {
+    // ── Background image: largest bg-image element on page ──
+    let bgUrl: string | null = null;
+    let bestArea = 0;
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      const s = getComputedStyle(el as Element);
+      if (!s.backgroundImage || s.backgroundImage === 'none') continue;
+      const r = (el as HTMLElement).getBoundingClientRect();
+      const area = r.width * r.height;
+      if (area > bestArea) {
+        const m = s.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
+        if (m?.[1]) { bestArea = area; bgUrl = m[1]; }
+      }
+    }
+
+    // ── CTA: most-saturated button/link in hero area ──
+    const rgbSat = (rgb: string) => {
+      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!m) return 0;
+      const r = +(m[1]!)/255, g = +(m[2]!)/255, b = +(m[3]!)/255;
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l=(mx+mn)/2;
+      return mx===mn ? 0 : (mx-mn)/(l>0.5 ? 2-mx-mn : mx+mn);
+    };
+    let ctaEl: Element | null = null, bestSat = 0.15;
+    for (const el of Array.from(document.querySelectorAll('a, button'))) {
+      const r = (el as HTMLElement).getBoundingClientRect();
+      const absTop = r.top + window.scrollY;
+      if (absTop < heroY || absTop > heroY + 1200) continue; // in hero area
+      if (r.width < 40 || r.height < 24) continue;
+      const bg = getComputedStyle(el as Element).backgroundColor;
+      const sat = rgbSat(bg);
+      if (sat > bestSat) { bestSat = sat; ctaEl = el; }
+    }
+
+    // CTA position relative to page center (left/right/center)
+    let ctaPositionSide: 'left'|'right'|'center' = 'center';
+    if (ctaEl) {
+      const cr = (ctaEl as HTMLElement).getBoundingClientRect();
+      const pageW = document.documentElement.clientWidth;
+      if (cr.left > pageW * 0.55) ctaPositionSide = 'right';
+      else if (cr.right < pageW * 0.45) ctaPositionSide = 'left';
+    }
+
+    const ctaS = ctaEl ? getComputedStyle(ctaEl) : null;
+    return {
+      bgUrl,
+      ctaBackground: ctaS?.backgroundColor ?? null,
+      ctaColor: ctaS?.color ?? null,
+      ctaBorderRadius: ctaS?.borderRadius ?? null,
+      ctaLabel: ctaEl ? (ctaEl as HTMLElement).textContent?.trim() ?? '' : '',
+      ctaHref: ctaEl ? (ctaEl as HTMLAnchorElement).getAttribute('href') ?? '#' : '#',
+      ctaPositionSide,
+    };
+  }, clip.y);
+
+  const heroBgImageUrl = herodomData.bgUrl;
 
   await page.close();
 
@@ -198,6 +257,25 @@ async function renderHeroSection(
   const rules: ResponsiveRule[] = designSystem.responsive?.rules ?? [];
   const tailwindInstructions = breakpointDeltasToTailwind(rules);
 
+  console.log(`  Background image: ${heroBgImageUrl ? heroBgImageUrl.slice(0, 70) : "not found"}`);
+  console.log(`  CTA: "${herodomData.ctaLabel}" bg=${herodomData.ctaBackground} position=${herodomData.ctaPositionSide}`);
+
+  if (heroBgImageUrl) heroSection.content.images = [{ url: heroBgImageUrl }];
+  if (herodomData.ctaLabel) {
+    heroSection.content.cta = { label: herodomData.ctaLabel, href: herodomData.ctaHref };
+  }
+
+  // Pass CTA DOM facts into evidence.domStyles so buildVisualPrompt adds them
+  // to the "Exact computed values from live DOM" block — same path as real pipeline
+  if (herodomData.ctaBackground || herodomData.ctaPositionSide) {
+    evidence.domStyles = {
+      ctaBackground: herodomData.ctaBackground ?? undefined,
+      ctaColor: herodomData.ctaColor ?? undefined,
+      ctaBorderRadius: herodomData.ctaBorderRadius ?? undefined,
+      ctaPositionSide: herodomData.ctaPositionSide ?? undefined,
+    };
+  }
+
   console.log(`  Hero bbox: y=${clip.y}, h=${clip.height}, screenshotSize=${cropBuf.length} bytes`);
   console.log("  Calling LLM for hero section...");
   const result = await renderVisualBlockWithFlag({
@@ -213,7 +291,7 @@ async function renderHeroSection(
   } else {
     console.log(`  ✓ LLM rendered (${result.code.length} chars)`);
   }
-  return { html: result.code, isFallback: result.isFallback };
+  return { html: result.code, isFallback: result.isFallback, sectionHeight: heroCand.boundingBox.height };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -287,11 +365,14 @@ async function main() {
 
   // ── Step 4: Render hero (LLM) ──────────────────────────────────────────
   console.log("[4/5] Rendering hero (LLM + screenshot)...");
-  const { html: heroHtmlRaw, isFallback: heroFallback } = await renderHeroSection(ctx, url, designSystem);
+  const { html: heroHtmlRaw, isFallback: heroFallback, sectionHeight: heroSectionHeight } = await renderHeroSection(ctx, url, designSystem);
   // Strip frontmatter from rendered Astro; if fallback show placeholder
   const heroHtml = heroFallback
-    ? `<div style="background:#1a1a2e;min-height:400px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:1rem;">Hero section — LLM render pending</div>`
-    : toHtml(heroHtmlRaw);
+    ? `<div style="background:#1a1a2e;min-height:500px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:1rem;">Hero section — LLM render pending</div>`
+    : toHtml(heroHtmlRaw)
+        // Inject actual DOM-measured height as a CSS variable so Tailwind arbitrary
+        // values that the CDN can't process fall back to the real section height.
+        .replace(/(<section[^>]*data-section-id[^>]*>)/, `$1\n<style>[data-section-id="test-hero"]{min-height:${heroSectionHeight}px}</style>`);
   if (heroFallback) console.log("  ⚠ Hero fell back to placeholder");
 
   // ── Step 5: Render footer ──────────────────────────────────────────────
