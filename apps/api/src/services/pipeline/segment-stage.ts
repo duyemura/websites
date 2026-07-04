@@ -158,6 +158,10 @@ export async function runSegmentStage(
           `${prefix}/${pageKey}-${i}-1440.png`,
           desktopCrop,
         );
+        // Extract computed styles from the live DOM for this section's bounding box.
+        // These are passed to the build stage so the LLM gets exact values (colors,
+        // font weights, overlay opacity, CTA position) rather than guessing from screenshots.
+        const domStyles = await extractSectionDomStyles(page, cand.boundingBox);
         // Prefer: landmark > visionTag > text-classifier result > unknown
         const tag: CanonicalSectionTag =
           cand.source === "gap-fill" ? "unknown"
@@ -179,6 +183,7 @@ export async function runSegmentStage(
             extractPage.interactions,
             cand.boundingBox,
           ),
+          domStyles,
         });
       }
 
@@ -335,6 +340,106 @@ async function visionSegment(
     // Vision unavailable — ladder proceeds with what it has; gap-fill covers
     // the rest.
     return [];
+  }
+}
+
+type DomStyles = NonNullable<import("../../types/pipeline-artifacts").SegmentSection["domStyles"]>;
+
+/**
+ * Extract computed CSS values from the live DOM for a section's bounding box.
+ * Returns exact values (colors, font weights, overlay opacity, CTA position)
+ * so the build stage LLM converts data → code rather than guessing from screenshots.
+ */
+async function extractSectionDomStyles(
+  page: Page,
+  bbox: { x: number; y: number; width: number; height: number },
+): Promise<DomStyles> {
+  try {
+    await page.evaluate((y: number) => window.scrollTo(0, y), Math.max(0, bbox.y - 100));
+    await page.waitForTimeout(80);
+
+    return await page.evaluate(
+      ({ bx, by, bw, bh }: { bx: number; by: number; bw: number; bh: number }) => {
+        const cx = bx + bw / 2;
+        const cy = by + bh / 2 - window.scrollY;
+
+        // Walk up from the center point to find the section container
+        let el: Element | null = document.elementFromPoint(cx, Math.max(1, cy));
+        while (el && el !== document.body) {
+          const r = el.getBoundingClientRect();
+          if (r.height >= bh * 0.5 || r.width >= bw * 0.7) break;
+          el = el.parentElement;
+        }
+        if (!el || el === document.body) return {};
+
+        const s = getComputedStyle(el);
+
+        // Detect overlay: positioned child with rgba dark background
+        let overlayBackground: string | undefined;
+        for (const child of Array.from(el.querySelectorAll("*"))) {
+          const cs = getComputedStyle(child as Element);
+          if (
+            (cs.position === "absolute" || cs.position === "fixed") &&
+            cs.backgroundColor.startsWith("rgba(0")
+          ) {
+            overlayBackground = cs.backgroundColor;
+            break;
+          }
+        }
+
+        // Primary heading
+        const hEl = el.querySelector("h1, h2, h3");
+        const hs = hEl ? getComputedStyle(hEl) : null;
+
+        // CTA button — most saturated background color among visible buttons/links
+        const rgbSat = (rgb: string): number => {
+          const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (!m) return 0;
+          const r = +(m[1]!) / 255, g = +(m[2]!) / 255, b = +(m[3]!) / 255;
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const l = (max + min) / 2;
+          return max === min ? 0 : (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+        };
+        let ctaEl: Element | null = null, bestSat = 0.15;
+        for (const btn of Array.from(el.querySelectorAll("a, button"))) {
+          const r = btn.getBoundingClientRect();
+          if (r.width < 40 || r.height < 24) continue;
+          const bg = getComputedStyle(btn as Element).backgroundColor;
+          const sat = rgbSat(bg);
+          if (sat > bestSat) { bestSat = sat; ctaEl = btn; }
+        }
+        const ctaS = ctaEl ? getComputedStyle(ctaEl) : null;
+
+        let ctaPositionSide: "left" | "right" | "center" = "center";
+        if (ctaEl && hEl) {
+          const hr = hEl.getBoundingClientRect();
+          const cr = (ctaEl as HTMLElement).getBoundingClientRect();
+          if (cr.left > hr.right - 50) ctaPositionSide = "right";
+          else if (cr.right < hr.left + 50) ctaPositionSide = "left";
+        }
+
+        const bgImg = s.backgroundImage;
+        return {
+          containerBackground: s.backgroundColor,
+          containerBackgroundImage: bgImg !== "none" ? bgImg : undefined,
+          overlayBackground,
+          headingFontSize: hs?.fontSize,
+          headingFontWeight: hs?.fontWeight,
+          headingColor: hs?.color,
+          headingTextTransform: hs?.textTransform !== "none" ? hs?.textTransform : undefined,
+          ctaBackground: ctaS?.backgroundColor,
+          ctaColor: ctaS?.color,
+          ctaBorderRadius: ctaS?.borderRadius,
+          ctaPositionSide: ctaEl ? ctaPositionSide : undefined,
+          flexDirection: s.flexDirection !== "row" ? s.flexDirection : undefined,
+          textAlign: s.textAlign !== "start" && s.textAlign !== "left" ? s.textAlign : undefined,
+          padding: s.padding !== "0px" ? s.padding : undefined,
+        };
+      },
+      { bx: bbox.x, by: bbox.y, bw: bbox.width, bh: bbox.height },
+    );
+  } catch {
+    return {}; // non-fatal — build stage falls back to screenshot interpretation
   }
 }
 

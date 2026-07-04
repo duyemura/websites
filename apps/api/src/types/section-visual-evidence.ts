@@ -77,6 +77,24 @@ export interface SectionVisualEvidenceRow {
   };
   mediaUrls?: string[];
   interactionCaptures?: InteractionEvidenceCapture[];
+  /** Computed CSS values extracted from the live DOM during segment stage.
+   *  Exact values from getComputedStyle — no guessing from screenshots needed. */
+  domStyles?: {
+    containerBackground?: string;
+    containerBackgroundImage?: string;
+    overlayBackground?: string;
+    headingFontSize?: string;
+    headingFontWeight?: string;
+    headingColor?: string;
+    headingTextTransform?: string;
+    ctaBackground?: string;
+    ctaColor?: string;
+    ctaBorderRadius?: string;
+    ctaPositionSide?: "left" | "right" | "center";
+    flexDirection?: string;
+    textAlign?: string;
+    padding?: string;
+  };
 }
 
 export interface SectionVisualEvidence {

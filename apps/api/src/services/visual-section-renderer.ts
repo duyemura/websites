@@ -143,6 +143,23 @@ function buildVisualPrompt(
 
   const extraBlock = extraInstructions ? `\n\n${extraInstructions}` : "";
 
+  // DOM facts block: exact computed values from Playwright — no guessing needed
+  const ds = evidence?.domStyles;
+  const domFactsBlock = ds && Object.keys(ds).length > 0 ? `\n\nExact computed values from the live DOM (use these — do not guess from screenshot):
+${ds.containerBackground ? `- Section background: ${ds.containerBackground}` : ""}
+${ds.containerBackgroundImage ? `- Background image: yes (set as CSS background-image)` : ""}
+${ds.overlayBackground ? `- Dark overlay: ${ds.overlayBackground} → place <div class="absolute inset-0"> with this exact rgba color` : ""}
+${ds.headingFontSize ? `- Heading font-size: ${ds.headingFontSize}` : ""}
+${ds.headingFontWeight ? `- Heading font-weight: ${ds.headingFontWeight}` : ""}
+${ds.headingColor ? `- Heading color: ${ds.headingColor}` : ""}
+${ds.headingTextTransform ? `- Heading text-transform: ${ds.headingTextTransform}` : ""}
+${ds.ctaBackground ? `- CTA button background: ${ds.ctaBackground}` : ""}
+${ds.ctaColor ? `- CTA button text color: ${ds.ctaColor}` : ""}
+${ds.ctaBorderRadius ? `- CTA button border-radius: ${ds.ctaBorderRadius}` : ""}
+${ds.ctaPositionSide ? `- CTA position: ${ds.ctaPositionSide} side of the section content` : ""}
+${ds.flexDirection ? `- Flex direction: ${ds.flexDirection}` : ""}
+${ds.padding ? `- Section padding: ${ds.padding}` : ""}`.replace(/\n+/g, "\n").trim() : "";
+
   return `You are an expert Astro + Tailwind CSS frontend developer replicating an existing website section. Match the screenshot exactly for layout, spacing, imagery, and typography scale. Use the design tokens below for colors and fonts — they are computed directly from the live site via getComputedStyle and are authoritative.
 
 Output ONLY the Astro component source code. Do not wrap it in markdown fences. The component must be valid Astro syntax and use Tailwind CSS utility classes.
@@ -191,7 +208,7 @@ Replicate EVERY visual detail visible in the screenshot:
 - URLs: ONLY use URLs from the provided Images and CTA metadata — do not construct or guess URLs from the screenshot. The screenshot is for visual reference only
 - Section overlaps, card treatments, badge backgrounds: derive from the screenshot — match what you see, not what seems typical
 
-Use CSS variables for brand colors (var(--color-*)) and load fonts from the heading/body font stack. Include frontmatter that declares any props or constants. Preserve all visible text.${responsiveBlock}${interactionBlock}${extraBlock}`;
+Use CSS variables for brand colors (var(--color-*)) and load fonts from the heading/body font stack. Include frontmatter that declares any props or constants. Preserve all visible text.${responsiveBlock}${interactionBlock}${extraBlock}${domFactsBlock ? "\n\n" + domFactsBlock : ""}`;
 }
 
 export interface RenderVisualBlockResult {

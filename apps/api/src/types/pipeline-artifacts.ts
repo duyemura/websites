@@ -132,6 +132,25 @@ export const SegmentSectionSchema = z.object({
   interactionIds: z.array(z.string()),
   sharedComponentId: z.string().optional(),
   sharedProps: z.record(z.string(), z.string()).optional(),
+  /** Computed CSS values read directly from the live DOM for this section.
+   *  Populated during segment stage via getComputedStyle — exact values for
+   *  background, overlay, heading typography, and CTA button styling. */
+  domStyles: z.object({
+    containerBackground: z.string().optional(),
+    containerBackgroundImage: z.string().optional(),
+    overlayBackground: z.string().optional(),
+    headingFontSize: z.string().optional(),
+    headingFontWeight: z.string().optional(),
+    headingColor: z.string().optional(),
+    headingTextTransform: z.string().optional(),
+    ctaBackground: z.string().optional(),
+    ctaColor: z.string().optional(),
+    ctaBorderRadius: z.string().optional(),
+    ctaPositionSide: z.enum(["left", "right", "center"]).optional(),
+    flexDirection: z.string().optional(),
+    textAlign: z.string().optional(),
+    padding: z.string().optional(),
+  }).optional(),
 });
 export type SegmentSection = z.infer<typeof SegmentSectionSchema>;
 

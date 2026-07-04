@@ -59,6 +59,7 @@ export function buildSectionVisualEvidenceFromSegments(
         mobileScreenshotUrl: section.crops.mobile,
         boundingBox: section.boundingBox,
         computedStyles: [],
+        domStyles: section.domStyles,
         mediaUrls: section.mediaUrls.length > 0 ? section.mediaUrls : undefined,
         interactionCaptures:
           interactionCaptures.length > 0 ? interactionCaptures : undefined,
