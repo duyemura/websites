@@ -67,6 +67,14 @@ export const ExtractPageSchema = z.object({
   interactions: z.array(InteractionCaptureSchema),
   responsive: z.array(BreakpointDeltaSchema),
   pixelSamples: z.array(z.object({ x: z.number(), y: z.number(), hex: z.string() })).default([]),
+  computedTheme: z.object({
+    bodyBackground: z.string(),
+    bodyColor: z.string(),
+    headingFont: z.string(),
+    bodyFont: z.string(),
+    primaryAccent: z.string().nullable(),
+    sectionBackgrounds: z.array(z.object({ selector: z.string(), background: z.string() })),
+  }).optional(),
   flags: z.object({ needsVisionSegmentation: z.boolean(), isSpa: z.boolean() }),
 });
 

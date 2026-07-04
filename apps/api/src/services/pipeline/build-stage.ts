@@ -45,6 +45,8 @@ import {
   writeProjectScaffold,
   writePageFiles,
   sharedComponentFileName,
+  relativizeAssetPaths,
+  inlineCssIntoHtml,
 } from "../astro-code-generator";
 import { renderSemanticSection } from "../../utils/section-component-registry";
 import { makeDefaultHeader, makeDefaultFooter } from "../astro-code-generator";
@@ -92,6 +94,9 @@ export interface BuildStageResult {
   buildLog: BuildLogEntry[];
   fallbacks: Array<{ sectionId: string; page: string }>;
   sourceDir: string;
+  /** Public URL of the deployed site root, e.g. https://cdn.../sites/{uuid}/
+   *  Null when runAstroBuild was false or deployment was skipped. */
+  deployUrl: string | null;
 }
 
 interface AstroCheckError {
@@ -157,7 +162,8 @@ export async function rehostMedia(
   },
 ): Promise<RehostResult> {
   const log: BuildLogEntry[] = [];
-  const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/build/media`;
+  // Use the sites/ prefix so the bucket's public-read policy covers these objects.
+  const prefix = `sites/${input.siteUuid}/media`;
   const urlMap = new Map<string, string>(); // original -> re-hosted URL
 
   async function rehostUrl(original: string, pageSlug: string): Promise<void> {
@@ -198,6 +204,83 @@ export async function rehostMedia(
     }
   }
   return { log, urlMap };
+}
+
+/**
+ * Recursively upload all files in `distDir` to S3 under
+ * `sites/{siteUuid}/` with public-read ACL, preserving directory structure.
+ * Returns the base public URL for the site root.
+ */
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css",
+  ".js": "application/javascript",
+  ".mjs": "application/javascript",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain",
+  ".xml": "application/xml",
+};
+
+/**
+ * Recursively upload all files in `distDir` to S3 under
+ * `sites/{siteUuid}/` with public-read ACL, preserving directory structure.
+ * Returns the public URL of the site's index.html.
+ */
+async function deployDistToS3(
+  distDir: string,
+  s3: S3Client,
+  config: Config,
+  siteUuid: string,
+): Promise<string> {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+  const { buildS3ObjectUrl } = await import("../../s3.js");
+
+  const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
+  const prefix = `sites/${siteUuid}`;
+
+  async function uploadDir(dir: string, relBase: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relPath = relBase ? `${relBase}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await uploadDir(fullPath, relPath);
+      } else {
+        const ext = path.extname(entry.name).toLowerCase();
+        const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream";
+        const body = await readFile(fullPath);
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: `${prefix}/${relPath}`,
+            Body: body,
+            ContentType: contentType,
+            // Public read handled by bucket policy.
+          }),
+        );
+      }
+    }
+  }
+
+  await uploadDir(distDir, "");
+
+  return buildS3ObjectUrl({
+    endpoint: config.S3_ENDPOINT,
+    region: config.S3_REGION,
+    bucket,
+    key: `${prefix}/index.html`,
+  });
 }
 
 function applyUrlMap(source: string, urlMap: Map<string, string>): string {
@@ -289,37 +372,39 @@ async function renderPageSections(
   config: Config,
 ): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
   const tailwind = tailwindForSection(designSystem);
-  const out: { section: HierarchySection; source: string; isFallback: boolean }[] = [];
-  for (let i = 0; i < page.sections.length; i++) {
-    const section = page.sections[i];
-    if (!section) continue;
-    if (section.sharedComponentId) continue; // handled by shared build
-    const previousTag = page.sections[i - 1]?.tag;
-    const nextTag = page.sections[i + 1]?.tag;
 
-    if (section.tag === "header") {
-      const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-      out.push({ section, source: renderSemanticSection(headerSection), isFallback: false });
-    } else if (section.tag === "footer") {
-      const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
-      out.push({ section, source: renderSemanticSection(footerSection), isFallback: false });
-    } else if (section.tag === "hero") {
-      out.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)), isFallback: false });
-    } else {
-      const row = getEvidenceForSection(evidence, section);
-      const result = await renderVisualBlockWithFlag({
-        section,
-        evidence: row,
-        designSystem,
-        tailwindInstructions: tailwind,
-        previousTag,
-        nextTag,
-        config,
-      });
-      out.push({ section, source: result.code, isFallback: result.isFallback });
-    }
-  }
-  return out;
+  // Render all sections in parallel — each LLM call is independent.
+  const results = await Promise.all(
+    page.sections.map(async (section, i) => {
+      if (!section) return null;
+      if (section.sharedComponentId) return null; // handled by shared build
+      const previousTag = page.sections[i - 1]?.tag;
+      const nextTag = page.sections[i + 1]?.tag;
+
+      if (section.tag === "header") {
+        const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+        return { section, source: renderSemanticSection(headerSection), isFallback: false };
+      } else if (section.tag === "footer") {
+        const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
+        return { section, source: renderSemanticSection(footerSection), isFallback: false };
+      } else if (section.tag === "hero") {
+        return { section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)), isFallback: false };
+      } else {
+        const row = getEvidenceForSection(evidence, section);
+        const result = await renderVisualBlockWithFlag({
+          section,
+          evidence: row,
+          designSystem,
+          tailwindInstructions: tailwind,
+          previousTag,
+          nextTag,
+          config,
+        });
+        return { section, source: result.code, isFallback: result.isFallback };
+      }
+    }),
+  );
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -495,8 +580,10 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   // 6. Per-page loop.
   const builtPages: string[] = [];
   let currentHierarchy = hierarchy;
+  const t0 = Date.now();
   for (const page of scopedPages) {
-    console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections)`);
+    const pageT = Date.now();
+    console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections, parallel)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
     const rendered = await renderPageSections(page, designSystem, evidence, input.config);
     // Apply re-hosted URL substitution: swap original CDN URLs → S3 URLs in the
@@ -506,6 +593,8 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
       isFallback,
       source: applyUrlMap(source, rehostUrlMap),
     }));
+    const renderMs = Date.now() - pageT;
+    const fallbackCount = renderedWithUrls.filter(r => r.isFallback).length;
     // Log per-section outcome.
     for (const { section, isFallback } of renderedWithUrls) {
       if (isFallback) {
@@ -514,18 +603,22 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
         console.log(`[build]   ✓  ${section.id} (${section.tag})`);
       }
     }
+    console.log(`[build]   ⏱ render: ${(renderMs/1000).toFixed(1)}s — ${renderedWithUrls.length} sections, ${fallbackCount} fallbacks`);
     await writePageFiles(sourceDir, page, renderedWithUrls);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "built");
     builtPages.push(page.slug);
   }
+  console.log(`[build] ⏱ all pages rendered in ${((Date.now()-t0)/1000).toFixed(1)}s`);
 
   // 7. Install deps so `astro check` has the packages it needs. This must run
   //    before the check passes — without node_modules astro check exits immediately
   //    and skips real validation, but with a stale node_modules from a prior run
   //    it would hang waiting on the TypeScript language server.
   if (input.runAstroBuild) {
+    const tInstall = Date.now();
     console.log(`[build] running pnpm install in ${sourceDir}`);
     await runProcess("pnpm", ["install"], sourceDir);
+    console.log(`[build] ⏱ pnpm install: ${((Date.now()-tInstall)/1000).toFixed(1)}s`);
   }
 
   // 7b. astro check post-pass (best-effort, opt-in).
@@ -639,10 +732,28 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
 
   // 7c. Compile Astro to dist/ so verify can serve the clone.
   // Opt-in: tests skip this because they use synthetic scaffolds without real lockfiles.
+  let deployUrl: string | null = null;
   if (input.runAstroBuild) {
+    const tBuild = Date.now();
     console.log(`[build] running astro build in ${sourceDir}`);
     await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
+    // Make asset paths relative and inline CSS so the site is self-contained
+    // when served from an S3 subdirectory (no root-relative /_astro/ paths).
+    const distDir = path.join(sourceDir, "dist");
+    await relativizeAssetPaths(distDir);
+    await inlineCssIntoHtml(distDir);
+    console.log(`[build] ⏱ astro build: ${((Date.now()-tBuild)/1000).toFixed(1)}s`);
     console.log(`[build] astro build complete`);
+
+    // 7d. Deploy dist/ to S3 so the site is publicly accessible.
+    try {
+      const tDeploy = Date.now();
+      deployUrl = await deployDistToS3(distDir, input.s3, input.config, input.siteUuid);
+      console.log(`[build] ⏱ S3 deploy: ${((Date.now()-tDeploy)/1000).toFixed(1)}s`);
+      console.log(`[build] deployed → ${deployUrl}`);
+    } catch (err) {
+      console.warn(`[build] S3 deploy failed (non-fatal): ${(err as Error).message}`);
+    }
   }
 
   // 8. Save updated hierarchy.
@@ -654,6 +765,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     sharedComponentsBuilt,
     buildLog,
     fallbacks,
+    deployUrl,
   };
   await saveArtifact(input.db, ctx, "build", artifactPayload);
 
@@ -663,6 +775,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     buildLog,
     fallbacks,
     sourceDir,
+    deployUrl,
   };
 }
 

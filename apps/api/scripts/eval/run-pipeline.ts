@@ -414,6 +414,7 @@ interface BuildArtifactPayload {
   sharedComponentsBuilt: string[];
   buildLog: Array<{ category: string; description: string; page?: string }>;
   fallbacks: Array<{ sectionId: string; page: string }>;
+  deployUrl?: string | null;
 }
 
 interface PerUrlRow {
@@ -555,9 +556,9 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
   lines.push("## 2. Per-URL results");
   lines.push("");
   lines.push(
-    "| # | URL | Duration | Sections | Rung1 | Vision | Fidelity (pre) | Fidelity (post) | Failed stage |",
+    "| # | URL | Duration | Sections | Rung1 | Vision | Fidelity (pre) | Fidelity (post) | Failed stage | Deploy |",
   );
-  lines.push("|---|---|---|---|---|---|---|---|---|");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|");
   for (const [i, r] of rows.entries()) {
     const sections = r.segment
       ? r.segment.pages.reduce((s, p) => s + p.sections.length, 0)
@@ -579,8 +580,10 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
       r.verifyPostHeal?.scores.masterFidelity ??
       (r.verify ? r.verify.scores.masterFidelity : "—");
     const failed = r.failedStage ?? "";
+    const deployUrl = r.buildArtifact?.deployUrl ?? "";
+    const deployCell = deployUrl ? `[view](${deployUrl})` : "—";
     lines.push(
-      `| ${i + 1} | ${r.url} | ${(r.durationMs / 1000).toFixed(1)}s | ${sections} | ${rung1} | ${vision} | ${pre} | ${post} | ${failed} |`,
+      `| ${i + 1} | ${r.url} | ${(r.durationMs / 1000).toFixed(1)}s | ${sections} | ${rung1} | ${vision} | ${pre} | ${post} | ${failed} | ${deployCell} |`,
     );
   }
   lines.push("");

@@ -1,6 +1,19 @@
 import type { BrowserContext, Page } from "playwright";
 import type { BreakpointDelta } from "../../types/pipeline-artifacts";
 
+/** Computed theme values read directly from the rendered DOM via getComputedStyle.
+ *  Framework-agnostic: works for any site regardless of how styles are applied
+ *  (CSS files, JS injection, CSS variables, inline styles, Webflow, etc.). */
+export interface ComputedTheme {
+  bodyBackground: string;
+  bodyColor: string;
+  headingFont: string;
+  bodyFont: string;
+  primaryAccent: string | null;
+  /** Raw computed background colors from visible sections, for per-section context. */
+  sectionBackgrounds: Array<{ selector: string; background: string }>;
+}
+
 export interface CapturedPage {
   path: string;
   media: Array<{
@@ -23,9 +36,17 @@ export interface CapturedPage {
   };
   responsive: BreakpointDelta[];
   pixelSamples: Array<{ x: number; y: number; hex: string }>;
+  computedTheme: ComputedTheme;
   flags: { needsVisionSegmentation: boolean; isSpa: boolean };
   networkStats: { totalBytes: number; requestCount: number; imageBytes: number };
 }
+
+// Mirrors ComputedTheme but declared separately for use inside page.evaluate()
+// where outer TypeScript interfaces are not in scope.
+type ComputedThemeRaw = {
+  bodyBackground: string; bodyColor: string; headingFont: string; bodyFont: string;
+  primaryAccent: string | null; sectionBackgrounds: Array<{ selector: string; background: string }>;
+};
 
 const SETTLE_MS = 3000;
 const SCROLL_STEP_MS = 500;
@@ -118,6 +139,54 @@ export async function capturePage(
   );
   const needsVisionSegmentation = isSpa || semanticCount < 3;
 
+  // Step 11: Computed theme — read from live DOM via getComputedStyle.
+  // Completely framework-agnostic: captures final rendered values regardless
+  // of whether styles came from CSS files, JS injection, CSS variables, etc.
+  const computedTheme = await page.evaluate((): ComputedThemeRaw => {
+    const body = document.body;
+    const bodyStyle = getComputedStyle(body);
+    const heading = document.querySelector("h1, h2, h3");
+    const headingStyle = heading ? getComputedStyle(heading) : null;
+
+    // Primary accent: first colored button or link that isn't transparent/white/black
+    const isGeneric = (c: string) =>
+      !c || c === "rgba(0, 0, 0, 0)" || c === "rgb(255, 255, 255)" ||
+      c === "rgb(0, 0, 0)" || c.startsWith("rgba(0, 0, 0,");
+    let primaryAccent: string | null = null;
+    for (const sel of ["a", "button", "[class*='btn']", "[class*='cta']"]) {
+      for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 20)) {
+        const s = getComputedStyle(el as Element);
+        if (!isGeneric(s.backgroundColor)) { primaryAccent = s.backgroundColor; break; }
+        if (!isGeneric(s.color)) { primaryAccent = s.color; break; }
+      }
+      if (primaryAccent) break;
+    }
+
+    // Section backgrounds: top-level visible sections.
+    const sectionBackgrounds: Array<{ selector: string; background: string }> = [];
+    const sectionEls = document.querySelectorAll(
+      "section, [class*='section'], [class*='hero'], [class*='banner'], main > div, body > div",
+    );
+    for (const el of Array.from(sectionEls).slice(0, 12)) {
+      const rect = el.getBoundingClientRect();
+      if (rect.height < 50) continue;
+      const bg = getComputedStyle(el as Element).backgroundColor;
+      if (isGeneric(bg)) continue;
+      const cls = typeof (el as HTMLElement).className === "string"
+        ? (el as HTMLElement).className.trim().split(/\s+/)[0] : "";
+      sectionBackgrounds.push({ selector: cls || el.tagName.toLowerCase(), background: bg });
+    }
+
+    return {
+      bodyBackground: bodyStyle.backgroundColor,
+      bodyColor: bodyStyle.color,
+      headingFont: headingStyle?.fontFamily ?? bodyStyle.fontFamily,
+      bodyFont: bodyStyle.fontFamily,
+      primaryAccent,
+      sectionBackgrounds,
+    };
+  });
+
   await page.close();
   return {
     path: new URL(url).pathname,
@@ -126,6 +195,7 @@ export async function capturePage(
     content,
     responsive,
     pixelSamples,
+    computedTheme,
     flags: { needsVisionSegmentation, isSpa },
     networkStats: { totalBytes, requestCount, imageBytes },
   };

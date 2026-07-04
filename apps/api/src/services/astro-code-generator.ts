@@ -343,7 +343,7 @@ export default defineConfig({
 `;
 }
 
-async function relativizeAssetPaths(distDir: string): Promise<void> {
+export async function relativizeAssetPaths(distDir: string): Promise<void> {
   const entries = await readdir(distDir, { withFileTypes: true, recursive: true });
   const htmlFiles = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
@@ -364,7 +364,7 @@ async function relativizeAssetPaths(distDir: string): Promise<void> {
   );
 }
 
-async function inlineCssIntoHtml(distDir: string): Promise<void> {
+export async function inlineCssIntoHtml(distDir: string): Promise<void> {
   const entries = await readdir(distDir, { withFileTypes: true, recursive: true });
   const htmlFiles = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
@@ -471,6 +471,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
   </head>
   <body class="min-h-screen flex flex-col">
     <Header />

@@ -132,38 +132,38 @@ function buildVisualPrompt(
 
   const captures = evidence?.interactionCaptures ?? [];
   const interactionBlock = captures.length
-    ? `\n\nInteractive components in this section (implement with Alpine.js x-data/x-show + CSS transitions):\n${captures
+    ? `\n\nInteractive components in this section (implement with Alpine.js x-data/x-show + CSS transitions; use aria-expanded on the trigger element):\n${captures
         .map(
           (c) =>
-            `- ${c.componentPattern ?? "toggle"} triggered by ${c.trigger}; observed style changes: ${JSON.stringify(
-              c.styleDiff.slice(0, 5),
-            )}`,
+            `- ${c.componentPattern ?? "toggle"} triggered by ${c.trigger}; observed style changes: ${JSON.stringify(c.styleDiff.slice(0, 5))}`,
         )
         .join("\n")}`
     : "";
 
   const extraBlock = extraInstructions ? `\n\n${extraInstructions}` : "";
 
-  return `You are an expert Astro + Tailwind CSS frontend developer. Replicate the visual design of the attached reference screenshot as a single self-contained Astro component.
+  return `You are an expert Astro + Tailwind CSS frontend developer replicating an existing website section. Match the screenshot exactly for layout, spacing, imagery, and typography scale. Use the design tokens below for colors and fonts — they are computed directly from the live site via getComputedStyle and are authoritative.
 
 Output ONLY the Astro component source code. Do not wrap it in markdown fences. The component must be valid Astro syntax and use Tailwind CSS utility classes.
 
 The frontmatter (between the --- delimiters) is JavaScript — use // for comments, NEVER use # which is not valid JS syntax.
 
-Use these locked design tokens and rules from the site's design system:
-- Primary color: ${tokens.colors.primary}
-- Primary foreground: ${tokens.colors.primaryForeground}
+IMPORTANT CONSTRAINTS:
+- Do NOT import any npm packages. The scaffold has no external dependencies beyond astro and tailwindcss. Any npm import will break the build.
+- For icons, use inline SVG.
+- For interactivity, use Alpine.js via CDN script tag or vanilla JS in a <script> tag — do not import it.
+- The only valid imports in the frontmatter are local .astro files (e.g. ../shared/Header.astro).
+
+Authoritative design tokens (computed from the live DOM — use these, do not guess from the screenshot):
 - Background: ${tokens.colors.background}
-- Foreground: ${tokens.colors.foreground}
+- Foreground (text): ${tokens.colors.foreground}
+- Primary accent: ${tokens.colors.primary}
 - Muted surface: ${tokens.colors.muted}
-- Muted foreground: ${tokens.colors.mutedForeground}
 - Border: ${tokens.colors.border}
 - Heading font: ${tokens.fonts.heading}
 - Body font: ${tokens.fonts.body}
-- Radius: ${tokens.radius}
-- Spacing guidance: ${rules?.spacing ?? "Use generous vertical padding (py-20) and max-w-6xl containers"}
-- Max width: ${rules?.maxWidth ?? "max-w-6xl"}
-- Default theme: ${rules?.defaultTheme ?? "light"}
+- Border radius: ${tokens.radius}
+- Max content width: ${rules?.maxWidth ?? "max-w-6xl"}
 
 Section metadata:
 - Tag: ${section.tag}
@@ -255,10 +255,11 @@ export async function renderVisualBlockWithFlag(
       return { code: renderFallbackBlock(section, designSystem), isFallback: true };
     }
 
-    if (source.startsWith("```astro") && source.endsWith("```")) {
-      source = source.slice(7, -3).trim();
-    } else if (source.startsWith("```") && source.endsWith("```")) {
-      source = source.slice(3, -3).trim();
+    // Extract code from a markdown fence anywhere in the response.
+    // The LLM sometimes adds preamble text before the opening fence.
+    const fenceMatch = source.match(/```(?:astro)?\n([\s\S]*?)```/);
+    if (fenceMatch?.[1]) {
+      source = fenceMatch[1].trim();
     }
 
     return { code: sanitizeAstroFrontmatter(source), isFallback: false };

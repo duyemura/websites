@@ -44,6 +44,7 @@ export function buildSectionVisualEvidenceFromSegments(
           .map((i) => ({
             id: i.id,
             trigger: i.trigger,
+            triggerSelector: i.selector,
             beforeUrl: i.beforeUrl,
             afterUrl: i.afterUrl,
             styleDiff: i.styleDiff,

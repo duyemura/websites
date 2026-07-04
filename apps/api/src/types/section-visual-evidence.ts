@@ -39,6 +39,10 @@ export interface InteractionEvidenceCapture {
    */
   id?: string;
   trigger: "click" | "hover";
+  /** CSS selector of the element that triggers this interaction (e.g. "div.dropdown").
+   *  Used in the build prompt so the LLM uses the exact class, and in verify
+   *  so the replay checker can find it in the clone. */
+  triggerSelector?: string;
   beforeUrl: string;
   afterUrl: string;
   styleDiff: Array<{

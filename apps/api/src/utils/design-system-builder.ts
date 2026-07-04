@@ -130,6 +130,19 @@ export function buildDesignSystemFromExtract(
   const firstPage = extract.pages[0];
   const businessName = firstPage?.content.businessName;
 
+  // Use computedTheme from the extract (read via getComputedStyle in Playwright)
+  // when available — this gives us the actual rendered colors and fonts for any
+  // site regardless of how styles are applied (CSS files, JS, variables, etc.).
+  const ct = firstPage?.computedTheme;
+
+  const rgbToHex = (rgb: string): string | undefined => {
+    const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return undefined;
+    return `#${[m[1] ?? "0", m[2] ?? "0", m[3] ?? "0"].map(n => parseInt(n).toString(16).padStart(2, "0")).join("")}`;
+  };
+  const firstFont = (family: string): string =>
+    family.split(",")[0]?.trim().replace(/['"]/g, "") ?? family;
+
   // Build a light-weight ScrapedWebsiteData-like adapter to reuse
   // deriveThemeTokens/detectHeadingStyle/extractHeaderSection helpers where
   // possible. Only the fields the helpers touch need to be populated.
@@ -141,8 +154,15 @@ export function buildDesignSystemFromExtract(
     paragraphs: [],
     buttons: [],
     navLinks: firstPage?.content.navLinks ?? [],
-    colors: [],
-    fonts: [],
+    colors: ct ? ([
+      { token: "bg-primary", role: "background" as const, hex: rgbToHex(ct.bodyBackground) ?? "#ffffff" },
+      { token: "text-primary", role: "text" as const, hex: rgbToHex(ct.bodyColor) ?? "#000000" },
+      ...(ct.primaryAccent ? [{ token: "accent-primary", role: "accent" as const, hex: rgbToHex(ct.primaryAccent) ?? ct.primaryAccent }] : []),
+    ]) : [],
+    fonts: ct ? [
+      { role: "heading" as const, family: firstFont(ct.headingFont) },
+      { role: "body" as const, family: firstFont(ct.bodyFont) },
+    ] : [],
     fontSizes: [],
     images: [],
     layoutRules: [],

@@ -175,6 +175,7 @@ export async function runExtractStage(
           interactions,
           responsive: captured.responsive,
           pixelSamples: captured.pixelSamples,
+          computedTheme: captured.computedTheme,
           flags: captured.flags,
         });
       } catch (err) {
