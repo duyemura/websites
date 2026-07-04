@@ -4,6 +4,9 @@ export interface ExtractedCss {
   tokens: Record<string, string>;
   breakpoints: string[];
   animations: Array<{ name: string; css: string }>;
+  /** External stylesheet URLs for web fonts (Google Fonts, Adobe Fonts, etc.).
+   *  Injected into the generated site's layout <head> so fonts render correctly. */
+  webFontUrls: string[];
 }
 
 export async function extractCss(page: Page): Promise<ExtractedCss> {
@@ -71,6 +74,18 @@ export async function extractCss(page: Page): Promise<ExtractedCss> {
     }
   }
 
-  const { crossOriginSheets: _dropped, ...result } = inPage;
-  return result;
+  const webFontPatterns = [
+    "fonts.googleapis.com",
+    "use.typekit.net",
+    "use.fontawesome.com",
+    "font-awesome",          // covers maxcdn.bootstrapcdn.com/font-awesome
+    "fonts.bunny.net",
+    "kit.fontawesome.com",
+    "cdnjs.cloudflare.com/ajax/libs/font-awesome",
+  ];
+  const webFontUrls = inPage.crossOriginSheets.filter((href) =>
+    webFontPatterns.some((p) => href.includes(p)),
+  );
+  const { crossOriginSheets: _dropped, ...rest } = inPage;
+  return { ...rest, webFontUrls };
 }

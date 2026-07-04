@@ -21,9 +21,10 @@ export interface CheckResults {
 const CRITICAL_CAP = 79;
 
 /**
- * Blend mechanical + visual fidelity 50/50, then cap the master at 79 if any
- * critical mechanical check failed. Empty inputs are treated as zero (no
- * evidence == no score).
+ * Blend mechanical + visual fidelity 50/50, then apply caps:
+ * - Code artifacts visible on page → masterFidelity = 0 (immediate disqualifier)
+ * - Any other critical check failed → masterFidelity capped at 79
+ * Empty inputs are treated as zero (no evidence == no score).
  */
 export function computeScores(input: {
   passed: Check[];
@@ -43,7 +44,10 @@ export function computeScores(input: {
   let masterFidelity = Math.round(
     mechanicalFidelity * 0.5 + visualFidelity * 0.5,
   );
-  if (input.failed.some((c) => c.critical)) {
+  if (input.failed.some((c) => c.id === "no-code-artifacts")) {
+    // Visible code artifacts are an immediate disqualifier — humans see broken markup.
+    masterFidelity = 0;
+  } else if (input.failed.some((c) => c.critical)) {
     masterFidelity = Math.min(masterFidelity, CRITICAL_CAP);
   }
   return { mechanicalFidelity, visualFidelity, masterFidelity };
@@ -387,6 +391,46 @@ export async function checkInteractions(
 }
 
 /**
+ * Detect visible code artifacts — raw markup, CSS, JS, or template syntax
+ * that a human should never see on a rendered page. If found, this is an
+ * immediate critical failure: fidelity must score 0 until resolved.
+ *
+ * Patterns caught: markdown code fences (```), Astro frontmatter delimiters
+ * (---), inline comment syntax (// ..., /* ...) in body text, and raw HTML
+ * tag text visible as content.
+ */
+export async function checkNoCodeArtifacts(page: Page): Promise<CheckResults> {
+  const passed: Check[] = [];
+  const failed: Check[] = [];
+
+  const artifacts = await page.evaluate(() => {
+    const text = document.body.innerText ?? "";
+    const found: string[] = [];
+    if (/```/.test(text)) found.push("markdown code fence (```)");
+    if (/^---\s*$/m.test(text)) found.push("Astro frontmatter delimiter (---)");
+    if (/^\s*\/\/\s+(?:astro|component|import|export|const|let|var)\b/im.test(text))
+      found.push("JS comment in body text");
+    if (/<\/?(?:script|style|head|html)\b/i.test(text))
+      found.push("raw HTML tag visible as text");
+    return found;
+  });
+
+  const check: Check = {
+    id: "no-code-artifacts",
+    label: "No raw code/markup visible in rendered page",
+    critical: true,
+  };
+
+  if (artifacts.length > 0) {
+    failed.push({ ...check, detail: `Code artifacts visible on page: ${artifacts.join(", ")}` });
+  } else {
+    passed.push(check);
+  }
+
+  return { passed, failed };
+}
+
+/**
  * Convenience: run all mechanical checks in the standard order and return the
  * merged results. Callers can also invoke each runner individually if they
  * need finer control (e.g. skip breakpoints when the source had none).
@@ -402,6 +446,8 @@ export async function runAllMechanicalChecks(input: {
   interactions: ExtractPage["interactions"];
 }): Promise<CheckResults> {
   let out: CheckResults = { passed: [], failed: [] };
+  // Code artifacts are checked first — if raw markup is visible, score is 0.
+  out = mergeResults(out, await checkNoCodeArtifacts(input.page));
   out = mergeResults(
     out,
     await checkPagesRender(input.page, input.paths, input.baseUrl),

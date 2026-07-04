@@ -221,7 +221,7 @@ export async function runExtractStage(
       url: input.url,
       extractedAt: new Date().toISOString(),
       siteMap: annotatedSiteMap,
-      css: cssGlobal ?? { tokens: {}, breakpoints: [], animations: [] },
+      css: cssGlobal ?? { tokens: {}, breakpoints: [], animations: [], webFontUrls: [] },
       pages,
       sourceBaseline: {
         capturedAt: new Date().toISOString(),

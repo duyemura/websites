@@ -8,6 +8,9 @@ export interface SectionCandidate {
   innerText: string;
   headingText?: string;
   landmarkTag?: string;    // header/footer/nav — pre-classified structurally
+  /** Section type provided directly by the vision model during Rung 3 segmentation.
+   *  When present, skip the text-based classifier for this candidate. */
+  visionTag?: string;
 }
 
 export async function semanticScan(page: Page): Promise<SectionCandidate[]> {

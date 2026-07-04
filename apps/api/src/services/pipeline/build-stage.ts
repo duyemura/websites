@@ -28,6 +28,7 @@ import { loadDesignSystemDoc } from "../../utils/design-system-io";
 import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
 import {
   saveArtifact,
+  loadArtifact,
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
@@ -50,7 +51,6 @@ import {
 } from "../astro-code-generator";
 import { renderSemanticSection } from "../../utils/section-component-registry";
 import { makeDefaultHeader, makeDefaultFooter } from "../astro-code-generator";
-import type { SiteSection } from "@ploy-gyms/shared-types";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 
 export type BuildLogCategory =
@@ -104,20 +104,6 @@ interface AstroCheckError {
   message: string;
 }
 
-function hierarchyHeroToSiteSection(section: HierarchySection): SiteSection {
-  return {
-    id: section.id,
-    type: "Hero",
-    props: {
-      title: section.content.heading ?? "",
-      subtitle: section.content.body ?? "",
-      eyebrow: section.content.eyebrow ?? null,
-      cta: section.content.cta ?? null,
-      backgroundImage: section.content.images?.[0]?.url ?? null,
-      styleHint: section.styleHint ?? null,
-    },
-  };
-}
 
 function getEvidenceForSection(
   visualEvidence: SectionVisualEvidence | null,
@@ -387,9 +373,10 @@ async function renderPageSections(
       } else if (section.tag === "footer") {
         const footerSection = designSystem.global.shell.footer ?? makeDefaultFooter(designSystem);
         return { section, source: renderSemanticSection(footerSection), isFallback: false };
-      } else if (section.tag === "hero") {
-        return { section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)), isFallback: false };
       } else {
+        // For cloning, all non-shell sections go through the LLM with the
+        // screenshot — the tag is provided as context in the prompt but we
+        // don't bypass the visual renderer with a static template.
         const row = getEvidenceForSection(evidence, section);
         const result = await renderVisualBlockWithFlag({
           section,
@@ -547,7 +534,12 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     input.sourceDir ??
     path.join(os.tmpdir(), "ploy-gyms-build", input.siteUuid, "build");
   await mkdir(sourceDir, { recursive: true });
-  await writeProjectScaffold(sourceDir, designSystem);
+  // Load web font URLs from the extract artifact so fonts render in the built site.
+  const extractArtifact = await loadArtifact<{ css?: { webFontUrls?: string[] } }>(
+    input.db, { siteUuid: input.siteUuid, workspaceUuid: input.workspaceUuid }, "extract",
+  );
+  const webFontUrls = extractArtifact?.payload?.css?.webFontUrls ?? [];
+  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls });
 
   // 5. Shared components — render once for all pages in the hierarchy so
   //    downstream page imports always resolve.

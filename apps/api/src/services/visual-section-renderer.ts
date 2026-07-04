@@ -150,7 +150,8 @@ The frontmatter (between the --- delimiters) is JavaScript — use // for commen
 
 IMPORTANT CONSTRAINTS:
 - Do NOT import any npm packages. The scaffold has no external dependencies beyond astro and tailwindcss. Any npm import will break the build.
-- For icons, use inline SVG.
+- For icons: use inline SVG that semantically matches what the icon represents (calendar for scheduling, dumbbell for equipment, location pin for maps, etc.). Match the visual style shown — outline vs filled, stroke color, size. NEVER use a social media icon (Facebook, Instagram, phone, email) for non-social content like "Weekend Classes" or "Outdoor Fitness Area".
+- If the page loaded an icon font (Font Awesome, etc.) it will be available — use fa-* class names where appropriate.
 - For interactivity, use Alpine.js via CDN script tag or vanilla JS in a <script> tag — do not import it.
 - The only valid imports in the frontmatter are local .astro files (e.g. ../shared/Header.astro).
 
@@ -181,7 +182,15 @@ ${section.notes ? `- Notes: ${section.notes}` : ""}
 
 CRITICAL: The outermost element of the component MUST include the attribute data-section-id="${section.id}" (literal string value hardcoded to this exact value, not a variable). This is required for automated quality checks.
 
-The component should match the screenshot's layout, typography, spacing, colors, and imagery as closely as possible while remaining fully responsive. Use CSS variables for colors via var(--color-*) references. Include frontmatter that declares any props/constants used. Preserve all visible text content from the screenshot and metadata. If the screenshot shows a grid, cards, columns, or a specific background treatment, replicate it. Avoid arbitrary inline styles unless necessary for a precise match.${responsiveBlock}${interactionBlock}${extraBlock}`;
+Replicate EVERY visual detail visible in the screenshot:
+- Background colors, gradients, and overlays (dark semi-transparent overlay on background images, colored backgrounds behind eyebrow labels)
+- Exact left/right layout orientation — if text is on the left and image on the right in the screenshot, keep that. Do not mirror or flip.
+- Exact CTA button colors, border-radius, padding, and icon placement
+- Section overlap effects — if a section visually overlaps the one above it, use negative Tailwind margin (e.g. -mt-16)
+- Card styling — if cards have a slightly-different-shade background inside a dark section, replicate that subtle card treatment
+- Text alignment, maximum width constraints, and exact padding/margin values visible in the screenshot
+
+Use CSS variables for brand colors (var(--color-*)) and load fonts from the heading/body font stack. Include frontmatter that declares any props or constants. Preserve all visible text.${responsiveBlock}${interactionBlock}${extraBlock}`;
 }
 
 export interface RenderVisualBlockResult {
@@ -245,7 +254,7 @@ export async function renderVisualBlockWithFlag(
         model,
         messages: [{ role: "user", content }],
         temperature: 0.2,
-        maxTokens: 4096,
+        maxTokens: 8192,
       },
       config,
     );
@@ -256,10 +265,22 @@ export async function renderVisualBlockWithFlag(
     }
 
     // Extract code from a markdown fence anywhere in the response.
-    // The LLM sometimes adds preamble text before the opening fence.
+    // The LLM sometimes adds preamble text before the fence, or truncates before
+    // the closing fence — handle both cases.
     const fenceMatch = source.match(/```(?:astro)?\n([\s\S]*?)```/);
     if (fenceMatch?.[1]) {
       source = fenceMatch[1].trim();
+    } else {
+      // No closing fence (truncated response) — strip just the opening fence.
+      source = source.replace(/^```(?:astro)?\n?/, "").trim();
+    }
+
+    // Detect truncated output: valid Astro must end with a closing HTML tag or
+    // closing brace. If it ends mid-token the LLM was cut off — use fallback.
+    const trimmed = source.trimEnd();
+    const looksComplete = /[>}\]]$/.test(trimmed);
+    if (!looksComplete) {
+      return { code: renderFallbackBlock(section, designSystem), isFallback: true };
     }
 
     return { code: sanitizeAstroFrontmatter(source), isFallback: false };

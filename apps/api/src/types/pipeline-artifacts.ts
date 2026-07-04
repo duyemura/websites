@@ -94,6 +94,7 @@ export const ExtractArtifactSchema = z.object({
     tokens: z.record(z.string(), z.string()),
     breakpoints: z.array(z.string()),
     animations: z.array(z.object({ name: z.string(), css: z.string() })),
+    webFontUrls: z.array(z.string()).default([]),
   }),
   pages: z.array(ExtractPageSchema),
   sourceBaseline: z.object({

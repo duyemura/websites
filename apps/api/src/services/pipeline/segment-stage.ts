@@ -124,11 +124,16 @@ export async function runSegmentStage(
       const filled = fillGaps(ladderResult.candidates, pageHeight, 1440);
 
       // ---- classify ----
+      // Only run the text classifier for candidates that the vision model didn't
+      // already type — vision candidates have empty innerText so the text
+      // classifier would return "unknown" for them anyway.
       const tags = await classifySections(
         filled.map((c) => ({
           headingText: c.headingText,
           innerText: c.innerText,
           landmarkTag: c.landmarkTag,
+          // Pass visionTag through so the classifier can skip those candidates.
+          visionTag: c.visionTag,
         })),
         chatFn,
       );
@@ -153,8 +158,10 @@ export async function runSegmentStage(
           `${prefix}/${pageKey}-${i}-1440.png`,
           desktopCrop,
         );
+        // Prefer: landmark > visionTag > text-classifier result > unknown
         const tag: CanonicalSectionTag =
-          cand.source === "gap-fill" ? "unknown" : tags[i] ?? "unknown";
+          cand.source === "gap-fill" ? "unknown"
+          : (cand.visionTag as CanonicalSectionTag | undefined) ?? tags[i] ?? "unknown";
         const source: SegmentSection["source"] =
           cand.source === "gap-fill" ? "visual-boundary" : cand.source;
         sections.push({
@@ -320,6 +327,9 @@ async function visionSegment(
       source: "vision" as const,
       innerText: "",
       headingText: undefined,
+      // Preserve the type the vision model identified — used to skip
+      // the text-based classifier for candidates with no innerText.
+      visionTag: entry.type !== "unknown" ? entry.type : undefined,
     }));
   } catch {
     // Vision unavailable — ladder proceeds with what it has; gap-fill covers

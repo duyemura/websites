@@ -220,6 +220,7 @@ async function writeProjectFiles(
 export async function writeProjectScaffold(
   sourceDir: string,
   designSystem: DesignSystemV2,
+  opts?: { webFontUrls?: string[] },
 ): Promise<void> {
   const dirs = [
     path.join(sourceDir, "src", "layouts"),
@@ -235,7 +236,7 @@ export async function writeProjectScaffold(
   await writeFile(path.join(sourceDir, "tailwind.config.mjs"), tailwindConfig());
   await writeFile(path.join(sourceDir, "tsconfig.json"), tsConfig());
   await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem));
-  await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem));
+  await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem, opts?.webFontUrls ?? []));
 }
 
 async function writeSharedComponents(
@@ -450,7 +451,7 @@ h1, h2, h3, h4, h5, h6 {
 `;
 }
 
-function layoutAstro(designSystem: DesignSystem | DesignSystemV2): string {
+function layoutAstro(designSystem: DesignSystem | DesignSystemV2, webFontUrls: string[] = []): string {
   const businessName = designSystem.business.name ?? "Ploy for gyms";
   return `---
 import Header from "../components/shared/Header.astro";
@@ -471,6 +472,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
+    ${webFontUrls.map(url => `<link rel="stylesheet" href="${url}" />`).join("\n    ")}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
   </head>
   <body class="min-h-screen flex flex-col">

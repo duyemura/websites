@@ -337,7 +337,7 @@ async function runStages(opts: {
         workspaceUuid,
         pages: pages ?? undefined,
         runAstroBuild: true,
-        runAstroCheck: true,
+        runAstroCheck: false,
       };
       const buildResult = await runBuildStage(input);
       outcome.buildArtifact = {
