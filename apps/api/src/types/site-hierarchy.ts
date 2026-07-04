@@ -79,6 +79,12 @@ export interface HierarchyPage {
   metaDescription?: string;
   primaryCta?: { label: string; href: string };
   sections: HierarchySection[];
+  /** Background image URL for this page's hero section (re-hosted to our CDN). */
+  heroImageUrl?: string;
+  /** Whether this page has been segmented — false means only a stub redirect exists. */
+  segmented?: boolean;
+  /** Page type inferred from URL/content — used to select appropriate layout. */
+  pageType?: "home" | "interior" | "contact" | "blog" | "schedule" | "unknown";
 }
 
 import type { SiteDocMetadata } from "./site-doc-metadata";

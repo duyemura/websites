@@ -175,6 +175,16 @@ function hrefToSlug(href: string): string | null {
   return pathToSlug(path);
 }
 
+/** Flatten all nav links (including children) into a flat array. */
+function flattenNavLinks(links: NavLink[]): NavLink[] {
+  const result: NavLink[] = [];
+  for (const l of links) {
+    result.push(l);
+    if (l.children?.length) result.push(...flattenNavLinks(l.children));
+  }
+  return result;
+}
+
 /** Recursively collect all slugs from nav links so the build plan includes them. */
 function collectNavSlugs(links: NavLink[]): string[] {
   const slugs: string[] = [];
@@ -224,12 +234,23 @@ export function buildSiteHierarchyFromSegments(
       return section;
     });
 
-    const heroCta = hierarchySections.find((h) => h.tag === "hero")?.content.cta;
+    const heroSection = hierarchySections.find((h) => h.tag === "hero");
+    const heroCta = heroSection?.content.cta;
+    const heroImageUrl = heroSection?.content.images?.[0]?.url;
+
+    // Infer page type from slug/path for layout selection
+    const pageType = isHomePage ? "home"
+      : slug.includes("contact") ? "contact"
+      : slug.includes("blog") ? "blog"
+      : slug.includes("schedule") ? "schedule"
+      : "interior";
 
     return {
       slug,
       path: sp.path,
       isHomePage,
+      segmented: true,
+      pageType,
       title:
         ep?.content.businessName ??
         ep?.content.title ??
@@ -237,6 +258,7 @@ export function buildSiteHierarchyFromSegments(
       metaTitle: ep?.content.title ?? meta["og:title"],
       metaDescription: meta["description"] ?? meta["og:description"],
       primaryCta: heroCta,
+      heroImageUrl,
       sections: hierarchySections,
     };
   });
@@ -250,15 +272,34 @@ export function buildSiteHierarchyFromSegments(
 
   const buildOrder = orderedPages.map((p) => p.slug);
 
-  // Augment buildOrder with pages linked from the extracted nav that weren't
-  // captured in the segment. These get stub redirect pages so nav links resolve.
+  // Augment buildOrder + pages[] with all nav-linked pages not yet segmented.
+  // These get stub HierarchyPage entries (segmented:false, empty sections) so:
+  // - The hierarchy doc is a complete manifest of the site
+  // - The build stage knows about all pages and can render stubs/redirects
+  // - When a page is later fully segmented, its entry gets replaced
   if (extract.extractedNav) {
     const navSlugs = collectNavSlugs(extract.extractedNav.links);
-    const existing = new Set(buildOrder);
+    const existingSlugs = new Set(buildOrder);
+    const allNavLinks = flattenNavLinks(extract.extractedNav.links);
+
     for (const slug of navSlugs) {
-      if (!existing.has(slug)) {
+      if (!existingSlugs.has(slug)) {
         buildOrder.push(slug);
-        existing.add(slug);
+        existingSlugs.add(slug);
+        // Add a stub page entry so the hierarchy doc covers the full site
+        const navLink = allNavLinks.find(l => hrefToSlug(l.href) === slug);
+        orderedPages.push({
+          slug,
+          path: navLink?.href ?? `/${slug}`,
+          isHomePage: false,
+          segmented: false,
+          pageType: slug.includes("contact") ? "contact"
+            : slug.includes("blog") ? "blog"
+            : slug.includes("schedule") ? "schedule"
+            : "interior",
+          title: navLink?.label ?? slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          sections: [],
+        });
       }
     }
   }
