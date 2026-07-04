@@ -156,16 +156,17 @@ IMPORTANT CONSTRAINTS:
 - For interactivity, use Alpine.js via CDN script tag or vanilla JS in a <script> tag — do not import it.
 - The only valid imports in the frontmatter are local .astro files (e.g. ../shared/Header.astro).
 
-Authoritative design tokens (computed from the live DOM — use these, do not guess from the screenshot):
-- Background: ${tokens.colors.background}
-- Foreground (text): ${tokens.colors.foreground}
-- Primary accent: ${tokens.colors.primary}
-- Muted surface: ${tokens.colors.muted}
-- Border: ${tokens.colors.border}
-- Heading font: ${tokens.fonts.heading}
-- Body font: ${tokens.fonts.body}
-- Border radius: ${tokens.radius}
+Authoritative design tokens (computed from the live DOM). These are available as named Tailwind utilities — use them directly:
+- bg-primary / text-primary → ${tokens.colors.primary} (brand accent, CTAs, links)
+- bg-background / text-foreground → page background and default text
+- bg-muted / bg-muted-surface → subtle surface backgrounds
+- text-muted-fg → secondary text
+- font-heading → ${tokens.fonts.heading} (use for all headings)
+- font-body → ${tokens.fonts.body} (use for body text)
+- rounded-site → ${tokens.radius} border radius
 - Max content width: ${rules?.maxWidth ?? "max-w-6xl"}
+
+You can also use bg-[var(--color-*)] for any token not listed above.
 
 Section metadata:
 - Tag: ${section.tag}

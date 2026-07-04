@@ -395,7 +395,32 @@ function tailwindConfig(): string {
   return `/** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/**/*.{astro,html,js,jsx,md,mdx,ts,tsx}"],
-  theme: { extend: {} },
+  theme: {
+    extend: {
+      // Map design token CSS variables to named Tailwind utilities so the LLM
+      // can write natural classes like bg-primary, text-foreground, font-heading
+      // instead of the verbose bg-[var(--color-primary)] arbitrary-value syntax.
+      colors: {
+        primary: "var(--color-primary)",
+        "primary-fg": "var(--color-primary-foreground)",
+        "primary-accent": "var(--color-primary)",
+        background: "var(--color-background)",
+        foreground: "var(--color-foreground)",
+        muted: "var(--color-muted)",
+        "muted-fg": "var(--color-muted-foreground)",
+        "muted-surface": "var(--color-muted)",
+        border: "var(--color-border)",
+        accent: "var(--color-primary)",
+      },
+      fontFamily: {
+        heading: ["var(--font-heading)", "sans-serif"],
+        body: ["var(--font-body)", "sans-serif"],
+      },
+      borderRadius: {
+        site: "var(--radius)",
+      },
+    },
+  },
   plugins: [],
 };
 `;
