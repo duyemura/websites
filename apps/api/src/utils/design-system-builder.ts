@@ -143,6 +143,18 @@ export function buildDesignSystemFromExtract(
   const firstFont = (family: string): string =>
     family.split(",")[0]?.trim().replace(/['"]/g, "") ?? family;
 
+  // Extract font family names from Google Fonts URLs — these are the fonts that
+  // will actually be loadable in the generated site. If the computed font name
+  // is a proprietary/unavailable font (e.g. Silka from Webflow's CDN), prefer
+  // the Google-hosted fonts we can actually inject.
+  const googleFontFamilies: string[] = (extract.css.webFontUrls ?? [])
+    .flatMap(url => {
+      const m = url.match(/family=([^&:]+)/);
+      return m?.[1] ? [decodeURIComponent(m[1]).replace(/\+/g, " ")] : [];
+    });
+  const resolvedHeadingFont = googleFontFamilies[0] ?? (ct ? firstFont(ct.headingFont) : undefined);
+  const resolvedBodyFont = googleFontFamilies[1] ?? googleFontFamilies[0] ?? (ct ? firstFont(ct.bodyFont) : undefined);
+
   // Build a light-weight ScrapedWebsiteData-like adapter to reuse
   // deriveThemeTokens/detectHeadingStyle/extractHeaderSection helpers where
   // possible. Only the fields the helpers touch need to be populated.
@@ -159,9 +171,9 @@ export function buildDesignSystemFromExtract(
       { token: "text-primary", role: "text" as const, hex: rgbToHex(ct.bodyColor) ?? "#000000" },
       ...(ct.primaryAccent ? [{ token: "accent-primary", role: "accent" as const, hex: rgbToHex(ct.primaryAccent) ?? ct.primaryAccent }] : []),
     ]) : [],
-    fonts: ct ? [
-      { role: "heading" as const, family: firstFont(ct.headingFont) },
-      { role: "body" as const, family: firstFont(ct.bodyFont) },
+    fonts: (resolvedHeadingFont || resolvedBodyFont) ? [
+      ...(resolvedHeadingFont ? [{ role: "heading" as const, family: resolvedHeadingFont }] : []),
+      ...(resolvedBodyFont ? [{ role: "body" as const, family: resolvedBodyFont }] : []),
     ] : [],
     fontSizes: [],
     images: [],

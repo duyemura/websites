@@ -38,7 +38,8 @@ function escapeHtml(text: string): string {
 }
 
 export function renderFallbackBlock(section: HierarchySection, designSystem: DesignSystemV2): string {
-  const heading = str(section.content.heading) || section.tag;
+  // Never use the tag name as visible heading content — it's a technical label.
+  const heading = str(section.content.heading) || "";
   const body = escapeHtml(str(section.content.body));
   const eyebrow = escapeHtml(str(section.content.eyebrow));
   const items = section.content.items ?? [];

@@ -47,6 +47,9 @@ export function computeScores(input: {
   if (input.failed.some((c) => c.id === "no-code-artifacts")) {
     // Visible code artifacts are an immediate disqualifier — humans see broken markup.
     masterFidelity = 0;
+  } else if (input.failed.some((c) => c.id.startsWith("media-"))) {
+    // Any broken image or link is an immediate disqualifier — users see missing content.
+    masterFidelity = 0;
   } else if (input.failed.some((c) => c.critical)) {
     masterFidelity = Math.min(masterFidelity, CRITICAL_CAP);
   }
@@ -216,6 +219,22 @@ export async function checkMedia(
   page: Page,
   sourceHost: string,
 ): Promise<CheckResults> {
+  // Wait for all images to finish loading before evaluating — without this,
+  // images that are still decoding report complete=false even though they're accessible.
+  await page.evaluate(() =>
+    Promise.all(
+      Array.from(document.querySelectorAll("img")).map(
+        (img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise<void>((res) => {
+                img.addEventListener("load", () => res(), { once: true });
+                img.addEventListener("error", () => res(), { once: true });
+              }),
+      ),
+    ),
+  ).catch(() => {/* ignore timeout */});
+
   const results = await page.evaluate((host: string) => {
     const imgs = Array.from(document.querySelectorAll("img"));
     return imgs.map((img) => ({
