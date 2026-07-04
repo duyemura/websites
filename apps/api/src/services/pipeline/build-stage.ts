@@ -31,6 +31,7 @@ import {
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
+import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
 import {
   breakpointDeltasToTailwind,
   type TailwindInstruction,
@@ -140,6 +141,12 @@ function tailwindForSection(designSystem: DesignSystemV2): TailwindInstruction[]
  * the URL in-place. Failed downloads are skipped with a build-log warning.
  * Returns the log entries appended.
  */
+type RehostResult = {
+  log: BuildLogEntry[];
+  /** original URL → re-hosted URL, for post-render substitution in generated code */
+  urlMap: Map<string, string>;
+};
+
 export async function rehostMedia(
   hierarchy: SiteHierarchy,
   input: {
@@ -148,14 +155,15 @@ export async function rehostMedia(
     workspaceUuid: string;
     siteUuid: string;
   },
-): Promise<BuildLogEntry[]> {
+): Promise<RehostResult> {
   const log: BuildLogEntry[] = [];
   const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/build/media`;
-  const seen = new Map<string, string>(); // original -> new URL
+  const urlMap = new Map<string, string>(); // original -> re-hosted URL
 
-  async function rehostUrl(original: string, pageSlug: string): Promise<string | undefined> {
-    const cached = seen.get(original);
-    if (cached) return cached;
+  async function rehostUrl(original: string, pageSlug: string): Promise<void> {
+    if (urlMap.has(original)) return;
+    // Skip URLs already on our own S3 bucket — they were re-hosted in a prior run.
+    if (original.includes(input.config.S3_ASSETS_BUCKET)) return;
     try {
       const res = await fetch(original);
       if (!res.ok) throw new Error(`fetch ${original} → ${res.status}`);
@@ -163,48 +171,41 @@ export async function rehostMedia(
       const contentType = res.headers.get("content-type") ?? "image/jpeg";
       const ext = extForContentType(contentType);
       const key = `${prefix}/${hashFragment(original)}${ext}`;
-      const newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, contentType);
-      seen.set(original, newUrl);
+      const newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, contentType, { publicRead: true });
+      urlMap.set(original, newUrl);
       log.push({
         category: "performance",
         description: `Re-hosted ${original} as ${newUrl}`,
         page: pageSlug,
       });
-      return newUrl;
     } catch (err) {
       log.push({
         category: "performance",
         description: `Failed to re-host ${original}: ${(err as Error).message}`,
         page: pageSlug,
       });
-      return undefined;
     }
   }
 
   for (const page of hierarchy.pages) {
     for (const section of page.sections) {
-      const images = section.content.images ?? [];
-      for (let i = 0; i < images.length; i++) {
-        const img = images[i];
-        if (!img) continue;
-        const original = img.url;
-        if (!original || original.startsWith("data:")) continue;
-        const newUrl = await rehostUrl(original, page.slug);
-        if (newUrl) img.url = newUrl;
+      for (const img of section.content.images ?? []) {
+        if (img?.url && !img.url.startsWith("data:")) await rehostUrl(img.url, page.slug);
       }
-
-      const items = section.content.items ?? [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (!item) continue;
-        const original = item.imageUrl;
-        if (!original || original.startsWith("data:")) continue;
-        const newUrl = await rehostUrl(original, page.slug);
-        if (newUrl) item.imageUrl = newUrl;
+      for (const item of section.content.items ?? []) {
+        if (item?.imageUrl && !item.imageUrl.startsWith("data:")) await rehostUrl(item.imageUrl, page.slug);
       }
     }
   }
-  return log;
+  return { log, urlMap };
+}
+
+function applyUrlMap(source: string, urlMap: Map<string, string>): string {
+  let result = source;
+  for (const [original, rehosted] of urlMap) {
+    result = result.split(original).join(rehosted);
+  }
+  return result;
 }
 
 function extForContentType(ct: string): string {
@@ -342,8 +343,10 @@ async function runProcess(cmd: string, args: string[], cwd: string): Promise<voi
   });
 }
 
+const ASTRO_CHECK_TIMEOUT_MS = 90_000;
+
 /** Run `astro check` in the given source dir. Returns an empty array if the
- *  Astro CLI is not installed (best-effort). */
+ *  Astro CLI is not installed (best-effort) or if it times out. */
 async function runAstroCheck(sourceDir: string): Promise<AstroCheckError[]> {
   const astroBin = path.join(sourceDir, "node_modules", ".bin", "astro");
   if (!(await fileExists(astroBin))) return [];
@@ -351,16 +354,21 @@ async function runAstroCheck(sourceDir: string): Promise<AstroCheckError[]> {
     const child = spawn(astroBin, ["check"], { cwd: sourceDir, env: process.env });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on("close", () => {
-      resolve(parseAstroCheckOutput(`${stdout}\n${stderr}`));
-    });
-    child.on("error", () => resolve([]));
+    let settled = false;
+    const settle = (result: AstroCheckError[]) => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      console.log(`[build] astro check timed out after ${ASTRO_CHECK_TIMEOUT_MS / 1000}s — skipping`);
+      settle([]);
+    }, ASTRO_CHECK_TIMEOUT_MS);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on("close", () => { clearTimeout(timer); settle(parseAstroCheckOutput(`${stdout}\n${stderr}`)); });
+    child.on("error", () => { clearTimeout(timer); settle([]); });
   });
 }
 
@@ -390,13 +398,42 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     throw new Error(`Design system v2 not found for site ${input.siteUuid}`);
   }
   const designSystem = designSystemDoc as DesignSystemV2;
-  const evidence = await loadSectionVisualEvidenceDoc(input.db, input.workspaceUuid, input.siteUuid);
+  const rawEvidence = await loadSectionVisualEvidenceDoc(input.db, input.workspaceUuid, input.siteUuid);
+
+  // Convert private S3 screenshot URLs to base64 data URIs so the LLM provider
+  // can receive the images inline rather than trying to fetch private bucket URLs.
+  const s3ctx: S3Context = {
+    s3: input.s3,
+    bucket: input.config.S3_ASSETS_BUCKET,
+    region: input.config.S3_REGION,
+    endpoint: input.config.S3_ENDPOINT,
+  };
+  const evidence = rawEvidence
+    ? {
+        ...rawEvidence,
+        rows: await Promise.all(
+          rawEvidence.rows.map(async (row) => ({
+            ...row,
+            screenshotUrl: row.screenshotUrl
+              ? await imageUrlToDataUri(row.screenshotUrl, s3ctx)
+              : row.screenshotUrl,
+            mobileScreenshotUrl: row.mobileScreenshotUrl
+              ? await imageUrlToDataUri(row.mobileScreenshotUrl, s3ctx)
+              : row.mobileScreenshotUrl,
+          })),
+        ),
+      }
+    : null;
 
   const buildLog: BuildLogEntry[] = [];
   const fallbacks: Array<{ sectionId: string; page: string }> = [];
 
   // 2. Media re-hosting pre-pass.
-  const mediaLog = await rehostMedia(hierarchy, {
+  // We build a urlMap (original → re-hosted) but do NOT mutate the hierarchy's
+  // image URLs — the LLM prompt must reference the original public CDN URLs so
+  // browsers can load them during verify. The urlMap is applied as a
+  // post-render string substitution in the generated Astro code.
+  const { log: mediaLog, urlMap: rehostUrlMap } = await rehostMedia(hierarchy, {
     s3: input.s3,
     config: input.config,
     workspaceUuid: input.workspaceUuid,
@@ -462,20 +499,36 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
     const rendered = await renderPageSections(page, designSystem, evidence, input.config);
+    // Apply re-hosted URL substitution: swap original CDN URLs → S3 URLs in the
+    // generated code so the deployed site doesn't depend on the source CDN.
+    const renderedWithUrls = rendered.map(({ section, source, isFallback }) => ({
+      section,
+      isFallback,
+      source: applyUrlMap(source, rehostUrlMap),
+    }));
     // Log per-section outcome.
-    for (const { section, isFallback } of rendered) {
+    for (const { section, isFallback } of renderedWithUrls) {
       if (isFallback) {
         console.log(`[build]   ⚠  ${section.id} (${section.tag}) — fallback block`);
       } else {
         console.log(`[build]   ✓  ${section.id} (${section.tag})`);
       }
     }
-    await writePageFiles(sourceDir, page, rendered);
+    await writePageFiles(sourceDir, page, renderedWithUrls);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "built");
     builtPages.push(page.slug);
   }
 
-  // 7. astro check post-pass (best-effort, opt-in).
+  // 7. Install deps so `astro check` has the packages it needs. This must run
+  //    before the check passes — without node_modules astro check exits immediately
+  //    and skips real validation, but with a stale node_modules from a prior run
+  //    it would hang waiting on the TypeScript language server.
+  if (input.runAstroBuild) {
+    console.log(`[build] running pnpm install in ${sourceDir}`);
+    await runProcess("pnpm", ["install"], sourceDir);
+  }
+
+  // 7b. astro check post-pass (best-effort, opt-in).
   if (input.runAstroCheck) {
     const errors = await runAstroCheck(sourceDir);
     for (const err of errors) {
@@ -584,11 +637,10 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     console.log(`[build] ⚠  ${fallbacks.length} section(s) fell back to deterministic block: ${fallbacks.map(f => f.sectionId).join(", ")}`);
   }
 
-  // 7b. Install deps + compile Astro to dist/ so verify can serve the clone.
+  // 7c. Compile Astro to dist/ so verify can serve the clone.
   // Opt-in: tests skip this because they use synthetic scaffolds without real lockfiles.
   if (input.runAstroBuild) {
-    console.log(`[build] running pnpm install + astro build in ${sourceDir}`);
-    await runProcess("pnpm", ["install"], sourceDir);
+    console.log(`[build] running astro build in ${sourceDir}`);
     await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
     console.log(`[build] astro build complete`);
   }

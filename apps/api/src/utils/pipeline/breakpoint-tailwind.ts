@@ -17,6 +17,20 @@ function cols(value: string | undefined): string {
   return parts.length > 0 ? parts.length.toString() : "1";
 }
 
+function pxToTailwindArbitrary(value: string): string {
+  // Convert a CSS value to a Tailwind arbitrary value string, e.g. "-33px" → "[-33px]"
+  return `[${value}]`;
+}
+
+function mapSpacingDelta(prop: string, d: BreakpointDelta): string {
+  const mobile = d.at375 ?? d.at768;
+  const prefix = prop === "padding" ? "p" : "m";
+  const mobileClass = mobile ? `${prefix}-${pxToTailwindArbitrary(mobile)}` : "";
+  const desktopClass = `md:${prefix}-${pxToTailwindArbitrary(d.at1440)}`;
+  if (!mobile || mobile === d.at1440) return `use \`${prefix}-${pxToTailwindArbitrary(d.at1440)}\``;
+  return `use \`${mobileClass} ${desktopClass}\` (${prop} changes at 768px breakpoint)`;
+}
+
 function mapDelta(d: BreakpointDelta): string {
   const mobile = d.at375 ?? d.at768;
 
@@ -44,8 +58,30 @@ function mapDelta(d: BreakpointDelta): string {
     parts.push(`${desktopPrefix}:grid-cols-${cols(d.at1440)}`);
     return `use \`${parts.join(" ")}\``;
   }
+  if (d.property === "padding" || d.property === "margin") {
+    return mapSpacingDelta(d.property, d);
+  }
+  if (d.property === "width" || d.property === "max-width" || d.property === "min-width") {
+    const abbr = d.property === "width" ? "w" : d.property === "max-width" ? "max-w" : "min-w";
+    if (!mobile || mobile === d.at1440) return `use \`${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+    return `use \`${abbr}-${pxToTailwindArbitrary(mobile)} md:${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+  }
+  if (d.property === "height" || d.property === "min-height") {
+    const abbr = d.property === "height" ? "h" : "min-h";
+    if (!mobile || mobile === d.at1440) return `use \`${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+    return `use \`${abbr}-${pxToTailwindArbitrary(mobile)} md:${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+  }
+  if (d.property === "gap" || d.property === "column-gap" || d.property === "row-gap") {
+    const abbr = d.property === "gap" ? "gap" : d.property === "column-gap" ? "gap-x" : "gap-y";
+    if (!mobile || mobile === d.at1440) return `use \`${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+    return `use \`${abbr}-${pxToTailwindArbitrary(mobile)} md:${abbr}-${pxToTailwindArbitrary(d.at1440)}\``;
+  }
+  if (d.property === "font-size") {
+    if (!mobile || mobile === d.at1440) return `use \`text-[${d.at1440}]\``;
+    return `use \`text-[${mobile}] md:text-[${d.at1440}]\``;
+  }
 
-  // Fallback: describe the change so the LLM can pick appropriate classes.
+  // Fallback: give explicit arbitrary-value Tailwind syntax so the LLM has a concrete hint.
   const stops = [
     d.at375 ? `${d.at375} at 375px` : null,
     d.at768 ? `${d.at768} at 768px` : null,
@@ -53,5 +89,5 @@ function mapDelta(d: BreakpointDelta): string {
   ]
     .filter((s): s is string => s !== null)
     .join(", ");
-  return `${d.property} changes across breakpoints: ${stops} — pick matching responsive utilities`;
+  return `${d.property} changes: ${stops} — use Tailwind arbitrary values e.g. \`[value] md:[value]\``;
 }

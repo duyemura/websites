@@ -15,6 +15,7 @@ export async function uploadPipelineImage(
   key: string,
   body: Buffer,
   contentType: string = "image/png",
+  options?: { publicRead?: boolean },
 ): Promise<string> {
   await s3.send(
     new PutObjectCommand({
@@ -22,6 +23,7 @@ export async function uploadPipelineImage(
       Key: key,
       Body: body,
       ContentType: contentType,
+      ...(options?.publicRead ? { ACL: "public-read" } : {}),
     }),
   );
   return buildS3ObjectUrl({
