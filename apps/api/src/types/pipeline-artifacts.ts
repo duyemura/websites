@@ -166,6 +166,7 @@ export const DomStylesValuesSchema = z.object({
   containerBackground: z.string().optional(),
   containerBackgroundImage: z.string().optional(),
   overlayBackground: z.string().optional(),
+  headingText: z.string().optional(),
   headingFontSize: z.string().optional(),
   headingFontWeight: z.string().optional(),
   headingColor: z.string().optional(),

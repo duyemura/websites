@@ -548,7 +548,13 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
             : "top-static";
 
     const background = navStyle.backgroundColor;
-    const textColor = navStyle.color;
+    // Read text color from the first visible TEXT link (skip logo/icon-only links) —
+    // the container inherits body defaults; links have explicit brand colors.
+    const firstTextLink = Array.from(navEl.querySelectorAll("a")).find(a => {
+      const t = (a as HTMLElement).innerText?.trim();
+      return t && t.length > 1; // skip empty logo links
+    }) as HTMLAnchorElement | null;
+    const textColor = firstTextLink ? getComputedStyle(firstTextLink).color : navStyle.color;
 
     // ---- logo ----
     // Logo is usually the first <img> in the nav, or a brand link with logo class.

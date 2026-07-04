@@ -56,15 +56,19 @@ export function renderHeroBlock(
   const base = ds?.base ?? {};
   const lg = ds?.lg ?? {};
 
-  const heading = str(section.content.heading);
-  // Eyebrow: prefer hierarchy content, fall back to domStyles extraction across all tiers
+  // Prefer hierarchy heading; domStyles headingText is extracted directly from the section element
+  // and is more reliable than page-level H1/H2 fallbacks that may pick up wrong sections.
+  const heading = str(section.content.heading) || str(base.headingText) || str(ds?.md?.headingText) || str(lg.headingText);
   const eyebrow = str(section.content.eyebrow) || str(base.eyebrowText) || str(ds?.md?.eyebrowText) || str(lg.eyebrowText);
-  // Body: prefer hierarchy content, fall back to DOM-extracted body text
-  const body = str(section.content.body) || str(base.bodyText) || str(ds?.md?.bodyText) || str(lg.bodyText);
   const cta = section.content.cta;
+  // Body: prefer hierarchy content, fall back to DOM-extracted body text.
+  // Don't use bodyText if it matches the CTA label (extraction sometimes captures the button text).
+  const ctaLabelStr = cta?.label ?? "";
+  const rawBodyText = str(section.content.body) || str(base.bodyText) || str(ds?.md?.bodyText) || str(lg.bodyText);
+  const body = rawBodyText && rawBodyText !== ctaLabelStr ? rawBodyText : "";
 
   // Background image: prefer domStyles (exact CSS url), fall back to first image
-  const bgImageRaw = base.containerBackgroundImage ?? lg.containerBackgroundImage ?? "";
+  const bgImageRaw = base.containerBackgroundImage ?? ds?.md?.containerBackgroundImage ?? lg.containerBackgroundImage ?? "";
   const bgImageUrl = bgImageRaw.match(/url\(["']?([^"')]+)["']?\)/)?.[1]
     ?? section.content.images?.[0]?.url ?? "";
 
@@ -97,7 +101,8 @@ export function renderHeroBlock(
 
   const headingColor = base.headingColor ?? "rgb(255,255,255)";
   const headingFontWeight = base.headingFontWeight ?? "700";
-  const headingTextTransform = (base.headingTextTransform && base.headingTextTransform !== "none") ? `text-transform:${base.headingTextTransform};` : "";
+  const rawTransform = base.headingTextTransform ?? ds?.md?.headingTextTransform ?? lg.headingTextTransform;
+  const headingTextTransform = (rawTransform && rawTransform !== "none") ? `text-transform:${rawTransform};` : "";
 
   const eyebrowHtml = eyebrow
     ? `<p class="mb-3 text-sm font-semibold uppercase tracking-widest" style="color:${headingColor};opacity:0.7;">${eyebrow}</p>`

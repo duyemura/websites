@@ -3,6 +3,7 @@ export interface DomStylesValues {
   containerBackground?: string;
   containerBackgroundImage?: string;
   overlayBackground?: string;
+  headingText?: string;
   headingFontSize?: string;
   headingFontWeight?: string;
   headingColor?: string;

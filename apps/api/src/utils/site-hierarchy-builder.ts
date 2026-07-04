@@ -223,7 +223,11 @@ export function buildSiteHierarchyFromSegments(
     const hierarchySections: HierarchySection[] = nonShellSections.map((s) => {
       // For hero sections with no extracted heading, fall back to the page's H1/H2
       const headingFromSection = pickHeadingText(s);
+      // DOM-extracted heading text is more reliable than page-level H1/H2 fallback,
+      // which can pick up headings from other sections.
+      const domHeading = s.domStyles?.base?.headingText ?? s.domStyles?.md?.headingText ?? s.domStyles?.lg?.headingText;
       const heading = headingFromSection
+        ?? domHeading
         ?? (s.tag === "hero" ? (pageH2 ?? pageH1) : undefined);
 
       const section: HierarchySection = {
@@ -239,10 +243,12 @@ export function buildSiteHierarchyFromSegments(
             s.mediaUrls.length > 0
               ? s.mediaUrls.map((url) => ({ url }))
               : undefined,
-          // CTA, eyebrow from DOM extraction — runs for every section generically
-          cta: s.domStyles?.base?.ctaLabel
-            ? { label: s.domStyles.base.ctaLabel, href: s.domStyles.base.ctaHref ?? "#" }
-            : undefined,
+          // CTA from DOM extraction — check all 3 tiers (CTA styling often differs by breakpoint)
+          cta: (() => {
+            const b = s.domStyles?.base, m = s.domStyles?.md, l = s.domStyles?.lg;
+            const src = b?.ctaLabel ? b : m?.ctaLabel ? m : l?.ctaLabel ? l : null;
+            return src ? { label: src.ctaLabel!, href: src.ctaHref ?? "#" } : undefined;
+          })(),
           eyebrow: s.domStyles?.base?.eyebrowText ?? undefined,
         },
         evidenceId: s.id,

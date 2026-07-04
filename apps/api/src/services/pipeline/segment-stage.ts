@@ -489,10 +489,13 @@ async function extractStylesAtViewport(
         const headingBottom = hEl.getBoundingClientRect().bottom;
         const bodyCandidates = Array.from(el.querySelectorAll("p, div, span"))
           .filter(e => {
-            if (e.querySelector("a, button, h1, h2, h3, h4, input")) return false; // skip containers with interactive/heading children
+            // Skip links, buttons, or containers with interactive/heading children
+            const tag = e.tagName;
+            if (tag === 'A' || tag === 'BUTTON') return false;
+            if (e.querySelector("a, button, h1, h2, h3, h4, input")) return false;
             const r = e.getBoundingClientRect();
             const t = (e as HTMLElement).textContent?.trim() ?? "";
-            return r.top >= headingBottom - 10 && t.length > 20 && t.length < 400;
+            return r.top >= headingBottom - 10 && t.length > 30 && t.length < 400;
           });
         if (bodyCandidates[0]) {
           const t = (bodyCandidates[0] as HTMLElement).textContent?.trim() ?? "";
@@ -519,6 +522,7 @@ async function extractStylesAtViewport(
         containerBackground: s.backgroundColor,
         containerBackgroundImage: bgImg !== "none" ? bgImg : undefined,
         overlayBackground,
+        headingText: hEl ? (hEl as HTMLElement).textContent?.trim() || undefined : undefined,
         headingFontSize: hs?.fontSize,
         headingFontWeight: hs?.fontWeight,
         headingColor: hs?.color,
