@@ -1,23 +1,30 @@
 /**
- * Site shell mini-pipeline — builds nav + hero + footer using the EXACT
- * same functions as the real build pipeline, then runs astro build to
- * produce compiled output you can open in a browser.
+ * Site shell mini-pipeline — runs the real extract → segment → docgen pipeline
+ * then builds nav + hero + footer using the exact same build stage functions.
  *
  * Usage (from apps/api):
  *   DOTENV_CONFIG_PATH=../../.env pnpm tsx scripts/test-shell.ts <url>
  *
- * Output: opens /tmp/test-shell-dist/index.html in the browser.
- * ~60s on first run (pnpm install), ~30s after (cached node_modules).
+ * ~2-4 min first run, ~30s on subsequent runs (Playwright + LLM calls + astro build).
+ * Output: opens compiled Astro dist in browser — byte-for-byte same as real build.
  */
 import "dotenv/config";
-import { chromium, type BrowserContext } from "playwright";
+import { chromium } from "playwright";
+import { db as appDb, config as appConfig } from "../src/database";
 import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 import os from "os";
 import { spawn } from "child_process";
+import crypto from "crypto";
 
-// ── Same functions as the real build pipeline ──────────────────────────────
-import { capturePage, extractNavData } from "../src/utils/pipeline/capture-page";
+// ── Real pipeline stage functions ──────────────────────────────────────────
+import { runExtractStage } from "../src/services/pipeline/extract-stage";
+import { runSegmentStage } from "../src/services/pipeline/segment-stage";
+import { runDocgenStage } from "../src/services/pipeline/docgen-stage";
+import { loadArtifact } from "../src/utils/pipeline/artifact-store";
+import { loadSectionVisualEvidenceDoc } from "../src/utils/section-visual-evidence-io";
+import { loadDesignSystemDoc } from "../src/utils/design-system-io";
+import { getS3Client, ensureBuckets } from "../src/s3";
 import {
   renderNavComponent,
   renderFooterComponent,
@@ -25,36 +32,21 @@ import {
   relativizeAssetPaths,
   inlineCssIntoHtml,
 } from "../src/services/astro-code-generator";
-import { buildDesignSystemFromExtract } from "../src/utils/design-system-builder";
 import { renderVisualBlockWithFlag } from "../src/services/visual-section-renderer";
 import { breakpointDeltasToTailwind } from "../src/utils/pipeline/breakpoint-tailwind";
-import type { ExtractArtifact, ResponsiveRule } from "../src/types/pipeline-artifacts";
-import type { DesignSystemV2 } from "../src/types/design-system-v2";
+import { saveSiteDocs } from "../src/utils/site-docs";
+import type { DesignSystemV2, ResponsiveRule } from "../src/types/design-system-v2";
 import type { HierarchySection } from "../src/types/site-hierarchy";
 import type { SectionVisualEvidenceRow } from "../src/types/section-visual-evidence";
-
-// ── Config stub matching real pipeline ────────────────────────────────────
-const noopConfig = {
-  LLM_PROVIDER: (process.env.LLM_PROVIDER ?? "openrouter") as "openrouter" | "ollama",
-  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
-  OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-  OLLAMA_API_KEY: process.env.OLLAMA_API_KEY ?? "",
-  OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
-  DEFAULT_LLM_MODEL: process.env.DEFAULT_LLM_MODEL ?? "google/gemini-2.5-flash",
-  VISION_LLM_MODEL: process.env.VISION_LLM_MODEL ?? "google/gemini-2.5-flash",
-  CHEAP_LLM_MODEL: process.env.CHEAP_LLM_MODEL ?? "google/gemini-2.5-flash",
-  CODE_LLM_MODEL: process.env.CODE_LLM_MODEL ?? "google/gemini-2.5-flash",
-  LONG_CONTEXT_LLM_MODEL: process.env.LONG_CONTEXT_LLM_MODEL ?? "google/gemini-2.5-flash",
-  REASONING_LLM_MODEL: process.env.REASONING_LLM_MODEL ?? "google/gemini-2.5-flash",
-  S3_ASSETS_BUCKET: process.env.S3_ASSETS_BUCKET ?? "",
-  S3_REGION: process.env.S3_REGION ?? "us-east-1",
-} as any;
+import type { ExtractedNav } from "../src/types/pipeline-artifacts";
 
 // ── Args ──────────────────────────────────────────────────────────────────
 const rawUrl = process.argv[2] ?? "https://www.torrancetraininglab.com/";
 const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
 const sourceDir = path.join(os.tmpdir(), "test-shell-build");
 const distDir = path.join(sourceDir, "dist");
+
+// config comes from ../src/database (appConfig)
 
 // ── tsx __name patch ──────────────────────────────────────────────────────
 const origLaunch = chromium.launch.bind(chromium);
@@ -69,7 +61,6 @@ chromium.launch = async (...args: Parameters<typeof chromium.launch>) => {
   return browser;
 };
 
-// ── Subprocess runner (same as build-stage) ───────────────────────────────
 function runProcess(cmd: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd, env: process.env, stdio: "inherit" });
@@ -78,203 +69,97 @@ function runProcess(cmd: string, args: string[], cwd: string): Promise<void> {
   });
 }
 
-// ── Footer extraction ─────────────────────────────────────────────────────
-async function extractFooterData(ctx: BrowserContext, pageUrl: string) {
-  const page = await ctx.newPage();
-  await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1000);
-  const data = await page.evaluate(() => {
-    const getText = (el: Element | null) => el?.textContent?.trim() ?? "";
-    const footer = document.querySelector("footer, [role='contentinfo'], [class*='footer']") as HTMLElement | null;
-    if (!footer) return { background: "#1a1a1a", textColor: "#fff", brandName: "", logoUrl: undefined as string|undefined, links: [] as {label:string;href:string}[], copyright: "" };
-    const s = getComputedStyle(footer);
-    const imgEl = footer.querySelector("img") as HTMLImageElement | null;
-    const links = Array.from(footer.querySelectorAll("a[href]"))
-      .filter(a => { const h = (a as HTMLAnchorElement).getAttribute("href") ?? ""; return h && !h.startsWith("mailto:") && !h.startsWith("tel:"); })
-      .map(a => ({ label: getText(a), href: (a as HTMLAnchorElement).getAttribute("href") ?? "" }))
-      .filter(l => l.label).slice(0, 16);
-    const copyright = footer.textContent?.match(/©[^<\n]{0,100}/)?.[0]?.trim() ?? "";
-    return { background: s.backgroundColor || "#1a1a1a", textColor: s.color || "#fff",
-      brandName: imgEl?.alt || "", logoUrl: imgEl?.src || undefined, links, copyright };
-  });
-  await page.close();
-  return data;
-}
-
-// ── Hero extraction + render ──────────────────────────────────────────────
-async function renderHero(ctx: BrowserContext, pageUrl: string, designSystem: DesignSystemV2): Promise<string> {
-  const page = await ctx.newPage();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 30_000 });
-  await page.waitForTimeout(1500);
-  await page.evaluate(() => window.scrollTo(0, 300));
-  await page.waitForTimeout(300);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(300);
-
-  const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-
-  // Find hero bounding box — prefer bg-image elements
-  const heroBbox = await page.evaluate(() => {
-    const navEl = document.querySelector('[role="banner"], header');
-    const navBottom = navEl ? navEl.getBoundingClientRect().bottom + window.scrollY : 80;
-    for (const el of Array.from(document.querySelectorAll('*'))) {
-      const r = el.getBoundingClientRect();
-      const absTop = r.top + window.scrollY;
-      if (absTop < navBottom - 5 || r.height < 200 || r.width < 800) continue;
-      const s = getComputedStyle(el as Element);
-      if (s.backgroundImage && s.backgroundImage !== 'none')
-        return { x: 0, y: Math.round(absTop), width: 1440, height: Math.round(r.height) };
-    }
-    for (const el of Array.from(document.querySelectorAll('section,[class*="hero"],main>div'))) {
-      const r = el.getBoundingClientRect();
-      const absTop = r.top + window.scrollY;
-      if (absTop >= navBottom && r.height > 300 && r.width > 800)
-        return { x: 0, y: Math.round(absTop), width: 1440, height: Math.round(r.height) };
-    }
-    return null;
-  });
-
-  if (!heroBbox) { await page.close(); return ""; }
-
-  const clip = { x: 0, y: heroBbox.y, width: 1440, height: Math.min(900, pageHeight - heroBbox.y, heroBbox.height) };
-  const cropBuf = await page.screenshot({ fullPage: true, clip });
-  const screenshotDataUri = `data:image/png;base64,${cropBuf.toString("base64")}`;
-
-  // Extract hero DOM data while page is still open
-  const heroData = await page.evaluate((heroY: number) => {
-    // Background image (largest)
-    let bgUrl: string | null = null, bestArea = 0;
-    for (const el of Array.from(document.querySelectorAll('*'))) {
-      const s = getComputedStyle(el as Element);
-      if (!s.backgroundImage || s.backgroundImage === 'none') continue;
-      const r = (el as HTMLElement).getBoundingClientRect();
-      const area = r.width * r.height;
-      if (area > bestArea) {
-        const m = s.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
-        if (m?.[1]) { bestArea = area; bgUrl = m[1]; }
-      }
-    }
-    // CTA: most saturated button in hero area
-    const sat = (rgb: string) => {
-      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (!m) return 0;
-      const r=+(m[1]!)/255,g=+(m[2]!)/255,b=+(m[3]!)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;
-      return mx===mn?0:(mx-mn)/(l>0.5?2-mx-mn:mx+mn);
-    };
-    let ctaEl:Element|null=null, bestSat=0.15;
-    for (const el of Array.from(document.querySelectorAll('a, button'))) {
-      const r=(el as HTMLElement).getBoundingClientRect();
-      if (r.top+window.scrollY<heroY||r.top+window.scrollY>heroY+1200) continue;
-      if (r.width<40||r.height<24) continue;
-      const s=sat(getComputedStyle(el as Element).backgroundColor);
-      if (s>bestSat){bestSat=s;ctaEl=el;}
-    }
-    const ctaS=ctaEl?getComputedStyle(ctaEl):null;
-    const pw=document.documentElement.clientWidth;
-    let ctaPos:'left'|'right'|'center'='center';
-    if (ctaEl){const cr=(ctaEl as HTMLElement).getBoundingClientRect();if(cr.left>pw*0.55)ctaPos='right';else if(cr.right<pw*0.45)ctaPos='left';}
-    return { bgUrl, ctaBg:ctaS?.backgroundColor??null, ctaColor:ctaS?.color??null, ctaRadius:ctaS?.borderRadius??null,
-      ctaLabel:ctaEl?(ctaEl as HTMLElement).textContent?.trim()??'':'', ctaHref:ctaEl?(ctaEl as HTMLAnchorElement).getAttribute('href')??'#':'#', ctaPos };
-  }, heroBbox.y);
-
-  await page.close();
-
-  console.log(`  BG image: ${heroData.bgUrl ? heroData.bgUrl.slice(0,70) : "not found"}`);
-  console.log(`  CTA: "${heroData.ctaLabel}" bg=${heroData.ctaBg} pos=${heroData.ctaPos}`);
-
-  const heroSection: HierarchySection = {
-    id: "test-hero", tag: "hero", intent: "hero",
-    content: {
-      heading: "", body: "",
-      images: heroData.bgUrl ? [{ url: heroData.bgUrl }] : [],
-      cta: heroData.ctaLabel ? { label: heroData.ctaLabel, href: heroData.ctaHref } : undefined,
-    },
-    evidenceId: "test-hero",
-  };
-
-  const evidence: SectionVisualEvidenceRow = {
-    evidenceId: "test-hero", pageSlug: "index", sectionId: "test-hero",
-    screenshotUrl: screenshotDataUri, boundingBox: heroBbox, computedStyles: [],
-    domStyles: {
-      ctaBackground: heroData.ctaBg ?? undefined, ctaColor: heroData.ctaColor ?? undefined,
-      ctaBorderRadius: heroData.ctaRadius ?? undefined, ctaPositionSide: heroData.ctaPos,
-    },
-  };
-
-  const rules: ResponsiveRule[] = designSystem.responsive?.rules ?? [];
-  const result = await renderVisualBlockWithFlag({
-    section: heroSection, evidence, designSystem,
-    tailwindInstructions: breakpointDeltasToTailwind(rules), config: noopConfig,
-  });
-
-  console.log(`  Hero: ${result.isFallback ? "⚠ fallback" : `✓ LLM rendered (${result.code.length} chars)`}`);
-  return result.code;
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`\n🔧 Shell mini-pipeline: ${url}`);
+  console.log(`   URL: ${url}`);
   console.log("━".repeat(50));
 
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext();
+  // ── DB + S3 ────────────────────────────────────────────────────────────
+  const db = appDb;
+  const config = appConfig;
+  const s3 = getS3Client({ endpoint: config.S3_ENDPOINT, region: config.S3_REGION, accessKeyId: config.S3_ACCESS_KEY, secretAccessKey: config.S3_SECRET_KEY });
+  try { await ensureBuckets(s3, config); } catch { /* non-fatal */ }
 
-  // ── Step 1: Extract ────────────────────────────────────────────────────
-  console.log("\n[1/6] Extracting page (Playwright)...");
-  const captured = await capturePage(ctx, url);
-  const navPage = await ctx.newPage();
-  await navPage.goto(url, { waitUntil: "networkidle" });
-  await navPage.waitForTimeout(1000);
-  const nav = await extractNavData(navPage);
-  await navPage.close();
+  // Use the eval workspace (same as the eval harness)
+  const workspaceRow = await db.selectFrom("workspaces").select("uuid").where("slug", "=", "local").executeTakeFirst();
+  const workspaceUuid = workspaceRow?.uuid ?? "8c969ddd-c7f6-47d5-96ee-a17640c7cc88";
+  const siteSlug = `shell-${crypto.createHash("sha1").update(url).digest("hex").slice(0, 10)}`;
 
-  // ── Step 2: Build design system ────────────────────────────────────────
-  console.log("[2/6] Building design system...");
-  const extract: ExtractArtifact = {
-    url, extractedAt: new Date().toISOString(),
-    css: { tokens: {}, breakpoints: [], animations: [], webFontUrls: captured.media
-      .filter(m => m.resourceType === "stylesheet" && ["fonts.googleapis.com","font-awesome","typekit"].some(p=>m.url.includes(p)))
-      .map(m => m.url) },
-    pages: [{ path: "/", media: captured.media,
-      screenshots: { full1440: captured.screenshots.full1440.toString("base64"), vp375: captured.screenshots.vp375.toString("base64"), vp768: captured.screenshots.vp768.toString("base64") },
-      content: { ...captured.content, rawText: "" } as any,
-      interactions: [], responsive: captured.responsive, pixelSamples: captured.pixelSamples,
-      computedTheme: captured.computedTheme, flags: captured.flags }],
-    siteMap: [], extractedNav: nav ?? undefined,
-    sourceBaseline: { capturedAt: new Date().toISOString(), lighthouse: [], axe: [],
-      network: [{ path: "/", totalBytes: captured.networkStats.totalBytes, requestCount: captured.networkStats.requestCount, imageBytes: captured.networkStats.imageBytes }] },
-    usage: { pagesCaptured: 1, screenshotCount: 3 },
-  };
-  const designSystem = buildDesignSystemFromExtract(extract);
+  // Look up or create site by slug (reuses existing pipeline artifacts across runs)
+  const existing = await db.selectFrom("sites").select("uuid").where("workspaceUuid", "=", workspaceUuid).where("slug", "=", siteSlug).executeTakeFirst();
+  const siteUuid = existing?.uuid ?? (await db.insertInto("sites").values({ workspaceUuid, name: `Shell ${new URL(url).hostname}`, slug: siteSlug, sourceUrl: url, status: "draft", mode: "replication" }).returning("uuid").executeTakeFirstOrThrow()).uuid;
+  console.log(`  Site: ${siteUuid} (${existing ? "existing" : "new"})`);
+  const ctx = { db, s3, config, siteUuid, workspaceUuid };
 
-  // ── Step 3: Render shell sections ──────────────────────────────────────
-  console.log("[3/6] Rendering nav (deterministic)...");
-  const navSource = nav ? renderNavComponent(nav) : "---\n---\n<nav>No nav found</nav>";
+  // ── Stage 1: Extract ───────────────────────────────────────────────────
+  console.log("\n[1/4] Extract stage (Playwright)...");
+  const extract = await runExtractStage({ ...ctx, url, pages: ["/"] });
+  console.log(`  ✓ ${extract.pages.length} page(s), nav: ${extract.extractedNav ? "found" : "not found"}`);
 
-  console.log("[4/6] Rendering hero (LLM + screenshot)...");
-  const heroSource = await renderHero(ctx, url, designSystem);
+  // ── Stage 2: Segment ───────────────────────────────────────────────────
+  console.log("[2/4] Segment stage (screenshots + vision)...");
+  const segment = await runSegmentStage({ ...ctx, pages: ["/"] });
+  const sectionCount = segment.pages.reduce((n, p) => n + p.sections.length, 0);
+  console.log(`  ✓ ${sectionCount} section(s) segmented`);
 
-  console.log("[5/6] Rendering footer (deterministic)...");
-  const footerData = await extractFooterData(ctx, url);
-  const footerSource = renderFooterComponent(footerData);
+  // ── Stage 3: Docgen ────────────────────────────────────────────────────
+  console.log("[3/4] Docgen stage (design system + evidence)...");
+  const docs = await runDocgenStage({ ...ctx, mode: "replication" });
+  await saveSiteDocs(db, workspaceUuid, docs, siteUuid);
+  console.log(`  ✓ ${docs.length} docs generated`);
 
-  await browser.close();
+  // ── Load built artifacts ───────────────────────────────────────────────
+  const designSystemDoc = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
+  const designSystem = designSystemDoc as DesignSystemV2;
+  const evidenceDoc = await loadSectionVisualEvidenceDoc(db, workspaceUuid, siteUuid);
+  const nav = extract.extractedNav as ExtractedNav | undefined;
 
-  // ── Step 6: Build real Astro project ───────────────────────────────────
-  console.log("[6/6] Building Astro project...");
+  console.log(`  Primary color: ${designSystem?.global?.tokens?.colors?.primary}`);
+  console.log(`  Font: ${designSystem?.global?.tokens?.fonts?.heading}`);
+
+  // ── Stage 4: Build shell ───────────────────────────────────────────────
+  console.log("[4/4] Building shell (nav + hero + footer)...");
+
+  // Nav — deterministic from extractedNav
+  const navSource = nav ? renderNavComponent(nav) : "---\n---\n<nav>No nav</nav>";
+
+  // Hero — find the hero section in evidence, use its S3 screenshot
+  const heroPage = segment.pages[0];
+  const heroSection = heroPage?.sections.find(s => s.tag === "hero" || s.tag === "unknown")
+    ?? heroPage?.sections[0];
+  let heroAstroSource = "";
+  if (heroSection && evidenceDoc) {
+    const evidenceRow = evidenceDoc.rows.find(r => r.evidenceId === heroSection.id);
+    if (evidenceRow?.screenshotUrl) {
+      const { imageUrlToDataUri } = await import("../src/utils/pipeline/image-to-data-url");
+      const s3ctx = { s3, bucket: config.S3_ASSETS_BUCKET, region: config.S3_REGION, endpoint: config.S3_ENDPOINT };
+      const screenshotDataUri = await imageUrlToDataUri(evidenceRow.screenshotUrl, s3ctx);
+      const section: HierarchySection = { id: heroSection.id, tag: heroSection.tag, intent: "hero", content: { heading: heroSection.headingText ?? "", body: "", images: heroSection.mediaUrls.slice(0,1).map(u => ({ url: u })) }, evidenceId: heroSection.id };
+      const evidence: SectionVisualEvidenceRow = { evidenceId: heroSection.id, pageSlug: "index", sectionId: heroSection.id, screenshotUrl: screenshotDataUri, boundingBox: heroSection.boundingBox, computedStyles: [], domStyles: evidenceRow.domStyles };
+      const rules: ResponsiveRule[] = designSystem?.responsive?.rules ?? [];
+      const result = await renderVisualBlockWithFlag({ section, evidence, designSystem, tailwindInstructions: breakpointDeltasToTailwind(rules), config });
+      heroAstroSource = result.code;
+      console.log(`  Hero: ${result.isFallback ? "⚠ fallback" : `✓ LLM rendered (${result.code.length} chars)`}`);
+    }
+  }
+
+  // Footer — deterministic from design system shell
+  const footerSection = designSystem?.global?.shell?.footer;
+  const footerSource = footerSection
+    ? renderFooterComponent({ background: designSystem.global.tokens.colors.background, textColor: designSystem.global.tokens.colors.foreground, brandName: designSystem.business.name ?? "", links: nav?.links.slice(0,12).map(l => ({ label: l.label, href: l.href })) ?? [], copyright: "" })
+    : "---\n---\n<footer></footer>";
+
+  // Write real Astro project
+  const webFontUrls = extract.css.webFontUrls ?? [];
   await rm(sourceDir, { recursive: true, force: true });
-  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls: extract.css.webFontUrls });
+  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls });
 
-  // Write shell components
   const sectionsDir = path.join(sourceDir, "src", "components", "sections");
   await mkdir(sectionsDir, { recursive: true });
   await writeFile(path.join(sourceDir, "src", "components", "shared", "Header.astro"), navSource);
   await writeFile(path.join(sourceDir, "src", "components", "shared", "Footer.astro"), footerSource);
-
-  // Write a single index page: nav (via layout) + hero + placeholder + footer (via layout)
-  const heroComponentPath = path.join(sectionsDir, "shell-hero.astro");
-  await writeFile(heroComponentPath, heroSource || `---\n---\n<div style="min-height:500px;background:#1a1a2e;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4)">Hero section</div>`);
+  await writeFile(path.join(sectionsDir, "shell-hero.astro"), heroAstroSource || `---\n---\n<div style="min-height:500px;background:#1a1a2e"></div>`);
 
   const indexPage = `---
 import Layout from "../layouts/Layout.astro";
@@ -284,13 +169,11 @@ import Hero from "../components/sections/shell-hero.astro";
   <Hero />
   <div style="padding:3rem 2rem;text-align:center;background:#f8fafc;color:#94a3b8;border-top:1px dashed #e2e8f0">
     <strong style="display:block;color:#64748b;margin-bottom:0.5rem">Page content sections</strong>
-    Full build renders all sections here
+    Full build renders all ${sectionCount} sections here
   </div>
-</Layout>
-`;
+</Layout>`;
   await writeFile(path.join(sourceDir, "src", "pages", "index.astro"), indexPage);
 
-  // pnpm install + astro build
   await runProcess("pnpm", ["install"], sourceDir);
   await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
   await relativizeAssetPaths(distDir);
@@ -298,16 +181,8 @@ import Hero from "../components/sections/shell-hero.astro";
 
   const outFile = path.join(distDir, "index.html");
   console.log(`\n✓ Built → ${outFile}`);
-  console.log(`  open ${outFile}`);
-  console.log(`\nPipeline:`);
-  console.log(`  Nav:    ${nav ? `${nav.links.length} links, ${nav.links.filter(l=>l.children?.length).length} dropdowns` : "not found"}`);
-  console.log(`  Footer: ${footerData.links.length} links`);
-  console.log(`  Primary: ${designSystem.global.tokens.colors.primary}`);
-  console.log(`  Font:    ${designSystem.global.tokens.fonts.heading}`);
-
-  // Open in browser
   const { exec } = await import("child_process");
-  exec(`open ${outFile}`);
+  exec(`open "${outFile}"`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
