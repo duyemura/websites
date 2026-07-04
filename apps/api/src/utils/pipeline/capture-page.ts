@@ -403,10 +403,14 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
 
   const result = await page.evaluate((): ExtractedNavRaw | null => {
     // ---- find the nav/header element ----
+    // Prefer the outermost banner/header container which includes BOTH the logo
+    // and the links — many frameworks (Webflow, etc.) separate logo and nav into
+    // sibling elements inside a parent wrapper rather than inside <nav> itself.
     const navEl =
+      document.querySelector('[role="banner"]') ??
+      document.querySelector("header") ??
       document.querySelector("nav") ??
-      document.querySelector('[role="navigation"]') ??
-      document.querySelector("header");
+      document.querySelector('[role="navigation"]');
     if (!navEl) return null;
 
     const navStyle = getComputedStyle(navEl as Element);
@@ -426,22 +430,29 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
     const textColor = navStyle.color;
 
     // ---- logo ----
-    const imgEl = navEl.querySelector("img") as HTMLImageElement | null;
+    // Logo is usually the first <img> in the nav, or a brand link with logo class.
+    // Look left-side first (low x position relative to navbar width).
+    const navRect = navEl.getBoundingClientRect();
+    const allImgs = Array.from(navEl.querySelectorAll("img")) as HTMLImageElement[];
+    // Prefer the image in the left third of the nav (logo area)
+    const logoImg = allImgs.find(img => {
+      const r = img.getBoundingClientRect();
+      return r.width > 8 && r.height > 8 && r.left < navRect.left + navRect.width * 0.4;
+    }) ?? allImgs[0] ?? null;
+
     let logo: { type: "image" | "text"; value: string; alt?: string };
-    if (imgEl) {
-      logo = {
-        type: "image",
-        value: imgEl.src,
-        alt: imgEl.alt || undefined,
-      };
+    if (logoImg) {
+      logo = { type: "image", value: logoImg.src, alt: logoImg.alt || undefined };
     } else {
-      const brandEl = navEl.querySelector(
-        '[class*="logo"],[class*="brand"],[class*="Logo"],[class*="Brand"]',
+      // Text logo: brand link or first prominent link in left area
+      const brandEl = (
+        navEl.querySelector('[class*="brand"],[class*="logo"],[class*="Brand"],[class*="Logo"]') ??
+        Array.from(navEl.querySelectorAll("a")).find(a => {
+          const r = (a as HTMLElement).getBoundingClientRect();
+          return r.left < navRect.left + navRect.width * 0.4 && r.width > 20;
+        })
       ) as HTMLElement | null;
-      logo = {
-        type: "text",
-        value: brandEl?.innerText?.trim() ?? (navEl as HTMLElement).innerText?.split("\n")[0]?.trim() ?? "",
-      };
+      logo = { type: "text", value: brandEl?.innerText?.trim() ?? "" };
     }
 
     // ---- saturation helper (same as computedTheme) ----
@@ -478,41 +489,97 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
       }
     }
 
-    // ---- links: walk list items in the nav ----
-    function extractLinks(container: Element): NavLinkRaw[] {
-      const items = Array.from(
-        container.querySelectorAll(":scope > li, :scope > ul > li"),
-      );
-      if (items.length === 0) {
-        // Fallback: direct anchor children if no <li>
-        return Array.from(container.querySelectorAll(":scope > a[href]")).map((a) => ({
-          label: (a as HTMLElement).innerText?.trim() ?? "",
-          href: (a as HTMLAnchorElement).getAttribute("href") ?? "",
-        })).filter((l) => l.label.length > 0 && l.href.length > 0);
-      }
+    // ---- links: generic extraction that works without <ul>/<li> ----
+    // Many frameworks (Webflow, etc.) use flat <a> + dropdown wrapper divs.
+    // Strategy: find the nav menu container, then extract top-level link items.
+    function extractLinksFromEl(container: Element, isRoot = false): NavLinkRaw[] {
       const result: NavLinkRaw[] = [];
-      for (const li of items) {
-        const anchor = li.querySelector(":scope > a[href]") as HTMLAnchorElement | null;
-        if (!anchor) continue;
-        const label = anchor.innerText?.trim() ?? "";
-        const href = anchor.getAttribute("href") ?? "";
-        if (!label) continue;
-        // Detect dropdown children: nested <ul> or [class*=dropdown] / [class*=submenu]
-        const subList =
-          li.querySelector(":scope > ul") ??
-          li.querySelector('[class*="dropdown"],[class*="submenu"],[class*="sub-menu"]');
-        const children = subList ? extractLinks(subList) : undefined;
-        result.push({ label, href, ...(children && children.length ? { children } : {}) });
+      const seen = new Set<string>();
+
+      // innerText is layout-dependent and returns "" for display:none elements
+      // (closed dropdowns). Always use textContent for link labels.
+      const getText = (el: Element) => el.textContent?.trim() ?? "";
+
+      // Walk direct children looking for link-like elements
+      for (const child of Array.from(container.children)) {
+        const tag = child.tagName.toLowerCase();
+
+        // <li> — classic pattern
+        if (tag === "li") {
+          const anchor = child.querySelector(":scope > a[href]") as HTMLAnchorElement | null;
+          if (!anchor) continue;
+          const label = getText(anchor);
+          const href = anchor.getAttribute("href") ?? "";
+          if (!label || seen.has(label)) continue;
+          seen.add(label);
+          const subList = child.querySelector(":scope > ul, :scope > ol, :scope > [class*='dropdown'], :scope > [class*='submenu']");
+          const children = subList ? extractLinksFromEl(subList) : undefined;
+          result.push({ label, href, ...(children?.length ? { children } : {}) });
+          continue;
+        }
+
+        // <a href> — direct link (use textContent so hidden brand links don't count)
+        if (tag === "a") {
+          const a = child as HTMLAnchorElement;
+          const href = a.getAttribute("href") ?? "";
+          if (!href) continue;
+          const label = getText(a);
+          if (!label || seen.has(label)) continue;
+          // Skip if in logo area (left 30% of nav) — only at root level
+          if (isRoot) {
+            const r = a.getBoundingClientRect();
+            if (r.left < navRect.left + navRect.width * 0.3) continue;
+          }
+          seen.add(label);
+          result.push({ label, href });
+          continue;
+        }
+
+        // Dropdown wrapper div (Webflow w-dropdown, Bootstrap dropdown, etc.)
+        if (tag === "div") {
+          // Find the trigger — the visible label (toggle div, button, or direct link)
+          const trigger = child.querySelector(
+            ":scope > [class*='toggle'], :scope > [class*='trigger'], :scope > button, :scope > a[href]"
+          ) as HTMLElement | null;
+          if (trigger) {
+            // Standard dropdown: trigger + panel sibling
+            const label = getText(trigger);
+            const href = (trigger as HTMLAnchorElement).getAttribute("href") ?? "#";
+            if (label && !seen.has(label)) {
+              seen.add(label);
+              // Panel: direct child that isn't the trigger and contains links
+              const panel = Array.from(child.children).find(
+                c => c !== trigger && c.querySelector("a[href]")
+              ) as Element | undefined;
+              const children = panel ? extractLinksFromEl(panel) : undefined;
+              result.push({ label, href, ...(children?.length ? { children } : {}) });
+            }
+          } else {
+            // No trigger — transparent link wrapper (e.g. Webflow CMS list, flex div).
+            // Collect ALL links from the subtree generically — works for any depth of
+            // wrapper divs whether the site uses w-dyn-list, flex containers, etc.
+            const deepLinks = Array.from(child.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+            for (const deepLink of deepLinks) {
+              const label = getText(deepLink);
+              const href = deepLink.getAttribute("href") ?? "";
+              if (label && !seen.has(label)) {
+                seen.add(label);
+                result.push({ label, href });
+              }
+            }
+          }
+        }
       }
       return result;
     }
 
-    // Find the primary <ul> in nav (skip logo area)
-    const primaryList =
-      navEl.querySelector("nav > ul") ??
-      navEl.querySelector("ul") ??
+    // Find the menu container: prefer <nav> inside the banner, or the banner itself
+    const menuEl =
+      navEl.querySelector("nav") ??
+      navEl.querySelector('[role="navigation"]') ??
+      navEl.querySelector("ul")?.parentElement ??
       navEl;
-    const links = extractLinks(primaryList);
+    const links = extractLinksFromEl(menuEl, true);
 
     // ---- mobile toggle ----
     const toggleEl = navEl.querySelector(
