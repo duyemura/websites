@@ -148,18 +148,29 @@ export async function capturePage(
     const heading = document.querySelector("h1, h2, h3");
     const headingStyle = heading ? getComputedStyle(heading) : null;
 
-    // Primary accent: first colored button or link that isn't transparent/white/black
-    const isGeneric = (c: string) =>
-      !c || c === "rgba(0, 0, 0, 0)" || c === "rgb(255, 255, 255)" ||
-      c === "rgb(0, 0, 0)" || c.startsWith("rgba(0, 0, 0,");
+    // Primary accent: the most saturated background color among visible interactive
+    // elements. Saturation distinguishes brand colors (high) from near-blacks,
+    // near-whites, and grays (low) — which naïve "non-transparent" checks miss.
+    const rgbSaturation = (rgb: string): number => {
+      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!m) return 0;
+      const r = +(m[1] ?? 0) / 255, g = +(m[2] ?? 0) / 255, b = +(m[3] ?? 0) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max === min) return 0;
+      const l = (max + min) / 2;
+      return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+    };
     let primaryAccent: string | null = null;
-    for (const sel of ["a", "button", "[class*='btn']", "[class*='cta']"]) {
-      for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 20)) {
-        const s = getComputedStyle(el as Element);
-        if (!isGeneric(s.backgroundColor)) { primaryAccent = s.backgroundColor; break; }
-        if (!isGeneric(s.color)) { primaryAccent = s.color; break; }
-      }
-      if (primaryAccent) break;
+    let bestSat = 0.15; // minimum saturation threshold to qualify as a brand color
+    const candidateEls = Array.from(
+      document.querySelectorAll("a, button, [class*='btn'], [class*='cta'], [class*='button']"),
+    ).slice(0, 60);
+    for (const el of candidateEls) {
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      if (rect.width < 40 || rect.height < 24) continue; // skip tiny/invisible elements
+      const bg = getComputedStyle(el as Element).backgroundColor;
+      const sat = rgbSaturation(bg);
+      if (sat > bestSat) { bestSat = sat; primaryAccent = bg; }
     }
 
     // Section backgrounds: top-level visible sections.
@@ -171,7 +182,7 @@ export async function capturePage(
       const rect = el.getBoundingClientRect();
       if (rect.height < 50) continue;
       const bg = getComputedStyle(el as Element).backgroundColor;
-      if (isGeneric(bg)) continue;
+      if (!bg || bg === "rgba(0, 0, 0, 0)" || bg === "transparent") continue;
       const cls = typeof (el as HTMLElement).className === "string"
         ? (el as HTMLElement).className.trim().split(/\s+/)[0] : "";
       sectionBackgrounds.push({ selector: cls || el.tagName.toLowerCase(), background: bg });
