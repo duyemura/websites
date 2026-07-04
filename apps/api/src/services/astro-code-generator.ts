@@ -718,12 +718,17 @@ export function renderFooterComponent(footer: {
     ? footer.linkGroups
     : [{ links: footer.links }];
 
+  const isAddressGroup = (heading?: string) =>
+    !!heading && /address|location|find us|where/i.test(heading);
+
   const columnsHtml = groups.map(g => `
     <div>
       ${g.heading ? `<div class="mb-3 text-xs font-semibold uppercase tracking-widest" style="color:${headingColor}">${g.heading}</div>` : ""}
-      <ul class="space-y-2 list-none p-0 m-0">
+      ${isAddressGroup(g.heading) && footer.address
+        ? `<p style="color:${linkColor};font-size:0.875rem;line-height:1.6;">${footer.address.replace(/\n/g, "<br/>")}</p>`
+        : `<ul class="space-y-2 list-none p-0 m-0">
         ${g.links.map(l => `<li><a href="${l.href}" class="hover:opacity-80 transition-opacity" style="color:${linkColor};text-decoration:none;font-size:0.875rem;">${l.label}</a></li>`).join("\n        ")}
-      </ul>
+      </ul>`}
     </div>`).join("\n  ");
 
   const addressHtml = footer.address

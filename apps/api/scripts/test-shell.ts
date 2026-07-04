@@ -174,9 +174,16 @@ async function main() {
       if (platform) socialLinks.push({ platform, href });
     }
 
-    // Address: look for address-like text
-    const addrEl = footer.querySelector("address, [class*='address']") as HTMLElement | null;
-    const address = addrEl ? getText(addrEl) : "";
+    // Address: look for address-like element or text with a zip code
+    const addrEl = footer.querySelector("address, [class*='address'], [class*='location']") as HTMLElement | null;
+    let address = addrEl ? getText(addrEl) : "";
+    if (!address) {
+      // Fallback: find any paragraph/div with a 5-digit zip
+      for (const el of Array.from(footer.querySelectorAll("p, div, span"))) {
+        const t = el.textContent?.trim() ?? "";
+        if (/\d{5}/.test(t) && t.length < 100 && t.length > 5) { address = t; break; }
+      }
+    }
 
     // Link columns: find all containers that have a heading + at least 2 links.
     // Works generically: Webflow, Bootstrap, hand-coded, any framework.
