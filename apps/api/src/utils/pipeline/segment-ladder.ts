@@ -164,10 +164,12 @@ function mergeWithVisionReplacement(
   const kept = existing.filter(
     (c) => c.source === "semantic" || c.boundingBox.height <= maxHeight,
   );
-  // Add all vision candidates that don't overlap with kept semantic candidates.
+  // Add vision candidates, only excluding those that substantially overlap with
+  // large semantic sections (height > 150px). Small semantic sections like nav
+  // bars (80px) should not block vision candidates for the sections below them.
   for (const v of vision) {
     const overlapsSemantic = kept.some(
-      (k) => k.source === "semantic" && verticalOverlap(k.boundingBox, v.boundingBox) > 0.5,
+      (k) => k.source === "semantic" && k.boundingBox.height > 150 && verticalOverlap(k.boundingBox, v.boundingBox) > 0.5,
     );
     if (!overlapsSemantic) kept.push(v);
   }
