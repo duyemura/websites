@@ -675,6 +675,41 @@ export function renderNavComponent(nav: ExtractedNav): string {
 `;
 }
 
+/** Deterministic footer renderer from extracted DOM data.
+ *  Same pattern as renderNavComponent — no LLM, exact computed values. */
+export function renderFooterComponent(footer: {
+  background: string;
+  textColor: string;
+  brandName: string;
+  logoUrl?: string;
+  links: { label: string; href: string }[];
+  copyright: string;
+}): string {
+  const logoHtml = footer.logoUrl
+    ? `<img src="${footer.logoUrl}" alt="${footer.brandName}" class="h-8 w-auto mb-4" />`
+    : footer.brandName
+      ? `<div class="text-lg font-bold mb-4" style="color:${footer.textColor}">${footer.brandName}</div>`
+      : "";
+
+  const linkItems = footer.links
+    .map(l => `<a href="${l.href}" class="hover:opacity-80 transition-opacity" style="color:${footer.textColor};opacity:0.7;text-decoration:none;font-size:0.875rem;">${l.label}</a>`)
+    .join("\n    ");
+
+  return `---
+// Footer component — generated deterministically from live DOM computed styles
+---
+<footer data-section-id="shell-footer" style="background:${footer.background};color:${footer.textColor};">
+  <div class="mx-auto max-w-6xl px-6 py-12">
+    ${logoHtml}
+    <nav class="flex flex-wrap gap-x-6 gap-y-2 mb-8">
+      ${linkItems}
+    </nav>
+    ${footer.copyright ? `<p class="text-sm" style="opacity:0.4;color:${footer.textColor};border-top:1px solid rgba(128,128,128,0.2);padding-top:1.5rem;">${footer.copyright}</p>` : ""}
+  </div>
+</footer>
+`;
+}
+
 export function makeDefaultHeader(designSystem: DesignSystem | DesignSystemV2): SiteSection {
   // v1 DesignSystem still carries navLinks on the shell; v2 does not (nav links
   // now come from ExtractedNav). Access via type assertion to avoid errors on v2.
