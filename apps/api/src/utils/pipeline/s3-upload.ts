@@ -23,7 +23,7 @@ export async function uploadPipelineImage(
       Key: key,
       Body: body,
       ContentType: contentType,
-      ...(options?.publicRead ? { ACL: "public-read" } : {}),
+      // Public read is handled by the bucket policy — no per-object ACL needed.
     }),
   );
   return buildS3ObjectUrl({
