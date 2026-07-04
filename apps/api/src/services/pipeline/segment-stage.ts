@@ -344,125 +344,262 @@ async function visionSegment(
 }
 
 type DomStyles = NonNullable<import("../../types/pipeline-artifacts").SegmentSection["domStyles"]>;
+type DomStylesValues = import("../../types/pipeline-artifacts").DomStylesValues;
 
 /**
- * Extract computed CSS values from the live DOM for a section's bounding box.
- * Returns exact values (colors, font weights, overlay opacity, CTA position)
- * so the build stage LLM converts data → code rather than guessing from screenshots.
+ * Core DOM extraction logic run inside page.evaluate at a given viewport width.
+ * The `vpWidth` is used to compute proportional content-width percentages.
+ *
+ * At 375px (mobile) we use a fixed center point and a fixed focus-Y near the top
+ * of the viewport rather than re-mapping the 1440px bounding box coordinates,
+ * because the layout reflowed and positions are unpredictable.
+ */
+async function extractStylesAtViewport(
+  page: Page,
+  bbox: { x: number; y: number; width: number; height: number },
+  vpWidth: number,
+): Promise<DomStylesValues> {
+  const isMobile = vpWidth <= 400;
+  return page.evaluate(
+    ({ bx, by, bw, bh, mobile }: { bx: number; by: number; bw: number; bh: number; mobile: boolean }) => {
+      // On mobile the section has likely reflowed and the 1440px bbox coords are
+      // invalid.  Use a fixed sample point near the top of the visible content.
+      let cx: number;
+      let focusY: number;
+      if (mobile) {
+        cx = window.innerWidth / 2;
+        focusY = 300; // reasonable "top of page content" point on mobile
+        window.scrollTo({ top: 0, behavior: "instant" });
+      } else {
+        focusY = by + Math.min(bh / 3, 350);
+        const targetScrollY = Math.max(0, focusY - window.innerHeight / 2);
+        window.scrollTo({ top: targetScrollY, behavior: "instant" });
+        cx = bx + bw / 2;
+      }
+      const cy = mobile ? focusY : focusY - window.scrollY;
+
+      // Walk up from the center point to find the SECTION CONTAINER — a structural
+      // element (div/section/article) that holds the heading + body + CTA together.
+      // Skip heading and inline elements even if they're large enough; we need a
+      // container that we can query for child elements.
+      const LEAF_TAGS = new Set(['H1','H2','H3','H4','H5','H6','P','SPAN','A','BUTTON','IMG','VIDEO','SVG','BR']);
+      let el: Element | null = document.elementFromPoint(cx, Math.max(1, cy));
+      while (el && el !== document.body) {
+        const r = el.getBoundingClientRect();
+        const isContainer = !LEAF_TAGS.has(el.tagName);
+        if (isContainer && (r.height >= (mobile ? 150 : bh * 0.5) || r.width >= window.innerWidth * 0.7)) break;
+        el = el.parentElement;
+      }
+      if (!el || el === document.body) return {};
+      // If the found element has no heading it's likely a background container.
+      // Keep walking up to find the real content container that has the heading.
+      if (!el.querySelector("h1,h2,h3")) {
+        let p = el.parentElement;
+        while (p && p !== document.body) {
+          if (p.querySelector("h1,h2,h3")) { el = p; break; }
+          p = p.parentElement;
+        }
+      }
+
+      const s = getComputedStyle(el);
+      const elWidth = el.getBoundingClientRect().width || window.innerWidth;
+
+      // Detect overlay: positioned child with rgba dark background
+      let overlayBackground: string | undefined;
+      for (const child of Array.from(el.querySelectorAll("*"))) {
+        const cs = getComputedStyle(child as Element);
+        if (
+          (cs.position === "absolute" || cs.position === "fixed") &&
+          cs.backgroundColor.startsWith("rgba(0")
+        ) {
+          overlayBackground = cs.backgroundColor;
+          break;
+        }
+      }
+
+      // Primary heading — pick the heading with the LARGEST computed font-size.
+      const hEl = Array.from(el.querySelectorAll("h1,h2,h3")).reduce(
+        (best: Element | null, h) => {
+          const sz = parseFloat(getComputedStyle(h).fontSize ?? "0");
+          const bestSz = best ? parseFloat(getComputedStyle(best).fontSize ?? "0") : 0;
+          return sz > bestSz ? h : best;
+        }, null,
+      );
+      const hs = hEl ? getComputedStyle(hEl) : null;
+
+      // CTA button — identified by DOM structure, not color.
+      const CTA_CLASS_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free.?trial|start)\b/i;
+      const isPhoneOrEmail = (href: string | null) => !!href && (href.startsWith("tel:") || href.startsWith("mailto:"));
+      const candidates: { el: Element; score: number }[] = [];
+      for (const btn of Array.from(el.querySelectorAll("a[href], button"))) {
+        const rect = btn.getBoundingClientRect();
+        if (rect.width < 50 || rect.height < 28) continue;
+        const href = (btn as HTMLAnchorElement).getAttribute("href") ?? null;
+        if (isPhoneOrEmail(href)) continue;
+        const text = (btn as HTMLElement).textContent?.trim() ?? "";
+        if (!text || text.length > 60) continue;
+        const cls = (btn as HTMLElement).className ?? "";
+        const classScore = CTA_CLASS_RE.test(cls) ? 10 : 0;
+        const headingScore = hEl ? Math.max(0, 5 - Math.abs(btn.getBoundingClientRect().top - hEl.getBoundingClientRect().bottom) / 100) : 0;
+        candidates.push({ el: btn, score: classScore + headingScore });
+      }
+      candidates.sort((a, b) => b.score - a.score);
+      const ctaEl = candidates[0]?.el ?? null;
+      const ctaS = ctaEl ? getComputedStyle(ctaEl) : null;
+
+      let ctaPositionSide: "left" | "right" | "center" = "center";
+      if (ctaEl && hEl) {
+        const hr = hEl.getBoundingClientRect();
+        const cr = (ctaEl as HTMLElement).getBoundingClientRect();
+        if (cr.left > hr.right - 50) ctaPositionSide = "right";
+        else if (cr.right < hr.left + 50) ctaPositionSide = "left";
+      }
+
+      const ctaLabel = ctaEl ? (ctaEl as HTMLElement).textContent?.trim() ?? undefined : undefined;
+      const ctaHref = ctaEl ? (ctaEl as HTMLAnchorElement).getAttribute("href") ?? undefined : undefined;
+
+      // Eyebrow: short text that appears BEFORE the main heading with a much smaller font.
+      // Works for any framework: class-based selectors first, then structural detection
+      // (headings before the main heading that are at least 50% smaller in font size).
+      let eyebrowText: string | undefined;
+      const mainHeadingSize = hEl ? parseFloat(getComputedStyle(hEl).fontSize) : 0;
+      // 1. Class-based (explicit eyebrow/badge/etc classes)
+      const classBased = el.querySelector("[class*='eyebrow'],[class*='badge'],[class*='label'],[class*='tag'],[class*='pill']");
+      if (classBased) {
+        const t = (classBased as HTMLElement).textContent?.trim() ?? "";
+        if (t && t.length < 80 && t !== (hEl?.textContent?.trim() ?? "")) eyebrowText = t;
+      }
+      // 2. Structural: any heading before the main heading that is much smaller (eyebrow pattern)
+      if (!eyebrowText && hEl) {
+        const allHeadings = Array.from(el.querySelectorAll("h1,h2,h3,h4,h5,h6"));
+        const mainIdx = allHeadings.indexOf(hEl);
+        for (let i = mainIdx - 1; i >= 0; i--) {
+          const h = allHeadings[i]!;
+          const sz = parseFloat(getComputedStyle(h as Element).fontSize);
+          const t = (h as HTMLElement).textContent?.trim() ?? "";
+          if (t && t.length < 80 && sz < mainHeadingSize * 0.6) { eyebrowText = t; break; }
+        }
+      }
+
+      // Body text: first body-like text element after the main heading.
+      // Checks <p> and also <div> elements (some frameworks avoid <p> tags).
+      // Text must be sentence-length (>20 chars) but not a long wall of text (<400 chars).
+      let bodyText: string | undefined;
+      if (hEl) {
+        const headingBottom = hEl.getBoundingClientRect().bottom;
+        const bodyCandidates = Array.from(el.querySelectorAll("p, div, span"))
+          .filter(e => {
+            if (e.querySelector("a, button, h1, h2, h3, h4, input")) return false; // skip containers with interactive/heading children
+            const r = e.getBoundingClientRect();
+            const t = (e as HTMLElement).textContent?.trim() ?? "";
+            return r.top >= headingBottom - 10 && t.length > 20 && t.length < 400;
+          });
+        if (bodyCandidates[0]) {
+          const t = (bodyCandidates[0] as HTMLElement).textContent?.trim() ?? "";
+          bodyText = t.length > 300 ? t.slice(0, 300).trim() + "…" : t;
+        }
+      }
+
+      // Content container width — find ancestor of heading that is narrower than section.
+      let contentWidthPct: string | undefined;
+      if (hEl) {
+        let contentEl: Element | null = hEl.parentElement;
+        while (contentEl && contentEl !== el) {
+          const cr = contentEl.getBoundingClientRect();
+          if (cr.width > 100 && cr.width < elWidth * 0.85) {
+            contentWidthPct = `${Math.round(cr.width / elWidth * 100)}%`;
+            break;
+          }
+          contentEl = contentEl.parentElement;
+        }
+      }
+
+      const bgImg = s.backgroundImage;
+      return {
+        containerBackground: s.backgroundColor,
+        containerBackgroundImage: bgImg !== "none" ? bgImg : undefined,
+        overlayBackground,
+        headingFontSize: hs?.fontSize,
+        headingFontWeight: hs?.fontWeight,
+        headingColor: hs?.color,
+        headingTextTransform: hs?.textTransform !== "none" ? hs?.textTransform : undefined,
+        ctaBackground: ctaS?.backgroundColor,
+        ctaColor: ctaS?.color,
+        ctaBorderRadius: ctaS?.borderRadius,
+        ctaPositionSide: ctaEl ? ctaPositionSide : undefined,
+        ctaLabel,
+        ctaHref,
+        eyebrowText,
+        bodyText,
+        contentWidthPct,
+        flexDirection: s.flexDirection !== "row" ? s.flexDirection : undefined,
+        textAlign: s.textAlign !== "start" && s.textAlign !== "left" ? s.textAlign : undefined,
+        padding: s.padding !== "0px" ? s.padding : undefined,
+      };
+    },
+    { bx: bbox.x, by: bbox.y, bw: bbox.width, bh: bbox.height, mobile: isMobile },
+  );
+}
+
+/** Return only the keys in `next` that differ from `base` (omit identical values). */
+function diffStyles(
+  base: DomStylesValues,
+  next: DomStylesValues,
+): Partial<DomStylesValues> {
+  const delta: Partial<DomStylesValues> = {};
+  for (const _key of Object.keys(next) as Array<keyof DomStylesValues>) {
+    const k = _key;
+    if (next[k] !== base[k]) {
+      // TypeScript needs an explicit cast here because the index signature types
+      // aren't identical across all field types.
+      (delta as Record<string, unknown>)[k] = next[k];
+    }
+  }
+  return delta;
+}
+
+/**
+ * Extract computed CSS values from the live DOM for a section's bounding box,
+ * running the extraction at 375px, 768px, and 1440px viewports.
+ *
+ * Returns a mobile-first tiered structure: `base` (375px) always has all
+ * values; `md` (768px) and `lg` (1440px) contain only the fields that changed
+ * relative to the narrower tier, keeping the LLM prompt compact.
+ *
+ * The page viewport is restored to 1440px after all 3 runs.
  */
 async function extractSectionDomStyles(
   page: Page,
   bbox: { x: number; y: number; width: number; height: number },
 ): Promise<DomStyles> {
+  const viewports = [
+    { width: 375, height: 812 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+  ] as const;
+
   try {
-    await page.evaluate((y: number) => window.scrollTo(0, y), Math.max(0, bbox.y - 100));
-    await page.waitForTimeout(80);
+    const results: DomStylesValues[] = [];
+    for (const vp of viewports) {
+      await page.setViewportSize(vp);
+      await page.waitForTimeout(200);
+      const styles = await extractStylesAtViewport(page, bbox, vp.width);
+      results.push(styles);
+    }
+    // Restore to desktop viewport for the remainder of segment processing.
+    await page.setViewportSize({ width: 1440, height: 900 });
 
-    return await page.evaluate(
-      ({ bx, by, bw, bh }: { bx: number; by: number; bw: number; bh: number }) => {
-        const cx = bx + bw / 2;
-        const cy = by + bh / 2 - window.scrollY;
-
-        // Walk up from the center point to find the section container
-        let el: Element | null = document.elementFromPoint(cx, Math.max(1, cy));
-        while (el && el !== document.body) {
-          const r = el.getBoundingClientRect();
-          if (r.height >= bh * 0.5 || r.width >= bw * 0.7) break;
-          el = el.parentElement;
-        }
-        if (!el || el === document.body) return {};
-
-        const s = getComputedStyle(el);
-
-        // Detect overlay: positioned child with rgba dark background
-        let overlayBackground: string | undefined;
-        for (const child of Array.from(el.querySelectorAll("*"))) {
-          const cs = getComputedStyle(child as Element);
-          if (
-            (cs.position === "absolute" || cs.position === "fixed") &&
-            cs.backgroundColor.startsWith("rgba(0")
-          ) {
-            overlayBackground = cs.backgroundColor;
-            break;
-          }
-        }
-
-        // Primary heading
-        const hEl = el.querySelector("h1, h2, h3");
-        const hs = hEl ? getComputedStyle(hEl) : null;
-
-        // CTA button — most saturated background color among visible buttons/links
-        const rgbSat = (rgb: string): number => {
-          const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-          if (!m) return 0;
-          const r = +(m[1]!) / 255, g = +(m[2]!) / 255, b = +(m[3]!) / 255;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          const l = (max + min) / 2;
-          return max === min ? 0 : (max - min) / (l > 0.5 ? 2 - max - min : max + min);
-        };
-        let ctaEl: Element | null = null, bestSat = 0.15;
-        for (const btn of Array.from(el.querySelectorAll("a, button"))) {
-          const r = btn.getBoundingClientRect();
-          if (r.width < 40 || r.height < 24) continue;
-          const bg = getComputedStyle(btn as Element).backgroundColor;
-          const sat = rgbSat(bg);
-          if (sat > bestSat) { bestSat = sat; ctaEl = btn; }
-        }
-        const ctaS = ctaEl ? getComputedStyle(ctaEl) : null;
-
-        let ctaPositionSide: "left" | "right" | "center" = "center";
-        if (ctaEl && hEl) {
-          const hr = hEl.getBoundingClientRect();
-          const cr = (ctaEl as HTMLElement).getBoundingClientRect();
-          if (cr.left > hr.right - 50) ctaPositionSide = "right";
-          else if (cr.right < hr.left + 50) ctaPositionSide = "left";
-        }
-
-        // CTA label and href — extracted from the same element we found by saturation
-        const ctaLabel = ctaEl ? (ctaEl as HTMLElement).textContent?.trim() ?? undefined : undefined;
-        const ctaHref = ctaEl ? (ctaEl as HTMLAnchorElement).getAttribute("href") ?? undefined : undefined;
-
-        // Eyebrow: small uppercase text near the top of the section, often in a badge/pill
-        let eyebrowText: string | undefined;
-        const eyebrowCandidates = [
-          el.querySelector("[class*='eyebrow'],[class*='badge'],[class*='label'],[class*='tag'],[class*='pill']"),
-          el.querySelector("p + h1, p + h2"), // <p> before a heading is often an eyebrow
-        ];
-        for (const ec of eyebrowCandidates) {
-          if (!ec) continue;
-          const t = (ec as HTMLElement).textContent?.trim() ?? "";
-          // Eyebrows are short (< 60 chars) and appear before the main heading
-          if (t && t.length < 60 && t !== (hEl?.textContent?.trim() ?? "")) {
-            eyebrowText = t;
-            break;
-          }
-        }
-
-        const bgImg = s.backgroundImage;
-        return {
-          containerBackground: s.backgroundColor,
-          containerBackgroundImage: bgImg !== "none" ? bgImg : undefined,
-          overlayBackground,
-          headingFontSize: hs?.fontSize,
-          headingFontWeight: hs?.fontWeight,
-          headingColor: hs?.color,
-          headingTextTransform: hs?.textTransform !== "none" ? hs?.textTransform : undefined,
-          ctaBackground: ctaS?.backgroundColor,
-          ctaColor: ctaS?.color,
-          ctaBorderRadius: ctaS?.borderRadius,
-          ctaPositionSide: ctaEl ? ctaPositionSide : undefined,
-          ctaLabel,
-          ctaHref,
-          eyebrowText,
-          flexDirection: s.flexDirection !== "row" ? s.flexDirection : undefined,
-          textAlign: s.textAlign !== "start" && s.textAlign !== "left" ? s.textAlign : undefined,
-          padding: s.padding !== "0px" ? s.padding : undefined,
-        };
-      },
-      { bx: bbox.x, by: bbox.y, bw: bbox.width, bh: bbox.height },
-    );
+    const [base, styles768, styles1440] = results as [DomStylesValues, DomStylesValues, DomStylesValues];
+    return {
+      base,
+      md: diffStyles(base, styles768),
+      lg: diffStyles(styles768, styles1440),
+    };
   } catch {
-    return {}; // non-fatal — build stage falls back to screenshot interpretation
+    // Non-fatal — build stage falls back to screenshot interpretation.
+    // Return an empty base tier so the schema still validates.
+    await page.setViewportSize({ width: 1440, height: 900 }).catch(() => {});
+    return { base: {}, md: {}, lg: {} };
   }
 }
 

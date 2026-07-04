@@ -14,7 +14,9 @@ import { extractNavData } from "../src/utils/pipeline/capture-page";
 import { renderNavComponent } from "../src/services/astro-code-generator";
 import type { ExtractedNav } from "../src/types/pipeline-artifacts";
 
-const url = process.argv[2] ?? "https://www.torrancetraininglab.com/";
+// Normalize URL — add https:// if no protocol given
+const rawUrl = process.argv[2] ?? "https://www.torrancetraininglab.com/";
+const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
 const out = process.argv[3] ?? "/tmp/test-nav.html";
 
 // ── __name patch for tsx/esbuild ──────────────────────────────────────────

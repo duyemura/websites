@@ -34,7 +34,7 @@ import {
   inlineCssIntoHtml,
   type FooterLinkGroup,
 } from "../src/services/astro-code-generator";
-import { renderVisualBlockWithFlag } from "../src/services/visual-section-renderer";
+import { renderVisualBlockWithFlag, renderHeroBlock } from "../src/services/visual-section-renderer";
 import { breakpointDeltasToTailwind } from "../src/utils/pipeline/breakpoint-tailwind";
 import { saveSiteDocs } from "../src/utils/site-docs";
 import type { DesignSystemV2, ResponsiveRule } from "../src/types/design-system-v2";
@@ -130,24 +130,33 @@ async function main() {
   // then pair with the S3 segment screenshot for visual context
   const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
   const heroPage = segment.pages[0];
-  const heroSegSection = heroPage?.sections.find(s => s.tag === "hero" || s.tag === "unknown") ?? heroPage?.sections[0];
-  // Real hierarchy section has content.heading, content.body, content.cta populated by docgen
-  const realHeroSection = hierarchy?.pages[0]?.sections.find(s => s.id === heroSegSection?.id)
-    ?? hierarchy?.pages[0]?.sections.find(s => s.tag === "hero");
+  // Prefer an explicitly tagged hero; fall back to first substantial non-shell section
+  const heroSegSection = heroPage?.sections.find(s => s.tag === "hero")
+    ?? heroPage?.sections.find(s => s.tag !== "header" && s.tag !== "footer")
+    ?? heroPage?.sections[0];
+  // Load the matching section from the hierarchy — it has real heading/body/cta from docgen
+  const realHeroSection = hierarchy?.pages[0]?.sections.find(s => s.tag === "hero")
+    ?? hierarchy?.pages[0]?.sections.find(s => s.id === heroSegSection?.id)
+    ?? hierarchy?.pages[0]?.sections[0];
   let heroAstroSource = "";
   if (heroSegSection && evidenceDoc && realHeroSection) {
     const evidenceRow = evidenceDoc.rows.find(r => r.evidenceId === heroSegSection.id);
     if (evidenceRow?.screenshotUrl) {
       const { imageUrlToDataUri } = await import("../src/utils/pipeline/image-to-data-url");
       const s3ctx = { s3, bucket: config.S3_ASSETS_BUCKET, region: config.S3_REGION, endpoint: config.S3_ENDPOINT };
-      const screenshotDataUri = await imageUrlToDataUri(evidenceRow.screenshotUrl, s3ctx);
-      // Use the REAL hierarchy section — heading/body/cta/eyebrow from docgen, not empty
-      const evidence: SectionVisualEvidenceRow = { evidenceId: realHeroSection.id, pageSlug: "index", sectionId: realHeroSection.id, screenshotUrl: screenshotDataUri, boundingBox: heroSegSection.boundingBox, computedStyles: [], domStyles: evidenceRow.domStyles };
-      const rules: ResponsiveRule[] = designSystem?.responsive?.rules ?? [];
+      let screenshotDataUri: string | undefined;
+      try {
+        screenshotDataUri = await imageUrlToDataUri(evidenceRow.screenshotUrl, s3ctx);
+        console.log(`  Screenshot: ${screenshotDataUri.length} chars`);
+      } catch (err) {
+        console.error(`  ⚠ Screenshot fetch failed: ${(err as Error).message}`);
+      }
+      if (!screenshotDataUri) { console.log("  Skipping hero (no screenshot)"); }
+      const evidence: SectionVisualEvidenceRow = { evidenceId: realHeroSection.id, pageSlug: "index", sectionId: realHeroSection.id, screenshotUrl: screenshotDataUri ?? evidenceRow.screenshotUrl, boundingBox: heroSegSection.boundingBox, computedStyles: [], domStyles: evidenceRow.domStyles };
       console.log(`  Hero content: heading="${realHeroSection.content.heading?.slice(0,40)}", cta="${realHeroSection.content.cta?.label}"`);
-      const result = await renderVisualBlockWithFlag({ section: realHeroSection, evidence, designSystem, tailwindInstructions: breakpointDeltasToTailwind(rules), config });
-      heroAstroSource = result.code;
-      console.log(`  Hero: ${result.isFallback ? "⚠ fallback" : `✓ LLM rendered (${result.code.length} chars)`}`);
+      // Hero is rendered deterministically from extracted DOM data — no LLM needed.
+      heroAstroSource = renderHeroBlock(realHeroSection, evidence);
+      console.log(`  Hero: ✓ deterministic (${heroAstroSource.length} chars)`);
     }
   }
 

@@ -160,10 +160,10 @@ function mergeWithVisionReplacement(
   vision: SectionCandidate[],
   maxHeight: number,
 ): SectionCandidate[] {
-  // Keep existing candidates that are within size bounds or from semantic scan.
-  const kept = existing.filter(
-    (c) => c.source === "semantic" || c.boundingBox.height <= maxHeight,
-  );
+  // Keep existing candidates within size bounds. Oversized semantic candidates
+  // (e.g. a Webflow page-wrapper div that spans the whole page) are dropped so
+  // vision candidates can replace them — keeping them would block all vision results.
+  const kept = existing.filter((c) => c.boundingBox.height <= maxHeight);
   // Add vision candidates, only excluding those that substantially overlap with
   // large semantic sections (height > 150px). Small semantic sections like nav
   // bars (80px) should not block vision candidates for the sections below them.

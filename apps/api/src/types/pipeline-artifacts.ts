@@ -61,7 +61,7 @@ export type CanonicalSectionTag = z.infer<typeof CanonicalSectionTagSchema>;
 export const NetworkMediaEntrySchema = z.object({
   url: z.string(),
   contentType: z.string(),
-  resourceType: z.enum(["image", "video", "font", "stylesheet"]),
+  resourceType: z.enum(["image", "video", "font", "stylesheet", "lottie-json"]),
   bytes: z.number().nonnegative(),
 });
 
@@ -103,6 +103,8 @@ export const ExtractPageSchema = z.object({
     jsonLd: z.array(z.unknown()).default([]),
     iframes: z.array(z.object({ src: z.string(), kind: z.enum(["map", "schedule", "form", "video", "other"]) })).default([]),
     videos: z.array(z.object({ src: z.string(), poster: z.string().optional() })).default([]),
+    primaryCta: z.object({ label: z.string(), href: z.string() }).optional(),
+    lottieUrls: z.array(z.string()).default([]),
   }),
   interactions: z.array(InteractionCaptureSchema),
   responsive: z.array(BreakpointDeltaSchema),
@@ -158,6 +160,31 @@ export type ExtractArtifact = z.infer<typeof ExtractArtifactSchema>;
 export type ExtractPage = z.infer<typeof ExtractPageSchema>;
 
 // ---------- segment ----------
+
+/** Shape of one breakpoint's worth of computed DOM style values. */
+export const DomStylesValuesSchema = z.object({
+  containerBackground: z.string().optional(),
+  containerBackgroundImage: z.string().optional(),
+  overlayBackground: z.string().optional(),
+  headingFontSize: z.string().optional(),
+  headingFontWeight: z.string().optional(),
+  headingColor: z.string().optional(),
+  headingTextTransform: z.string().optional(),
+  ctaBackground: z.string().optional(),
+  ctaColor: z.string().optional(),
+  ctaBorderRadius: z.string().optional(),
+  ctaPositionSide: z.enum(["left", "right", "center"]).optional(),
+  ctaLabel: z.string().optional(),
+  ctaHref: z.string().optional(),
+  eyebrowText: z.string().optional(),
+  bodyText: z.string().optional(),
+  contentWidthPct: z.string().optional(),
+  flexDirection: z.string().optional(),
+  textAlign: z.string().optional(),
+  padding: z.string().optional(),
+});
+export type DomStylesValues = z.infer<typeof DomStylesValuesSchema>;
+
 export const SegmentSectionSchema = z.object({
   id: z.string(),
   tag: CanonicalSectionTagSchema,
@@ -173,27 +200,16 @@ export const SegmentSectionSchema = z.object({
   interactionIds: z.array(z.string()),
   sharedComponentId: z.string().optional(),
   sharedProps: z.record(z.string(), z.string()).optional(),
-  /** Computed CSS values read directly from the live DOM for this section.
-   *  Populated during segment stage via getComputedStyle — exact values for
-   *  background, overlay, heading typography, and CTA button styling. */
+  /** Computed CSS values read directly from the live DOM for this section,
+   *  captured at 3 breakpoints (375px, 768px, 1440px) and expressed as a
+   *  mobile-first tiered structure.  `base` = 375px; `md` and `lg` contain
+   *  only the fields that differ from the narrower tier.  Populated during
+   *  segment stage via getComputedStyle — exact values for background, overlay,
+   *  heading typography, and CTA button styling. */
   domStyles: z.object({
-    containerBackground: z.string().optional(),
-    containerBackgroundImage: z.string().optional(),
-    overlayBackground: z.string().optional(),
-    headingFontSize: z.string().optional(),
-    headingFontWeight: z.string().optional(),
-    headingColor: z.string().optional(),
-    headingTextTransform: z.string().optional(),
-    ctaBackground: z.string().optional(),
-    ctaColor: z.string().optional(),
-    ctaBorderRadius: z.string().optional(),
-    ctaPositionSide: z.enum(["left", "right", "center"]).optional(),
-    ctaLabel: z.string().optional(),
-    ctaHref: z.string().optional(),
-    eyebrowText: z.string().optional(),
-    flexDirection: z.string().optional(),
-    textAlign: z.string().optional(),
-    padding: z.string().optional(),
+    base: DomStylesValuesSchema,
+    md: DomStylesValuesSchema.partial(),
+    lg: DomStylesValuesSchema.partial(),
   }).optional(),
 });
 export type SegmentSection = z.infer<typeof SegmentSectionSchema>;

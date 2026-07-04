@@ -53,7 +53,7 @@ import {
   makeDefaultFooter,
 } from "../astro-code-generator";
 import { renderSemanticSection } from "../../utils/section-component-registry";
-import type { ExtractedNav } from "../../types/pipeline-artifacts";
+import type { ExtractedNav, ExtractArtifact } from "../../types/pipeline-artifacts";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 
 export type BuildLogCategory =
@@ -360,6 +360,8 @@ async function renderPageSections(
   evidence: SectionVisualEvidence | null,
   config: Config,
   extractedNav: ExtractedNav | null,
+  animationNames: string[],
+  lottieUrls: string[],
 ): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
   const tailwind = tailwindForSection(designSystem);
 
@@ -394,6 +396,8 @@ async function renderPageSections(
           tailwindInstructions: tailwind,
           previousTag,
           nextTag,
+          animationNames,
+          lottieUrls,
           config,
         });
         return { section, source: result.code, isFallback: result.isFallback };
@@ -562,13 +566,40 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     input.sourceDir ??
     path.join(os.tmpdir(), "ploy-gyms-build", input.siteUuid, "build");
   await mkdir(sourceDir, { recursive: true });
-  // Load web font URLs and extractedNav from the extract artifact.
-  const extractArtifact = await loadArtifact<{ css?: { webFontUrls?: string[] }; extractedNav?: ExtractedNav }>(
+  // Load web font URLs, CSS animations, Lottie URLs, and extractedNav from the extract artifact.
+  const extractArtifact = await loadArtifact<ExtractArtifact>(
     input.db, { siteUuid: input.siteUuid, workspaceUuid: input.workspaceUuid }, "extract",
   );
   const webFontUrls = extractArtifact?.payload?.css?.webFontUrls ?? [];
+  const cssAnimations = extractArtifact?.payload?.css?.animations ?? [];
   const extractedNav: ExtractedNav | null = extractArtifact?.payload?.extractedNav ?? null;
-  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls });
+
+  // Collect all Lottie JSON URLs across all extracted pages (deduplicated).
+  const rawLottieUrls = Array.from(new Set(
+    (extractArtifact?.payload?.pages ?? []).flatMap((p) => p.content.lottieUrls ?? []),
+  ));
+
+  // Re-host Lottie JSON files to our S3 bucket so the build can use stable URLs.
+  const lottieUrlMap = new Map<string, string>(); // original → re-hosted
+  for (const lottieUrl of rawLottieUrls) {
+    try {
+      const res = await fetch(lottieUrl);
+      if (!res.ok) throw new Error(`fetch ${lottieUrl} → ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const key = `sites/${input.siteUuid}/media/lottie/${hashFragment(lottieUrl)}.json`;
+      const newUrl = await uploadPipelineImage(input.s3, input.config, key, buf, "application/json", { publicRead: true });
+      lottieUrlMap.set(lottieUrl, newUrl);
+      buildLog.push({ category: "performance", description: `Re-hosted Lottie ${lottieUrl} as ${newUrl}` });
+    } catch (err) {
+      buildLog.push({ category: "performance", description: `Failed to re-host Lottie ${lottieUrl}: ${(err as Error).message}` });
+    }
+  }
+
+  const hasLottie = lottieUrlMap.size > 0;
+  // Build the list of re-hosted Lottie URLs to pass to the renderer.
+  const rehostedLottieUrls = Array.from(lottieUrlMap.values());
+
+  await writeProjectScaffold(sourceDir, designSystem, { webFontUrls, cssAnimations, hasLottie });
 
   // 5. Shared components — render once for all pages in the hierarchy so
   //    downstream page imports always resolve.
@@ -606,7 +637,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     const pageT = Date.now();
     console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections, parallel)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
-    const rendered = await renderPageSections(page, designSystem, evidence, input.config, extractedNav);
+    const rendered = await renderPageSections(page, designSystem, evidence, input.config, extractedNav, cssAnimations.map((a) => a.name), rehostedLottieUrls);
     // Apply re-hosted URL substitution: swap original CDN URLs → S3 URLs in the
     // generated code so the deployed site doesn't depend on the source CDN.
     const renderedWithUrls = rendered.map(({ section, source, isFallback }) => ({

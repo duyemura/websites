@@ -19,7 +19,7 @@ export interface CapturedPage {
   media: Array<{
     url: string;
     contentType: string;
-    resourceType: "image" | "video" | "font" | "stylesheet";
+    resourceType: "image" | "video" | "font" | "stylesheet" | "lottie-json";
     bytes: number;
   }>;
   screenshots: { full1440: Buffer; vp375: Buffer; vp768: Buffer };
@@ -33,6 +33,8 @@ export interface CapturedPage {
     jsonLd: unknown[];
     iframes: Array<{ src: string; kind: "map" | "schedule" | "form" | "video" | "other" }>;
     videos: Array<{ src: string; poster?: string }>;
+    primaryCta?: { label: string; href: string };
+    lottieUrls: string[];
   };
   responsive: BreakpointDelta[];
   pixelSamples: Array<{ x: number; y: number; hex: string }>;
@@ -50,6 +52,82 @@ type ComputedThemeRaw = {
 
 const SETTLE_MS = 3000;
 const SCROLL_STEP_MS = 500;
+
+/**
+ * Detect Lottie animation JSON URLs on a loaded Playwright page.
+ * Checks for:
+ *   1. <lottie-player src="..."> web components
+ *   2. lottie.loadAnimation({ path: "..." }) calls in inline scripts
+ *   3. data-src attributes pointing to .json files
+ *   4. <script src="...lottie..."> script tags (signals Lottie is used on the page)
+ * Returns deduplicated absolute JSON source URLs.
+ */
+export async function detectLottieAssets(page: Page): Promise<string[]> {
+  const pageUrl = page.url();
+  const found = await page.evaluate((baseUrl: string): string[] => {
+    const urls = new Set<string>();
+
+    function toAbsolute(src: string): string {
+      try {
+        return new URL(src, baseUrl).href;
+      } catch {
+        return src;
+      }
+    }
+
+    // 1. <lottie-player src="...">
+    for (const el of Array.from(document.querySelectorAll("lottie-player[src]"))) {
+      const src = el.getAttribute("src");
+      if (src) urls.add(toAbsolute(src));
+    }
+
+    // 2. data-src attributes pointing to .json
+    for (const el of Array.from(document.querySelectorAll("[data-src]"))) {
+      const src = el.getAttribute("data-src") ?? "";
+      if (src.endsWith(".json") || src.includes("lottie")) urls.add(toAbsolute(src));
+    }
+
+    // 3. Inline script text: lottie.loadAnimation({ path: "..." })
+    const scriptEls = Array.from(document.querySelectorAll("script:not([src])"));
+    for (const script of scriptEls) {
+      const text = script.textContent ?? "";
+      // Match path: "..." or animationData patterns
+      const pathMatches = text.matchAll(/loadAnimation\s*\(\s*\{[^}]*path\s*:\s*["']([^"']+\.json[^"']*)/g);
+      for (const m of pathMatches) {
+        if (m[1]) urls.add(toAbsolute(m[1]));
+      }
+    }
+
+    return Array.from(urls);
+  }, pageUrl);
+  return found;
+}
+
+/**
+ * Detect Lottie JSON from network responses captured during page load.
+ * This is called from the response listener with the response URL and body.
+ * Returns true if the response looks like a Lottie animation JSON.
+ */
+export function isLottieResponse(url: string, contentType: string, bodyText?: string): boolean {
+  const lottieInUrl = /lottie/i.test(url) && contentType.includes("application/json");
+  if (lottieInUrl) return true;
+  if (bodyText && contentType.includes("application/json")) {
+    // Lottie JSON must have top-level keys: v, fr, ip, op, layers
+    try {
+      const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+      return (
+        "v" in parsed &&
+        "fr" in parsed &&
+        "ip" in parsed &&
+        "op" in parsed &&
+        "layers" in parsed
+      );
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
 
 // Elements whose computed styles we track across viewports.
 const TRACKED_STYLE_PROPS = [
@@ -69,6 +147,7 @@ export async function capturePage(
 ): Promise<CapturedPage> {
   const page = await context.newPage();
   const media: CapturedPage["media"] = [];
+  const networkLottieUrls: string[] = [];
   let totalBytes = 0;
   let requestCount = 0;
   let imageBytes = 0;
@@ -78,14 +157,24 @@ export async function capturePage(
     requestCount += 1;
     const ct = response.headers()["content-type"] ?? "";
     let bytes = 0;
+    let bodyText: string | undefined;
     try {
-      bytes =
-        Number(response.headers()["content-length"] ?? 0) ||
-        (await response.body()).byteLength;
+      const body = await response.body();
+      bytes = Number(response.headers()["content-length"] ?? 0) || body.byteLength;
+      // Only read body text for small JSON responses (Lottie detection).
+      if (ct.includes("application/json") && body.byteLength < 500_000) {
+        bodyText = body.toString("utf8");
+      }
     } catch {
       /* streamed/aborted body — size unknown */
     }
     totalBytes += bytes;
+    // Detect Lottie JSON before determining standard resourceType.
+    if (isLottieResponse(response.url(), ct, bodyText)) {
+      media.push({ url: response.url(), contentType: ct, resourceType: "lottie-json", bytes });
+      networkLottieUrls.push(response.url());
+      return;
+    }
     const resourceType = ct.startsWith("image/")
       ? "image"
       : ct.startsWith("video/")
@@ -138,6 +227,13 @@ export async function capturePage(
     () => document.querySelectorAll("header,footer,main,nav,section,article").length,
   );
   const needsVisionSegmentation = isSpa || semanticCount < 3;
+
+  // Step 11a: Detect Lottie assets from the DOM (web components, inline scripts, data-src).
+  // Reset to 1440 viewport — capturePage leaves the page at 375 after mobile screenshots.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const domLottieUrls = await detectLottieAssets(page);
+  // Merge DOM-detected and network-detected URLs, deduplicating.
+  const allLottieUrls = Array.from(new Set([...networkLottieUrls, ...domLottieUrls]));
 
   // Step 11: Computed theme — read from live DOM via getComputedStyle.
   // Completely framework-agnostic: captures final rendered values regardless
@@ -203,7 +299,7 @@ export async function capturePage(
     path: new URL(url).pathname,
     media,
     screenshots: { full1440, vp375, vp768 },
-    content,
+    content: { ...content, lottieUrls: allLottieUrls },
     responsive,
     pixelSamples,
     computedTheme,
@@ -243,7 +339,7 @@ async function scrollThrough(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-async function extractContent(page: Page): Promise<CapturedPage["content"]> {
+async function extractContent(page: Page): Promise<Omit<CapturedPage["content"], "lottieUrls">> {
   return page.evaluate(() => {
     const meta: Record<string, string> = {};
     for (const el of Array.from(document.querySelectorAll("meta[name],meta[property]"))) {
@@ -285,6 +381,30 @@ async function extractContent(page: Page): Promise<CapturedPage["content"]> {
     const nav =
       document.querySelector("nav") ?? document.querySelector("header") ?? document.body;
 
+    // Primary CTA: first prominent button/link near the page H1, identified by DOM structure.
+    // Done at the page level so it's independent of how the segmenter slices the page.
+    const primaryCta = (() => {
+      const h1 = document.querySelector("h1") ?? document.querySelector("h2");
+      if (!h1) return undefined;
+      const h1Rect = h1.getBoundingClientRect();
+      const CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start|tour)\b/i;
+      let best: { label: string; href: string; score: number } | undefined;
+      for (const el of Array.from(document.querySelectorAll("a[href],button"))) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 50 || rect.height < 28) continue;
+        const href = (el as HTMLAnchorElement).getAttribute("href") ?? "";
+        if (href.startsWith("tel:") || href.startsWith("mailto:")) continue;
+        const text = (el as HTMLElement).textContent?.trim() ?? "";
+        if (!text || text.length > 60) continue;
+        const cls = ((el as HTMLElement).className ?? "").toString();
+        const classScore = CTA_RE.test(cls) ? 10 : 0;
+        const distScore = Math.max(0, 5 - Math.abs(rect.top - h1Rect.bottom) / 200);
+        const score = classScore + distScore;
+        if (!best || score > best.score) best = { label: text, href, score };
+      }
+      return best ? { label: best.label, href: best.href } : undefined;
+    })();
+
     return {
       title: document.title,
       businessName,
@@ -303,6 +423,7 @@ async function extractContent(page: Page): Promise<CapturedPage["content"]> {
         .filter((l) => l.label.length > 0),
       meta,
       jsonLd,
+      primaryCta,
       iframes: Array.from(document.querySelectorAll("iframe[src]")).map((f) => {
         const src = f.getAttribute("src") ?? "";
         return { src, kind: classify(src) };
@@ -466,23 +587,31 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
       return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
     };
 
-    // ---- CTA: most-saturated background button/link in nav ----
+    // ---- CTA: prominent action button in nav ----
+    // Use class-name signals as primary (works even when background is set via
+    // shorthand/gradient — `backgroundColor` alone returns transparent in that case).
+    // Fall back to saturation if no class match found.
+    const NAV_CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start)\b/i;
     let cta: ExtractedNavRaw["cta"] | undefined;
-    let bestSat = 0.15;
-    const ctaCandidates = Array.from(
-      navEl.querySelectorAll("a, button, [class*='btn'], [class*='cta'], [class*='button']"),
-    );
-    for (const el of ctaCandidates) {
+    let bestCtaScore = 0;
+    for (const el of Array.from(navEl.querySelectorAll("a[href], button"))) {
       const rect = (el as HTMLElement).getBoundingClientRect();
       if (rect.width < 40 || rect.height < 16) continue;
       const s = getComputedStyle(el as Element);
-      const sat = rgbSaturation(s.backgroundColor);
-      if (sat > bestSat) {
-        bestSat = sat;
+      const cls = ((el as HTMLElement).className ?? "").toString();
+      const classScore = NAV_CTA_RE.test(cls) ? 10 : 0;
+      // Check both backgroundColor and the background shorthand (sites may set only "background")
+      const bgColor = s.backgroundColor !== "rgba(0, 0, 0, 0)" ? s.backgroundColor : (s.background.match(/rgba?\([^)]+\)/) ?? [])[0] ?? "";
+      const sat = rgbSaturation(bgColor || s.backgroundColor);
+      const satScore = sat > 0.15 ? Math.round(sat * 5) : 0;
+      const score = classScore + satScore;
+      if (score > bestCtaScore) {
+        bestCtaScore = score;
+        const bg = bgColor || s.backgroundColor;
         cta = {
           label: (el as HTMLElement).innerText?.trim() ?? "",
           href: (el as HTMLAnchorElement).href ?? (el as HTMLElement).getAttribute("href") ?? "#",
-          background: s.backgroundColor,
+          background: bg,
           color: s.color,
           borderRadius: s.borderRadius,
         };

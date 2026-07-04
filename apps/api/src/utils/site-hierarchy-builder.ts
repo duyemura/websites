@@ -232,16 +232,18 @@ export function buildSiteHierarchyFromSegments(
         intent: intentForSegmentTag(s.tag),
         content: {
           heading,
-          body: bodyPreview(s),
+          // Body: prefer innerText preview (semantic sections), fall back to DOM-extracted
+          // body text (vision sections have empty innerText but we extract body from DOM).
+          body: bodyPreview(s) ?? s.domStyles?.base?.bodyText ?? undefined,
           images:
             s.mediaUrls.length > 0
               ? s.mediaUrls.map((url) => ({ url }))
               : undefined,
-          // CTA and eyebrow from DOM extraction — generic for any site
-          cta: s.domStyles?.ctaLabel
-            ? { label: s.domStyles.ctaLabel, href: s.domStyles.ctaHref ?? "#" }
+          // CTA, eyebrow from DOM extraction — runs for every section generically
+          cta: s.domStyles?.base?.ctaLabel
+            ? { label: s.domStyles.base.ctaLabel, href: s.domStyles.base.ctaHref ?? "#" }
             : undefined,
-          eyebrow: s.domStyles?.eyebrowText ?? undefined,
+          eyebrow: s.domStyles?.base?.eyebrowText ?? undefined,
         },
         evidenceId: s.id,
       };
@@ -250,6 +252,13 @@ export function buildSiteHierarchyFromSegments(
       return section;
     });
 
+    // If the hero has no CTA, promote the page-level primaryCta extracted during
+    // the extract stage (found near the page H1, independent of segment boundaries).
+    const heroIdx = hierarchySections.findIndex((h) => h.tag === "hero");
+    if (heroIdx !== -1 && !hierarchySections[heroIdx]!.content.cta) {
+      const pagePrimaryCta = ep?.content.primaryCta;
+      if (pagePrimaryCta) hierarchySections[heroIdx]!.content.cta = pagePrimaryCta;
+    }
     const heroSection = hierarchySections.find((h) => h.tag === "hero");
     const heroCta = heroSection?.content.cta;
     const heroImageUrl = heroSection?.content.images?.[0]?.url;

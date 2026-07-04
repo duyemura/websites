@@ -1,3 +1,26 @@
+/** Shape of one breakpoint's worth of computed DOM style values. */
+export interface DomStylesValues {
+  containerBackground?: string;
+  containerBackgroundImage?: string;
+  overlayBackground?: string;
+  headingFontSize?: string;
+  headingFontWeight?: string;
+  headingColor?: string;
+  headingTextTransform?: string;
+  ctaBackground?: string;
+  ctaColor?: string;
+  ctaBorderRadius?: string;
+  ctaPositionSide?: "left" | "right" | "center";
+  ctaLabel?: string;
+  ctaHref?: string;
+  eyebrowText?: string;
+  bodyText?: string;
+  contentWidthPct?: string;
+  flexDirection?: string;
+  textAlign?: string;
+  padding?: string;
+}
+
 export interface ComputedStyleSnapshot {
   selector: string;
   tagName: string;
@@ -77,26 +100,14 @@ export interface SectionVisualEvidenceRow {
   };
   mediaUrls?: string[];
   interactionCaptures?: InteractionEvidenceCapture[];
-  /** Computed CSS values extracted from the live DOM during segment stage.
-   *  Exact values from getComputedStyle — no guessing from screenshots needed. */
+  /** Computed CSS values extracted from the live DOM during segment stage,
+   *  captured at 3 breakpoints (375px, 768px, 1440px) and expressed as a
+   *  mobile-first tiered structure.  `base` = 375px; `md` and `lg` contain
+   *  only the fields that differ from the narrower tier. */
   domStyles?: {
-    containerBackground?: string;
-    containerBackgroundImage?: string;
-    overlayBackground?: string;
-    headingFontSize?: string;
-    headingFontWeight?: string;
-    headingColor?: string;
-    headingTextTransform?: string;
-    ctaBackground?: string;
-    ctaColor?: string;
-    ctaBorderRadius?: string;
-    ctaPositionSide?: "left" | "right" | "center";
-    ctaLabel?: string;
-    ctaHref?: string;
-    eyebrowText?: string;
-    flexDirection?: string;
-    textAlign?: string;
-    padding?: string;
+    base: DomStylesValues;
+    md: Partial<DomStylesValues>;
+    lg: Partial<DomStylesValues>;
   };
 }
 

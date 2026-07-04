@@ -218,10 +218,16 @@ async function writeProjectFiles(
  * same files with identical content. Exposed for the build stage which writes
  * an N-page project.
  */
+export interface WriteProjectScaffoldOpts {
+  webFontUrls?: string[];
+  cssAnimations?: { name: string; css: string }[];
+  hasLottie?: boolean;
+}
+
 export async function writeProjectScaffold(
   sourceDir: string,
   designSystem: DesignSystemV2,
-  opts?: { webFontUrls?: string[] },
+  opts?: WriteProjectScaffoldOpts,
 ): Promise<void> {
   const dirs = [
     path.join(sourceDir, "src", "layouts"),
@@ -234,10 +240,13 @@ export async function writeProjectScaffold(
 
   await writeFile(path.join(sourceDir, "package.json"), packageJson());
   await writeFile(path.join(sourceDir, "astro.config.mjs"), astroConfig());
-  await writeFile(path.join(sourceDir, "tailwind.config.mjs"), tailwindConfig());
+  await writeFile(path.join(sourceDir, "tailwind.config.mjs"), tailwindConfig(opts?.cssAnimations ?? []));
   await writeFile(path.join(sourceDir, "tsconfig.json"), tsConfig());
   await writeFile(path.join(sourceDir, "src", "styles", "tokens.css"), tokensCss(designSystem));
-  await writeFile(path.join(sourceDir, "src", "layouts", "Layout.astro"), layoutAstro(designSystem, opts?.webFontUrls ?? []));
+  await writeFile(
+    path.join(sourceDir, "src", "layouts", "Layout.astro"),
+    layoutAstro(designSystem, opts?.webFontUrls ?? [], opts?.cssAnimations ?? [], opts?.hasLottie ?? false),
+  );
 }
 
 async function writeSharedComponents(
@@ -385,7 +394,26 @@ export async function inlineCssIntoHtml(distDir: string): Promise<void> {
   );
 }
 
-function tailwindConfig(): string {
+function tailwindConfig(cssAnimations: { name: string; css: string }[] = []): string {
+  // Build animation + keyframes extend blocks only when animations were captured.
+  let animationExtend = "";
+  if (cssAnimations.length > 0) {
+    const animationEntries = cssAnimations
+      .map((a) => `      "${a.name}": "${a.name} 1s ease both"`)
+      .join(",\n");
+    // Keyframes: extract the @keyframes body for each captured animation.
+    // The LLM already has the CSS injected in Layout.astro global styles, but
+    // Tailwind also needs the keyframe registered so `animate-{name}` works.
+    const keyframeEntries = cssAnimations
+      .map((a) => {
+        // Strip the @keyframes name { ... } wrapper and keep the inner body.
+        const inner = a.css.replace(/^@keyframes\s+\S+\s*\{/, "").replace(/\}\s*$/, "").trim();
+        return `      "${a.name}": { ${inner.replace(/\n/g, " ")} }`;
+      })
+      .join(",\n");
+    animationExtend = `\n      animation: {\n${animationEntries}\n      },\n      keyframes: {\n${keyframeEntries}\n      },`;
+  }
+
   return `/** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/**/*.{astro,html,js,jsx,md,mdx,ts,tsx}"],
@@ -412,7 +440,7 @@ export default {
       },
       borderRadius: {
         site: "var(--radius)",
-      },
+      },${animationExtend}
     },
   },
   plugins: [],
@@ -470,8 +498,24 @@ h1, h2, h3, h4, h5, h6 {
 `;
 }
 
-function layoutAstro(designSystem: DesignSystem | DesignSystemV2, webFontUrls: string[] = []): string {
+function layoutAstro(
+  designSystem: DesignSystem | DesignSystemV2,
+  webFontUrls: string[] = [],
+  cssAnimations: { name: string; css: string }[] = [],
+  hasLottie = false,
+): string {
   const businessName = designSystem.business.name ?? "Ploy for gyms";
+
+  // Build the keyframes block: inject captured animations into global CSS.
+  const keyframesBlock = cssAnimations.length > 0
+    ? `\n  <style is:global>\n${cssAnimations.map((a) => `    ${a.css}`).join("\n")}\n  </style>`
+    : "";
+
+  // Lottie player CDN — only injected when the site uses Lottie animations.
+  const lottieScript = hasLottie
+    ? `\n    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>`
+    : "";
+
   return `---
 import Header from "../components/shared/Header.astro";
 import Footer from "../components/shared/Footer.astro";
@@ -492,7 +536,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
     ${webFontUrls.map(url => `<link rel="stylesheet" href="${url}" />`).join("\n    ")}
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>${lottieScript}
   </head>
   <body class="min-h-screen flex flex-col">
     <Header />
@@ -501,7 +545,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     </main>
     <Footer />
   </body>
-</html>
+</html>${keyframesBlock}
 `;
 }
 
@@ -698,20 +742,34 @@ export function renderFooterComponent(footer: {
 }): string {
   // Link text color: on dark backgrounds use white, on light use dark
   const bg = footer.background;
-  const isDark = bg.match(/rgba?\((\d+)/) ? +bg.match(/rgba?\((\d+)/)![1] < 128 : true;
+  const isDark = bg.match(/rgba?\((\d+)/) ? +(bg.match(/rgba?\((\d+)/) ?? [])[1]! < 128 : true;
   const linkColor = isDark ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.7)";
   const headingColor = isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)";
   const dividerColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
   const textColor = isDark ? "#fff" : footer.textColor;
 
+  // Logo: object-contain + self-start prevents flex-stretch distortion for any aspect ratio
   const logoHtml = footer.logoUrl
-    ? `<img src="${footer.logoUrl}" alt="${footer.brandName}" class="h-12 w-auto mb-3" style="filter:${isDark ? "brightness(10)" : "none"}" />`
+    ? `<img src="${footer.logoUrl}" alt="${footer.brandName}" class="max-h-12 w-auto object-contain self-start mb-3" style="filter:${isDark ? "brightness(10)" : "none"}" />`
     : footer.brandName
       ? `<div class="text-base font-bold mb-3" style="color:${textColor}">${footer.brandName}</div>`
       : "";
 
-  // Social links
-  const socialHtml = (footer.socialLinks ?? []).map(s => `<a href="${s.href}" aria-label="${s.platform}" class="hover:opacity-60 transition-opacity" style="color:${textColor};text-decoration:none;font-size:0.875rem;">${s.platform}</a>`).join(" · ");
+  // Social links — rendered as SVG icons, not text, for any platform we recognise.
+  const socialIconSvg = (platform: string): string => {
+    const p = platform.toLowerCase();
+    if (p.includes("facebook")) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M22 12a10 10 0 1 0-11.563 9.876v-6.988H7.9V12h2.537V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.888H13.56v6.988A10.003 10.003 0 0 0 22 12z"/></svg>`;
+    if (p.includes("instagram")) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.326 3.608 1.301.975.975 1.24 2.242 1.302 3.608.058 1.265.069 1.645.069 4.849s-.011 3.584-.069 4.849c-.062 1.366-.327 2.633-1.302 3.608-.975.975-2.242 1.24-3.608 1.302-1.265.058-1.645.069-4.85.069s-3.584-.011-4.849-.069c-1.366-.062-2.633-.327-3.608-1.302-.975-.975-1.24-2.242-1.301-3.608C2.175 15.747 2.163 15.367 2.163 12s.012-3.584.07-4.849c.061-1.366.326-2.633 1.301-3.608.975-.975 2.242-1.239 3.608-1.301C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.333.014 7.053.072 5.775.131 4.602.333 3.635 1.3 2.667 2.268 2.464 3.44 2.405 4.719 2.347 6 2.333 6.408 2.333 12c0 5.592.014 6 .072 7.281.059 1.279.262 2.451 1.229 3.419.968.967 2.14 1.17 3.419 1.229C8.333 23.986 8.741 24 12 24s3.667-.014 4.947-.072c1.279-.059 2.451-.262 3.419-1.229.967-.968 1.17-2.14 1.229-3.419.058-1.281.072-1.689.072-7.28s-.014-6-.072-7.281c-.059-1.279-.262-2.451-1.229-3.419C19.398.333 18.226.131 16.947.072 15.667.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>`;
+    if (p.includes("twitter") || p.includes("x.com")) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`;
+    if (p.includes("youtube")) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`;
+    if (p.includes("linkedin")) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>`;
+    // Unknown platform — fall back to first letter in a circle
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid currentColor;font-size:10px;font-weight:bold;" aria-hidden="true">${platform.charAt(0).toUpperCase()}</span>`;
+  };
+
+  const socialHtml = (footer.socialLinks ?? []).map(s =>
+    `<a href="${s.href}" aria-label="${s.platform}" title="${s.platform}" class="hover:opacity-60 transition-opacity" style="color:${textColor};display:inline-flex;align-items:center;">${socialIconSvg(s.platform)}</a>`
+  ).join("\n        ");
 
   // Columns: use groups if available, otherwise split flat links into one column
   const groups: FooterLinkGroup[] = footer.linkGroups?.length
@@ -723,7 +781,7 @@ export function renderFooterComponent(footer: {
 
   const columnsHtml = groups.map(g => `
     <div>
-      ${g.heading ? `<div class="mb-3 text-xs font-semibold uppercase tracking-widest" style="color:${headingColor}">${g.heading}</div>` : ""}
+      ${g.heading ? `<div class="mb-3 text-xs font-semibold uppercase tracking-widest" style="color:${headingColor}">${g.heading.charAt(0).toUpperCase() + g.heading.slice(1).toLowerCase()}</div>` : ""}
       ${isAddressGroup(g.heading) && footer.address
         ? `<p style="color:${linkColor};font-size:0.875rem;line-height:1.6;">${footer.address.replace(/\n/g, "<br/>")}</p>`
         : `<ul class="space-y-2 list-none p-0 m-0">
