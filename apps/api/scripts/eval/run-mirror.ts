@@ -314,18 +314,19 @@ async function main() {
       db, { siteUuid, workspaceUuid }, "mirror-deploy",
     );
     const deployPrefix = deployArtifact?.payload.deployPrefix ?? "";
-    const previewUrl = mirrorResult.previewUrl;
+    // Use CloudFront URL as the preview base — S3 direct URL has path-resolution issues
+    const previewUrl = `${config.CDN_BASE_URL.replace(/\/+$/, "")}/`;
 
     const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
     if (!bucket) throw new Error("S3_ASSETS_BUCKET is not configured");
 
+    // Use CloudFront (CDN_BASE_URL) so /_assets/ paths resolve correctly.
+    // CloudFront routes by hostname via KVS → sites/{uuid}/current/
+    // The raw S3 deploy URL has path-resolution failures because /_assets/ resolves
+    // to the bucket root rather than the deploy prefix.
+    const cdnBase = config.CDN_BASE_URL.replace(/\/+$/, "");
     function mirrorPageUrl(pagePath: string): string {
-      return buildS3ObjectUrl({
-        endpoint: config.S3_ENDPOINT,
-        region: config.S3_REGION,
-        bucket,
-        key: `${deployPrefix}/${pathToFileKey(pagePath)}`,
-      });
+      return `${cdnBase}${pagePath === "/" ? "/" : pagePath}`;
     }
 
     const crawlArtifact = await loadArtifact<MirrorCrawlArtifact>(
