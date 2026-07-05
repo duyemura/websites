@@ -22,7 +22,6 @@ function normalizeFields(fields: Record<string, unknown>): {
 } {
   const find = (pattern: RegExp): string | null => {
     for (const [key, val] of Object.entries(fields)) {
-      if (key === "_hp") continue;
       if (pattern.test(key.toLowerCase()) && typeof val === "string" && val.trim()) {
         return val.trim();
       }
@@ -72,7 +71,12 @@ export async function handleFormSubmission(
     .executeTakeFirstOrThrow();
 
   if (site.notifyEmail && opts.enqueueNotify) {
-    await opts.enqueueNotify(lead.uuid, site.uuid);
+    try {
+      await opts.enqueueNotify(lead.uuid, site.uuid);
+    } catch (err) {
+      // Notification failure must not lose a stored lead
+      console.error("lead notify enqueue failed", { leadUuid: lead.uuid, err });
+    }
   }
 
   return { stored: true };
@@ -98,6 +102,9 @@ export async function listLeads(
   db: Kysely<DB>,
   opts: { siteUuid: string; workspaceUuid: string; page: number; limit: number; formId?: string },
 ): Promise<LeadPage> {
+  const page = Math.max(1, opts.page);
+  const limit = Math.max(1, Math.min(opts.limit, 100));
+
   let q = db
     .selectFrom("leads")
     .where("siteUuid", "=", opts.siteUuid)
@@ -109,8 +116,8 @@ export async function listLeads(
     q
       .select(["uuid", "formId", "email", "phone", "name", "sourcePath", "fields", "createdAt"])
       .orderBy("createdAt", "desc")
-      .limit(opts.limit)
-      .offset((opts.page - 1) * opts.limit)
+      .limit(limit)
+      .offset((page - 1) * limit)
       .execute(),
     q.select(({ fn }) => [fn.countAll<string>().as("n")]).executeTakeFirstOrThrow(),
   ]);
@@ -127,7 +134,7 @@ export async function listLeads(
       createdAt: r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt),
     })),
     total: Number(countRow.n),
-    page: opts.page,
-    limit: opts.limit,
+    page,
+    limit,
   };
 }

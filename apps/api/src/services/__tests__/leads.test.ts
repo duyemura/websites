@@ -104,4 +104,42 @@ describe("leads service", () => {
     expect(page.leads.length).toBe(2);
     expect(page.leads[0].email).toBe("b@b.com"); // newest first
   });
+
+  test("calls enqueueNotify when site has notifyEmail configured", async () => {
+    // Update site to have a notifyEmail
+    await db.updateTable("sites").set({ notifyEmail: "owner@gym.com" }).where("uuid", "=", siteUuid).execute();
+
+    const notified: Array<{ leadUuid: string; siteUuid: string }> = [];
+    await handleFormSubmission(
+      db,
+      { siteUuid, formId: "form-notify", fields: { email: "lead@example.com" }, sourcePath: "/", ip: null },
+      {
+        enqueueNotify: async (leadUuid, sid) => {
+          notified.push({ leadUuid, siteUuid: sid });
+        },
+      },
+    );
+
+    expect(notified).toHaveLength(1);
+    expect(notified[0].siteUuid).toBe(siteUuid);
+  });
+
+  test("does not call enqueueNotify when site has no notifyEmail", async () => {
+    const notified: string[] = [];
+    await handleFormSubmission(
+      db,
+      { siteUuid, formId: "form-no-notify", fields: { email: "lead@example.com" }, sourcePath: "/", ip: null },
+      { enqueueNotify: async (leadUuid) => { notified.push(leadUuid); } },
+    );
+    expect(notified).toHaveLength(0);
+  });
+
+  test("listLeads filters by formId", async () => {
+    await handleFormSubmission(db, { siteUuid, formId: "form-a", fields: { email: "a@a.com" }, sourcePath: "/", ip: null });
+    await handleFormSubmission(db, { siteUuid, formId: "form-b", fields: { email: "b@b.com" }, sourcePath: "/", ip: null });
+
+    const page = await listLeads(db, { siteUuid, workspaceUuid, page: 1, limit: 10, formId: "form-a" });
+    expect(page.total).toBe(1);
+    expect(page.leads[0].email).toBe("a@a.com");
+  });
 });
