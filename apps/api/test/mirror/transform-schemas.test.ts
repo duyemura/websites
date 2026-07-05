@@ -94,6 +94,36 @@ describe("CreateTransformSchema (edit clamp)", () => {
     expect(r.success).toBe(false);
   });
 
+  it("accepts meta-set with property+content (og: tags)", () => {
+    const r = CreateTransformSchema.safeParse({
+      type: "meta-set",
+      pageGlob: "/",
+      payload: { property: "og:title", content: "Gym — Best in LA" },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects meta-set with both name and property (ambiguous)", () => {
+    const r = CreateTransformSchema.safeParse({
+      type: "meta-set",
+      pageGlob: "/",
+      payload: { name: "description", property: "og:description", content: "x" },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects UpdateTransformSchema with unknown fields (strict)", async () => {
+    const { UpdateTransformSchema } = await import("../../src/utils/mirror/transform-schemas");
+    const r = UpdateTransformSchema.safeParse({ type: "html-insert", payload: { html: "x" } });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects UpdateTransformSchema with no fields (must patch something)", async () => {
+    const { UpdateTransformSchema } = await import("../../src/utils/mirror/transform-schemas");
+    const r = UpdateTransformSchema.safeParse({});
+    expect(r.success).toBe(false);
+  });
+
   it("author defaults to human when omitted", () => {
     const r = CreateTransformSchema.safeParse({
       type: "meta-set",

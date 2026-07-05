@@ -55,23 +55,18 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         return reply.code(404).send({ error: "Site not found" });
       }
 
-      // Next ordinal = max(ordinal) + 1, defaulting to 1 if no transforms exist yet
-      const maxRow = await fastify.db
-        .selectFrom("siteTransforms")
-        .select(sql<number>`coalesce(max(ordinal), 0)`.as("max"))
-        .where("siteUuid", "=", siteUuid)
-        .executeTakeFirst();
-
       const body = request.body;
       const selector =
         "selector" in body && typeof body.selector === "string" ? body.selector : null;
 
+      // C1: compute ordinal atomically as a subselect inside the INSERT so two
+      // concurrent requests can't both read the same max and produce duplicates.
       const row = await fastify.db
         .insertInto("siteTransforms")
         .values({
           siteUuid,
           workspaceUuid: request.workspace.uuid,
-          ordinal: (maxRow?.max ?? 0) + 1,
+          ordinal: sql<number>`(select coalesce(max(ordinal), 0) + 1 from site_transforms where site_uuid = ${siteUuid})`,
           type: body.type,
           pageGlob: body.pageGlob,
           selector,
@@ -130,12 +125,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       if (!(await ownedSite(siteUuid, request.workspace.uuid))) {
         return reply.code(404).send({ error: "Site not found" });
       }
-      await fastify.db
+      // C2: return 404 if the transform doesn't exist or doesn't belong to this site
+      const result = await fastify.db
         .updateTable("siteTransforms")
         .set({ ...request.body, updatedAt: new Date() })
         .where("uuid", "=", transformUuid)
         .where("siteUuid", "=", siteUuid)
-        .execute();
+        .executeTakeFirst();
+      if (result.numUpdatedRows === 0n) {
+        return reply.code(404).send({ error: "Transform not found" });
+      }
       return { ok: true };
     },
   );
@@ -159,11 +158,15 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       if (!(await ownedSite(siteUuid, request.workspace.uuid))) {
         return reply.code(404).send({ error: "Site not found" });
       }
-      await fastify.db
+      // C2: return 404 if the transform doesn't exist or doesn't belong to this site
+      const result = await fastify.db
         .deleteFrom("siteTransforms")
         .where("uuid", "=", transformUuid)
         .where("siteUuid", "=", siteUuid)
-        .execute();
+        .executeTakeFirst();
+      if (result.numDeletedRows === 0n) {
+        return reply.code(404).send({ error: "Transform not found" });
+      }
       return { ok: true };
     },
   );

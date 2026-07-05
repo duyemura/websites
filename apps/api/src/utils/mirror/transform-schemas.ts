@@ -18,11 +18,21 @@ export const CreateTransformSchema = z.discriminatedUnion("type", [
         property: z.string().optional(),
         content: z.string().optional(),
       })
+      // I1: enforce that name and property are mutually exclusive, and that
+      // whichever key-type is used is accompanied by a content value.
       .refine(
-        (p) =>
-          p.title !== undefined ||
-          ((p.name !== undefined || p.property !== undefined) && p.content !== undefined),
-        { message: "meta-set needs title, or name/property + content" },
+        (p) => {
+          if (p.title !== undefined) return true;
+          // name and property are mutually exclusive key types
+          const hasName = p.name !== undefined;
+          const hasProperty = p.property !== undefined;
+          if (hasName && hasProperty) return false; // ambiguous
+          return (hasName || hasProperty) && p.content !== undefined;
+        },
+        {
+          message:
+            "meta-set needs title, or exactly one of name/property + content (not both name and property)",
+        },
       ),
   }),
   z.object({
@@ -65,7 +75,14 @@ export const CreateTransformSchema = z.discriminatedUnion("type", [
 
 export type CreateTransformInput = z.infer<typeof CreateTransformSchema>;
 
-export const UpdateTransformSchema = z.object({
-  status: z.enum(["active", "disabled"]).optional(),
-  ordinal: z.number().int().optional(),
-});
+// I2: .strict() ensures unknown fields (e.g. type, payload) error instead of
+// being silently stripped — callers get a clear 400 rather than a no-op success.
+export const UpdateTransformSchema = z
+  .object({
+    status: z.enum(["active", "disabled"]).optional(),
+    ordinal: z.number().int().optional(),
+  })
+  .strict()
+  .refine((v) => v.status !== undefined || v.ordinal !== undefined, {
+    message: "must provide at least one of status or ordinal",
+  });
