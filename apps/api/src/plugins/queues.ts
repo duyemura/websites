@@ -11,6 +11,7 @@ export default fp(
     const sitePublish = bull.build("site_publish");
     const playbookRun = bull.build("playbook_run");
     const pipeline = bull.build("pipeline");
+    const mirrorSite = bull.build("mirror_site");
 
     fastify.decorate("queues", {
       classifyAssets,
@@ -21,6 +22,7 @@ export default fp(
       sitePublish,
       playbookRun,
       pipeline,
+      mirrorSite,
     });
 
     done();
@@ -79,6 +81,10 @@ declare module "../bullmq" {
       data: { workspaceUuid: string; playbookUuid: string; aiJobUuid?: string };
       result: unknown;
     };
+    mirror_site: {
+      data: { siteUuid: string; workspaceUuid: string };
+      result: { previewUrl: string; pageCount: number; warnings: string[] };
+    };
     pipeline: {
       data:
         | {
@@ -122,6 +128,7 @@ declare module "fastify" {
       sitePublish: ReturnType<typeof bull.build<"site_publish">>;
       playbookRun: ReturnType<typeof bull.build<"playbook_run">>;
       pipeline: ReturnType<typeof bull.build<"pipeline">>;
+      mirrorSite: ReturnType<typeof bull.build<"mirror_site">>;
     };
   }
 }

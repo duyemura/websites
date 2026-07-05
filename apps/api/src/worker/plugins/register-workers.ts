@@ -8,6 +8,7 @@ import { generateAssetsProcessor } from "../workers/generate-assets";
 import { sitePublishProcessor } from "../workers/site-publish";
 import { playbookRunProcessor } from "../workers/playbook-run";
 import { pipelineProcessor } from "../workers/pipeline";
+import { mirrorSiteProcessor } from "../workers/mirror-site";
 
 const registerWorkers: FastifyPluginCallback = (fastify, _, done) => {
   fastify.queues.classifyAssets.worker.run(classifyAssetsProcessor(fastify));
@@ -20,6 +21,7 @@ const registerWorkers: FastifyPluginCallback = (fastify, _, done) => {
   // Pipeline stages each own a browser — leave concurrency at the bullmq
   // default of 1 to avoid multiple concurrent chromium instances.
   fastify.queues.pipeline.worker.run(pipelineProcessor(fastify));
+  fastify.queues.mirrorSite.worker.run(mirrorSiteProcessor(fastify));
 
   done();
 };
