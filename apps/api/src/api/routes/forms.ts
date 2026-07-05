@@ -1,4 +1,3 @@
-// apps/api/src/api/routes/forms.ts
 import type { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import formbody from "@fastify/formbody";
@@ -33,9 +32,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
     async (request, reply) => {
       const ip = request.ip;
+      const acceptsJson = (request.headers.accept ?? "").includes("application/json");
       if (rateLimited(ip)) {
         // Behave identically to a successful submission — don't tip off bots.
-        const acceptsJson = (request.headers.accept ?? "").includes("application/json");
         return acceptsJson
           ? reply.code(201).send({ ok: true })
           : reply.code(200).type("text/html").send(THANK_YOU_HTML);
@@ -53,15 +52,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         fastify.db,
         { siteUuid, formId, fields, sourcePath, ip },
         {
-          enqueueNotify: async (leadUuid, sid) => {
-            const q = (fastify.queues as unknown as Record<string, { queue: { add: (...args: unknown[]) => Promise<unknown> } } | undefined>)["leadNotify"];
-            if (q) await q.queue.add("notify", { leadUuid, siteUuid: sid });
-          },
+          enqueueNotify: (leadUuid, sid) =>
+            fastify.queues.leadNotify.queue.add("lead_notify", { leadUuid, siteUuid: sid }).then(() => undefined),
         },
       );
       if (result.stored) fastify.log.info({ siteUuid, formId }, "lead captured");
 
-      const acceptsJson = (request.headers.accept ?? "").includes("application/json");
       if (acceptsJson) {
         return reply.code(201).send({ ok: true });
       }
