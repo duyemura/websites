@@ -7,16 +7,20 @@ export type MirrorStatus =
   | "preview_approved"
   | "dns_pending"
   | "dns_verified"
+  | "deploying"
   | "live"
   | "failed";
 
-export type CutoverEvent = "approve" | "start_cutover" | "dns_verified" | "go_live";
+// "retry" maps failed → queued so a broken mirror can be re-enqueued via POST /mirror
+export type CutoverEvent = "approve" | "start_cutover" | "dns_verified" | "go_live" | "retry";
 
 const TRANSITIONS: Record<string, Partial<Record<CutoverEvent, MirrorStatus>>> = {
   mirrored: { approve: "preview_approved" },
   preview_approved: { start_cutover: "dns_pending" },
   dns_pending: { dns_verified: "dns_verified" },
-  dns_verified: { go_live: "live" },
+  dns_verified: { go_live: "deploying" },
+  // failed → queued allows re-running the mirror without manual DB surgery (C3)
+  failed: { retry: "queued" },
 };
 
 export function nextMirrorStatus(current: string, event: CutoverEvent): MirrorStatus | null {
@@ -48,16 +52,24 @@ export async function verifyDns(
 ): Promise<{ wwwOk: boolean; apexOk: boolean }> {
   let wwwOk = false;
   let apexOk = false;
+
+  // www: CNAME check — compare lowercase to handle provider capitalisation differences (I6)
   try {
     const cnames = await dns.resolveCname(`www.${domain}`);
-    wwwOk = cnames.some((c) => c.replace(/\.$/, "") === cloudfrontDomain);
+    wwwOk = cnames.some(
+      (c) => c.replace(/\.$/, "").toLowerCase() === cloudfrontDomain.toLowerCase(),
+    );
   } catch { /* not propagated yet */ }
+
+  // apex: HTTP probe is more reliable than IP comparison for CloudFront ALIAS records (I5)
+  // CloudFront sets x-amz-cf-id on every response regardless of cache state
   try {
-    const [apexIps, cfIps] = await Promise.all([
-      dns.resolve4(domain),
-      dns.resolve4(cloudfrontDomain),
-    ]);
-    apexOk = apexIps.some((ip) => cfIps.includes(ip));
-  } catch { /* not propagated yet */ }
+    const res = await fetch(`https://${domain}/`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+    });
+    apexOk = res.headers.has("x-amz-cf-id");
+  } catch { /* DNS not propagated, TLS not ready, or distribution still deploying */ }
+
   return { wwwOk, apexOk };
 }

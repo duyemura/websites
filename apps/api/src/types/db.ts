@@ -277,6 +277,7 @@ export interface SiteTransforms {
 }
 
 export interface Sites {
+  cloudfrontDomain: string | null;
   createdAt: Generated<Timestamp>;
   customDomain: string | null;
   defaultMetaDescription: string | null;
