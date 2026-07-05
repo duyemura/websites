@@ -1,0 +1,14 @@
+---
+import Container from "../ui/Container.astro";
+import Block from "../blocks/Block.astro";
+import type { RichContentSection } from "../../types/gym-content";
+const { sections } = Astro.props as { sections: RichContentSection[] };
+---
+{sections.map((s) => (
+  <section class="py-10">
+    <Container>
+      {s.headline && <h2 class="mb-6 font-heading text-2xl font-bold text-primary">{s.headline}</h2>}
+      <div class="space-y-6">{s.blocks.map((b) => <Block block={b} />)}</div>
+    </Container>
+  </section>
+))}

@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@tailwindcss/typography": "^0.5.20",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "cheerio": "^1.2.0",
