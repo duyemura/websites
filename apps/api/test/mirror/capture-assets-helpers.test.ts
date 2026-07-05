@@ -11,9 +11,27 @@ describe("collectAssetUrls", () => {
     expect(urls).toContain("https://gym.com/a@2x.jpg");
   });
 
-  it("skips third-party and data: sources", () => {
-    const html = `<html><body><script src="https://widgets.mindbody.com/w.js"></script><img src="data:image/png;base64,AA"></body></html>`;
-    expect(collectAssetUrls(html, "https://gym.com/", "https://gym.com")).toEqual([]);
+  it("NOW also collects third-party CDN assets — Webflow/Squarespace/Google Fonts — everything gets rehosted", () => {
+    const html = `<html><head>
+      <link rel="stylesheet" href="https://assets.website-files.com/abc/style.css">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">
+      <script src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"></script>
+    </head><body>
+      <img src="https://images.squarespace-cdn.com/content/hero.jpg">
+    </body></html>`;
+    const urls = collectAssetUrls(html, "https://gym.com/", "https://gym.com");
+    expect(urls).toContain("https://assets.website-files.com/abc/style.css");
+    expect(urls).toContain("https://fonts.googleapis.com/css2?family=Inter");
+    expect(urls).toContain("https://www.googletagmanager.com/gtm.js?id=GTM-XXXX");
+    expect(urls).toContain("https://images.squarespace-cdn.com/content/hero.jpg");
+  });
+
+  it("still skips data: and blob: URIs", () => {
+    const html = `<html><body>
+      <img src="data:image/png;base64,AA">
+      <video src="blob:https://gym.com/123"></video>
+    </body></html>`;
+    expect(collectAssetUrls(html, "https://gym.com/", "https://gym.com")).toHaveLength(0);
   });
 });
 
@@ -26,5 +44,10 @@ describe("assetLocalName", () => {
   });
   it("defaults to .bin when there is no extension", () => {
     expect(assetLocalName("https://gym.com/some/asset")).toMatch(/\.bin$/);
+  });
+  it("produces different hashes for different CDN URLs", () => {
+    const webflow = assetLocalName("https://assets.website-files.com/abc/style.css");
+    const local = assetLocalName("https://gym.com/style.css");
+    expect(webflow).not.toBe(local);
   });
 });

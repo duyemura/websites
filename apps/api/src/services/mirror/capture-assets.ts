@@ -15,16 +15,22 @@ const ASSET_SELECTORS: [string, string][] = [
 
 const FETCH_CONCURRENCY = 10;
 const FETCH_TIMEOUT_MS = 15_000;
+// Skip files larger than this — avoids pulling full video files accidentally
+const MAX_ASSET_BYTES = 50 * 1024 * 1024; // 50 MB
 
-export function collectAssetUrls(html: string, pageUrl: string, origin: string): string[] {
+export function collectAssetUrls(html: string, pageUrl: string, _origin: string): string[] {
   const $ = cheerio.load(html);
   const out = new Set<string>();
   const add = (raw: string | undefined) => {
-    if (!raw || raw.startsWith("data:")) return;
+    // Skip data URIs, blob URLs, and empty values — everything else gets rehosted.
+    // The gym is leaving their old host; we download and own all static assets
+    // regardless of whether they live on the gym's domain or a third-party CDN
+    // (Webflow CDN, Squarespace CDN, Google Fonts, etc.).
+    if (!raw || raw.startsWith("data:") || raw.startsWith("blob:")) return;
     try {
       const abs = new URL(raw, pageUrl);
       abs.hash = "";
-      if (abs.origin === origin) out.add(abs.toString());
+      out.add(abs.toString());
     } catch { /* unparseable URL — skip */ }
   };
   for (const [selector, attr] of ASSET_SELECTORS) {
@@ -77,14 +83,25 @@ async function getS3Text(s3: S3Client, bucket: string, key: string): Promise<str
 }
 
 async function fetchBinary(url: string): Promise<{ buffer: Buffer; contentType: string }> {
-  // Timeout prevents a slow asset host from hanging the worker indefinitely (I2)
   const res = await fetch(url, {
     redirect: "follow",
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  // Guard against accidentally pulling huge video files
+  const length = Number(res.headers.get("content-length") ?? 0);
+  if (length > MAX_ASSET_BYTES) {
+    throw new Error(`Asset too large (${Math.round(length / 1024 / 1024)}MB > 50MB limit): ${url}`);
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.byteLength > MAX_ASSET_BYTES) {
+    throw new Error(`Asset too large after download (${Math.round(buffer.byteLength / 1024 / 1024)}MB): ${url}`);
+  }
+
   return {
-    buffer: Buffer.from(await res.arrayBuffer()),
+    buffer,
     contentType: res.headers.get("content-type") ?? "application/octet-stream",
   };
 }
@@ -114,7 +131,8 @@ export async function captureAssets(
         downloads.set(url, dl);
         if (dl.contentType.includes("text/css") || url.endsWith(".css")) {
           for (const ref of extractCssUrls(dl.buffer.toString("utf8"), url)) {
-            if (new URL(ref).origin === crawl.origin && !downloads.has(ref)) nested.add(ref);
+            // Follow CSS refs from any origin — e.g. Webflow CDN CSS imports fonts from Google
+            if (!ref.startsWith("data:") && !downloads.has(ref)) nested.add(ref);
           }
         }
       } catch (err) {
