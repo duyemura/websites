@@ -126,7 +126,7 @@ export const INTERCEPTOR_SCRIPT = /* js */ `(function () {
           var originalAction = form.getAttribute('data-milo-original-action');
           if (originalAction) {
             // Pass raw form fields (not UTM-merged payload) to the external system
-            passthroughSubmit(form, originalAction, data);
+            passthroughSubmit(form, originalAction, payload);
           }
           showSuccess(form);
         } else {
