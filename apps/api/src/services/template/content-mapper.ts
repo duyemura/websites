@@ -7,7 +7,7 @@ import type {
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
   ScheduleContent, BlogContent, LegalPage, HeroContent,
-} from "../../types/gym-content";
+} from "@ploy-gyms/shared-types";
 
 // ── State abbr lookup ────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandToken
   return {
     primaryColor: fallback(c.primary, "#1a1a1a", warnings, "primaryColor"),
     secondaryColor: fallback(c.background, "#ffffff", warnings, "secondaryColor"),
-    accentColor: fallback(c.muted, "#666666", warnings, "accentColor"),
+    accentColor: fallback(c.foreground, "#f1f1f1", warnings, "accentColor"),
     headingFont: fallback(f.heading, "Inter", warnings, "headingFont"),
     bodyFont: fallback(f.body, "Inter", warnings, "bodyFont"),
     logoUrl: logo.type === "image" ? (logo.value || fallback("", "", warnings, "logoUrl")) : "",
@@ -64,12 +64,15 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
   const email = markdown.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)?.[0];
 
   const addrMatch = markdown.match(
-    /(\d+\s+[\w\s]+(?:St(?:reet)?|Ave(?:nue)?|Blvd|Dr(?:ive)?|Rd|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir)[\w\s]*),?\s*([\w\s]+),\s*([A-Z]{2})\s+(\d{5})/i,
+    /(\d+\s+[\w\s]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail)\.?),?\s*(?:Suite?\s*\d+\s*,\s*)?([\w\s]+?),\s*([A-Z]{2})\s+(\d{5})/i,
   );
+  const looseMatch = !addrMatch
+    ? markdown.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
+    : null;
   const street = addrMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.street");
-  const city = addrMatch?.[2]?.trim() ?? fallback("", "", warnings, "address.city");
-  const stateAbbr = addrMatch?.[3]?.toUpperCase() ?? fallback("", "", warnings, "address.state");
-  const zip = addrMatch?.[4] ?? fallback("", "", warnings, "address.zip");
+  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.city");
+  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2])?.toUpperCase() ?? fallback("", "", warnings, "address.state");
+  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fallback("", "", warnings, "address.zip");
 
   const primaryCta = ds.reference.homePagePrimaryCta
     ? { label: ds.reference.homePagePrimaryCta.label, url: ds.reference.homePagePrimaryCta.href }
@@ -267,6 +270,7 @@ export async function buildGymJson(
   ]);
 
   if (!dsDoc?.contentJson) warnings.push("design-system doc missing — using all brand defaults");
+  if (!bizDoc?.content) warnings.push("business-info doc missing — address/phone/email will be empty");
   if (!hierDoc?.contentJson) warnings.push("site-hierarchy doc missing — using minimal page structure");
 
   const ds = (dsDoc?.contentJson ?? {

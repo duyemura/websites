@@ -76,7 +76,7 @@ describe("extractBrand", () => {
     const brand = extractBrand(DS, warnings);
     expect(brand.primaryColor).toBe("#e63946");
     expect(brand.secondaryColor).toBe("#0d0d0d");
-    expect(brand.accentColor).toBe("#333");
+    expect(brand.accentColor).toBe("#f1f1f1");
     expect(brand.headingFont).toBe("Barlow Condensed");
     expect(brand.bodyFont).toBe("Inter");
     expect(brand.logoUrl).toBe("https://cdn.example.com/logo.png");
