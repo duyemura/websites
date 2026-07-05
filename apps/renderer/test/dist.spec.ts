@@ -118,3 +118,33 @@ describe("homepage", () => {
     expect($(`iframe[src="${gym.business.mapEmbedUrl}"]`).length).toBe(1);
   });
 });
+
+describe("program pages", () => {
+  it("builds one page per program with geo headline, geo title, and exactly one h1", () => {
+    for (const p of gym.pages.programs) {
+      const $ = loadPage(`programs/${p.slug}/index.html`);
+      expect($("h1").first().text()).toContain(`${p.name} in ${gym.business.geo.city}, ${gym.business.geo.stateAbbr}`);
+      expect($("title").text()).toContain(gym.business.geo.city);
+      // Guard: Hero must render as h2 (h1={false}) — two h1s would hurt SEO silently
+      expect($("h1").length).toBe(1);
+    }
+  });
+
+  it("emits Service + BreadcrumbList schema on program pages", () => {
+    const $ = loadPage("programs/crossfit-classes/index.html");
+    const schemas = jsonLd($);
+    const service = schemas.find((s) => s["@type"] === "Service") as any;
+    expect(service.name).toBe("CrossFit Classes");
+    expect(service.areaServed.map((a: any) => a.name)).toContain("Leawood");
+    const crumbs = schemas.find((s) => s["@type"] === "BreadcrumbList") as any;
+    expect(crumbs.itemListElement[1].name).toBe("CrossFit Classes");
+  });
+
+  it("renders differentiators, class structure, and program FAQ with schema", () => {
+    const $ = loadPage("programs/crossfit-classes/index.html");
+    const prog = gym.pages.programs[0];
+    for (const d of prog.whatMakesUsDifferent) expect($("body").text()).toContain(d);
+    for (const s of prog.whatToExpect.steps) expect($("body").text()).toContain(s);
+    expect(jsonLd($).some((s) => s["@type"] === "FAQPage")).toBe(true);
+  });
+});

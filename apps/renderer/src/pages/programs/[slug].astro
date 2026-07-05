@@ -1,0 +1,79 @@
+---
+import GymLayout from "../../layouts/GymLayout.astro";
+import Hero from "../../components/sections/Hero.astro";
+import HowItWorks from "../../components/sections/HowItWorks.astro";
+import Testimonials from "../../components/sections/Testimonials.astro";
+import FAQ from "../../components/sections/FAQ.astro";
+import CTABand from "../../components/sections/CTABand.astro";
+import Location from "../../components/sections/Location.astro";
+import RichContent from "../../components/sections/RichContent.astro";
+import ServiceSchema from "../../components/seo/ServiceSchema.astro";
+import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
+import Container from "../../components/ui/Container.astro";
+import SectionHeading from "../../components/ui/SectionHeading.astro";
+import { content, programGeoHeadline } from "../../lib/content";
+
+export function getStaticPaths() {
+  return content.pages.programs.map((p) => ({ params: { slug: p.slug }, props: { program: p } }));
+}
+const { program } = Astro.props;
+const { business } = content;
+const path = `/programs/${program.slug}`;
+const headline = programGeoHeadline(program);
+const title = `${program.name} in ${business.geo.city}, ${business.geo.stateAbbr} | ${business.name}`;
+---
+<GymLayout title={title} description={program.shortDescription} path={path} image={program.coverImageUrl}>
+  <Fragment slot="head">
+    <ServiceSchema name={program.name} path={path} description={program.shortDescription} image={program.coverImageUrl} />
+    <BreadcrumbSchema crumbs={[{ name: program.name, path }]} />
+  </Fragment>
+
+  <!-- Geo H1 above the hero for local SEO; hero renders its heading as h2 -->
+  <Container><h1 class="pt-10 text-center font-heading text-2xl font-semibold text-secondary">{headline}</h1></Container>
+  <Hero hero={program.hero} h1={false} />
+
+  <section class="py-16">
+    <Container>
+      <SectionHeading title={program.whatIsIt.headline} />
+      <p class="mx-auto max-w-3xl text-center text-lg text-secondary">{program.whatIsIt.body}</p>
+    </Container>
+  </section>
+
+  <section class="bg-slate-50 py-16">
+    <Container>
+      <SectionHeading title={`What makes our ${program.name} different?`} />
+      <ul class="mx-auto max-w-2xl space-y-3">
+        {program.whatMakesUsDifferent.map((d) => (
+          <li class="flex gap-3"><span class="text-accent">✔</span><span>{d}</span></li>
+        ))}
+      </ul>
+    </Container>
+  </section>
+
+  <section class="py-16">
+    <Container>
+      <SectionHeading title={program.whatToExpect.headline} />
+      <ol class="mx-auto flex max-w-3xl flex-wrap justify-center gap-4">
+        {program.whatToExpect.steps.map((s, i) => (
+          <li class="rounded-full bg-primary px-5 py-2 font-heading text-white">{i + 1}. {s}</li>
+        ))}
+      </ol>
+    </Container>
+  </section>
+
+  <section class="bg-slate-50 py-16">
+    <Container>
+      <SectionHeading title={`Who is ${program.name} for?`} />
+      <ul class="mx-auto max-w-2xl list-disc space-y-2 pl-6 text-secondary">
+        {program.whoIsItFor.map((w) => <li>{w}</li>)}
+      </ul>
+    </Container>
+  </section>
+
+  <HowItWorks steps={program.gettingStarted} headline="Getting started" />
+  <Testimonials items={program.testimonials} />
+  {program.richContent && <RichContent sections={program.richContent} />}
+  <Location />
+  <FAQ items={program.faq} />
+  <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>
