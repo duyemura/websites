@@ -33,13 +33,6 @@ const BOOKING_WIDGET_HOSTS = [
   "fitreserve.com",
 ];
 
-/**
- * UGC path prefixes: individual posts/recipes/articles discovered in the registry
- * but not rendered on the free tier. The INDEX page (/blog, /recipes) is structural.
- *
- * Pattern: /ugc-parent/anything-deeper → UGC
- * e.g. /blog/my-post → UGC, /blog → structural
- */
 const UGC_PARENT_SEGMENTS = new Set([
   "blog", "recipes", "recipe", "articles", "article",
   "news", "posts", "post", "updates", "changelog",
@@ -78,28 +71,26 @@ export function pathToSlug(pagePath: string): string {
 
 // ---- Sitemap pre-seeding ----
 
-const LOC_RE = /<loc>\s*([^<]+)\s*<\/loc>/gi;
-const SITEMAP_RE = /<sitemap>/i;
-
-/** Extract all <loc> URLs from a sitemap or sitemap index XML string. */
+/** Extract all <loc> URLs from a sitemap or sitemap index XML string.
+ *  Uses a fresh regex per call — module-scope /g regexes are stateful and unsafe
+ *  to reuse across concurrent calls. */
 function extractSitemapLocs(xml: string): string[] {
+  const re = /<loc>\s*([^<]+)\s*<\/loc>/gi;
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  LOC_RE.lastIndex = 0;
-  while ((m = LOC_RE.exec(xml)) !== null) {
+  while ((m = re.exec(xml)) !== null) {
     const loc = m[1]?.trim();
     if (loc) out.push(loc);
   }
   return out;
 }
 
-/**
- * Fetch sitemap from the origin, handling sitemap index files (1 level deep).
- * Returns an array of page URLs already normalized to the origin, or [] if none found.
- */
+const MAX_SUB_SITEMAPS = 10;
+
 async function fetchSitemapUrls(
   origin: string,
   context: BrowserContext,
+  log: { warn: (o: object, m: string) => void },
 ): Promise<string[]> {
   const tryFetch = async (url: string): Promise<string | null> => {
     try {
@@ -110,22 +101,37 @@ async function fetchSitemapUrls(
     }
   };
 
-  // Check robots.txt for a Sitemap: declaration first
+  // Check robots.txt for a Sitemap: declaration (I6: validate same-origin)
   let sitemapUrl = `${origin}/sitemap.xml`;
   const robotsTxt = await tryFetch(`${origin}/robots.txt`);
   if (robotsTxt) {
-    const match = /^Sitemap:\s*(.+)$/im.exec(robotsTxt);
-    if (match?.[1]) sitemapUrl = match[1].trim();
+    // Collect ALL Sitemap: declarations (real robots.txt files often list multiple)
+    const sitemapMatches = [...robotsTxt.matchAll(/^Sitemap:\s*(.+)$/gim)];
+    for (const match of sitemapMatches) {
+      const declared = match[1]?.trim();
+      if (!declared) continue;
+      try {
+        const parsed = new URL(declared);
+        // Only follow same-origin sitemaps to avoid SSRF-adjacent external fetches
+        if (parsed.origin === origin) { sitemapUrl = parsed.toString(); break; }
+      } catch { /* ignore malformed */ }
+    }
   }
 
   const xml = await tryFetch(sitemapUrl);
   if (!xml) return [];
 
-  // Sitemap index — fetch each sub-sitemap (1 level only)
-  if (SITEMAP_RE.test(xml)) {
-    const subUrls = extractSitemapLocs(xml).filter(u => u.endsWith(".xml"));
+  // Sitemap index — fetch sub-sitemaps (1 level deep, capped)
+  if (/<sitemapindex/i.test(xml)) {
+    const subUrls = extractSitemapLocs(xml);
+    if (subUrls.length > MAX_SUB_SITEMAPS) {
+      log.warn(
+        { total: subUrls.length, using: MAX_SUB_SITEMAPS },
+        "mirror crawl: sitemap index truncated — site has many sub-sitemaps",
+      );
+    }
     const subPages: string[] = [];
-    for (const sub of subUrls.slice(0, 10)) { // cap sub-sitemaps
+    for (const sub of subUrls.slice(0, MAX_SUB_SITEMAPS)) {
       const subXml = await tryFetch(sub);
       if (subXml) subPages.push(...extractSitemapLocs(subXml));
     }
@@ -155,15 +161,9 @@ async function collectEvidence(page: import("playwright").Page, bookingHosts: st
       method: (f.getAttribute("method") ?? "get").toLowerCase(),
       selector: `form:nth-of-type(${i + 1})`,
     }));
-    const embedHosts = Array.from(
-      document.querySelectorAll("script[src], iframe[src]"),
-    )
+    const embedHosts = Array.from(document.querySelectorAll("script[src], iframe[src]"))
       .map((el) => {
-        try {
-          return new URL(el.getAttribute("src") ?? "", location.href).host;
-        } catch {
-          return "";
-        }
+        try { return new URL(el.getAttribute("src") ?? "", location.href).host; } catch { return ""; }
       })
       .filter((h) => h && h !== location.host);
 
@@ -180,30 +180,18 @@ async function collectEvidence(page: import("playwright").Page, bookingHosts: st
 
     const datedPosts = document.querySelectorAll("article time, .post time, [class*=blog] time");
     if (datedPosts.length >= 2) {
-      dynamicRegions.push({
-        kind: "blog",
-        selector: "article",
-        evidence: `${datedPosts.length} dated entries`,
-      });
+      dynamicRegions.push({ kind: "blog", selector: "article", evidence: `${datedPosts.length} dated entries` });
     }
 
     const generator = document.querySelector('meta[name="generator"]');
     if (generator?.getAttribute("content")) {
-      dynamicRegions.push({
-        kind: "plugin",
-        selector: 'meta[name="generator"]',
-        evidence: generator.getAttribute("content") ?? "",
-      });
+      dynamicRegions.push({ kind: "plugin", selector: 'meta[name="generator"]', evidence: generator.getAttribute("content") ?? "" });
     }
 
     for (const host of embedHosts) {
       const matched = hosts.find((bh) => host === bh || host.endsWith(`.${bh}`));
       if (matched) {
-        dynamicRegions.push({
-          kind: "booking-widget",
-          selector: `script[src*="${matched}"], iframe[src*="${matched}"]`,
-          evidence: `booking widget from ${host} — verify loads on preview domain`,
-        });
+        dynamicRegions.push({ kind: "booking-widget", selector: `script[src*="${matched}"], iframe[src*="${matched}"]`, evidence: `booking widget from ${host} — verify loads on preview domain` });
         break;
       }
     }
@@ -225,7 +213,6 @@ export interface CrawlDeps {
     bucket: string;
   };
   crawlVersion: number;
-  /** Tier controls page cap and UGC skip behaviour. Defaults to free tier. */
   tier?: CrawlTier;
   log: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
@@ -235,36 +222,40 @@ export async function crawlSite(
   deps: CrawlDeps,
 ): Promise<MirrorCrawlArtifact> {
   const tier = deps.tier ?? CRAWL_TIER_FREE;
-  let origin = new URL(sourceUrl).origin;
   const s3Client = getS3Client(deps.s3);
 
   const browser = await chromium.launch();
   try {
-    // Use a single shared context for sitemap + robots fetch, separate contexts for crawling
     const sharedCtx = await browser.newContext();
+
+    // ---- Resolve canonical origin ONCE before seeding (I4) ----
+    // A redirect (http→https, bare→www) on the first nav changes the origin.
+    // Resolve it up front so all workers + sitemap seeding use the same origin.
+    let origin = new URL(sourceUrl).origin;
+    try {
+      const res = await sharedCtx.request.get(sourceUrl, { timeout: 15_000, maxRedirects: 5 });
+      const finalUrl = res.url();
+      if (finalUrl) origin = new URL(finalUrl).origin;
+    } catch { /* unreachable source — proceed with initial origin, first worker will update */ }
 
     // ---- Shared mutable state (safe: Node.js single-threaded event loop) ----
     const queue: string[] = [];
     const seen = new Set<string>();
+    // C2: use a dedicated counter so the cap check is atomic (no await between check and increment)
+    let capturedCount = 0;
     const pages: MirrorPage[] = [];
     const failures: { url: string; reason: string }[] = [];
     const redirects: MirrorRedirect[] = [];
     const ugcRegistry: string[] = [];
 
     const enqueue = (url: string) => {
-      if (!seen.has(url)) {
-        seen.add(url);
-        queue.push(url);
-      }
+      if (!seen.has(url)) { seen.add(url); queue.push(url); }
     };
 
-    // Seed with homepage first
-    const startUrl = normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl;
-    enqueue(startUrl);
+    // Seed: homepage first, then sitemap
+    enqueue(normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl);
 
-    // Pre-seed from sitemap — fills the queue before workers start so all
-    // CRAWL_CONCURRENCY workers can begin immediately
-    const sitemapPageUrls = await fetchSitemapUrls(origin, sharedCtx);
+    const sitemapPageUrls = await fetchSitemapUrls(origin, sharedCtx, deps.log);
     let seededFromSitemap = 0;
     for (const raw of sitemapPageUrls) {
       const normalized = normalizeCrawlUrl(raw, origin);
@@ -274,35 +265,25 @@ export async function crawlSite(
       { queueSize: queue.length, fromSitemap: seededFromSitemap },
       seededFromSitemap > 0
         ? "mirror crawl: queue seeded from sitemap + homepage"
-        : "mirror crawl: no sitemap found — BFS fallback",
+        : "mirror crawl: no sitemap found — BFS only",
     );
 
-    // ---- Worker: crawls one page, adds discovered links to shared queue ----
+    // ---- Per-page crawl function ----
     const crawlPage = async (url: string, ctx: BrowserContext): Promise<void> => {
-      if (pages.length >= tier.maxCapturedPages) return;
+      // C2: reserve the slot atomically BEFORE the first await
+      if (capturedCount >= tier.maxCapturedPages) return;
 
       const page = await ctx.newPage();
       try {
-        const response = await page.goto(url, {
-          waitUntil: "domcontentloaded",
-          timeout: 30_000,
-        });
+        const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
         await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
 
         const status = response?.status() ?? 0;
-        if (status >= 400) {
-          failures.push({ url, reason: `HTTP ${status}` });
-          return;
-        }
+        if (status >= 400) { failures.push({ url, reason: `HTTP ${status}` }); return; }
 
         const finalUrl = page.url();
         const finalPath = new URL(finalUrl).pathname;
         const origPath = new URL(url).pathname;
-
-        // Update origin after first successful nav (handles http→https, bare→www)
-        if (pages.length === 0 && redirects.length === 0) {
-          origin = new URL(finalUrl).origin;
-        }
 
         // Deduplicate redirect targets
         const normalizedFinal = normalizeCrawlUrl(finalUrl, origin);
@@ -316,35 +297,33 @@ export async function crawlSite(
         const pagePath = finalPath;
         const pageCategory = classifyPath(pagePath);
 
-        // Collect evidence regardless — we always want to discover links
+        // Always collect evidence to discover links for BFS
         const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
-
-        // Add discovered links to shared queue
         for (const link of evidence.links) {
           const normalized = normalizeCrawlUrl(link, origin, finalUrl);
           if (normalized) enqueue(normalized);
         }
 
-        // Free tier: register UGC but don't capture it
+        // Free tier: register UGC but skip rendering
         if (tier.skipUgcCapture && pageCategory === "ugc") {
           ugcRegistry.push(pagePath);
           deps.log.info({ url, category: "ugc" }, "mirror crawl: UGC discovered, not captured (free tier)");
           return;
         }
 
-        // Check cap again after link discovery (another worker may have hit it)
-        if (pages.length >= tier.maxCapturedPages) return;
+        // C2: check cap again after evidence collection (another worker may have filled it)
+        if (capturedCount >= tier.maxCapturedPages) return;
+        // Atomically reserve this slot — no await between this and the push below
+        capturedCount++;
 
         const html = await page.content();
         const htmlKey = `sites/${deps.siteUuid}/crawl/${deps.crawlVersion}/${pathToSlug(pagePath)}.html`;
-        await s3Client.send(
-          new PutObjectCommand({
-            Bucket: deps.s3.bucket,
-            Key: htmlKey,
-            Body: Buffer.from(html, "utf8"),
-            ContentType: "text/html; charset=utf-8",
-          }),
-        );
+        await s3Client.send(new PutObjectCommand({
+          Bucket: deps.s3.bucket,
+          Key: htmlKey,
+          Body: Buffer.from(html, "utf8"),
+          ContentType: "text/html; charset=utf-8",
+        }));
 
         const forms: MirrorForm[] = evidence.forms
           .filter((f) => {
@@ -378,37 +357,35 @@ export async function crawlSite(
       }
     };
 
-    // ---- Parallel workers drain the shared queue ----
-    // Each worker pulls from the front of the queue. When empty it checks whether
-    // any other workers might still be adding URLs (activeWorkers > 1) and yields
-    // briefly, then exits if queue is still empty.
-    let activeWorkers = 0;
+    // ---- Parallel workers (C1 + C8 fix) ----
+    // Always spawn CRAWL_CONCURRENCY workers regardless of initial queue size.
+    // Workers with an empty queue yield and retry until no other worker is busy
+    // (busyWorkers === 0), ensuring BFS-discovered links are not missed.
+    let busyWorkers = 0;
 
     const runWorker = async () => {
-      activeWorkers++;
       const ctx = await browser.newContext();
       try {
-        while (pages.length < tier.maxCapturedPages) {
+        while (capturedCount < tier.maxCapturedPages) {
           const url = queue.shift();
           if (!url) {
-            if (activeWorkers === 1) break; // Last worker, nothing left
-            // Other workers may still be mid-page and about to enqueue links
+            // Queue empty: only exit if no other worker is mid-crawl
+            // (a busy worker may still enqueue new links)
+            if (busyWorkers === 0) break;
             await new Promise((r) => setTimeout(r, 100));
-            if (queue.length === 0) break;
             continue;
           }
-          await crawlPage(url, ctx);
+          busyWorkers++;
+          try { await crawlPage(url, ctx); } finally { busyWorkers--; }
         }
       } finally {
-        activeWorkers--;
         await ctx.close();
       }
     };
 
-    const workerCount = Math.min(CRAWL_CONCURRENCY, Math.max(1, queue.length));
-    await Promise.all(Array.from({ length: workerCount }, runWorker));
+    await Promise.all(Array.from({ length: CRAWL_CONCURRENCY }, runWorker));
 
-    // Fetch sitemap + robots for the artifact (separate from the URL seeding above)
+    // Fetch sitemap + robots for the artifact record
     let sitemapXml: string | null = null;
     let robotsTxt: string | null = null;
     try {
