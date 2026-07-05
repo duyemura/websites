@@ -50,6 +50,7 @@ export const ConfigSchema = z.object({
   GOOGLE_PLACES_API_KEY: z.string().optional(),
   FAL_KEY: z.string().optional(),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/dev/image-to-image"),
+  SES_FROM_EMAIL: z.string().email().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
