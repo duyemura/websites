@@ -4,6 +4,52 @@ import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import type { MirrorCrawlArtifact, MirrorAssetsArtifact, MirrorSnapshotArtifact } from "../../types/mirror";
 
 const Params = z.object({ siteUuid: z.string().uuid() });
+const ErrorSchema = z.object({ error: z.string() });
+
+/** Statuses that mean a mirror job is already running or enqueued. */
+const IN_FLIGHT_STATUSES = new Set(["queued", "crawling"]);
+
+// Response schema for the artifacts debug endpoint (I3)
+const ArtifactsResponseSchema = z.object({
+  crawl: z.object({
+    version: z.number(),
+    capturedAt: z.coerce.date(),
+    pageCount: z.number(),
+    pages: z.array(
+      z.object({
+        path: z.string(),
+        title: z.string(),
+        formCount: z.number(),
+        dynamicRegions: z.array(z.object({ kind: z.string(), evidence: z.string() })),
+        embedHosts: z.array(z.string()),
+      }),
+    ),
+    redirects: z.array(z.object({ from: z.string(), to: z.string(), status: z.number() })),
+    failures: z.array(z.object({ url: z.string(), reason: z.string() })),
+  }).nullable(),
+  assets: z.object({
+    version: z.number(),
+    capturedAt: z.coerce.date(),
+    assetCount: z.number(),
+    failureCount: z.number(),
+    failures: z.array(z.object({ url: z.string(), reason: z.string() })),
+  }).nullable(),
+  snapshot: z.object({
+    version: z.number(),
+    capturedAt: z.coerce.date(),
+    s3Prefix: z.string(),
+    pageCount: z.number(),
+    assetCount: z.number(),
+    warnings: z.array(z.string()),
+  }).nullable(),
+  deploy: z.object({
+    version: z.number(),
+    capturedAt: z.coerce.date(),
+    previewUrl: z.string(),
+    pageCount: z.number(),
+    warnings: z.array(z.string()),
+  }).nullable(),
+});
 
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   /** Verify the site exists and belongs to the requesting workspace. */
@@ -26,8 +72,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         params: Params,
         response: {
           202: z.object({ status: z.string() }),
-          400: z.object({ error: z.string() }),
-          404: z.object({ error: z.string() }),
+          400: ErrorSchema,
+          404: ErrorSchema,
+          409: ErrorSchema,
         },
       },
     },
@@ -37,16 +84,27 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       if (!site) return reply.code(404).send({ error: "Site not found" });
       if (!site.sourceUrl) return reply.code(400).send({ error: "Site has no sourceUrl — set it before mirroring" });
 
+      // C3: reject if a job is already in-flight rather than enqueuing a second one
+      if (site.mirrorStatus && IN_FLIGHT_STATUSES.has(site.mirrorStatus)) {
+        return reply.code(409).send({
+          error: `Mirror already in progress (status: ${site.mirrorStatus})`,
+        });
+      }
+
       await fastify.db
         .updateTable("sites")
         .set({ mirrorStatus: "queued" })
         .where("uuid", "=", siteUuid)
         .execute();
 
-      await fastify.queues.mirrorSite.queue.add("mirror_site", {
-        siteUuid,
-        workspaceUuid: request.workspace.uuid,
-      });
+      // I2: jobId ensures BullMQ deduplicates if this route is called again before
+      // the worker picks up the job (e.g. double-click, retry). BullMQ returns the
+      // existing job rather than creating a duplicate.
+      await fastify.queues.mirrorSite.queue.add(
+        "mirror_site",
+        { siteUuid, workspaceUuid: request.workspace.uuid },
+        { jobId: `mirror-${siteUuid}` },
+      );
 
       return reply.code(202).send({ status: "queued" });
     },
@@ -68,7 +126,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
             previewUrl: z.string().nullable(),
             warnings: z.array(z.string()),
           }),
-          404: z.object({ error: z.string() }),
+          404: ErrorSchema,
         },
       },
     },
@@ -78,19 +136,24 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       if (!site) return reply.code(404).send({ error: "Site not found" });
 
       const ctx = { siteUuid, workspaceUuid: request.workspace.uuid };
-      const [snapshot, deploy] = await Promise.all([
-        loadArtifact<MirrorSnapshotArtifact>(fastify.db, ctx, "mirror-snapshot"),
-        loadArtifact<{ previewUrl: string; pageCount: number; warnings: string[] }>(
-          fastify.db, ctx, "mirror-deploy",
-        ),
-      ]);
+      // I4: read everything from the deploy artifact so warnings and status are
+      // co-versioned from the same pipeline run (no mixing snapshot vN with deploy v(N-1))
+      const deploy = await loadArtifact<{
+        previewUrl: string;
+        pageCount: number;
+        warnings: string[];
+        snapshotWarnings: string[];
+      }>(fastify.db, ctx, "mirror-deploy");
 
       return {
         mirrorStatus: site.mirrorStatus,
         sourceUrl: site.sourceUrl ?? null,
         pageCount: deploy?.payload.pageCount ?? null,
         previewUrl: deploy?.payload.previewUrl ?? null,
-        warnings: snapshot?.payload.warnings ?? [],
+        warnings: [
+          ...(deploy?.payload.snapshotWarnings ?? []),
+          ...(deploy?.payload.warnings ?? []),
+        ],
       };
     },
   );
@@ -99,8 +162,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   // GET /sites/:siteUuid/mirror/artifacts — inspect stage artifacts for debugging
   //
   // Returns a summary of each mirror stage artifact so you can see exactly what
-  // pages were crawled, which assets were captured, and what warnings exist —
-  // without having to dig through raw S3 keys.
+  // pages were crawled, which assets were captured, and what warnings exist.
   //
   // Example:
   //   curl -H "Authorization: Bearer $TOKEN" \
@@ -109,10 +171,17 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   // ---------------------------------------------------------------------------
   fastify.get(
     "/sites/:siteUuid/mirror/artifacts",
-    { schema: { params: Params } },
+    {
+      schema: {
+        params: Params,
+        response: { 200: ArtifactsResponseSchema, 404: ErrorSchema },
+      },
+    },
     async (request, reply) => {
       const { siteUuid } = request.params;
-      if (!(await ownedSite(siteUuid, request.workspace.uuid))) return reply.code(404).send({ error: "Site not found" });
+      if (!(await ownedSite(siteUuid, request.workspace.uuid))) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
 
       const ctx = { siteUuid, workspaceUuid: request.workspace.uuid };
       const [crawl, assets, snapshot, deploy] = await Promise.all([
