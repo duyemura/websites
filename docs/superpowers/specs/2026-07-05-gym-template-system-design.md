@@ -67,15 +67,20 @@ interface GymSiteContent {
 
 interface SiteMeta {
   siteUrl: string               // canonical domain (e.g. https://gym.com)
-  defaultTitle: string          // fallback page title
-  defaultDescription: string
+  defaultTitle: string          // fallback page title pattern e.g. "{page} | KS Athletic Club"
+  defaultDescription: string    // fallback meta description
+
+  // --- Verification ---
+  googleSiteVerification?: string  // Google Search Console verification token
+  bingVerification?: string        // Bing Webmaster Tools (optional)
 
   // --- Analytics & tracking ---
-  // Prefer GTM (manages GA + Pixel from one container, no redeploy to add tags)
-  googleTagManagerId?: string   // GTM-XXXXXXX — preferred over direct GA/Pixel
-  googleAnalyticsId?: string    // G-XXXXXXXXXX — used if no GTM
-  facebookPixelId?: string      // Meta Pixel — used if no GTM
-  tiktokPixelId?: string        // TikTok Pixel — used if no GTM
+  // Prefer GTM — manages GA, Pixel, and any future tags from one container
+  // without a redeploy. Marketing team can add/change tags independently.
+  googleTagManagerId?: string   // GTM-XXXXXXX — preferred
+  googleAnalyticsId?: string    // G-XXXXXXXXXX — fallback if no GTM
+  facebookPixelId?: string      // Meta Pixel — fallback if no GTM
+  tiktokPixelId?: string        // TikTok Pixel — fallback if no GTM
 }
 
 interface BusinessInfo {
@@ -88,10 +93,16 @@ interface BusinessInfo {
   coordinates?: { lat: number; lng: number }
   primaryCta: { label: string; url: string }  // e.g. "Free Discovery Call"
   trialCta?: { label: string; url: string }   // e.g. "Try 28 Days for $28"
-  // Geo fields for SEO-targeted headlines e.g. "CrossFit Classes in Overland Park, KS"
+  // Geo — drives SEO titles ("CrossFit in Overland Park, KS") and LocalBusiness schema
   geo: { city: string; state: string; stateAbbr: string }
-  // Service area communities for location section copy
+  // Service area for location section copy and areaServed schema
   serviceArea?: string[]  // e.g. ["Leawood", "Olathe", "Lenexa"]
+  // Aggregate rating — shown in LocalBusiness schema (improves star snippet in SERP)
+  aggregateRating?: {
+    ratingValue: string    // e.g. "4.9"
+    reviewCount: number    // e.g. 127
+    bestRating?: string    // default "5"
+  }
 }
 
 interface BrandTokens {
@@ -334,25 +345,191 @@ This gives the gym full attribution: they know which ad → which campaign → w
 
 ## Built-in SEO (Managed tier differentiator)
 
-Every page automatically gets structured data the frozen mirror never had:
+Every page automatically gets structured data, geo-targeted titles, and Open Graph tags the frozen mirror never had. Zero configuration by the gym owner.
 
-**`LocalBusiness` JSON-LD** (all pages, from `business` data):
+---
+
+### JSON-LD structured data
+
+**`LocalBusiness` + `SportsActivityLocation`** — injected on every page via `GymLayout.astro`:
 ```json
 {
-  "@type": "LocalBusiness",
+  "@context": "https://schema.org",
+  "@type": ["LocalBusiness", "SportsActivityLocation"],
   "name": "KS Athletic Club",
-  "address": { "@type": "PostalAddress", ... },
+  "url": "https://ksathleticclub.com",
   "telephone": "(913) 320-0043",
-  "openingHoursSpecification": [...],
-  "geo": { "@type": "GeoCoordinates", "latitude": 38.9, "longitude": -94.7 }
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "14875 Metcalf Ave",
+    "addressLocality": "Overland Park",
+    "addressRegion": "KS",
+    "postalCode": "66223",
+    "addressCountry": "US"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 38.9071,
+    "longitude": -94.6752
+  },
+  "openingHoursSpecification": [
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday"],
+      "opens": "05:00",
+      "closes": "21:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Saturday","Sunday"],
+      "opens": "07:00",
+      "closes": "12:00"
+    }
+  ],
+  "areaServed": ["Overland Park", "Leawood", "Olathe", "Lenexa"],
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.9",
+    "reviewCount": "127",
+    "bestRating": "5"
+  }
 }
 ```
 
-**`SportsActivityLocation`** for gym-specific rich results.
+**`BreadcrumbList`** — every page except homepage:
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://ksathleticclub.com" },
+    { "@type": "ListItem", "position": 2, "name": "CrossFit Classes", "item": "https://ksathleticclub.com/programs/crossfit-classes" }
+  ]
+}
+```
 
-**`FAQPage` JSON-LD** — injected on pages that have FAQ sections.
+**`Service`** — injected on every program page:
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "CrossFit Classes",
+  "serviceType": "CrossFit Training",
+  "provider": { "@type": "LocalBusiness", "name": "KS Athletic Club" },
+  "areaServed": [
+    { "@type": "City", "name": "Overland Park" },
+    { "@type": "City", "name": "Leawood" }
+  ],
+  "url": "https://ksathleticclub.com/programs/crossfit-classes"
+}
+```
 
-**Per-page meta**: auto-generated `<title>`, `<meta description>`, Open Graph, canonical URL.
+**`FAQPage`** — injected on any page that renders a `FAQ` section:
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is CrossFit good for beginners?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. All workouts are coach-led and scalable." }
+    }
+  ]
+}
+```
+
+**`BlogPosting`** — injected on every blog post page:
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Post Title",
+  "datePublished": "2026-06-01",
+  "author": { "@type": "Person", "name": "Coach Name" },
+  "publisher": { "@type": "Organization", "name": "KS Athletic Club" },
+  "url": "https://ksathleticclub.com/blog/post-slug",
+  "image": "https://ksathleticclub.com/cover.jpg"
+}
+```
+
+---
+
+### Geo-targeted page titles and meta descriptions
+
+Auto-generated from content schema — the gym never writes title tags.
+
+| Page | `<title>` pattern |
+|------|-------------------|
+| Homepage | `CrossFit, Bootcamp & Personal Training in {City}, {State} \| {GymName}` |
+| Program | `{ProgramName} in {City}, {State} \| {GymName}` |
+| About | `About {GymName} \| Gym in {City}, {State}` |
+| Pricing | `Membership Pricing \| {GymName} in {City}, {State}` |
+| Contact | `Contact {GymName} \| Gym in {City}, {State}` |
+| Blog index | `Fitness Tips & News \| {GymName} Blog` |
+| Blog post | `{PostTitle} \| {GymName}` |
+
+Meta descriptions follow the same geo-targeting pattern and are generated from the page's `hero.subheading` or a template string if no subheading exists.
+
+---
+
+### Open Graph + Twitter Card
+
+Injected on every page via `OpenGraph.astro`:
+
+```html
+<!-- Open Graph -->
+<meta property="og:type"        content="website" />
+<meta property="og:title"       content="{page title}" />
+<meta property="og:description" content="{meta description}" />
+<meta property="og:url"         content="{canonical url}" />
+<meta property="og:image"       content="{hero background or cover image}" />
+<meta property="og:site_name"   content="{GymName}" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card"        content="summary_large_image" />
+<meta name="twitter:title"       content="{page title}" />
+<meta name="twitter:description" content="{meta description}" />
+<meta name="twitter:image"       content="{hero background or cover image}" />
+```
+
+---
+
+### Canonical URL + robots
+
+```html
+<link rel="canonical" href="{siteUrl}{pagePath}" />
+<!-- noindex on preview deploys, index on production — controlled by deploy flag in gym.json -->
+<meta name="robots" content="{preview ? 'noindex,nofollow' : 'index,follow'}" />
+```
+
+---
+
+### Google Search Console + Bing verification
+
+```html
+{meta.googleSiteVerification && (
+  <meta name="google-site-verification" content="{meta.googleSiteVerification}" />
+)}
+{meta.bingVerification && (
+  <meta name="msvalidate.01" content="{meta.bingVerification}" />
+)}
+```
+
+---
+
+### Sitemap.xml and robots.txt
+
+Generated at build time from the page list (same logic as the mirror pipeline's `generateSitemap` / `generateRobots` utilities, reused here):
+
+- `sitemap.xml` — all public pages with canonical URLs
+- `robots.txt` — `Allow: /` + `Sitemap:` pointer (noindex pages suppressed from sitemap)
+
+---
+
+### Future: geo landing pages (Phase 2c)
+
+Auto-generated `/near/{city}` pages for service area cities using the AI content pipeline. Not in Phase 2a scope but the schema (`serviceArea[]`) and geo fields are designed to support it.
 
 ---
 
@@ -403,9 +580,13 @@ apps/renderer/
         Container.astro
         SectionHeading.astro
       seo/
-        LocalBusinessSchema.astro
-        FAQSchema.astro
-        OpenGraph.astro
+        LocalBusinessSchema.astro  # LocalBusiness + SportsActivityLocation JSON-LD
+        BreadcrumbSchema.astro     # BreadcrumbList JSON-LD
+        ServiceSchema.astro        # Service JSON-LD (program pages)
+        FAQSchema.astro            # FAQPage JSON-LD
+        BlogPostingSchema.astro    # BlogPosting JSON-LD (blog posts)
+        OpenGraph.astro            # og: + twitter: meta tags
+        CanonicalMeta.astro        # canonical URL + robots + verification tags
       tracking/
         GTMHead.astro         # GTM container snippet
         GAScript.astro        # Direct GA4 fallback
