@@ -48,6 +48,7 @@ Fourteen section types cover all content patterns observed across gym sites. Eve
 | `PricingForm` | Pricing | Lead capture form (name, email, phone → lead) |
 | `BlogList` | Blog index | Single-column post cards: cover image, category label, title, excerpt, link. Pagination controls at bottom. |
 | `BlogPost` | Blog post | Markdown body + cover image, author, date, category, tags |
+| `StickyCTA` | All pages | Thin bar that appears after scrolling past the hero. `"{gym.business.primaryCta.label} →"`. Stays pinned to bottom on mobile, top on desktop. Zero configuration — reads from business data. |
 | `RichContent` | Any page | Generic flexible section — typed block union (see below) |
 
 ---
@@ -524,6 +525,40 @@ Generated at build time from the page list (same logic as the mirror pipeline's 
 
 - `sitemap.xml` — all public pages with canonical URLs
 - `robots.txt` — `Allow: /` + `Sitemap:` pointer (noindex pages suppressed from sitemap)
+
+---
+
+---
+
+### Performance (Core Web Vitals)
+
+All images use Astro's `<Image>` component — automatic WebP conversion, responsive `srcset`, lazy loading, and explicit `width`/`height` to prevent CLS. Hero images get `loading="eager"` + `fetchpriority="high"` for LCP.
+
+Font loading strategy:
+```html
+<!-- Preconnect to font provider -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- font-display: swap prevents invisible text during load -->
+```
+
+GTM and analytics scripts are `async` / `defer` — never block render.
+
+Target: Lighthouse ≥ 95 on Performance, SEO, Accessibility, Best Practices.
+
+---
+
+### AEO — Answer Engine Optimization
+
+ChatGPT, Perplexity, and Google AI Overviews now answer "best gym in [city]" queries directly. To appear in AI-generated answers:
+
+1. **`description` in `LocalBusiness` schema** — one clear sentence: `"KS Athletic Club is a CrossFit, bootcamp, and personal training gym in Overland Park, KS serving adults of all fitness levels."` Pulled from `business.tagline` or auto-generated.
+
+2. **Conversational FAQ answers** — FAQ content should answer the question directly in the first sentence, then elaborate. Not "Great question! Our classes are..." — just "CrossFit at KS Athletic Club is suitable for beginners. All workouts are coach-led and scalable to any fitness level."
+
+3. **Entity definition on every page** — `GymLayout.astro` injects a hidden (visually off-screen, not `display:none`) paragraph: `"{GymName} is a {programTypes} gym located at {address} in {city}, {state}."` This anchors the entity for AI scrapers without cluttering the UI.
+
+4. **`speakable` schema** (optional, Phase 2b) — marks content appropriate for voice search / AI reading.
 
 ---
 
