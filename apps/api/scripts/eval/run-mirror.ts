@@ -413,6 +413,39 @@ async function main() {
     console.log(`\n${failCount === 0 ? "✅ ALL PASS" : `❌ ${failCount}/${results.length} FAIL`}`);
     console.log(`Report: ${reportPath}`);
 
+    // Form capture smoke-test: POST a test lead, assert 201 + row lands in DB
+    console.log("\n## Form capture check");
+    try {
+      const formRes = await fetch(
+        `${cdnBase}/api/forms/${siteUuid}/eval-smoke-test`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ email: "eval@milotest.com", name: "Eval Test", _hp: "" }),
+        },
+      );
+      if (formRes.status === 201) {
+        const row = await db
+          .selectFrom("leads")
+          .select("uuid")
+          .where("siteUuid", "=", siteUuid)
+          .where("formId", "=", "eval-smoke-test")
+          .where("email", "=", "eval@milotest.com")
+          .orderBy("createdAt", "desc")
+          .executeTakeFirst();
+        if (row) {
+          console.log("✅ Form capture: lead stored (uuid:", row.uuid, ")");
+          await db.deleteFrom("leads").where("uuid", "=", row.uuid).execute();
+        } else {
+          console.log("❌ Form capture: 201 but lead row not found in DB");
+        }
+      } else {
+        console.log(`❌ Form capture: expected 201, got ${formRes.status}`);
+      }
+    } catch (err) {
+      console.log("❌ Form capture: fetch failed —", err instanceof Error ? err.message : String(err));
+    }
+
     await cleanup();
     process.exit(failCount > 0 ? 1 : 0);
   } catch (err) {
