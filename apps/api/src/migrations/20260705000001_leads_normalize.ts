@@ -12,9 +12,17 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .alterTable("sites")
     .addColumn("notify_email", "text")
     .execute();
+
+  await db.schema
+    .createIndex("leads_email_idx")
+    .on("leads")
+    .column("email")
+    .execute();
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  await db.schema.dropIndex("leads_email_idx").ifExists().execute();
+
   await db.schema.alterTable("leads").dropColumn("email").execute();
   await db.schema.alterTable("leads").dropColumn("phone").execute();
   await db.schema.alterTable("leads").dropColumn("name").execute();
