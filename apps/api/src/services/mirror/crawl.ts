@@ -2,14 +2,40 @@ import { chromium } from "playwright";
 import { getS3Client } from "../../s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import type {
+  CrawlTier,
   DynamicRegion,
   MirrorCrawlArtifact,
   MirrorForm,
   MirrorPage,
   MirrorRedirect,
 } from "../../types/mirror";
+import { CRAWL_TIER_FREE } from "../../types/mirror";
 
-export const MAX_PAGES = 50;
+/** @deprecated Use CRAWL_TIER_FREE.maxCapturedPages or CRAWL_TIER_PAID */
+export const MAX_PAGES = 20;
+
+/**
+ * UGC path prefixes: individual posts/recipes/articles discovered in the registry
+ * but not rendered on the free tier. The INDEX page (/blog, /recipes) is structural.
+ *
+ * Pattern: /ugc-parent/anything-deeper → UGC
+ * e.g. /blog/my-post → UGC, /blog → structural
+ */
+const UGC_PARENT_SEGMENTS = new Set([
+  "blog", "recipes", "recipe", "articles", "article",
+  "news", "posts", "post", "updates", "changelog",
+]);
+
+export function classifyPath(path: string): "structural" | "ugc" {
+  // Normalise: strip leading slash, split
+  const parts = path.replace(/^\//, "").split("/").filter(Boolean);
+  // Top-level pages and bare collection indexes are always structural
+  if (parts.length < 2) return "structural";
+  // If the first segment is a UGC parent and there's at least one more segment,
+  // the page is a UGC item (individual post/recipe).
+  if (UGC_PARENT_SEGMENTS.has(parts[0]!.toLowerCase())) return "ugc";
+  return "structural";
+}
 
 const ASSET_EXT_RE = /\.(pdf|jpe?g|png|gif|webp|svg|zip|mp4|mov|webm|css|js|ico|woff2?)$/i;
 
@@ -140,6 +166,8 @@ export interface CrawlDeps {
     bucket: string;
   };
   crawlVersion: number;
+  /** Tier controls page cap and UGC skip behaviour. Defaults to free tier. */
+  tier?: CrawlTier;
   log: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
 
@@ -149,6 +177,7 @@ export async function crawlSite(
 ): Promise<MirrorCrawlArtifact> {
   // origin may be updated after the first navigation if the site redirects
   // http→https or bare→www (I3)
+  const tier = deps.tier ?? CRAWL_TIER_FREE;
   let origin = new URL(sourceUrl).origin;
   const s3Client = getS3Client(deps.s3);
 
@@ -162,8 +191,10 @@ export async function crawlSite(
     const pages: MirrorPage[] = [];
     const failures: { url: string; reason: string }[] = [];
     const redirects: MirrorRedirect[] = [];
+    // Registry tracks ALL discovered URLs regardless of tier (for redirect map, future paid)
+    const ugcRegistry: string[] = [];
 
-    while (queue.length > 0 && pages.length < MAX_PAGES) {
+    while (queue.length > 0 && pages.length < tier.maxCapturedPages) {
       const url = queue.shift()!;
 
       // Fresh page per URL — avoids JS heap / listener accumulation across navigations (C2)
@@ -210,9 +241,29 @@ export async function crawlSite(
           });
         }
 
+        const pagePath = finalPath;
+        const pageCategory = classifyPath(pagePath);
+
+        // Free tier: UGC pages go in the registry (for the redirect map) but are
+        // not rendered. We still extract links from them so BFS can discover deeper
+        // structural pages that might be linked from a recipe/post.
+        if (tier.skipUgcCapture && pageCategory === "ugc") {
+          ugcRegistry.push(pagePath);
+          // Still extract links for discovery — a recipe might link to a program page
+          const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
+          for (const link of evidence.links) {
+            const normalized = normalizeCrawlUrl(link, origin, finalUrl);
+            if (normalized && !seen.has(normalized)) {
+              seen.add(normalized);
+              queue.push(normalized);
+            }
+          }
+          deps.log.info({ url, category: "ugc", skipped: true }, "mirror crawl: UGC page discovered but not captured (free tier)");
+          continue;
+        }
+
         const html = await page.content();
         const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
-        const pagePath = finalPath;
 
         const htmlKey = `sites/${deps.siteUuid}/crawl/${deps.crawlVersion}/${pathToSlug(pagePath)}.html`;
         await s3Client.send(
@@ -248,6 +299,7 @@ export async function crawlSite(
           forms,
           dynamicRegions: evidence.dynamicRegions,
           embeds: [...new Set(evidence.embeds)],
+          category: pageCategory,
         });
 
         for (const link of evidence.links) {
@@ -277,7 +329,7 @@ export async function crawlSite(
       if (res.ok()) robotsTxt = await res.text();
     } catch { /* absent robots is fine */ }
 
-    return { sourceUrl, origin, pages, redirects, sitemapXml, robotsTxt, failures };
+    return { sourceUrl, origin, pages, redirects, sitemapXml, robotsTxt, failures, ugcRegistry };
   } finally {
     await browser.close();
   }

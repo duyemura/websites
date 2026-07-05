@@ -33,7 +33,33 @@ export interface MirrorPage {
   dynamicRegions: DynamicRegion[];
   /** Third-party hosts referenced by script/iframe tags */
   embeds: string[];
+  /** UGC pages are discovered (in registry, in redirect map) but not captured on free tier */
+  category: "structural" | "ugc";
 }
+
+// ---- Tier configuration ----
+
+/**
+ * Free tier: 20 structural pages captured; UGC discovered but not rendered.
+ * Paid tier: no cap, all pages captured.
+ * Pass CRAWL_TIER_PAID to crawlSite for unlimited capture.
+ */
+export interface CrawlTier {
+  /** Maximum number of pages to capture (render + store HTML). Infinity = no cap. */
+  maxCapturedPages: number;
+  /** Whether to skip rendering UGC pages (blog posts, recipes, etc.). Structural index pages are always captured. */
+  skipUgcCapture: boolean;
+}
+
+export const CRAWL_TIER_FREE: CrawlTier = {
+  maxCapturedPages: 20,
+  skipUgcCapture: true,
+};
+
+export const CRAWL_TIER_PAID: CrawlTier = {
+  maxCapturedPages: Infinity,
+  skipUgcCapture: false,
+};
 
 export interface MirrorRedirect {
   from: string;
@@ -49,6 +75,9 @@ export interface MirrorCrawlArtifact {
   sitemapXml: string | null;
   robotsTxt: string | null;
   failures: { url: string; reason: string }[];
+  /** UGC paths discovered but not captured on the free tier (blog posts, recipes, etc.).
+   *  Included in the redirect map so old URLs don't 404 after cutover. */
+  ugcRegistry: string[];
 }
 
 export interface MirrorAsset {
