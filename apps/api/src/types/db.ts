@@ -173,6 +173,17 @@ export interface Docs {
   workspaceUuid: string;
 }
 
+export interface Leads {
+  uuid: Generated<string>;
+  siteUuid: string;
+  workspaceUuid: string;
+  formId: string;
+  fields: Json;
+  sourcePath: string | null;
+  ip: string | null;
+  createdAt: Generated<Timestamp>;
+}
+
 export interface LlmModelPricing {
   createdAt: Generated<Timestamp>;
   currency: Generated<string>;
@@ -250,6 +261,21 @@ export interface Playbooks {
   workspaceUuid: string | null;
 }
 
+export interface SiteTransforms {
+  uuid: Generated<string>;
+  siteUuid: string;
+  workspaceUuid: string;
+  ordinal: number;
+  type: string;
+  pageGlob: string;
+  selector: string | null;
+  payload: Json;
+  author: Generated<string>;
+  status: Generated<string>;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
 export interface Sites {
   createdAt: Generated<Timestamp>;
   customDomain: string | null;
@@ -257,6 +283,7 @@ export interface Sites {
   defaultMetaTitle: string | null;
   faviconUrl: string | null;
   integrations: Json | null;
+  mirrorStatus: string | null;
   mode: Generated<SiteMode>;
   name: string;
   ogImageUrl: string | null;
@@ -364,12 +391,14 @@ export interface DB {
   assets: Assets;
   deployments: Deployments;
   docs: Docs;
+  leads: Leads;
   llmModelPricing: LlmModelPricing;
   organizationMemberships: OrganizationMemberships;
   organizations: Organizations;
   pages: Pages;
   pipelineArtifacts: PipelineArtifacts;
   playbooks: Playbooks;
+  siteTransforms: SiteTransforms;
   sites: Sites;
   templates: Templates;
   themes: Themes;

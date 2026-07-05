@@ -15,6 +15,8 @@ async function resetDatabase() {
     "assets",
     "docs",
     "pages",
+    "leads",
+    "site_transforms",
     "sites",
     "themes",
     "workspace_memberships",
