@@ -15,7 +15,7 @@ export interface MirrorForm {
 }
 
 export interface DynamicRegion {
-  kind: "schedule" | "blog" | "plugin";
+  kind: "schedule" | "blog" | "plugin" | "booking-widget";
   selector: string;
   /** Human-readable evidence for why this was flagged */
   evidence: string;

@@ -22,7 +22,8 @@ function toAbsolute(url: string, ctx: RewriteContext): string | null {
 function mapAsset(url: string, ctx: RewriteContext): string | null {
   const abs = toAbsolute(url, ctx);
   if (!abs) return null;
-  return ctx.assetMap.get(abs) ?? ctx.assetMap.get(abs.split("#")[0]) ?? null;
+  const noHash = abs.split("#")[0] ?? abs;
+  return ctx.assetMap.get(abs) ?? ctx.assetMap.get(noHash) ?? null;
 }
 
 const ASSET_ATTRS: [string, string][] = [
@@ -52,8 +53,10 @@ export function rewriteHtml(html: string, ctx: RewriteContext): string {
     const rewritten = srcset
       .split(",")
       .map((entry) => {
-        const [url, ...desc] = entry.trim().split(/\s+/);
-        const mapped = mapAsset(url, ctx);
+        const parts = entry.trim().split(/\s+/);
+        const url = parts[0] ?? "";
+        const desc = parts.slice(1);
+        const mapped = url ? mapAsset(url, ctx) : null;
         return [mapped ?? url, ...desc].join(" ");
       })
       .join(", ");

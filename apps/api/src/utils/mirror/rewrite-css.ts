@@ -12,7 +12,9 @@ function resolve(ref: string, baseUrl: string): string | null {
 export function extractCssUrls(css: string, baseUrl: string): string[] {
   const out = new Set<string>();
   for (const match of css.matchAll(URL_RE)) {
-    const abs = resolve(match[2], baseUrl);
+    const ref = match[2];
+    if (!ref) continue;
+    const abs = resolve(ref, baseUrl);
     if (abs) out.add(abs);
   }
   return [...out];
@@ -23,7 +25,8 @@ export function rewriteCssUrls(
   baseUrl: string,
   assetMap: Map<string, string>,
 ): string {
-  return css.replace(URL_RE, (full, _quote, ref: string) => {
+  return css.replace(URL_RE, (full, _quote, ref: unknown) => {
+    if (typeof ref !== "string") return full;
     const abs = resolve(ref, baseUrl);
     if (!abs) return full;
     const mapped = assetMap.get(abs);
