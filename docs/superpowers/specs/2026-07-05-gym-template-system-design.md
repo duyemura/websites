@@ -44,6 +44,7 @@ Fourteen section types cover all content patterns observed across gym sites. Eve
 | `FAQ` | Home, Program | Accordion — supports 24+ items. Used on homepage and program pages. |
 | `CTABand` | All pages | Full-width headline + optional CTA button. Button is optional so this doubles as the trust band ("Trusted and Loved By Hundreds of Overland Park Residents") when used without a button. |
 | `Location` | Home, Contact | Address, hours, directions link, optional map embed |
+| `PricingGrid` | Pricing | Plan cards: name, price, features, CTA. Optional highlighted plan. Both grid and form can appear on same page. |
 | `PricingForm` | Pricing | Lead capture form (name, email, phone → lead) |
 | `BlogList` | Blog index | Single-column post cards: cover image, category label, title, excerpt, link. Pagination controls at bottom. |
 | `BlogPost` | Blog post | Markdown body + cover image, author, date, category, tags |
@@ -65,11 +66,16 @@ interface GymSiteContent {
 }
 
 interface SiteMeta {
-  siteUrl: string          // canonical domain (e.g. https://gym.com)
-  defaultTitle: string     // fallback page title
+  siteUrl: string               // canonical domain (e.g. https://gym.com)
+  defaultTitle: string          // fallback page title
   defaultDescription: string
-  googleAnalyticsId?: string
-  facebookPixelId?: string
+
+  // --- Analytics & tracking ---
+  // Prefer GTM (manages GA + Pixel from one container, no redeploy to add tags)
+  googleTagManagerId?: string   // GTM-XXXXXXX — preferred over direct GA/Pixel
+  googleAnalyticsId?: string    // G-XXXXXXXXXX — used if no GTM
+  facebookPixelId?: string      // Meta Pixel — used if no GTM
+  tiktokPixelId?: string        // TikTok Pixel — used if no GTM
 }
 
 interface BusinessInfo {
@@ -150,7 +156,29 @@ interface AboutContent {
 
 interface PricingContent {
   hero: HeroContent
-  intro: string   // "Fill out the form below to receive our pricing"
+  // Gyms choose one or both patterns:
+  grid?: PricingGridContent   // visible plan cards (transparency play)
+  form?: {                    // pricing-on-request lead capture
+    headline: string
+    intro: string             // "Fill out the form below to receive our pricing..."
+  }
+}
+
+interface PricingGridContent {
+  headline?: string
+  subheading?: string
+  plans: PricingPlan[]
+}
+
+interface PricingPlan {
+  name: string             // "Drop-in", "Monthly", "Annual"
+  price: string            // "$149" or "Contact us"
+  period?: string          // "/month", "/class", "/year"
+  description?: string     // one-liner below the price
+  features: string[]       // bullet points
+  cta: { label: string; url: string }
+  highlighted?: boolean    // renders with accent color + shadow ("most popular")
+  badge?: string           // "Most Popular", "Best Value"
 }
 
 interface ContactContent {
@@ -246,6 +274,64 @@ interface RichContentSection {
 
 ---
 
+## Native Tracking (Managed tier)
+
+Every template ships with GA4, Meta Pixel, TikTok Pixel, and UTM tracking built in. The gym never touches a script tag.
+
+### Tag injection strategy
+
+**Preferred: GTM container** — if `googleTagManagerId` is set, inject the GTM snippet in `<head>` and `<noscript>` only. GA4, Pixel, and any future tags are managed inside GTM without a redeploy. Marketing team controls all tags.
+
+**Fallback: direct injection** — if individual IDs are set without GTM, inject each script directly. Simpler but requires a redeploy to add/change tags.
+
+`GymLayout.astro` handles both cases:
+```astro
+{meta.googleTagManagerId ? (
+  <GTMHead id={meta.googleTagManagerId} />
+) : (
+  <>
+    {meta.googleAnalyticsId && <GAScript id={meta.googleAnalyticsId} />}
+    {meta.facebookPixelId && <MetaPixelScript id={meta.facebookPixelId} />}
+    {meta.tiktokPixelId && <TikTokPixelScript id={meta.tiktokPixelId} />}
+  </>
+)}
+```
+
+### Standard events (fired natively, no configuration)
+
+| Event | Trigger | GA4 | Meta Pixel |
+|-------|---------|-----|------------|
+| Page view | Every page load | `page_view` | `PageView` |
+| Lead | Any form submit | `generate_lead` | `Lead` |
+| Contact | "Free Discovery Call" click | `contact` | `Contact` |
+| Trial start | Trial CTA click | `begin_checkout` | `InitiateCheckout` |
+| Schedule | Schedule page view | `schedule` | `Schedule` |
+
+Events are fired by `TrackingEvents.ts` (a small vanilla JS module, no framework dependency) that runs on every page via a `<script>` tag in `GymLayout.astro`.
+
+### UTM parameter tracking
+
+UTMs are captured on every page load and persisted for the session. When any form submits, the stored UTM values are injected as hidden fields and passed to the lead.
+
+**Flow:**
+1. Visitor arrives at `gym.com/?utm_source=facebook&utm_medium=cpc&utm_campaign=spring-2026`
+2. `UTMTracker.ts` reads params → stores in `sessionStorage` as `{ utm_source, utm_medium, utm_campaign, utm_content, utm_term }`
+3. Visitor browses several pages (UTMs persist in session)
+4. Visitor submits contact/pricing form
+5. Hidden inputs with UTM values are included in the POST
+6. Lead stored in DB includes `{ fields: { name, email, phone, utm_source: "facebook", ... } }`
+
+**UTM fields stored:**
+- `utm_source` — traffic source (facebook, google, email)
+- `utm_medium` — channel (cpc, organic, social)
+- `utm_campaign` — campaign name
+- `utm_content` — ad variant
+- `utm_term` — keyword
+
+This gives the gym full attribution: they know which ad → which campaign → which lead → which conversion.
+
+---
+
 ## Built-in SEO (Managed tier differentiator)
 
 Every page automatically gets structured data the frozen mirror never had:
@@ -299,7 +385,8 @@ apps/renderer/
         FAQ.astro
         CTABand.astro
         Location.astro
-        PricingForm.astro    # React component (form state)
+        PricingGrid.astro    # Plan cards — grid or stacked
+        PricingForm.astro   # React component (form state + UTM hidden fields)
         BlogList.astro
         BlogPost.astro       # Renders markdown body via Astro Content Collections
         RichContent.astro    # Iterates ContentBlock[] and renders sub-types
@@ -319,6 +406,14 @@ apps/renderer/
         LocalBusinessSchema.astro
         FAQSchema.astro
         OpenGraph.astro
+      tracking/
+        GTMHead.astro         # GTM container snippet
+        GAScript.astro        # Direct GA4 fallback
+        MetaPixelScript.astro # Direct Meta Pixel fallback
+        TikTokPixelScript.astro
+    scripts/
+      UTMTracker.ts           # Captures + persists UTM params, injects into forms
+      TrackingEvents.ts       # Fires GA4 + Pixel events on CTA clicks + form submits
     content/
       gym.json               # Injected at build time — NOT committed
     types/
