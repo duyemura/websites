@@ -1,0 +1,57 @@
+---
+import { content } from "../lib/content";
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Path of this page, e.g. "/programs/crossfit-classes" — used for canonical. */
+  path: string;
+  /** OG image override (hero/cover). */
+  image?: string;
+}
+const { title, description, path, image } = Astro.props;
+const { meta, business, brand } = content;
+
+const pageTitle = title ?? meta.defaultTitle;
+const pageDescription = description ?? meta.defaultDescription;
+
+const fontsHref =
+  "https://fonts.googleapis.com/css2?family=" +
+  encodeURIComponent(brand.headingFont) + ":wght@400;600;700" +
+  "&family=" + encodeURIComponent(brand.bodyFont) + ":wght@400;500;700&display=swap";
+
+// Sanitize before CSS injection — strip characters that could escape the :root block
+// or inject closing tags. Brand values come from our content pipeline, not raw user
+// input, but defense-in-depth matters before the API layer is fully validated.
+const sanitize = (v: string) => v.replace(/[;<>{}'"\\]/g, "");
+const rootCss = [
+  `:root{`,
+  `--color-primary: ${sanitize(brand.primaryColor)};`,
+  `--color-secondary: ${sanitize(brand.secondaryColor)};`,
+  `--color-accent: ${sanitize(brand.accentColor)};`,
+  `--font-heading: '${sanitize(brand.headingFont)}',sans-serif;`,
+  `--font-body: '${sanitize(brand.bodyFont)}',sans-serif;`,
+  `}`,
+].join("");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href={fontsHref} />
+    <style is:inline set:html={rootCss}></style>
+    <slot name="head" />
+  </head>
+  <body class="font-body text-secondary bg-white">
+    <slot />
+    <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
+    <p class="sr-only">
+      {business.name} is a gym located at {business.address.street} in {business.geo.city}, {business.geo.stateAbbr}. {business.tagline}
+    </p>
+  </body>
+</html>
