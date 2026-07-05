@@ -13,6 +13,7 @@ import { applyTransforms, pageGlobMatches } from "../../utils/mirror/apply-trans
 import { buildRedirectHtml, generateRobots, generateSitemap } from "../../utils/mirror/site-meta";
 import { pathToFileKey } from "./snapshot";
 import type { MirrorSnapshotArtifact, SiteTransformRecord, TransformType } from "../../types/mirror";
+import { INTERCEPTOR_SCRIPT } from "../../utils/mirror/interceptor";
 
 export async function loadActiveTransforms(
   db: Kysely<DB>,
@@ -76,7 +77,36 @@ const NOINDEX_TRANSFORM: SiteTransformRecord = {
   status: "active",
 };
 
-const SYNTHETIC_IDS = new Set(["synthetic-noindex"]);
+function makeInterceptorTransforms(siteUuid: string): SiteTransformRecord[] {
+  return [
+    {
+      uuid: "synthetic-interceptor",
+      ordinal: 0,
+      type: "head-inject" as TransformType,
+      pageGlob: "/*",
+      selector: null,
+      payload: {
+        html: `<script src="/_assets/milo-forms.js" data-site-uuid="${siteUuid}" defer></script>`,
+      },
+      status: "active" as const,
+    },
+    {
+      uuid: "synthetic-form-fallback",
+      ordinal: 1,
+      type: "form-route" as TransformType,
+      pageGlob: "/*",
+      selector: "form",
+      payload: { action: `/api/forms/${siteUuid}/fallback` },
+      status: "active" as const,
+    },
+  ];
+}
+
+const SYNTHETIC_IDS = new Set([
+  "synthetic-noindex",
+  "synthetic-interceptor",
+  "synthetic-form-fallback",
+]);
 
 export async function deploySnapshot(
   snapshot: MirrorSnapshotArtifact,
@@ -84,7 +114,10 @@ export async function deploySnapshot(
 ): Promise<DeployResult> {
   const deployPrefix = `sites/${deps.siteUuid}/deploys/${deps.deployId}`;
   const dbTransforms = await loadActiveTransforms(deps.db, deps.siteUuid);
-  const transforms = deps.preview ? [NOINDEX_TRANSFORM, ...dbTransforms] : dbTransforms;
+  const interceptorTransforms = makeInterceptorTransforms(deps.siteUuid);
+  const transforms = deps.preview
+    ? [NOINDEX_TRANSFORM, ...interceptorTransforms, ...dbTransforms]
+    : [...interceptorTransforms, ...dbTransforms];
   const pageReplaces = dbTransforms.filter((t) => t.type === "page-replace");
 
   const applied = new Set<string>();
@@ -215,6 +248,20 @@ export async function deploySnapshot(
     } while (token);
   } catch (err) {
     warnings.push(`asset copy failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Upload the interceptor script alongside the site assets
+  try {
+    await deps.s3Client.send(
+      new PutObjectCommand({
+        Bucket: deps.bucket,
+        Key: `${deployPrefix}/_assets/milo-forms.js`,
+        Body: Buffer.from(INTERCEPTOR_SCRIPT, "utf8"),
+        ContentType: "application/javascript; charset=utf-8",
+      }),
+    );
+  } catch (err) {
+    warnings.push(`interceptor upload failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Redirect pages for captured origin redirects
