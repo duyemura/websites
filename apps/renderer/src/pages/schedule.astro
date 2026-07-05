@@ -1,0 +1,22 @@
+---
+import GymLayout from "../layouts/GymLayout.astro";
+import Hero from "../components/sections/Hero.astro";
+import CTABand from "../components/sections/CTABand.astro";
+import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
+import Container from "../components/ui/Container.astro";
+import { content } from "../lib/content";
+const s = content.pages.schedule;
+const { business } = content;
+const title = `Class Schedule | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
+---
+<GymLayout title={title} description={s.hero.subheading ?? `Class schedule at ${business.name}`} path="/schedule">
+  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Schedule", path: "/schedule" }]} /></Fragment>
+  <Hero hero={s.hero} />
+  <section class="py-16">
+    <Container>
+      {s.widgetEmbedHtml && <div set:html={s.widgetEmbedHtml} />}
+      {s.note && <p class="mt-6 text-center text-secondary">{s.note}</p>}
+    </Container>
+  </section>
+  <CTABand headline="First time?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>

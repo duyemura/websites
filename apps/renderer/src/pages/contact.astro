@@ -1,0 +1,23 @@
+---
+import GymLayout from "../layouts/GymLayout.astro";
+import Hero from "../components/sections/Hero.astro";
+import Location from "../components/sections/Location.astro";
+import LeadForm from "../components/forms/LeadForm.astro";
+import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
+import Container from "../components/ui/Container.astro";
+import { content } from "../lib/content";
+const c = content.pages.contact;
+const { business } = content;
+const title = `Contact ${business.name} | Gym in ${business.geo.city}, ${business.geo.stateAbbr}`;
+---
+<GymLayout title={title} description={c.hero.subheading ?? business.tagline} path="/contact">
+  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Contact", path: "/contact" }]} /></Fragment>
+  <Hero hero={c.hero} />
+  <section class="py-16">
+    <Container>
+      {c.intro && <p class="mb-8 text-center text-secondary">{c.intro}</p>}
+      <LeadForm formId="contact" submitLabel="Send message" />
+    </Container>
+  </section>
+  <Location />
+</GymLayout>

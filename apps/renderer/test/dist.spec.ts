@@ -148,3 +148,27 @@ describe("program pages", () => {
     expect(jsonLd($).some((s) => s["@type"] === "FAQPage")).toBe(true);
   });
 });
+
+describe("about / contact / schedule", () => {
+  it("about renders every team member", () => {
+    const $ = loadPage("about/index.html");
+    for (const m of gym.pages.about.team) {
+      expect($("body").text()).toContain(m.name);
+      expect($("body").text()).toContain(m.title);
+    }
+  });
+
+  it("contact has a lead form posting to the API forms endpoint with honeypot", () => {
+    const $ = loadPage("contact/index.html");
+    const form = $("form[data-lead-form]");
+    expect(form.attr("action")).toBe(`${gym.meta.apiBaseUrl}/api/forms/${gym.meta.siteId}/contact`);
+    expect(form.attr("method")).toBe("post");
+    expect(form.find('input[name="_hp"]').length).toBe(1);
+    expect(form.find('input[name="email"]').length).toBe(1);
+  });
+
+  it("schedule embeds the booking widget html", () => {
+    const $ = loadPage("schedule/index.html");
+    expect($("#fixture-booking-widget").length).toBe(1);
+  });
+});
