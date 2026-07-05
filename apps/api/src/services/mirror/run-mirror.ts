@@ -6,7 +6,8 @@ import { buildSnapshot } from "./snapshot";
 import { deploySnapshot, promoteDeploy } from "./deploy";
 import type { Kysely } from "kysely";
 import type { DB } from "../../types/db";
-import type { MirrorSnapshotArtifact } from "../../types/mirror";
+import type { CrawlTier, MirrorSnapshotArtifact } from "../../types/mirror";
+import { CRAWL_TIER_FREE } from "../../types/mirror";
 
 export interface RunMirrorInput {
   db: Kysely<DB>;
@@ -21,6 +22,8 @@ export interface RunMirrorInput {
   };
   siteUuid: string;
   workspaceUuid: string;
+  /** Controls page cap and UGC skip. Defaults to free tier (20 structural pages). */
+  tier?: CrawlTier;
   log: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
 
@@ -31,7 +34,7 @@ export interface RunMirrorResult {
 }
 
 export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirrorResult> {
-  const { db, config, siteUuid, workspaceUuid, log } = input;
+  const { db, config, siteUuid, workspaceUuid, log, tier = CRAWL_TIER_FREE } = input;
   const ctx = { siteUuid, workspaceUuid };
   const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
   const s3Client = getS3Client({
@@ -76,6 +79,7 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
         bucket,
       },
       crawlVersion: snapshotVersion,
+      tier,
       log,
     });
 

@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { getS3Client } from "../../s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import type {
@@ -14,28 +14,8 @@ import { CRAWL_TIER_FREE } from "../../types/mirror";
 /** @deprecated Use CRAWL_TIER_FREE.maxCapturedPages or CRAWL_TIER_PAID */
 export const MAX_PAGES = 20;
 
-/**
- * UGC path prefixes: individual posts/recipes/articles discovered in the registry
- * but not rendered on the free tier. The INDEX page (/blog, /recipes) is structural.
- *
- * Pattern: /ugc-parent/anything-deeper → UGC
- * e.g. /blog/my-post → UGC, /blog → structural
- */
-const UGC_PARENT_SEGMENTS = new Set([
-  "blog", "recipes", "recipe", "articles", "article",
-  "news", "posts", "post", "updates", "changelog",
-]);
-
-export function classifyPath(path: string): "structural" | "ugc" {
-  // Normalise: strip leading slash, split
-  const parts = path.replace(/^\//, "").split("/").filter(Boolean);
-  // Top-level pages and bare collection indexes are always structural
-  if (parts.length < 2) return "structural";
-  // If the first segment is a UGC parent and there's at least one more segment,
-  // the page is a UGC item (individual post/recipe).
-  if (UGC_PARENT_SEGMENTS.has(parts[0]!.toLowerCase())) return "ugc";
-  return "structural";
-}
+/** Number of concurrent Playwright contexts (pages crawled in parallel). */
+const CRAWL_CONCURRENCY = 5;
 
 const ASSET_EXT_RE = /\.(pdf|jpe?g|png|gif|webp|svg|zip|mp4|mov|webm|css|js|ico|woff2?)$/i;
 
@@ -52,6 +32,25 @@ const BOOKING_WIDGET_HOSTS = [
   "acuityscheduling.com",
   "fitreserve.com",
 ];
+
+/**
+ * UGC path prefixes: individual posts/recipes/articles discovered in the registry
+ * but not rendered on the free tier. The INDEX page (/blog, /recipes) is structural.
+ *
+ * Pattern: /ugc-parent/anything-deeper → UGC
+ * e.g. /blog/my-post → UGC, /blog → structural
+ */
+const UGC_PARENT_SEGMENTS = new Set([
+  "blog", "recipes", "recipe", "articles", "article",
+  "news", "posts", "post", "updates", "changelog",
+]);
+
+export function classifyPath(path: string): "structural" | "ugc" {
+  const parts = path.replace(/^\//, "").split("/").filter(Boolean);
+  if (parts.length < 2) return "structural";
+  if (UGC_PARENT_SEGMENTS.has(parts[0]!.toLowerCase())) return "ugc";
+  return "structural";
+}
 
 export function normalizeCrawlUrl(
   href: string,
@@ -76,6 +75,67 @@ export function pathToSlug(pagePath: string): string {
   if (pagePath === "/") return "index";
   return pagePath.replace(/^\//, "").replace(/\//g, "__");
 }
+
+// ---- Sitemap pre-seeding ----
+
+const LOC_RE = /<loc>\s*([^<]+)\s*<\/loc>/gi;
+const SITEMAP_RE = /<sitemap>/i;
+
+/** Extract all <loc> URLs from a sitemap or sitemap index XML string. */
+function extractSitemapLocs(xml: string): string[] {
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  LOC_RE.lastIndex = 0;
+  while ((m = LOC_RE.exec(xml)) !== null) {
+    const loc = m[1]?.trim();
+    if (loc) out.push(loc);
+  }
+  return out;
+}
+
+/**
+ * Fetch sitemap from the origin, handling sitemap index files (1 level deep).
+ * Returns an array of page URLs already normalized to the origin, or [] if none found.
+ */
+async function fetchSitemapUrls(
+  origin: string,
+  context: BrowserContext,
+): Promise<string[]> {
+  const tryFetch = async (url: string): Promise<string | null> => {
+    try {
+      const res = await context.request.get(url, { timeout: 10_000 });
+      return res.ok() ? await res.text() : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Check robots.txt for a Sitemap: declaration first
+  let sitemapUrl = `${origin}/sitemap.xml`;
+  const robotsTxt = await tryFetch(`${origin}/robots.txt`);
+  if (robotsTxt) {
+    const match = /^Sitemap:\s*(.+)$/im.exec(robotsTxt);
+    if (match?.[1]) sitemapUrl = match[1].trim();
+  }
+
+  const xml = await tryFetch(sitemapUrl);
+  if (!xml) return [];
+
+  // Sitemap index — fetch each sub-sitemap (1 level only)
+  if (SITEMAP_RE.test(xml)) {
+    const subUrls = extractSitemapLocs(xml).filter(u => u.endsWith(".xml"));
+    const subPages: string[] = [];
+    for (const sub of subUrls.slice(0, 10)) { // cap sub-sitemaps
+      const subXml = await tryFetch(sub);
+      if (subXml) subPages.push(...extractSitemapLocs(subXml));
+    }
+    return subPages;
+  }
+
+  return extractSitemapLocs(xml);
+}
+
+// ---- Evidence collection ----
 
 interface PageEvidence {
   title: string;
@@ -108,7 +168,6 @@ async function collectEvidence(page: import("playwright").Page, bookingHosts: st
       .filter((h) => h && h !== location.host);
 
     const dynamicRegions: DynamicRegion[] = [];
-    // Guard against pages with no body (XML, blank, error pages) (I6)
     const bodyText = (document.body?.innerText ?? "").toLowerCase();
 
     const scheduleWords = ["class schedule", "book a class", "timetable", "wod schedule"];
@@ -137,8 +196,6 @@ async function collectEvidence(page: import("playwright").Page, bookingHosts: st
       });
     }
 
-    // Booking widgets work on the mirror (we don't rehost third-party scripts) but
-    // may need domain allowlist update during preview phase on *.ploysites.com
     for (const host of embedHosts) {
       const matched = hosts.find((bh) => host === bh || host.endsWith(`.${bh}`));
       if (matched) {
@@ -154,6 +211,8 @@ async function collectEvidence(page: import("playwright").Page, bookingHosts: st
     return { title: document.title, links, forms, dynamicRegions, embeds: embedHosts };
   }, bookingHosts);
 }
+
+// ---- Crawl deps / main export ----
 
 export interface CrawlDeps {
   siteUuid: string;
@@ -175,96 +234,108 @@ export async function crawlSite(
   sourceUrl: string,
   deps: CrawlDeps,
 ): Promise<MirrorCrawlArtifact> {
-  // origin may be updated after the first navigation if the site redirects
-  // http→https or bare→www (I3)
   const tier = deps.tier ?? CRAWL_TIER_FREE;
   let origin = new URL(sourceUrl).origin;
   const s3Client = getS3Client(deps.s3);
 
   const browser = await chromium.launch();
-  // Wrap everything so browser.close() always runs (I5)
   try {
-    const context = await browser.newContext();
+    // Use a single shared context for sitemap + robots fetch, separate contexts for crawling
+    const sharedCtx = await browser.newContext();
 
-    const queue: string[] = [normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl];
-    const seen = new Set<string>(queue);
+    // ---- Shared mutable state (safe: Node.js single-threaded event loop) ----
+    const queue: string[] = [];
+    const seen = new Set<string>();
     const pages: MirrorPage[] = [];
     const failures: { url: string; reason: string }[] = [];
     const redirects: MirrorRedirect[] = [];
-    // Registry tracks ALL discovered URLs regardless of tier (for redirect map, future paid)
     const ugcRegistry: string[] = [];
 
-    while (queue.length > 0 && pages.length < tier.maxCapturedPages) {
-      const url = queue.shift()!;
+    const enqueue = (url: string) => {
+      if (!seen.has(url)) {
+        seen.add(url);
+        queue.push(url);
+      }
+    };
 
-      // Fresh page per URL — avoids JS heap / listener accumulation across navigations (C2)
-      const page = await context.newPage();
+    // Seed with homepage first
+    const startUrl = normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl;
+    enqueue(startUrl);
+
+    // Pre-seed from sitemap — fills the queue before workers start so all
+    // CRAWL_CONCURRENCY workers can begin immediately
+    const sitemapPageUrls = await fetchSitemapUrls(origin, sharedCtx);
+    let seededFromSitemap = 0;
+    for (const raw of sitemapPageUrls) {
+      const normalized = normalizeCrawlUrl(raw, origin);
+      if (normalized) { enqueue(normalized); seededFromSitemap++; }
+    }
+    deps.log.info(
+      { queueSize: queue.length, fromSitemap: seededFromSitemap },
+      seededFromSitemap > 0
+        ? "mirror crawl: queue seeded from sitemap + homepage"
+        : "mirror crawl: no sitemap found — BFS fallback",
+    );
+
+    // ---- Worker: crawls one page, adds discovered links to shared queue ----
+    const crawlPage = async (url: string, ctx: BrowserContext): Promise<void> => {
+      if (pages.length >= tier.maxCapturedPages) return;
+
+      const page = await ctx.newPage();
       try {
         const response = await page.goto(url, {
-          // domcontentloaded prevents networkidle from hanging on booking widget polling (I1)
           waitUntil: "domcontentloaded",
           timeout: 30_000,
         });
-
-        // Short settle for JS-rendered content; ignore timeout (booking widgets will always time out)
         await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
 
-        // Skip 4xx/5xx pages — don't capture error templates (I2)
         const status = response?.status() ?? 0;
         if (status >= 400) {
           failures.push({ url, reason: `HTTP ${status}` });
-          continue;
+          return;
         }
 
         const finalUrl = page.url();
         const finalPath = new URL(finalUrl).pathname;
         const origPath = new URL(url).pathname;
 
-        // After first successful nav, update origin if the site redirected to a different
-        // scheme or subdomain (http→https, bare→www) so subsequent link normalization works (I3)
-        if (pages.length === 0) {
+        // Update origin after first successful nav (handles http→https, bare→www)
+        if (pages.length === 0 && redirects.length === 0) {
           origin = new URL(finalUrl).origin;
         }
 
-        // Prevent recrawling the same page reached via a different redirect path (C1)
+        // Deduplicate redirect targets
         const normalizedFinal = normalizeCrawlUrl(finalUrl, origin);
-        if (normalizedFinal && seen.has(normalizedFinal) && normalizedFinal !== url) {
-          continue;
-        }
+        if (normalizedFinal && seen.has(normalizedFinal) && normalizedFinal !== url) return;
         if (normalizedFinal) seen.add(normalizedFinal);
 
         if (finalPath !== origPath) {
-          redirects.push({
-            from: origPath,
-            to: finalPath,
-            status: response?.status() ?? 301,
-          });
+          redirects.push({ from: origPath, to: finalPath, status: response?.status() ?? 301 });
         }
 
         const pagePath = finalPath;
         const pageCategory = classifyPath(pagePath);
 
-        // Free tier: UGC pages go in the registry (for the redirect map) but are
-        // not rendered. We still extract links from them so BFS can discover deeper
-        // structural pages that might be linked from a recipe/post.
-        if (tier.skipUgcCapture && pageCategory === "ugc") {
-          ugcRegistry.push(pagePath);
-          // Still extract links for discovery — a recipe might link to a program page
-          const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
-          for (const link of evidence.links) {
-            const normalized = normalizeCrawlUrl(link, origin, finalUrl);
-            if (normalized && !seen.has(normalized)) {
-              seen.add(normalized);
-              queue.push(normalized);
-            }
-          }
-          deps.log.info({ url, category: "ugc", skipped: true }, "mirror crawl: UGC page discovered but not captured (free tier)");
-          continue;
-        }
-
-        const html = await page.content();
+        // Collect evidence regardless — we always want to discover links
         const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
 
+        // Add discovered links to shared queue
+        for (const link of evidence.links) {
+          const normalized = normalizeCrawlUrl(link, origin, finalUrl);
+          if (normalized) enqueue(normalized);
+        }
+
+        // Free tier: register UGC but don't capture it
+        if (tier.skipUgcCapture && pageCategory === "ugc") {
+          ugcRegistry.push(pagePath);
+          deps.log.info({ url, category: "ugc" }, "mirror crawl: UGC discovered, not captured (free tier)");
+          return;
+        }
+
+        // Check cap again after link discovery (another worker may have hit it)
+        if (pages.length >= tier.maxCapturedPages) return;
+
+        const html = await page.content();
         const htmlKey = `sites/${deps.siteUuid}/crawl/${deps.crawlVersion}/${pathToSlug(pagePath)}.html`;
         await s3Client.send(
           new PutObjectCommand({
@@ -278,11 +349,7 @@ export async function crawlSite(
         const forms: MirrorForm[] = evidence.forms
           .filter((f) => {
             if (!f.action) return true;
-            try {
-              return new URL(f.action, finalUrl).origin === origin;
-            } catch {
-              return false;
-            }
+            try { return new URL(f.action, finalUrl).origin === origin; } catch { return false; }
           })
           .map((f, i) => ({
             formId: `${pathToSlug(pagePath)}-f${i + 1}`,
@@ -302,33 +369,58 @@ export async function crawlSite(
           category: pageCategory,
         });
 
-        for (const link of evidence.links) {
-          const normalized = normalizeCrawlUrl(link, origin, finalUrl);
-          if (normalized && !seen.has(normalized)) {
-            seen.add(normalized);
-            queue.push(normalized);
-          }
-        }
-        deps.log.info({ url, pageCount: pages.length }, "mirror crawl: page captured");
+        deps.log.info({ url, pageCount: pages.length, concurrency: CRAWL_CONCURRENCY }, "mirror crawl: page captured");
       } catch (err) {
         failures.push({ url, reason: err instanceof Error ? err.message : String(err) });
         deps.log.warn({ url, err }, "mirror crawl: page failed");
       } finally {
         await page.close();
       }
-    }
+    };
 
+    // ---- Parallel workers drain the shared queue ----
+    // Each worker pulls from the front of the queue. When empty it checks whether
+    // any other workers might still be adding URLs (activeWorkers > 1) and yields
+    // briefly, then exits if queue is still empty.
+    let activeWorkers = 0;
+
+    const runWorker = async () => {
+      activeWorkers++;
+      const ctx = await browser.newContext();
+      try {
+        while (pages.length < tier.maxCapturedPages) {
+          const url = queue.shift();
+          if (!url) {
+            if (activeWorkers === 1) break; // Last worker, nothing left
+            // Other workers may still be mid-page and about to enqueue links
+            await new Promise((r) => setTimeout(r, 100));
+            if (queue.length === 0) break;
+            continue;
+          }
+          await crawlPage(url, ctx);
+        }
+      } finally {
+        activeWorkers--;
+        await ctx.close();
+      }
+    };
+
+    const workerCount = Math.min(CRAWL_CONCURRENCY, Math.max(1, queue.length));
+    await Promise.all(Array.from({ length: workerCount }, runWorker));
+
+    // Fetch sitemap + robots for the artifact (separate from the URL seeding above)
     let sitemapXml: string | null = null;
     let robotsTxt: string | null = null;
     try {
-      const res = await context.request.get(`${origin}/sitemap.xml`);
+      const res = await sharedCtx.request.get(`${origin}/sitemap.xml`);
       if (res.ok()) sitemapXml = await res.text();
-    } catch { /* absent sitemap is fine */ }
+    } catch { /* absent is fine */ }
     try {
-      const res = await context.request.get(`${origin}/robots.txt`);
+      const res = await sharedCtx.request.get(`${origin}/robots.txt`);
       if (res.ok()) robotsTxt = await res.text();
-    } catch { /* absent robots is fine */ }
+    } catch { /* absent is fine */ }
 
+    await sharedCtx.close();
     return { sourceUrl, origin, pages, redirects, sitemapXml, robotsTxt, failures, ugcRegistry };
   } finally {
     await browser.close();

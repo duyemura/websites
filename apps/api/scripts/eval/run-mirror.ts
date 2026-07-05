@@ -43,6 +43,7 @@ import { runMirrorPipeline } from "../../src/services/mirror/run-mirror";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
 import { pathToFileKey } from "../../src/services/mirror/snapshot";
 import type { MirrorCrawlArtifact } from "../../src/types/mirror";
+import { CRAWL_TIER_FREE, CRAWL_TIER_PAID } from "../../src/types/mirror";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,13 +59,16 @@ function parseArgs(argv: string[]) {
     if (next && !next.startsWith("--")) { args[key] = next; i++; }
   }
   const url = args["url"];
-  if (!url) { console.error("Usage: run-mirror.ts --url https://..."); process.exit(1); }
+  if (!url) { console.error("Usage: run-mirror.ts --url https://... [--pages N] [--tier free|paid]"); process.exit(1); }
 
-  // Guard against non-numeric --pages value (Number("foo") = NaN → slice(0,NaN) = [])
   const pagesRaw = Number(args["pages"] ?? 10);
   const maxPages = Number.isFinite(pagesRaw) && pagesRaw > 0 ? pagesRaw : 10;
 
-  return { url, maxPages };
+  // Default to paid tier for eval runs — free tier (20 pages) is a product limit,
+  // not a dev constraint. Pass --tier free to test the free tier experience.
+  const tier = args["tier"] === "free" ? "free" : "paid";
+
+  return { url, maxPages, tier: tier as "free" | "paid" };
 }
 
 // ---------- Bootstrap ----------
@@ -276,7 +280,8 @@ function renderReport(
 // ---------- Main ----------
 
 async function main() {
-  const { url: sourceUrl, maxPages } = parseArgs(process.argv.slice(2));
+  const { url: sourceUrl, maxPages, tier: tierName } = parseArgs(process.argv.slice(2));
+  const crawlTier = tierName === "free" ? CRAWL_TIER_FREE : CRAWL_TIER_PAID;
   const hostname = new URL(sourceUrl).hostname;
   const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
   const reportPath = path.join(__dirname, `eval-report-mirror-${hostname}-${ts}.md`);
@@ -296,11 +301,13 @@ async function main() {
 
     // Stage 1: run the full mirror pipeline
     console.log("\n▶ Running mirror pipeline...");
+    console.log(`  Tier: ${tierName} (${crawlTier.maxCapturedPages === Infinity ? "unlimited" : crawlTier.maxCapturedPages + " pages max"}, UGC skip: ${crawlTier.skipUgcCapture})`);
     const mirrorResult = await runMirrorPipeline({
       db,
       config,
       siteUuid,
       workspaceUuid,
+      tier: crawlTier,
       log: {
         info: (o, m) => console.log(`  [info] ${m}`, o && Object.keys(o).length ? o : ""),
         warn: (o, m) => console.warn(`  [warn] ${m}`, o && Object.keys(o).length ? o : ""),
