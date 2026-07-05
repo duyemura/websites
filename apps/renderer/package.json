@@ -9,7 +9,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "lint": "eslint .",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "use:fixture": "node -e \"require('fs').copyFileSync('src/content/gym.fixture.json','src/content/gym.json')\"",
+    "test": "pnpm use:fixture && vitest run"
   },
   "dependencies": {
     "@astrojs/react": "^4.1.2",
@@ -19,6 +21,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.4",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "tailwindcss": "3",

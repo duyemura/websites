@@ -1,0 +1,266 @@
+{
+  "meta": {
+    "siteId": "00000000-0000-0000-0000-00000000f1x1",
+    "apiBaseUrl": "https://api.example.com",
+    "siteUrl": "https://fixture-gym.example.com",
+    "defaultTitle": "KS Athletic Club",
+    "defaultDescription": "CrossFit, bootcamp, and personal training in Overland Park, KS.",
+    "preview": false,
+    "googleSiteVerification": "fixture-gsc-token",
+    "googleTagManagerId": "GTM-FIXTURE1"
+  },
+  "business": {
+    "name": "KS Athletic Club",
+    "tagline": "KS Athletic Club is a CrossFit, bootcamp, and personal training gym in Overland Park, KS serving adults of all fitness levels.",
+    "address": { "street": "14875 Metcalf Ave", "city": "Overland Park", "state": "Kansas", "zip": "66223" },
+    "phone": "(913) 320-0043",
+    "email": "hello@fixture-gym.example.com",
+    "hours": [
+      { "days": ["Monday","Tuesday","Wednesday","Thursday","Friday"], "opens": "05:00", "closes": "21:00" },
+      { "days": ["Saturday","Sunday"], "opens": "07:00", "closes": "12:00" }
+    ],
+    "coordinates": { "lat": 38.8672, "lng": -94.6676 },
+    "primaryCta": { "label": "Free Discovery Call", "url": "/contact" },
+    "trialCta": { "label": "Try 28 Days for $28", "url": "/pricing" },
+    "geo": { "city": "Overland Park", "state": "Kansas", "stateAbbr": "KS" },
+    "serviceArea": ["Leawood", "Olathe", "Lenexa", "Prairie Village"],
+    "aggregateRating": { "ratingValue": "4.9", "reviewCount": 127 },
+    "social": {
+      "facebook": "https://facebook.com/fixturegym",
+      "instagram": "https://instagram.com/fixturegym",
+      "youtube": "https://youtube.com/@fixturegym"
+    },
+    "mapEmbedUrl": "https://www.google.com/maps/embed?pb=fixture"
+  },
+  "brand": {
+    "primaryColor": "#0f172a",
+    "secondaryColor": "#334155",
+    "accentColor": "#f59e0b",
+    "headingFont": "Oswald",
+    "bodyFont": "Inter",
+    "logoUrl": "https://placehold.co/200x60?text=KSAC",
+    "logoAlt": "KS Athletic Club"
+  },
+  "navigation": {
+    "announcement": { "text": "Try 28 Days for $28", "url": "/pricing" },
+    "header": [
+      { "label": "Programs", "href": "/programs/crossfit-classes", "children": [
+        { "label": "CrossFit", "href": "/programs/crossfit-classes" },
+        { "label": "Sweat Bootcamp", "href": "/programs/sweat-bootcamp" },
+        { "label": "Personal Training", "href": "/programs/personal-training" }
+      ]},
+      { "label": "Schedule", "href": "/schedule" },
+      { "label": "Pricing", "href": "/pricing" },
+      { "label": "About", "href": "/about" },
+      { "label": "Blog", "href": "/blog" },
+      { "label": "Contact", "href": "/contact" }
+    ],
+    "footer": [
+      { "label": "Programs", "links": [
+        { "label": "CrossFit", "href": "/programs/crossfit-classes" },
+        { "label": "Sweat Bootcamp", "href": "/programs/sweat-bootcamp" },
+        { "label": "Personal Training", "href": "/programs/personal-training" }
+      ]},
+      { "label": "About", "links": [
+        { "label": "About Us", "href": "/about" },
+        { "label": "Local Guide", "href": "/local-guide" },
+        { "label": "Contact Us", "href": "/contact" }
+      ]},
+      { "label": "Legal", "links": [
+        { "label": "Privacy Policy", "href": "/legal/privacy-policy" },
+        { "label": "Terms of Use", "href": "/legal/terms-of-use" }
+      ]}
+    ],
+    "membersApp": { "ios": "https://apps.apple.com/fixture", "android": "https://play.google.com/fixture" }
+  },
+  "pages": {
+    "home": {
+      "hero": {
+        "headline": "Get in the best shape of your life",
+        "subheading": "Our gym is dedicated to making you stronger, leaner, and healthier so you can live a life without limitations.",
+        "ctaLabel": "Get Started!",
+        "ctaUrl": "/contact",
+        "backgroundImageUrl": "https://placehold.co/1600x900?text=Hero"
+      },
+      "valueProps": [
+        { "icon": "🏠", "headline": "A Welcoming Gym Near You", "body": "A friendly club environment for people at all fitness levels." },
+        { "icon": "🌱", "headline": "Beginner Friendly", "body": "Every workout scales to where you are today." },
+        { "icon": "🤝", "headline": "Accountability", "body": "Coaches and community that keep you showing up." }
+      ],
+      "programsHeadline": "Every body is unique. Find a fitness routine that works for you.",
+      "featuredPrograms": ["crossfit-classes", "sweat-bootcamp", "personal-training"],
+      "features": [
+        { "icon": "🥗", "label": "Nutrition Programming" },
+        { "icon": "📱", "label": "Members Only App" },
+        { "icon": "📅", "label": "Weekend Classes" },
+        { "icon": "⚡", "label": "Easy Scheduling" },
+        { "icon": "🎟️", "label": "Class Reservations" },
+        { "icon": "🎯", "label": "Individualized Programming" }
+      ],
+      "communityHeadline": "A community that will keep you going",
+      "communityProps": [
+        { "icon": "🏅", "headline": "Expert Coaching", "body": "Certified coaches in every class." },
+        { "icon": "🌱", "headline": "Beginner Friendly", "body": "Start where you are." },
+        { "icon": "🧭", "headline": "Structured Programs", "body": "A plan, not a guess." },
+        { "icon": "❤️", "headline": "Supportive Community", "body": "Train with people who cheer for you." }
+      ],
+      "trustHeadline": "Trusted and Loved By Hundreds of Overland Park Residents",
+      "howItWorksHeadline": "Getting Started Is Easy",
+      "howItWorks": [
+        { "number": 1, "headline": "Schedule a 15-Minute Call", "body": "Tell us your goals." },
+        { "number": 2, "headline": "Start the Right Way", "body": "Movement screening with a coach." },
+        { "number": 3, "headline": "Choose Your Membership", "body": "Pick the plan that fits." }
+      ],
+      "testimonials": [
+        { "quote": "I got stronger in 3 months here than 3 years alone.", "name": "Jamie R.", "program": "CrossFit" },
+        { "quote": "The coaches actually know my name and my goals.", "name": "Priya S.", "program": "Sweat Bootcamp" }
+      ],
+      "faq": [
+        { "question": "Is CrossFit good for beginners?", "answer": "Yes. All workouts are coach-led and scalable to any fitness level." },
+        { "question": "Do I need to be in shape before starting?", "answer": "No. We meet you where you are and scale everything." },
+        { "question": "Do I have to sign a long-term contract?", "answer": "No. We offer flexible month-to-month memberships." },
+        { "question": "How long are classes?", "answer": "Classes are 60 minutes: warm-up, strength or skill work, workout, and cool down." },
+        { "question": "What should I bring to my first workout?", "answer": "Water, comfortable training shoes, and clothes you can move in." },
+        { "question": "Do you help with nutrition?", "answer": "Yes. Nutrition coaching is available with every membership." }
+      ]
+    },
+    "programs": [
+      {
+        "slug": "crossfit-classes",
+        "name": "CrossFit Classes",
+        "shortDescription": "Coach-led strength and conditioning for every level.",
+        "coverImageUrl": "https://placehold.co/800x600?text=CrossFit",
+        "hero": { "headline": "Try our CrossFit Classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Free Discovery Call", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=CrossFit" },
+        "whatIsIt": { "headline": "What is CrossFit?", "body": "Constantly varied functional movements at an intensity that is right for you, with professional coaching, structured programming, and a supportive community." },
+        "whatMakesUsDifferent": [
+          "Coach-led every class — guidance from start to finish",
+          "Scalable for all fitness levels — beginners welcome",
+          "Strength + conditioning programmed weekly",
+          "Supportive, welcoming community",
+          "Progress tracking so you know you're improving"
+        ],
+        "whatToExpect": { "headline": "What to expect in a class", "steps": ["Warm-Up & Mobility", "Strength or Skill Work", "Workout of the Day", "Cool Down & Recovery"] },
+        "whoIsItFor": ["Busy adults who want a plan", "Former athletes getting back into it", "Complete beginners", "Anyone bored of the globo gym"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Book a discovery call", "body": "15 minutes, no pressure." },
+          { "number": 2, "headline": "Movement screening", "body": "A coach learns how you move." },
+          { "number": 3, "headline": "Join your first class", "body": "We'll be expecting you." }
+        ],
+        "testimonials": [ { "quote": "Best coaching in Overland Park, period.", "name": "Mark T.", "program": "CrossFit" } ],
+        "faq": [
+          { "question": "Do I need CrossFit experience?", "answer": "No. All workouts are coach-led and scalable for beginners." },
+          { "question": "How often should I train?", "answer": "Most members attend 3–5 classes per week depending on their goals." }
+        ]
+      },
+      {
+        "slug": "sweat-bootcamp",
+        "name": "Sweat Bootcamp",
+        "shortDescription": "High-energy circuit training. Zero barbells, all results.",
+        "coverImageUrl": "https://placehold.co/800x600?text=Sweat",
+        "hero": { "headline": "Sweat Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Free Discovery Call", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=Sweat" },
+        "whatIsIt": { "headline": "Why it works", "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss." },
+        "whatMakesUsDifferent": ["Beginner-friendly by design", "No barbell complexity", "Coached, not just supervised", "Fun, loud, motivating"],
+        "whatToExpect": { "headline": "What you'll do in class", "steps": ["Warm-Up", "Circuit Training", "Cool Down & Stretch"] },
+        "whoIsItFor": ["Fitness newcomers", "People who want to lose weight", "Anyone who hates boring cardio"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Book a discovery call", "body": "Tell us your goals." },
+          { "number": 2, "headline": "Try a class", "body": "Feel the energy." },
+          { "number": 3, "headline": "Pick your plan", "body": "Month to month." }
+        ],
+        "testimonials": [ { "quote": "I look forward to 6am now. Who am I?", "name": "Dana K.", "program": "Sweat Bootcamp" } ],
+        "faq": [ { "question": "Is SWEAT the same as CrossFit?", "answer": "No. SWEAT is circuit-based with no barbell work — it's our most beginner-friendly program." } ]
+      },
+      {
+        "slug": "personal-training",
+        "name": "Personal Training",
+        "shortDescription": "A 360-degree approach: training, lifestyle, and nutrition.",
+        "coverImageUrl": "https://placehold.co/800x600?text=PT",
+        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Free Consultation", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=PT" },
+        "whatIsIt": { "headline": "Life without limitations", "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery — with a baseline assessment and personalized tracking." },
+        "whatMakesUsDifferent": ["Baseline health assessment", "Lifestyle and nutrition coaching included", "Personalized tracking", "VIP experience"],
+        "whatToExpect": { "headline": "How it works", "steps": ["Assessment", "Personal plan", "Weekly sessions", "Ongoing adjustments"] },
+        "whoIsItFor": ["People with specific goals", "Post-rehab athletes", "Anyone who wants full attention"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Free consultation", "body": "Meet your coach." },
+          { "number": 2, "headline": "Baseline assessment", "body": "Know your starting point." },
+          { "number": 3, "headline": "Start training", "body": "Your plan, your pace." }
+        ],
+        "testimonials": [ { "quote": "My trainer rebuilt my squat after knee surgery.", "name": "Chris B.", "program": "Personal Training" } ],
+        "faq": [ { "question": "How much does personal training cost?", "answer": "Pricing depends on session frequency — book a free consultation for exact rates." } ]
+      }
+    ],
+    "about": {
+      "hero": { "headline": "Meet Our Team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "https://placehold.co/1600x900?text=Team" },
+      "gymStory": "KS Athletic Club is a gym in Overland Park, Kansas helping busy adults build strength, improve conditioning, and stay consistent with their health. Members travel from Overland Park, Leawood, Olathe, and Lenexa.",
+      "team": [
+        { "name": "Patrick Chandler", "title": "Owner", "photoUrl": "https://placehold.co/400x400?text=PC" },
+        { "name": "TJ Kiblen", "title": "Owner & Founder", "photoUrl": "https://placehold.co/400x400?text=TJ" },
+        { "name": "Christine Tran", "title": "Fitness Instructor", "photoUrl": "https://placehold.co/400x400?text=CT" },
+        { "name": "Francisco Toyo", "title": "Fitness Instructor", "photoUrl": "https://placehold.co/400x400?text=FT" }
+      ]
+    },
+    "pricing": {
+      "hero": { "headline": "Membership Pricing", "subheading": "There is a plan here for you." },
+      "grid": {
+        "headline": "Simple plans, no surprises",
+        "plans": [
+          { "name": "Drop-in", "price": "$25", "period": "/class", "features": ["Any class", "No commitment"], "cta": { "label": "Book a class", "url": "/schedule" } },
+          { "name": "Monthly Unlimited", "price": "$149", "period": "/month", "features": ["Unlimited classes", "All programs", "App access"], "cta": { "label": "Join Now", "url": "/contact" }, "highlighted": true, "badge": "Most Popular" },
+          { "name": "Personal Training", "price": "Contact us", "features": ["1-on-1 coaching", "Nutrition included"], "cta": { "label": "Free Consultation", "url": "/contact" } }
+        ]
+      },
+      "form": { "headline": "Get our full rate sheet", "intro": "Fill out the form below and we'll send complete membership rates and cost information." }
+    },
+    "contact": {
+      "hero": { "headline": "Say hi to the team", "subheading": "We will get back to you as soon as we can." },
+      "intro": "Prefer to talk? Call us or stop by for a tour."
+    },
+    "schedule": {
+      "hero": { "headline": "Class Schedule", "subheading": "Reserve your spot — classes fill up." },
+      "widgetEmbedHtml": "<div id=\"fixture-booking-widget\" data-widget=\"pushpress\">Booking widget placeholder</div>",
+      "note": "First time? Book a Free Discovery Call and we'll walk you in."
+    },
+    "blog": {
+      "heroHeadline": "Fitness Tips & News",
+      "posts": [
+        {
+          "slug": "top-10-reasons-to-join-a-gym-in-overland-park",
+          "title": "The Top 10 Reasons to Join a Gym in Overland Park",
+          "publishedAt": "2026-05-01",
+          "excerpt": "Thinking about joining a gym in Overland Park? Here are ten reasons to start now.",
+          "category": "Education",
+          "coverImageUrl": "https://placehold.co/1200x630?text=Blog1",
+          "author": "TJ Kiblen",
+          "body": "## Why now?\n\nJoining a gym is the highest-leverage health decision most adults make.\n\n1. **Coaching** beats guessing.\n2. **Community** beats willpower.\n\n![Members training](https://placehold.co/800x450?text=Training)\n\nCome see us in Overland Park."
+        },
+        {
+          "slug": "5-healthy-restaurants-in-overland-park",
+          "title": "5 Paleo & Keto Friendly Restaurants in Overland Park",
+          "publishedAt": "2026-04-15",
+          "excerpt": "Eat out without falling off your nutrition plan — our local picks.",
+          "category": "Recipes",
+          "body": "Eating well in Overland Park is easy if you know where to go.\n\n### Our picks\n\n- Spot one\n- Spot two\n- Spot three"
+        },
+        {
+          "slug": "this-week-at-the-club",
+          "title": "This Week at the Club",
+          "publishedAt": "2026-06-20",
+          "excerpt": "Events, celebrations, and what's coming up.",
+          "category": "Newsletters",
+          "body": "Saturday partner workout, new coach spotlight, and holiday hours."
+        }
+      ]
+    },
+    "localGuide": {
+      "hero": { "headline": "The Overland Park Local Guide", "subheading": "Where to train, eat, and recover in Overland Park, KS." },
+      "sections": [
+        { "headline": "Best parks to work out", "blocks": [ { "type": "text", "html": "<p>Overland Park has outstanding outdoor training spots — here are our favorites.</p>" } ] },
+        { "headline": "Coffee after class", "blocks": [ { "type": "text", "html": "<p>The post-workout coffee spots our members swear by.</p>" }, { "type": "callout", "text": "Members get 10% off at our partner cafe.", "style": "tip" } ] }
+      ]
+    },
+    "legal": [
+      { "slug": "privacy-policy", "title": "Privacy Policy", "blocks": [ { "type": "text", "html": "<p>Fixture privacy policy text.</p>" } ] },
+      { "slug": "terms-of-use", "title": "Terms of Use", "blocks": [ { "type": "text", "html": "<p>Fixture terms of use text.</p>" } ] }
+    ]
+  }
+}
