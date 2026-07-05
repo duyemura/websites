@@ -58,6 +58,46 @@ export const INTERCEPTOR_SCRIPT = /* js */ `(function () {
     if (form.parentNode) form.parentNode.replaceChild(p, form);
   }
 
+  function passthroughSubmit(form, action, data) {
+    try {
+      // Build a hidden form and submit it to the original action via a hidden iframe.
+      // This bypasses CORS and lets the external system (GoHighLevel, etc.) receive the lead
+      // while the visitor sees our inline success message.
+      var iframeName = 'milo-passthrough-' + Math.random().toString(36).slice(2);
+      var iframe = document.createElement('iframe');
+      iframe.name = iframeName;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+
+      var ghost = document.createElement('form');
+      ghost.method = form.method || 'POST';
+      ghost.action = action;
+      ghost.target = iframeName;
+      ghost.style.display = 'none';
+
+      // Submit all form fields (use the serialized data object, not the UTM-merged payload)
+      Object.keys(data).forEach(function (k) {
+        if (k === '_hp') return;
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = k;
+        input.value = String(data[k]);
+        ghost.appendChild(input);
+      });
+
+      document.body.appendChild(ghost);
+      ghost.submit();
+
+      // Clean up after the iframe has had time to submit
+      setTimeout(function () {
+        try { document.body.removeChild(iframe); } catch (e) {}
+        try { document.body.removeChild(ghost); } catch (e) {}
+      }, 5000);
+    } catch (e) {
+      // Passthrough failure is silent — we already captured the lead
+    }
+  }
+
   function wireForm(form, index) {
     if (form.__miloWired) return;
     if (!isLeadForm(form)) return;
@@ -74,14 +114,20 @@ export const INTERCEPTOR_SCRIPT = /* js */ `(function () {
         if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) continue;
         data[el.name] = el.value;
       }
-      Object.assign(data, getUtm());
+      // Merge UTM on top of form fields — form field values win over UTM keys
+      var payload = Object.assign({}, getUtm(), data);
 
       fetch(endpoint + formId, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       }).then(function (res) {
         if (res.ok) {
+          var originalAction = form.getAttribute('data-milo-original-action');
+          if (originalAction) {
+            // Pass raw form fields (not UTM-merged payload) to the external system
+            passthroughSubmit(form, originalAction, data);
+          }
           showSuccess(form);
         } else {
           form.removeEventListener('submit', handler);

@@ -15,6 +15,15 @@ function rateLimited(ip: string): boolean {
   return recent.length > MAX_PER_WINDOW;
 }
 
+// Evict IPs whose last hit was more than WINDOW_MS ago to prevent unbounded map growth.
+// Runs every 5 minutes — infrequent enough not to affect hot paths.
+setInterval(() => {
+  const cutoff = Date.now() - WINDOW_MS;
+  for (const [ip, times] of hits) {
+    if (times.length === 0 || (times[times.length - 1] ?? 0) < cutoff) hits.delete(ip);
+  }
+}, 5 * 60_000).unref();
+
 const THANK_YOU_HTML = `<!doctype html><html><head><meta charset="utf-8">
 <meta name="robots" content="noindex"><title>Thank you</title></head>
 <body style="font-family:sans-serif;text-align:center;padding:4rem">
@@ -26,6 +35,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   fastify.post(
     "/forms/:siteUuid/:formId",
     {
+      bodyLimit: 65536,
       schema: {
         params: z.object({ siteUuid: z.string().uuid(), formId: z.string().max(200) }),
       },

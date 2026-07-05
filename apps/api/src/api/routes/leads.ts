@@ -43,8 +43,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       },
     },
     async (request, reply) => {
-      const { workspaceUuid, siteUuid } = request.params;
+      const { siteUuid } = request.params;
       const { page, limit, formId } = request.query;
+      // Use the workspace uuid from the auth hook — never trust the caller-supplied param
+      const workspaceUuid = request.workspace.uuid;
 
       // Verify the site belongs to this workspace
       const site = await fastify.db

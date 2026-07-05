@@ -5,6 +5,9 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import type { QueueConfig } from "../../bullmq";
 
 function notifyLeadProcessor(fastify: FastifyInstance) {
+  // Create the SES client once per worker registration, not on every job
+  const ses = new SESClient({ region: fastify.config.S3_REGION });
+
   return async (job: Job<QueueConfig["lead_notify"]["data"]>): Promise<{ sent: boolean }> => {
     const { leadUuid, siteUuid } = job.data;
     const fromEmail = fastify.config.SES_FROM_EMAIL;
@@ -40,8 +43,6 @@ function notifyLeadProcessor(fastify: FastifyInstance) {
       .filter(([k]) => k !== "_hp")
       .map(([k, v]) => `  ${k}: ${String(v)}`)
       .join("\n");
-
-    const ses = new SESClient({ region: fastify.config.S3_REGION });
     const subject = `New lead from ${site.name}`;
     const body = [
       `New lead on ${site.name}`,

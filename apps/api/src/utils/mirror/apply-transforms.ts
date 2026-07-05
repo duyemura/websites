@@ -116,6 +116,14 @@ export function applyTransforms(
           stale.push(tr.uuid);
           break;
         }
+        els.each((_, el) => {
+          const original = $(el).attr("action");
+          // Preserve original action so the interceptor can do capture+passthrough
+          // to external systems (GoHighLevel, Wix, etc.). Skip if already rewritten.
+          if (original && !original.startsWith("/api/forms/")) {
+            $(el).attr("data-milo-original-action", original);
+          }
+        });
         els.attr("action", String(payload.action));
         applied.push(tr.uuid);
         break;
