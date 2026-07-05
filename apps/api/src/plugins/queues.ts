@@ -13,6 +13,7 @@ export default fp(
     const mirrorSite = bull.build("mirror_site");
     const goLiveSite = bull.build("go_live_site");
     const leadNotify = bull.build("lead_notify");
+    const deployTemplate = bull.build("deploy_template");
 
     fastify.decorate("queues", {
       classifyAssets,
@@ -25,6 +26,7 @@ export default fp(
       mirrorSite,
       goLiveSite,
       leadNotify,
+      deployTemplate,
     });
 
     done();
@@ -91,6 +93,10 @@ declare module "../bullmq" {
       data: { leadUuid: string; siteUuid: string };
       result: { sent: boolean };
     };
+    deploy_template: {
+      data: { siteUuid: string; workspaceUuid: string };
+      result: { version: number; deployPrefix: string };
+    };
     pipeline: {
       data:
         | {
@@ -136,6 +142,7 @@ declare module "fastify" {
       mirrorSite: ReturnType<typeof bull.build<"mirror_site">>;
       goLiveSite: ReturnType<typeof bull.build<"go_live_site">>;
       leadNotify: ReturnType<typeof bull.build<"lead_notify">>;
+      deployTemplate: ReturnType<typeof bull.build<"deploy_template">>;
     };
   }
 }

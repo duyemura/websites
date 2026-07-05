@@ -1044,6 +1044,39 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   );
 
   fastify.post(
+    "/sites/:uuid/redeploy-template",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          202: z.object({ ok: z.literal(true), jobId: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const siteUuid = request.params.uuid;
+      const workspaceUuid = request.workspace.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!site) return reply.code(404).send({ error: "Site not found" });
+
+      const job = await fastify.queues.deployTemplate.queue.add(
+        "deploy_template",
+        { siteUuid, workspaceUuid },
+      );
+
+      return reply.code(202).send({ ok: true, jobId: job.id ?? "" });
+    },
+  );
+
+  fastify.post(
     "/sites/:uuid/re-skin",
     {
       schema: {
