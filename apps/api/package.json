@@ -40,6 +40,7 @@
     "@ploy-gyms/gmb-client": "workspace:*",
     "@ploy-gyms/shared-types": "workspace:*",
     "bullmq": "^5.41.7",
+    "cheerio": "^1.2.0",
     "dotenv": "^16.4.7",
     "eventemitter2": "^6.4.9",
     "exifreader": "^4.26.2",
