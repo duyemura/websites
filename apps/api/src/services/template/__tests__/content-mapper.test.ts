@@ -41,16 +41,31 @@ const DS: DesignSystemV2 = {
   },
 };
 
-const BUSINESS_MD = `
-# KS Athletic Club
+const BUSINESS_MD = `# KS Athletic Club
 
-Located at 1234 Fitness Ave, Torrance, CA 90503.
-Call us: (310) 555-0123
-Email: info@ksathleticclub.com
+**Tagline**: Train harder. Live better.
+**Summary**: Premier CrossFit and functional fitness gym in Torrance, CA.
 
-Hours:
-Mon-Fri: 5:00am - 10:00pm
-Sat-Sun: 7:00am - 6:00pm
+## Classification
+
+- **Industry / niche**: Fitness / CrossFit
+- **Service model**: Membership + drop-in
+- **Primary audience**: Adults 18-45
+
+## Contact
+
+- **Phone**: (310) 555-0123
+- **Email**: info@ksathleticclub.com
+- **Website**: https://ksathleticclub.com
+
+## Location
+
+- **Address**: 1234 Fitness Ave, Torrance, CA 90503
+
+**Hours**
+
+- Monday: 5:00am - 10:00pm
+- Tuesday: 5:00am - 10:00pm
 `;
 
 const makeHierarchy = (pages: Partial<HierarchyPage>[]): SiteHierarchy => ({

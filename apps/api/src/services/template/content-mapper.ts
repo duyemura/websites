@@ -2,7 +2,6 @@ import type { Kysely } from "kysely";
 import type { DB } from "../../types/db";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../types/site-hierarchy";
-import type { BusinessInfoExtractionResult } from "../../ai/prompts/business-info-extraction";
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
@@ -55,51 +54,45 @@ export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandToken
 
 // ── Business ─────────────────────────────────────────────────────────────────
 
-export function extractBusiness(
-  markdown: string,
-  ds: DesignSystemV2,
-  warnings: string[],
-  structured?: BusinessInfoExtractionResult | null,
-): BusinessInfo {
-  // Prefer LLM-extracted structured data; fall back to markdown regex for
-  // manually authored or legacy docs that have no contentJson.
+export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: string[]): BusinessInfo {
   const name = fallback(
-    structured?.businessName || ds.business.name || ds.siteMetadata.businessName,
+    ds.business.name || ds.siteMetadata.businessName,
     "", warnings, "business.name"
   );
-  const tagline = structured?.tagline || ds.business.tagline || "";
+  const tagline = ds.business.tagline ?? "";
 
-  const phone = structured?.contact.phone ||
-    markdown.match(/\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/)?.[0] || "";
-  if (!phone) warnings.push("phone not found — using empty string");
+  // Label-based extraction — the markdown has a known structure from renderExtractedBusinessInfo.
+  // Look for labeled lines rather than hunting for patterns in free text.
+  const labelLine = (label: string): string =>
+    markdown.match(new RegExp(`\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
 
-  const email = structured?.contact.email ||
-    markdown.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)?.[0];
+  const phone = labelLine("Phone") || fallback("", "", warnings, "phone");
+  const email = labelLine("Email") || undefined;
 
-  // Address: prefer structured location.address string (clean single field),
-  // fall back to searching full markdown
-  const addrSource = structured?.location?.address || markdown;
-  const addrMatch = addrSource.match(
-    /(\d+\s+[\w\s]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail)\.?),?\s*(?:Suite?\s*\d+\s*,\s*)?([\w\s]+?),\s*([A-Z]{2})\s+(\d{5})/i,
+  // Address is the whole labeled value — apply regex to this single clean string
+  const addrStr = labelLine("Address");
+  const addrMatch = addrStr.match(
+    /^(\d+\s+[\w\s]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail)\.?),?\s*(?:Suite?\s*\d+\s*,\s*)?([\w\s]+?),\s*([A-Z]{2})\s+(\d{5})/i,
   );
   const looseMatch = !addrMatch
-    ? addrSource.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
+    ? addrStr.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
     : null;
   const street = addrMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.street");
   const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.city");
   const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2])?.toUpperCase() ?? fallback("", "", warnings, "address.state");
   const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fallback("", "", warnings, "address.zip");
 
+  // Social links from labeled lines
+  const socialPlatforms = ["facebook", "instagram", "twitter", "tiktok", "youtube"] as const;
+  const social: Partial<Record<typeof socialPlatforms[number], string>> = {};
+  for (const platform of socialPlatforms) {
+    const url = labelLine(platform);
+    if (url) social[platform] = url;
+  }
+
   const primaryCta = ds.reference.homePagePrimaryCta
     ? { label: ds.reference.homePagePrimaryCta.label, url: ds.reference.homePagePrimaryCta.href }
     : { label: "Get started", url: "/" };
-
-  // Social links from structured extraction
-  const social = structured?.contact.socials?.length
-    ? Object.fromEntries(
-        structured.contact.socials.map((s) => [s.platform.toLowerCase(), s.url])
-      )
-    : undefined;
 
   return {
     name,
@@ -110,7 +103,7 @@ export function extractBusiness(
     hours: [],
     primaryCta,
     geo: { city, state: STATE_ABBRS[stateAbbr] ?? stateAbbr, stateAbbr },
-    social: social as BusinessInfo["social"],
+    social: Object.keys(social).length > 0 ? social as BusinessInfo["social"] : undefined,
   };
 }
 
@@ -322,8 +315,7 @@ export async function buildGymJson(
   }) as SiteHierarchy;
 
   const brand = extractBrand(ds, warnings);
-  const structuredBiz = bizDoc?.contentJson as BusinessInfoExtractionResult | null ?? null;
-  const business = extractBusiness(bizDoc?.content ?? "", ds, warnings, structuredBiz);
+  const business = extractBusiness(bizDoc?.content ?? "", ds, warnings);
   const navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings);
 
