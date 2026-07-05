@@ -30,22 +30,23 @@ Six page types cover every gym website pattern. The schedule page is deliberatel
 
 ## Section Components
 
-Thirteen section types cover all content patterns observed across gym sites. Every page is composed from a subset of these. `RichContent` is the escape hatch for content that doesn't fit a named type.
+Fourteen section types cover all content patterns observed across gym sites. Every page is composed from a subset of these. `RichContent` is the escape hatch for content that doesn't fit a named type.
 
 | Component | Used on | Description |
 |-----------|---------|-------------|
 | `Hero` | All pages | Headline, subheading, CTA button, background image |
-| `ValueProps` | Home, Program | 3-column icon + short copy grid |
-| `ProgramCards` | Home, About | Cards with image, name, description, link |
+| `ValueProps` | Home, Program, About | 3–6 item icon + headline + short body grid. Used for both value props AND the "Why People Choose Us" community card set (4 items). |
+| `FeatureGrid` | Home | Icon + single label grid (6 items, 2–3 col). Used for "Everything You Need To Crush Your Fitness Goals" — no body copy, higher item density than ValueProps. |
+| `ProgramCards` | Home | Cards with image, name, description, link. Optional promo badge ("Try 28 Days for $28"). |
 | `HowItWorks` | Home, Program | Numbered step-by-step process |
 | `TeamGrid` | About | Coach cards: photo, name, title, short bio |
 | `Testimonials` | Home, Program | Quote cards with member name/photo |
-| `FAQ` | Home, Program | Accordion with expandable Q&A |
-| `CTABand` | All pages | Full-width headline + single CTA button |
+| `FAQ` | Home, Program | Accordion — supports 24+ items. Used on homepage and program pages. |
+| `CTABand` | All pages | Full-width headline + optional CTA button. Button is optional so this doubles as the trust band ("Trusted and Loved By Hundreds of Overland Park Residents") when used without a button. |
 | `Location` | Home, Contact | Address, hours, directions link, optional map embed |
 | `PricingForm` | Pricing | Lead capture form (name, email, phone → lead) |
-| `BlogList` | Blog index | Post cards: title, date, excerpt, image, link |
-| `BlogPost` | Blog post | Markdown body + cover image, author, date, tags |
+| `BlogList` | Blog index | Single-column post cards: cover image, category label, title, excerpt, link. Pagination controls at bottom. |
+| `BlogPost` | Blog post | Markdown body + cover image, author, date, category, tags |
 | `RichContent` | Any page | Generic flexible section — typed block union (see below) |
 
 ---
@@ -79,8 +80,12 @@ interface BusinessInfo {
   email?: string
   hours: { day: string; open: string; close: string }[]
   coordinates?: { lat: number; lng: number }
-  primaryCta: { label: string; url: string }
-  trialCta?: { label: string; url: string }
+  primaryCta: { label: string; url: string }  // e.g. "Free Discovery Call"
+  trialCta?: { label: string; url: string }   // e.g. "Try 28 Days for $28"
+  // Geo fields for SEO-targeted headlines e.g. "CrossFit Classes in Overland Park, KS"
+  geo: { city: string; state: string; stateAbbr: string }
+  // Service area communities for location section copy
+  serviceArea?: string[]  // e.g. ["Leawood", "Olathe", "Lenexa"]
 }
 
 interface BrandTokens {
@@ -106,26 +111,35 @@ interface PageContent {
 
 interface HomeContent {
   hero: HeroContent
-  valueProps: ValueProp[]
-  featuredPrograms: string[]  // slugs from programs[]
+  valueProps: ValueProp[]            // 3-col "A Welcoming Gym", "Beginner Friendly", "Accountability"
+  programsHeadline: string           // "EVERY BODY IS UNIQUE. Find a Fitness Routine..."
+  featuredPrograms: string[]         // slugs from programs[]
+  features: Feature[]                // 6-item FeatureGrid: "Nutrition Programming", "Members App", etc.
+  communityProps: ValueProp[]        // 4-col "Expert Coaching", "Beginner Friendly", etc.
+  trustHeadline: string              // "Trusted and Loved By Hundreds of Overland Park Residents"
   howItWorks: Step[]
   testimonials: Testimonial[]
   faq: FAQItem[]
-  richContent?: RichContentSection[]  // inserted between named sections
+  richContent?: RichContentSection[]
 }
 
 interface ProgramContent {
   slug: string              // e.g. "crossfit-classes"
   name: string              // e.g. "CrossFit Classes"
-  shortDescription: string
+  shortDescription: string  // used on program cards
+  coverImageUrl: string     // used on program cards and hero
+  // Geo-targeted headline e.g. "CrossFit Classes in Overland Park, KS"
+  // Template auto-builds from name + business.geo if not provided
+  geoHeadline?: string
   hero: HeroContent
   whatIsIt: { headline: string; body: string }
-  whatMakesUsDifferent: string[]  // bullet points
-  whatToExpect: string            // class structure
+  whatMakesUsDifferent: string[]  // 4-5 bullet points
+  whatToExpect: string            // class structure description
   whoIsItFor: string[]
   gettingStarted: Step[]
   testimonials: Testimonial[]
   faq: FAQItem[]
+  richContent?: RichContentSection[]
 }
 
 interface AboutContent {
@@ -164,6 +178,12 @@ interface ValueProp {
   body: string
 }
 
+// Used by FeatureGrid — higher-density, no body copy (6+ items)
+interface Feature {
+  icon: string
+  label: string
+}
+
 interface Step {
   number: number
   headline: string
@@ -194,6 +214,7 @@ interface BlogPost {
   title: string
   publishedAt: string       // ISO date
   excerpt: string
+  category?: string         // e.g. "Education", "Newsletters"
   body: string              // Markdown — Astro renders natively via @astrojs/markdown-remark.
                             // LLMs write clean markdown naturally. Images use standard
                             // ![alt](url) syntax with URLs rehosted to S3.
@@ -269,8 +290,9 @@ apps/renderer/
     components/
       sections/
         Hero.astro
-        ValueProps.astro
-        ProgramCards.astro
+        ValueProps.astro       # 3-6 items, icon + headline + body
+        FeatureGrid.astro      # 6+ items, icon + label only (higher density)
+        ProgramCards.astro     # optional promoBadge prop
         HowItWorks.astro
         TeamGrid.astro
         Testimonials.astro
