@@ -1,0 +1,38 @@
+---
+import { marked } from "marked";
+import GymLayout from "../../layouts/GymLayout.astro";
+import BlogPostingSchema from "../../components/seo/BlogPostingSchema.astro";
+import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
+import CTABand from "../../components/sections/CTABand.astro";
+import Container from "../../components/ui/Container.astro";
+import { content } from "../../lib/content";
+
+export function getStaticPaths() {
+  return content.pages.blog.posts.map((post) => ({ params: { slug: post.slug }, props: { post } }));
+}
+const { post } = Astro.props;
+const { business } = content;
+const body = marked.parse(post.body) as string;
+const path = `/blog/${post.slug}`;
+---
+<GymLayout title={`${post.title} | ${business.name}`} description={post.excerpt} path={path} image={post.coverImageUrl}>
+  <Fragment slot="head">
+    <BlogPostingSchema post={post} />
+    <BreadcrumbSchema crumbs={[{ name: "Blog", path: "/blog" }, { name: post.title, path }]} />
+  </Fragment>
+  <article class="py-16">
+    <Container>
+      <div class="mx-auto max-w-2xl">
+        {post.category && <span class="text-xs font-bold uppercase tracking-wide text-accent">{post.category}</span>}
+        <h1 class="mt-1 font-heading text-4xl font-bold text-primary">{post.title}</h1>
+        <p class="mt-2 text-sm text-secondary">
+          <time datetime={post.publishedAt}>{new Date(post.publishedAt + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</time>
+          {post.author && <span> · {post.author}</span>}
+        </p>
+        {post.coverImageUrl && <img src={post.coverImageUrl} alt={post.title} width="1200" height="630" loading="eager" class="mt-6 rounded-xl" />}
+        <div class="prose mt-8 max-w-none" set:html={body} />
+      </div>
+    </Container>
+  </article>
+  <CTABand headline={`Train with us in ${business.geo.city}`} ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>

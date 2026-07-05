@@ -58,6 +58,8 @@ const rootCss = [
     <style is:inline set:html={rootCss}></style>
     <Tracking />
     {image && <link rel="preload" as="image" href={image} fetchpriority="high" />}
+    <link rel="icon" href={brand.logoUrl} />
+    <link rel="manifest" href="/site.webmanifest" />
     <slot name="head" />
   </head>
   <body class="font-body text-secondary bg-white">

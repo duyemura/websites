@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadPage, gym, builtCss, jsonLd, readDist } from "./helpers";
+import { loadPage, gym, builtCss, jsonLd, readDist, distExists } from "./helpers";
 
 describe("layout skeleton", () => {
   it("homepage renders with gym name in title and exact hero headline", () => {
@@ -170,5 +170,85 @@ describe("about / contact / schedule", () => {
   it("schedule embeds the booking widget html", () => {
     const $ = loadPage("schedule/index.html");
     expect($("#fixture-booking-widget").length).toBe(1);
+  });
+});
+
+describe("pricing", () => {
+  it("renders all plans with the highlighted plan badged", () => {
+    const $ = loadPage("pricing/index.html");
+    for (const plan of gym.pages.pricing.grid.plans) {
+      expect($("body").text()).toContain(plan.name);
+      expect($("body").text()).toContain(plan.price);
+    }
+    expect($("body").text()).toContain("Most Popular");
+  });
+
+  it("renders the rate-sheet request form posting to formId 'pricing'", () => {
+    const $ = loadPage("pricing/index.html");
+    expect($("form[data-lead-form]").attr("action")).toContain("/forms/");
+    expect($("form[data-lead-form]").attr("action")).toMatch(/\/pricing$/);
+  });
+});
+
+describe("blog + wells + utility pages", () => {
+  it("blog index lists every post with category labels", () => {
+    const $ = loadPage("blog/index.html");
+    for (const post of gym.pages.blog.posts) {
+      expect($("body").text()).toContain(post.title);
+      expect($(`a[href="/blog/${post.slug}"]`).length).toBeGreaterThan(0);
+    }
+    expect($("body").text()).toContain("Education");
+  });
+
+  it("blog post renders markdown body and BlogPosting schema", () => {
+    const post = gym.pages.blog.posts[0];
+    const $ = loadPage(`blog/${post.slug}/index.html`);
+    expect($("body").text()).toContain("Why now?");
+    expect($("article img").length).toBeGreaterThan(0);
+    const schema = jsonLd($).find((s) => s["@type"] === "BlogPosting") as any;
+    expect(schema.headline).toBe(post.title);
+    expect(schema.datePublished).toBe(post.publishedAt);
+  });
+
+  it("local guide renders rich content sections", () => {
+    const $ = loadPage("local-guide/index.html");
+    for (const s of gym.pages.localGuide.sections) expect($("body").text()).toContain(s.headline);
+  });
+
+  it("legal pages and 404 exist", () => {
+    expect(distExists("legal/privacy-policy/index.html")).toBe(true);
+    expect(distExists("legal/terms-of-use/index.html")).toBe(true);
+    expect(distExists("404.html")).toBe(true);
+  });
+
+  it("rss.xml lists blog posts", () => {
+    const xml = readDist("rss.xml");
+    expect(xml).toContain("<rss");
+    expect(xml).toContain(gym.pages.blog.posts[0].title);
+  });
+});
+
+describe("discovery files", () => {
+  it("sitemap lists all public routes and not legal/404", () => {
+    const xml = readDist("sitemap.xml");
+    for (const p of ["/", "/about", "/pricing", "/contact", "/schedule", "/blog", "/local-guide"]) {
+      expect(xml).toContain(`<loc>${gym.meta.siteUrl}${p}</loc>`);
+    }
+    expect(xml).toContain(`/programs/crossfit-classes`);
+    expect(xml).toContain(`/blog/${gym.pages.blog.posts[0].slug}`);
+    expect(xml).not.toContain("/legal/");
+  });
+
+  it("robots.txt allows crawling and points at sitemap", () => {
+    const txt = readDist("robots.txt");
+    expect(txt).toContain("Allow: /");
+    expect(txt).toContain(`Sitemap: ${gym.meta.siteUrl}/sitemap.xml`);
+  });
+
+  it("llms.txt describes the business, programs, location", () => {
+    const txt = readDist("llms.txt");
+    expect(txt).toContain(gym.business.name);
+    expect(txt).toContain(gym.business.geo.city);
+    for (const p of gym.pages.programs) expect(txt).toContain(p.name);
   });
 });

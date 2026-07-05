@@ -1,0 +1,28 @@
+---
+import GymLayout from "../layouts/GymLayout.astro";
+import Hero from "../components/sections/Hero.astro";
+import PricingGrid from "../components/sections/PricingGrid.astro";
+import LeadForm from "../components/forms/LeadForm.astro";
+import CTABand from "../components/sections/CTABand.astro";
+import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
+import Container from "../components/ui/Container.astro";
+import SectionHeading from "../components/ui/SectionHeading.astro";
+import { content } from "../lib/content";
+const p = content.pages.pricing;
+const { business } = content;
+const title = `Membership Pricing | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
+---
+<GymLayout title={title} description={p.hero.subheading ?? `Membership pricing at ${business.name}`} path="/pricing">
+  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Pricing", path: "/pricing" }]} /></Fragment>
+  <Hero hero={p.hero} />
+  {p.grid && <PricingGrid grid={p.grid} />}
+  {p.form && (
+    <section class="bg-slate-50 py-16">
+      <Container>
+        <SectionHeading title={p.form.headline} subtitle={p.form.intro} />
+        <LeadForm formId="pricing" submitLabel="Send me the rates" includeMessage={false} />
+      </Container>
+    </section>
+  )}
+  <CTABand headline="Not sure which plan? Talk to a coach." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>
