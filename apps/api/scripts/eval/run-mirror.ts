@@ -59,10 +59,15 @@ function parseArgs(argv: string[]) {
   }
   const url = args["url"];
   if (!url) { console.error("Usage: run-mirror.ts --url https://..."); process.exit(1); }
-  return { url, maxPages: Number(args["pages"] ?? 10) };
+
+  // Guard against non-numeric --pages value (Number("foo") = NaN → slice(0,NaN) = [])
+  const pagesRaw = Number(args["pages"] ?? 10);
+  const maxPages = Number.isFinite(pagesRaw) && pagesRaw > 0 ? pagesRaw : 10;
+
+  return { url, maxPages };
 }
 
-// ---------- Bootstrap (mirrors run-pipeline.ts pattern) ----------
+// ---------- Bootstrap ----------
 
 async function ensureEvalWorkspace(): Promise<string> {
   const existing = await db
@@ -100,59 +105,88 @@ async function ensureEvalSite(workspaceUuid: string, url: string): Promise<strin
   return site.uuid;
 }
 
-// ---------- Screenshot + diff ----------
+// ---------- Screenshot + broken-asset check in one browser pass ----------
 
-async function screenshotPage(url: string): Promise<Buffer> {
+interface BrokenAsset { url: string; status: number }
+
+interface PageCapture {
+  png: Buffer;
+  brokenAssets: BrokenAsset[];
+  heightPx: number;
+}
+
+/**
+ * Screenshot a page and simultaneously collect broken same-origin asset
+ * responses — done in a single browser launch to avoid the double-navigation
+ * cost of a separate broken-asset pass. (I1)
+ */
+async function capturePage(pageUrl: string, sameOrigin: string): Promise<PageCapture> {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const broken: BrokenAsset[] = [];
+
+    page.on("response", (res) => {
+      try {
+        if (new URL(res.url()).origin === sameOrigin && res.status() >= 400) {
+          broken.push({ url: res.url(), status: res.status() });
+        }
+      } catch { /* ignore unparseable URLs */ }
+    });
+
+    const response = await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
-    return await page.screenshot({ fullPage: true });
+
+    // C2: throw on HTTP error so callers get a clear failure, not a
+    // screenshot of an S3 XML error page that looks like a "rewriter bug"
+    const status = response?.status() ?? 0;
+    if (status >= 400) throw new Error(`HTTP ${status} from ${pageUrl}`);
+
+    const png = await page.screenshot({ fullPage: true });
+    const img = PNG.sync.read(png);
+    return { png, brokenAssets: broken, heightPx: img.height };
   } finally {
     await browser.close();
   }
 }
 
-function similarity(a: Buffer, b: Buffer): number {
+/** Screenshot the origin page — no broken-asset tracking needed. */
+async function screenshotOrigin(pageUrl: string): Promise<{ png: Buffer; heightPx: number }> {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const response = await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
+    const status = response?.status() ?? 0;
+    if (status >= 400) throw new Error(`HTTP ${status} from ${pageUrl}`);
+    const png = await page.screenshot({ fullPage: true });
+    const img = PNG.sync.read(png);
+    return { png, heightPx: img.height };
+  } finally {
+    await browser.close();
+  }
+}
+
+// ---------- Pixel diff ----------
+
+function computeSimilarity(a: Buffer, b: Buffer): { score: number; heightDeltaPx: number } {
   const imgA = PNG.sync.read(a);
   const imgB = PNG.sync.read(b);
+
   const width = Math.min(imgA.width, imgB.width);
   const height = Math.min(imgA.height, imgB.height);
 
-  // Crop both to the smaller dimension so pixelmatch doesn't throw on size mismatch
+  // Crop both to the smaller dimension for pixelmatch (top-aligned crop)
   const cropA = new PNG({ width, height });
   const cropB = new PNG({ width, height });
   PNG.bitblt(imgA, cropA, 0, 0, width, height, 0, 0);
   PNG.bitblt(imgB, cropB, 0, 0, width, height, 0, 0);
 
   const diffCount = pixelmatch(cropA.data, cropB.data, null, width, height, { threshold: 0.1 });
-  return Math.round((1 - diffCount / (width * height)) * 100);
-}
+  const score = Math.round((1 - diffCount / (width * height)) * 100);
+  const heightDeltaPx = imgA.height - imgB.height; // positive = origin taller than mirror
 
-// ---------- Broken asset check ----------
-
-interface BrokenAsset { url: string; status: number }
-
-async function countBrokenAssets(pageUrl: string, origin: string): Promise<BrokenAsset[]> {
-  const broken: BrokenAsset[] = [];
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    page.on("response", (res) => {
-      try {
-        const u = new URL(res.url());
-        if (u.origin === new URL(origin).origin && res.status() >= 400) {
-          broken.push({ url: res.url(), status: res.status() });
-        }
-      } catch { /* ignore unparseable URLs */ }
-    });
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
-  } finally {
-    await browser.close();
-  }
-  return broken;
+  return { score, heightDeltaPx };
 }
 
 // ---------- Report ----------
@@ -160,8 +194,9 @@ async function countBrokenAssets(pageUrl: string, origin: string): Promise<Broke
 interface PageResult {
   path: string;
   similarity: number;
+  heightDeltaPx: number;
   brokenAssets: BrokenAsset[];
-  formsIntercepted: number;
+  formsDetectedAtCrawl: number;
   warnings: string[];
   pass: boolean;
   error?: string;
@@ -193,16 +228,22 @@ function renderReport(
   lines.push("");
   lines.push("## Per-page scores");
   lines.push("");
-  lines.push("| Path | Similarity | Broken assets | Forms intercepted | Warnings | Result |");
-  lines.push("|------|-----------|---------------|-------------------|----------|--------|");
+  // I4: renamed column to reflect what it actually measures
+  lines.push("| Path | Similarity | Height Δ (px) | Broken assets | Forms (crawl) | Warnings | Result |");
+  lines.push("|------|-----------|--------------|---------------|--------------|----------|--------|");
   for (const p of pages) {
     const sim = p.error ? "error" : `${p.similarity}%`;
+    const delta = p.error ? "—" : (p.heightDeltaPx >= 0 ? `+${p.heightDeltaPx}` : String(p.heightDeltaPx));
     const broken = p.error ? "—" : String(p.brokenAssets.length);
-    const forms = p.error ? "—" : String(p.formsIntercepted);
+    const forms = p.error ? "—" : String(p.formsDetectedAtCrawl);
     const warn = p.warnings.length > 0 ? p.warnings.join(", ").slice(0, 60) : "—";
-    const result = p.error ? `⚠️ ${p.error.slice(0, 50)}` : p.pass ? "✅ PASS" : "❌ FAIL";
-    lines.push(`| ${p.path} | ${sim} | ${broken} | ${forms} | ${warn} | ${result} |`);
+    const result = p.error
+      ? `⚠️ ${p.error.slice(0, 50)}`
+      : p.pass ? "✅ PASS" : "❌ FAIL";
+    lines.push(`| ${p.path} | ${sim} | ${delta} | ${broken} | ${forms} | ${warn} | ${result} |`);
   }
+  lines.push("");
+  lines.push("> Height Δ = origin height minus mirror height in pixels. Negative means mirror is taller.");
   lines.push("");
 
   const failures = pages.filter((p) => !p.pass && !p.error);
@@ -211,7 +252,7 @@ function renderReport(
     lines.push("");
     for (const p of failures) {
       lines.push(`### ${p.path}`);
-      lines.push(`- Similarity: ${p.similarity}%`);
+      lines.push(`- Similarity: ${p.similarity}% (height Δ: ${p.heightDeltaPx}px)`);
       if (p.brokenAssets.length > 0) {
         lines.push(`- Broken assets (${p.brokenAssets.length}):`);
         for (const b of p.brokenAssets.slice(0, 10)) {
@@ -226,6 +267,7 @@ function renderReport(
   lines.push("");
   lines.push("- Similarity ≥ 95 = PASS (below 95 is a rewriter/crawler bug, not tuning)");
   lines.push("- Zero broken same-origin assets = PASS");
+  lines.push("- Large height Δ with high similarity = missing section not caught by pixel diff — investigate manually");
   lines.push("");
 
   return lines.join("\n") + "\n";
@@ -243,131 +285,133 @@ async function main() {
   console.log(`Report: ${reportPath}\n`);
 
   const start = Date.now();
-  const workspaceUuid = await ensureEvalWorkspace();
-  const siteUuid = await ensureEvalSite(workspaceUuid, sourceUrl);
-  console.log(`Site UUID: ${siteUuid}`);
 
-  // Stage 1: run the full mirror pipeline
-  console.log("\n▶ Running mirror pipeline...");
-  let previewUrl: string;
-  let deployPrefix: string;
+  // I2: top-level cleanup ensures db + any leaked browsers are handled on any exit path
+  const cleanup = async () => { try { await db.destroy(); } catch { /* ignore */ } };
+
   try {
-    const result = await runMirrorPipeline({
+    const workspaceUuid = await ensureEvalWorkspace();
+    const siteUuid = await ensureEvalSite(workspaceUuid, sourceUrl);
+    console.log(`Site UUID: ${siteUuid}`);
+
+    // Stage 1: run the full mirror pipeline
+    console.log("\n▶ Running mirror pipeline...");
+    const mirrorResult = await runMirrorPipeline({
       db,
       config,
       siteUuid,
       workspaceUuid,
       log: {
-        info: (o, m) => console.log(`  [info] ${m}`, Object.keys(o).length ? o : ""),
-        warn: (o, m) => console.warn(`  [warn] ${m}`, Object.keys(o).length ? o : ""),
+        info: (o, m) => console.log(`  [info] ${m}`, o && Object.keys(o).length ? o : ""),
+        warn: (o, m) => console.warn(`  [warn] ${m}`, o && Object.keys(o).length ? o : ""),
       },
     });
-    previewUrl = result.previewUrl;
-    console.log(`  ✓ ${result.pageCount} pages mirrored`);
-    if (result.warnings.length > 0) {
-      console.log(`  ⚠ ${result.warnings.length} warnings`);
-    }
-  } catch (err) {
-    console.error("✗ Pipeline failed:", err instanceof Error ? err.message : String(err));
-    await db.destroy();
-    process.exit(1);
-  }
+    console.log(`  ✓ ${mirrorResult.pageCount} pages mirrored`);
+    if (mirrorResult.warnings.length > 0) console.log(`  ⚠ ${mirrorResult.warnings.length} warnings`);
 
-  // Load the deploy artifact to get deployPrefix for constructing per-page URLs
-  const deployArtifact = await loadArtifact<{
-    deployPrefix: string;
-    previewUrl: string;
-    pageCount: number;
-  }>(db, { siteUuid, workspaceUuid }, "mirror-deploy");
+    // Load artifacts for per-page URL construction and form counts
+    const deployArtifact = await loadArtifact<{ deployPrefix: string; previewUrl: string }>(
+      db, { siteUuid, workspaceUuid }, "mirror-deploy",
+    );
+    const deployPrefix = deployArtifact?.payload.deployPrefix ?? "";
+    const previewUrl = mirrorResult.previewUrl;
 
-  deployPrefix = deployArtifact?.payload.deployPrefix ?? "";
+    const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
+    if (!bucket) throw new Error("S3_ASSETS_BUCKET is not configured");
 
-  const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
-  function mirrorPageUrl(pagePath: string): string {
-    const fileKey = pathToFileKey(pagePath);
-    return buildS3ObjectUrl({
-      endpoint: config.S3_ENDPOINT,
-      region: config.S3_REGION,
-      bucket,
-      key: `${deployPrefix}/${fileKey}`,
-    });
-  }
-
-  // Load crawl artifact for the page list and form counts
-  const crawlArtifact = await loadArtifact<MirrorCrawlArtifact>(
-    db, { siteUuid, workspaceUuid }, "mirror-crawl",
-  );
-  const crawledPages = crawlArtifact?.payload.pages ?? [];
-  const pagesToEval = crawledPages.slice(0, maxPages);
-  const crawlWarnings = new Map(
-    crawledPages.map((p) => [
-      p.path,
-      p.dynamicRegions.map((r) => `${r.kind}:${r.evidence.slice(0, 40)}`),
-    ]),
-  );
-
-  console.log(`\n▶ Scoring ${pagesToEval.length} pages (cap: ${maxPages})...`);
-  const mirrorOrigin = new URL(mirrorPageUrl("/")).origin;
-  const results: PageResult[] = [];
-
-  for (const page of pagesToEval) {
-    const originUrl = `${new URL(sourceUrl).origin}${page.path}`;
-    const mirrorUrl = mirrorPageUrl(page.path);
-    console.log(`\n  ${page.path}`);
-    console.log(`    origin: ${originUrl}`);
-    console.log(`    mirror: ${mirrorUrl}`);
-
-    try {
-      // Screenshot both in parallel — saves time on slow network pages
-      const [originShot, mirrorShot] = await Promise.all([
-        screenshotPage(originUrl),
-        screenshotPage(mirrorUrl),
-      ]);
-
-      const sim = similarity(originShot, mirrorShot);
-      const broken = await countBrokenAssets(mirrorUrl, mirrorOrigin);
-      const pass = sim >= 95 && broken.length === 0;
-
-      const result: PageResult = {
-        path: page.path,
-        similarity: sim,
-        brokenAssets: broken,
-        formsIntercepted: page.forms.length,
-        warnings: crawlWarnings.get(page.path) ?? [],
-        pass,
-      };
-      results.push(result);
-
-      console.log(`    similarity=${sim}% broken=${broken.length} forms=${page.forms.length} → ${pass ? "PASS" : "FAIL"}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`    ✗ ${msg}`);
-      results.push({
-        path: page.path,
-        similarity: 0,
-        brokenAssets: [],
-        formsIntercepted: 0,
-        warnings: [],
-        pass: false,
-        error: msg,
+    function mirrorPageUrl(pagePath: string): string {
+      return buildS3ObjectUrl({
+        endpoint: config.S3_ENDPOINT,
+        region: config.S3_REGION,
+        bucket,
+        key: `${deployPrefix}/${pathToFileKey(pagePath)}`,
       });
     }
+
+    const crawlArtifact = await loadArtifact<MirrorCrawlArtifact>(
+      db, { siteUuid, workspaceUuid }, "mirror-crawl",
+    );
+    const crawledPages = crawlArtifact?.payload.pages ?? [];
+    const pagesToEval = crawledPages.slice(0, maxPages);
+
+    if (pagesToEval.length === 0) {
+      console.error("No pages in crawl artifact — did the mirror pipeline complete?");
+      await cleanup();
+      process.exit(1);
+    }
+
+    const crawlWarnings = new Map(
+      crawledPages.map((p) => [
+        p.path,
+        p.dynamicRegions.map((r) => `${r.kind}:${r.evidence.slice(0, 40)}`),
+      ]),
+    );
+
+    // Mirror origin for same-origin broken-asset filtering
+    const mirrorOrigin = new URL(mirrorPageUrl("/")).origin;
+
+    console.log(`\n▶ Scoring ${pagesToEval.length} pages (cap: ${maxPages})...`);
+    const results: PageResult[] = [];
+
+    for (const page of pagesToEval) {
+      const originUrl = `${new URL(sourceUrl).origin}${page.path}`;
+      const mUrl = mirrorPageUrl(page.path);
+      console.log(`\n  ${page.path}`);
+
+      try {
+        // Screenshot origin and mirror in parallel (I1: mirror also collects broken assets)
+        const [originCapture, mirrorCapture] = await Promise.all([
+          screenshotOrigin(originUrl),
+          capturePage(mUrl, mirrorOrigin),
+        ]);
+
+        const { score, heightDeltaPx } = computeSimilarity(originCapture.png, mirrorCapture.png);
+        const pass = score >= 95 && mirrorCapture.brokenAssets.length === 0;
+
+        results.push({
+          path: page.path,
+          similarity: score,
+          heightDeltaPx,
+          brokenAssets: mirrorCapture.brokenAssets,
+          formsDetectedAtCrawl: page.forms.length,
+          warnings: crawlWarnings.get(page.path) ?? [],
+          pass,
+        });
+
+        console.log(`  similarity=${score}% Δheight=${heightDeltaPx}px broken=${mirrorCapture.brokenAssets.length} → ${pass ? "PASS" : "FAIL"}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`  ✗ ${msg}`);
+        results.push({
+          path: page.path,
+          similarity: 0,
+          heightDeltaPx: 0,
+          brokenAssets: [],
+          formsDetectedAtCrawl: page.forms.length,
+          warnings: [],
+          pass: false,
+          error: msg,
+        });
+      }
+    }
+
+    const durationMs = Date.now() - start;
+    const md = renderReport(sourceUrl, siteUuid, previewUrl, results, durationMs);
+    await mkdir(path.dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, md);
+
+    const failCount = results.filter((r) => !r.pass).length;
+    // C1: fixed template literal syntax
+    console.log(`\n${failCount === 0 ? "✅ ALL PASS" : `❌ ${failCount}/${results.length} FAIL`}`);
+    console.log(`Report: ${reportPath}`);
+
+    await cleanup();
+    process.exit(failCount > 0 ? 1 : 0);
+  } catch (err) {
+    console.error("\n✗ Eval failed:", err instanceof Error ? err.message : String(err));
+    await cleanup();
+    process.exit(1);
   }
-
-  const durationMs = Date.now() - start;
-  const md = renderReport(sourceUrl, siteUuid, previewUrl, results, durationMs);
-  await mkdir(path.dirname(reportPath), { recursive: true });
-  await writeFile(reportPath, md);
-
-  const failCount = results.filter((r) => !r.pass).length;
-  console.log(`\n${failCount === 0 ? "✅ ALL PASS" : `❌ ${failCount}/${results.length} FAIL"}`}`);
-  console.log(`Report written: ${reportPath}`);
-
-  await db.destroy();
-  process.exit(failCount > 0 ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();
