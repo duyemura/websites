@@ -1,13 +1,12 @@
 import type { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 
-import type { PipelineStage } from "../../types/pipeline-artifacts";
+import { REBUILD_STAGES, type PipelineStage } from "../../types/pipeline-artifacts";
 import {
   loadArtifact,
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 
-const REBUILD_STAGES = ["extract", "segment", "docgen", "build", "verify"] as const;
 const StageEnum = z.enum(REBUILD_STAGES);
 
 const StagePayloadSchema = z

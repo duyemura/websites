@@ -7,8 +7,10 @@ import type {
 } from "../../types/mirror";
 
 export function pathToFileKey(pagePath: string): string {
-  if (pagePath === "/") return "index.html";
-  const trimmed = pagePath.replace(/^\//, "").replace(/\/$/, "");
+  // Strip query string and fragment before computing the file key (C1)
+  const clean = (pagePath.split("?")[0] ?? pagePath).split("#")[0] ?? pagePath;
+  const trimmed = clean.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!trimmed) return "index.html";
   if (/\.[a-z0-9]+$/i.test(trimmed)) return trimmed;
   return `${trimmed}/index.html`;
 }
@@ -32,10 +34,18 @@ export async function buildSnapshot(
   const pages: { path: string; htmlKey: string }[] = [];
 
   for (const page of crawl.pages) {
-    const raw = await deps.s3Client.send(
-      new GetObjectCommand({ Bucket: deps.bucket, Key: page.htmlKey }),
-    );
-    const html = (await raw.Body?.transformToString()) ?? "";
+    let html: string;
+    try {
+      const raw = await deps.s3Client.send(
+        new GetObjectCommand({ Bucket: deps.bucket, Key: page.htmlKey }),
+      );
+      html = (await raw.Body?.transformToString()) ?? "";
+    } catch (err) {
+      // A single missing blob should not abort the whole snapshot (C2)
+      warnings.push(`snapshot read failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
+      continue;
+    }
+
     const rewritten = rewriteHtml(html, {
       pageUrl: page.url,
       origin: crawl.origin,
@@ -44,16 +54,24 @@ export async function buildSnapshot(
       formEndpointBase: `/forms/${deps.siteUuid}`,
       noindex: false,
     });
+
     const fileKey = pathToFileKey(page.path);
     const htmlKey = `${snapshotPrefix}/pages/${fileKey}`;
-    await deps.s3Client.send(
-      new PutObjectCommand({
-        Bucket: deps.bucket,
-        Key: htmlKey,
-        Body: Buffer.from(rewritten, "utf8"),
-        ContentType: "text/html; charset=utf-8",
-      }),
-    );
+
+    try {
+      await deps.s3Client.send(
+        new PutObjectCommand({
+          Bucket: deps.bucket,
+          Key: htmlKey,
+          Body: Buffer.from(rewritten, "utf8"),
+          ContentType: "text/html; charset=utf-8",
+        }),
+      );
+    } catch (err) {
+      warnings.push(`snapshot write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
+      continue;
+    }
+
     pages.push({ path: page.path, htmlKey });
 
     for (const region of page.dynamicRegions) {

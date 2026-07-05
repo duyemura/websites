@@ -46,18 +46,22 @@ export function applyTransforms(
         const attr = typeof payload.name === "string" ? "name" : "property";
         const key = (payload.name ?? payload.property) as string | undefined;
         if (!key || typeof payload.content !== "string") break;
-        const existing = $(`head meta[${attr}="${key}"]`);
+        // Use attribute filter to avoid selector-injection via unescaped key (I5)
+        const existing = $("head meta").filter((_, el) => $(el).attr(attr) === key);
         if (existing.length > 0) {
           existing.attr("content", payload.content);
         } else {
-          $("head").append(`<meta ${attr}="${key}" content="${payload.content}">`);
+          // Build element with cheerio so attribute values are escaped (C2)
+          const meta = $("<meta>").attr(attr, key).attr("content", payload.content);
+          $("head").append(meta);
         }
         applied.push(tr.uuid);
         break;
       }
       case "jsonld-inject": {
         const script = $("<script>").attr("type", "application/ld+json");
-        script.text(JSON.stringify(payload.json));
+        // Escape </script> sequences so injected payload can't break out of the tag (C1)
+        script.text(JSON.stringify(payload.json).replace(/<\//g, "<\\/"));
         $("head").append(script);
         applied.push(tr.uuid);
         break;
@@ -78,13 +82,19 @@ export function applyTransforms(
         const find = String(payload.find ?? "");
         const replace = String(payload.replace ?? "");
         let done = false;
+        // Walk text nodes directly to preserve child element markup (I4)
         els.each((_, el) => {
           if (done) return;
-          const text = $(el).text();
-          if (find && text.includes(find)) {
-            $(el).text(text.replace(find, replace));
-            done = true;
-          }
+          $(el)
+            .contents()
+            .each((__, node) => {
+              if (done || node.type !== "text") return;
+              const data = (node as { data?: string }).data ?? "";
+              if (find && data.includes(find)) {
+                (node as { data: string }).data = data.replace(find, replace);
+                done = true;
+              }
+            });
         });
         if (done) applied.push(tr.uuid);
         else stale.push(tr.uuid);

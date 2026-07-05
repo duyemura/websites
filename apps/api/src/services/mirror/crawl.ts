@@ -1,4 +1,4 @@
-import { chromium, type Page } from "playwright";
+import { chromium } from "playwright";
 import { getS3Client } from "../../s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import type {
@@ -15,7 +15,6 @@ const ASSET_EXT_RE = /\.(pdf|jpe?g|png|gif|webp|svg|zip|mp4|mov|webm|css|js|ico|
 
 const BOOKING_WIDGET_HOSTS = [
   "mindbodyonline.com",
-  "widgets.mindbodyonline.com",
   "pike13.com",
   "glofox.com",
   "zenplanner.com",
@@ -60,8 +59,8 @@ interface PageEvidence {
   embeds: string[];
 }
 
-async function collectEvidence(page: Page): Promise<PageEvidence> {
-  return page.evaluate((bookingHosts: string[]) => {
+async function collectEvidence(page: import("playwright").Page, bookingHosts: string[]): Promise<PageEvidence> {
+  return page.evaluate((hosts: string[]) => {
     const links = Array.from(document.querySelectorAll("a[href]")).map(
       (a) => (a as HTMLAnchorElement).href,
     );
@@ -83,7 +82,8 @@ async function collectEvidence(page: Page): Promise<PageEvidence> {
       .filter((h) => h && h !== location.host);
 
     const dynamicRegions: DynamicRegion[] = [];
-    const bodyText = document.body.innerText.toLowerCase();
+    // Guard against pages with no body (XML, blank, error pages) (I6)
+    const bodyText = (document.body?.innerText ?? "").toLowerCase();
 
     const scheduleWords = ["class schedule", "book a class", "timetable", "wod schedule"];
     for (const w of scheduleWords) {
@@ -111,10 +111,10 @@ async function collectEvidence(page: Page): Promise<PageEvidence> {
       });
     }
 
-    // Detect booking widgets — they work on the mirror but may need domain
-    // allowlist update during preview phase on *.ploysites.com
+    // Booking widgets work on the mirror (we don't rehost third-party scripts) but
+    // may need domain allowlist update during preview phase on *.ploysites.com
     for (const host of embedHosts) {
-      const matched = bookingHosts.find((bh) => host === bh || host.endsWith(`.${bh}`));
+      const matched = hosts.find((bh) => host === bh || host.endsWith(`.${bh}`));
       if (matched) {
         dynamicRegions.push({
           kind: "booking-widget",
@@ -126,7 +126,7 @@ async function collectEvidence(page: Page): Promise<PageEvidence> {
     }
 
     return { title: document.title, links, forms, dynamicRegions, embeds: embedHosts };
-  }, BOOKING_WIDGET_HOSTS);
+  }, bookingHosts);
 }
 
 export interface CrawlDeps {
@@ -147,100 +147,138 @@ export async function crawlSite(
   sourceUrl: string,
   deps: CrawlDeps,
 ): Promise<MirrorCrawlArtifact> {
-  const origin = new URL(sourceUrl).origin;
+  // origin may be updated after the first navigation if the site redirects
+  // http→https or bare→www (I3)
+  let origin = new URL(sourceUrl).origin;
   const s3Client = getS3Client(deps.s3);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  // Wrap everything so browser.close() always runs (I5)
+  try {
+    const context = await browser.newContext();
 
-  const queue: string[] = [normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl];
-  const seen = new Set<string>(queue);
-  const pages: MirrorPage[] = [];
-  const failures: { url: string; reason: string }[] = [];
-  const redirects: MirrorRedirect[] = [];
+    const queue: string[] = [normalizeCrawlUrl(sourceUrl, origin) ?? sourceUrl];
+    const seen = new Set<string>(queue);
+    const pages: MirrorPage[] = [];
+    const failures: { url: string; reason: string }[] = [];
+    const redirects: MirrorRedirect[] = [];
 
-  while (queue.length > 0 && pages.length < MAX_PAGES) {
-    const url = queue.shift()!;
-    try {
-      const response = await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
-      const finalUrl = page.url();
-      const finalPath = new URL(finalUrl).pathname;
-      const origPath = new URL(url).pathname;
+    while (queue.length > 0 && pages.length < MAX_PAGES) {
+      const url = queue.shift()!;
 
-      if (finalPath !== origPath) {
-        redirects.push({
-          from: origPath,
-          to: finalPath,
-          status: response?.status() ?? 301,
+      // Fresh page per URL — avoids JS heap / listener accumulation across navigations (C2)
+      const page = await context.newPage();
+      try {
+        const response = await page.goto(url, {
+          // domcontentloaded prevents networkidle from hanging on booking widget polling (I1)
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
         });
-      }
 
-      const html = await page.content();
-      const evidence = await collectEvidence(page);
-      const pagePath = finalPath;
+        // Short settle for JS-rendered content; ignore timeout (booking widgets will always time out)
+        await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
 
-      const htmlKey = `sites/${deps.siteUuid}/crawl/${deps.crawlVersion}/${pathToSlug(pagePath)}.html`;
-      await s3Client.send(
-        new PutObjectCommand({
-          Bucket: deps.s3.bucket,
-          Key: htmlKey,
-          Body: Buffer.from(html, "utf8"),
-          ContentType: "text/html; charset=utf-8",
-        }),
-      );
-
-      const forms: MirrorForm[] = evidence.forms
-        .filter((f) => {
-          if (!f.action) return true;
-          try {
-            return new URL(f.action, finalUrl).origin === origin;
-          } catch {
-            return false;
-          }
-        })
-        .map((f, i) => ({
-          formId: `${pathToSlug(pagePath)}-f${i + 1}`,
-          originalAction: f.action,
-          method: f.method,
-          selector: f.selector,
-        }));
-
-      pages.push({
-        url: finalUrl,
-        path: pagePath,
-        title: evidence.title,
-        htmlKey,
-        forms,
-        dynamicRegions: evidence.dynamicRegions,
-        embeds: [...new Set(evidence.embeds)],
-      });
-
-      for (const link of evidence.links) {
-        const normalized = normalizeCrawlUrl(link, origin, finalUrl);
-        if (normalized && !seen.has(normalized)) {
-          seen.add(normalized);
-          queue.push(normalized);
+        // Skip 4xx/5xx pages — don't capture error templates (I2)
+        const status = response?.status() ?? 0;
+        if (status >= 400) {
+          failures.push({ url, reason: `HTTP ${status}` });
+          continue;
         }
+
+        const finalUrl = page.url();
+        const finalPath = new URL(finalUrl).pathname;
+        const origPath = new URL(url).pathname;
+
+        // After first successful nav, update origin if the site redirected to a different
+        // scheme or subdomain (http→https, bare→www) so subsequent link normalization works (I3)
+        if (pages.length === 0) {
+          origin = new URL(finalUrl).origin;
+        }
+
+        // Prevent recrawling the same page reached via a different redirect path (C1)
+        const normalizedFinal = normalizeCrawlUrl(finalUrl, origin);
+        if (normalizedFinal && seen.has(normalizedFinal) && normalizedFinal !== url) {
+          continue;
+        }
+        if (normalizedFinal) seen.add(normalizedFinal);
+
+        if (finalPath !== origPath) {
+          redirects.push({
+            from: origPath,
+            to: finalPath,
+            status: response?.status() ?? 301,
+          });
+        }
+
+        const html = await page.content();
+        const evidence = await collectEvidence(page, BOOKING_WIDGET_HOSTS);
+        const pagePath = finalPath;
+
+        const htmlKey = `sites/${deps.siteUuid}/crawl/${deps.crawlVersion}/${pathToSlug(pagePath)}.html`;
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: deps.s3.bucket,
+            Key: htmlKey,
+            Body: Buffer.from(html, "utf8"),
+            ContentType: "text/html; charset=utf-8",
+          }),
+        );
+
+        const forms: MirrorForm[] = evidence.forms
+          .filter((f) => {
+            if (!f.action) return true;
+            try {
+              return new URL(f.action, finalUrl).origin === origin;
+            } catch {
+              return false;
+            }
+          })
+          .map((f, i) => ({
+            formId: `${pathToSlug(pagePath)}-f${i + 1}`,
+            originalAction: f.action,
+            method: f.method,
+            selector: f.selector,
+          }));
+
+        pages.push({
+          url: finalUrl,
+          path: pagePath,
+          title: evidence.title,
+          htmlKey,
+          forms,
+          dynamicRegions: evidence.dynamicRegions,
+          embeds: [...new Set(evidence.embeds)],
+        });
+
+        for (const link of evidence.links) {
+          const normalized = normalizeCrawlUrl(link, origin, finalUrl);
+          if (normalized && !seen.has(normalized)) {
+            seen.add(normalized);
+            queue.push(normalized);
+          }
+        }
+        deps.log.info({ url, pageCount: pages.length }, "mirror crawl: page captured");
+      } catch (err) {
+        failures.push({ url, reason: err instanceof Error ? err.message : String(err) });
+        deps.log.warn({ url, err }, "mirror crawl: page failed");
+      } finally {
+        await page.close();
       }
-      deps.log.info({ url, pageCount: pages.length }, "mirror crawl: page captured");
-    } catch (err) {
-      failures.push({ url, reason: err instanceof Error ? err.message : String(err) });
-      deps.log.warn({ url, err }, "mirror crawl: page failed");
     }
+
+    let sitemapXml: string | null = null;
+    let robotsTxt: string | null = null;
+    try {
+      const res = await context.request.get(`${origin}/sitemap.xml`);
+      if (res.ok()) sitemapXml = await res.text();
+    } catch { /* absent sitemap is fine */ }
+    try {
+      const res = await context.request.get(`${origin}/robots.txt`);
+      if (res.ok()) robotsTxt = await res.text();
+    } catch { /* absent robots is fine */ }
+
+    return { sourceUrl, origin, pages, redirects, sitemapXml, robotsTxt, failures };
+  } finally {
+    await browser.close();
   }
-
-  let sitemapXml: string | null = null;
-  let robotsTxt: string | null = null;
-  try {
-    const res = await context.request.get(`${origin}/sitemap.xml`);
-    if (res.ok()) sitemapXml = await res.text();
-  } catch { /* absent sitemap is fine */ }
-  try {
-    const res = await context.request.get(`${origin}/robots.txt`);
-    if (res.ok()) robotsTxt = await res.text();
-  } catch { /* absent robots is fine */ }
-
-  await browser.close();
-  return { sourceUrl, origin, pages, redirects, sitemapXml, robotsTxt, failures };
 }

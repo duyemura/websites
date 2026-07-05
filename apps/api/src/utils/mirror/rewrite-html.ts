@@ -74,14 +74,14 @@ export function rewriteHtml(html: string, ctx: RewriteContext): string {
     }
   });
 
-  let formIndex = 0;
-  $("form").each((_, el) => {
-    const form = ctx.forms[formIndex];
-    formIndex += 1;
-    if (!form) return;
-    $(el).attr("action", `${ctx.formEndpointBase}/${form.formId}`);
-    $(el).attr("method", "post");
-    $(el).append(
+  // Match forms by their document position using .eq() — this is stable
+  // and consistent with the positional indices used during crawl. (I3)
+  ctx.forms.forEach((form, i) => {
+    const el = $("form").eq(i);
+    if (!el.length) return;
+    el.attr("action", `${ctx.formEndpointBase}/${form.formId}`);
+    el.attr("method", "post");
+    el.append(
       '<input type="text" name="_hp" value="" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true">',
     );
   });

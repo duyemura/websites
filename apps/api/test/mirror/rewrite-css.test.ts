@@ -13,6 +13,25 @@ describe("extractCssUrls", () => {
     const css = `.x { background: url(data:image/png;base64,AAAA); }`;
     expect(extractCssUrls(css, "https://gym.com/style.css")).toEqual([]);
   });
+
+  it("handles double-quoted URLs containing closing parenthesis", () => {
+    const css = `body { background: url("https://cdn.example.com/img/foo(1).jpg"); }`;
+    const urls = extractCssUrls(css, "https://gym.com/style.css");
+    expect(urls).toContain("https://cdn.example.com/img/foo(1).jpg");
+  });
+
+  it("extracts URLs from bare @import statements", () => {
+    const css = `@import "fonts/custom.css"; @import 'reset.css';`;
+    const urls = extractCssUrls(css, "https://gym.com/wp-content/theme/style.css");
+    expect(urls).toContain("https://gym.com/wp-content/theme/fonts/custom.css");
+    expect(urls).toContain("https://gym.com/wp-content/theme/reset.css");
+  });
+
+  it("does not double-extract @import url() which is already caught by URL_RE", () => {
+    const css = `@import url("fonts/custom.css");`;
+    const urls = extractCssUrls(css, "https://gym.com/style.css");
+    expect(urls.filter((u) => u.includes("custom.css"))).toHaveLength(1);
+  });
 });
 
 describe("rewriteCssUrls", () => {
@@ -22,5 +41,12 @@ describe("rewriteCssUrls", () => {
     const out = rewriteCssUrls(css, "https://gym.com/style.css", map);
     expect(out).toContain("url('/_assets/bg.jpg')");
     expect(out).toContain("url('/img/other.jpg')");
+  });
+
+  it("rewrites bare @import statements", () => {
+    const css = `@import "fonts/custom.css";`;
+    const map = new Map([["https://gym.com/wp-content/theme/fonts/custom.css", "/_assets/custom.css"]]);
+    const out = rewriteCssUrls(css, "https://gym.com/wp-content/theme/style.css", map);
+    expect(out).toContain('@import "/_assets/custom.css"');
   });
 });

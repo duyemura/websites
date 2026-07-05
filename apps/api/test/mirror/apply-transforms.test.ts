@@ -45,11 +45,28 @@ describe("applyTransforms", () => {
     expect(res.html).toContain('"LocalBusiness"');
   });
 
+  it("jsonld-inject escapes </script> sequences in payload to prevent tag breakout", () => {
+    const res = applyTransforms(BASE, "/", [
+      t({ type: "jsonld-inject", payload: { json: { name: "Gym</script><script>alert(1)" } } }),
+    ]);
+    expect(res.html).not.toContain("</script><script>");
+    expect(res.html).toContain("<\\/script>");
+  });
+
   it("text-replace edits matching element text", () => {
     const res = applyTransforms(BASE, "/", [
       t({ type: "text-replace", selector: "h1", payload: { find: "Welcome to Gym", replace: "Torrance Training Lab" } }),
     ]);
     expect(res.html).toContain("<h1>Torrance Training Lab</h1>");
+  });
+
+  it("text-replace preserves child element markup within the target", () => {
+    const html = `<html><head></head><body><h1>Welcome to <span class="brand">Gym</span></h1></body></html>`;
+    const res = applyTransforms(html, "/", [
+      t({ type: "text-replace", selector: "h1", payload: { find: "Welcome to ", replace: "Train at " } }),
+    ]);
+    expect(res.html).toContain('<span class="brand">Gym</span>');
+    expect(res.html).toContain("Train at ");
   });
 
   it("attr-set sets attributes (alt text)", () => {
@@ -84,5 +101,15 @@ describe("applyTransforms", () => {
       t({ uuid: "u1", ordinal: 1, type: "meta-set", payload: { title: "First" } }),
     ]);
     expect(res.html).toContain("<title>Second</title>");
+  });
+
+  it("meta-set insert escapes attribute values containing double quotes", () => {
+    const html = `<html><head></head><body></body></html>`;
+    const res = applyTransforms(html, "/", [
+      t({ type: "meta-set", payload: { name: "description", content: 'He said "train hard"' } }),
+    ]);
+    // The quote should be entity-escaped, not a raw attribute break
+    expect(res.html).not.toMatch(/content="He said "/);
+    expect(res.html).toContain("train hard");
   });
 });

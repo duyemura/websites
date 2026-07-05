@@ -1,0 +1,44 @@
+# Gym websites for scraper eval testing — 40 sites
+# Diverse types: CrossFit, MMA, Boxing, BJJ, Pilates, Yoga, Weightlifting, Cycling, General Fitness
+# Diverse geographies: USA (Northeast, Southeast, Midwest, Mountain West, Pacific Northwest) + International (UK, Australia, Singapore, Thailand)
+
+https://www.torrancetraininglab.com/
+https://www.ksathleticclub.com/
+https://www.crossfitinvictus.com
+https://www.crossfitmayhem.com
+https://www.crossfitsouthbrooklyn.com
+https://www.f45training.com
+https://www.orangetheory.com
+https://www.barrysbootcamp.com
+https://www.solidcore.co
+https://www.rumbleboxing.com
+https://www.10thplanetlasvegas.com/
+https://www.graciebarra.com
+https://www.10thplanetjj.com
+https://americantopteam.com/
+https://jacksonwink.com/
+https://www.gleasonsgym.com/
+https://wildcardboxing.com/
+https://www.corepoweryoga.com/
+https://www.clubpilates.com/
+https://www.californiastrength.com/
+https://crossfitaustin.com/
+https://www.crossfitboston.com/
+https://www.crossfitcentrallondon.co.uk/
+https://www.crossfitsydney.com.au/
+https://www.soul-cycle.com/
+https://www.ufcgym.com/
+https://evolve-mma.com/
+https://www.crossfitce.com/
+https://mbfitmiamibeach.com/
+https://www.crossfitnashville.com/
+https://www.tangletowncrossfit.com/
+https://www.startingstrengthgyms.com/
+https://www.crossfitbondi.com.au/
+https://www.crossfitnorthlondon.co.uk/
+https://www.crunch.com/
+https://www.anytimefitness.com/
+https://www.elitemuaythai.com/
+https://crossfitwestseattle.com/
+https://www.vccrossfit.com/
+https://www.crossfitnordeast.com/

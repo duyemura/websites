@@ -8,6 +8,12 @@ describe("generateSitemap", () => {
     expect(xml).toContain("<loc>https://gym.com/coaches</loc>");
     expect(xml).toContain("<urlset");
   });
+
+  it("XML-escapes ampersands in paths so the sitemap is valid XML", () => {
+    const xml = generateSitemap("https://gym.com", ["/page?a=1&b=2"]);
+    expect(xml).toContain("&amp;");
+    expect(xml).not.toContain("&b=");
+  });
 });
 
 describe("generateRobots", () => {
@@ -23,5 +29,11 @@ describe("buildRedirectHtml", () => {
     const html = buildRedirectHtml("/new-page");
     expect(html).toContain('url=/new-page');
     expect(html).toContain('rel="canonical"');
+  });
+
+  it("escapes double quotes in toPath so attributes are not broken", () => {
+    const html = buildRedirectHtml('/page?a="bad"');
+    expect(html).not.toMatch(/href="\/page\?a="/);
+    expect(html).toContain("&quot;");
   });
 });

@@ -2,10 +2,9 @@ import type { Job } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import type { QueueConfig } from "../../bullmq";
 import { getS3Client } from "../../s3";
+import { REBUILD_STAGES, type RebuildStage } from "../../types/pipeline-artifacts";
 import { saveArtifact } from "../../utils/pipeline/artifact-store";
 import { saveSiteDocs } from "../../utils/site-docs";
-
-type RebuildStage = "extract" | "segment" | "docgen" | "build" | "verify";
 
 interface StageJobPayload {
   kind: "stage";
@@ -148,7 +147,7 @@ async function runPipeline(
   fastify: FastifyInstance,
   job: RunJobPayload,
 ): Promise<unknown> {
-  const stages: RebuildStage[] = [
+  const stages: typeof REBUILD_STAGES[number][] = [
     "extract",
     "segment",
     "docgen",

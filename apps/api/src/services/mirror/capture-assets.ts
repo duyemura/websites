@@ -13,6 +13,9 @@ const ASSET_SELECTORS: [string, string][] = [
   ["video[poster]", "poster"],
 ];
 
+const FETCH_CONCURRENCY = 10;
+const FETCH_TIMEOUT_MS = 15_000;
+
 export function collectAssetUrls(html: string, pageUrl: string, origin: string): string[] {
   const $ = cheerio.load(html);
   const out = new Set<string>();
@@ -44,6 +47,22 @@ export function assetLocalName(url: string): string {
   return `${hash}${ext}`;
 }
 
+/** Run `fn` over `items` with at most `concurrency` in-flight at once. */
+async function bounded<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length || 1) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (item !== undefined) await fn(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export interface CaptureDeps {
   s3Client: S3Client;
   bucket: string;
@@ -58,7 +77,11 @@ async function getS3Text(s3: S3Client, bucket: string, key: string): Promise<str
 }
 
 async function fetchBinary(url: string): Promise<{ buffer: Buffer; contentType: string }> {
-  const res = await fetch(url, { redirect: "follow" });
+  // Timeout prevents a slow asset host from hanging the worker indefinitely (I2)
+  const res = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return {
     buffer: Buffer.from(await res.arrayBuffer()),
@@ -76,15 +99,16 @@ export async function captureAssets(
     for (const u of collectAssetUrls(html, page.url, crawl.origin)) urls.add(u);
   }
 
-  // Download assets; discover nested CSS refs (fonts, bg images) up to depth 2.
+  // Download assets with bounded concurrency — sequential was 5-10min on real sites (I3)
   const downloads = new Map<string, { buffer: Buffer; contentType: string }>();
   const failures: { url: string; reason: string }[] = [];
-  const pending = [...urls];
+
+  let pending = [...urls];
   let cssDepth = 0;
   while (pending.length > 0 && cssDepth <= 2) {
     const nested = new Set<string>();
-    for (const url of pending) {
-      if (downloads.has(url)) continue;
+    await bounded(pending, FETCH_CONCURRENCY, async (url) => {
+      if (downloads.has(url)) return;
       try {
         const dl = await fetchBinary(url);
         downloads.set(url, dl);
@@ -96,18 +120,18 @@ export async function captureAssets(
       } catch (err) {
         failures.push({ url, reason: err instanceof Error ? err.message : String(err) });
       }
-    }
-    pending.length = 0;
-    pending.push(...nested);
+    });
+    pending = [...nested];
     cssDepth += 1;
   }
 
-  // Build the complete map before uploading so CSS can be rewritten against it.
+  // Build the complete map before uploading so CSS can be rewritten against it
   const assetMap = new Map<string, string>();
   for (const url of downloads.keys()) assetMap.set(url, `/_assets/${assetLocalName(url)}`);
 
   const assets: MirrorAsset[] = [];
-  for (const [url, dl] of downloads) {
+  const uploadEntries = [...downloads.entries()];
+  await bounded(uploadEntries, FETCH_CONCURRENCY, async ([url, dl]) => {
     const localName = assetLocalName(url);
     const storageKey = `${deps.snapshotPrefix}/assets/${localName}`;
     let body = dl.buffer;
@@ -128,7 +152,7 @@ export async function captureAssets(
       localPath: `/_assets/${localName}`,
       contentType: dl.contentType,
     });
-  }
+  });
 
   deps.log.info({ count: assets.length, failures: failures.length }, "mirror assets captured");
   return { artifact: { assets, failures }, assetMap };
