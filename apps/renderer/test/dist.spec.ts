@@ -64,3 +64,26 @@ describe("tracking layer", () => {
     expect($('script[src="/scripts/tracking-events.js"]').length).toBe(1);
   });
 });
+
+describe("chrome", () => {
+  it("header renders all top-level nav items and the announcement bar", () => {
+    const $ = loadPage("index.html");
+    const navText = $("header").text();
+    for (const item of gym.navigation.header) expect(navText).toContain(item.label);
+    expect($("header").text()).toContain(gym.navigation.announcement.text);
+  });
+
+  it("footer renders link groups, NAP, and social links", () => {
+    const $ = loadPage("index.html");
+    const footer = $("footer");
+    for (const group of gym.navigation.footer) expect(footer.text()).toContain(group.label);
+    expect(footer.text()).toContain(gym.business.address.street);
+    expect(footer.text()).toContain(gym.business.phone);
+    expect(footer.find(`a[href="${gym.business.social.instagram}"]`).length).toBe(1);
+  });
+
+  it("sticky CTA is present with the primary CTA label", () => {
+    const $ = loadPage("index.html");
+    expect($("#sticky-cta").text()).toContain(gym.business.primaryCta.label);
+  });
+});

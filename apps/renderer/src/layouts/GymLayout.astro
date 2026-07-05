@@ -4,6 +4,9 @@ import CanonicalMeta from "../components/seo/CanonicalMeta.astro";
 import OpenGraph from "../components/seo/OpenGraph.astro";
 import LocalBusinessSchema from "../components/seo/LocalBusinessSchema.astro";
 import Tracking from "../components/tracking/Tracking.astro";
+import Header from "../components/chrome/Header.astro";
+import Footer from "../components/chrome/Footer.astro";
+import StickyCTA from "../components/chrome/StickyCTA.astro";
 
 interface Props {
   title?: string;
@@ -57,6 +60,7 @@ const rootCss = [
     <slot name="head" />
   </head>
   <body class="font-body text-secondary bg-white">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-white">Skip to main content</a>
     {gtmId && (
       <noscript>
         <iframe
@@ -65,7 +69,10 @@ const rootCss = [
         ></iframe>
       </noscript>
     )}
-    <slot />
+    <Header />
+    <main id="main-content"><slot /></main>
+    <Footer />
+    <StickyCTA />
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
     <p class="sr-only">
       {business.name} is a gym located at {business.address.street} in {business.geo.city}, {business.geo.stateAbbr}. {business.tagline}

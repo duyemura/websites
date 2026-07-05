@@ -1,0 +1,51 @@
+---
+import { content } from "../../lib/content";
+import Button from "../ui/Button.astro";
+const { navigation, business, brand } = content;
+---
+<header class="border-b border-slate-100">
+  {navigation.announcement && (
+    <div class="bg-accent py-2 text-center text-sm font-semibold text-white">
+      {navigation.announcement.url
+        ? <a href={navigation.announcement.url}>{navigation.announcement.text}</a>
+        : navigation.announcement.text}
+    </div>
+  )}
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+    <a href="/"><img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="eager" /></a>
+    <nav aria-label="Main">
+      <ul class="hidden items-center gap-6 lg:flex">
+        {navigation.header.map((item) => (
+          <li class="group relative">
+            <a href={item.href} aria-haspopup={item.children ? "true" : undefined} class="font-heading font-medium text-primary hover:text-accent">{item.label}</a>
+            {item.children && (
+              <ul class="invisible absolute left-0 top-full z-20 min-w-48 rounded-lg bg-white py-2 shadow-lg group-hover:visible group-focus-within:visible">
+                {item.children.map((c) => (
+                  <li><a href={c.href} class="block px-4 py-2 text-sm text-secondary hover:bg-slate-50">{c.label}</a></li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+    <div class="flex items-center gap-3">
+      {business.trialCta && <Button href={business.trialCta.url} variant="outline" track="trial">{business.trialCta.label}</Button>}
+      <Button href={business.primaryCta.url} track="contact">{business.primaryCta.label}</Button>
+    </div>
+  </div>
+  <!-- Mobile nav: CSS-only details/summary, keyboard accessible via Enter/Space -->
+  <details class="border-t border-slate-100 lg:hidden">
+    <summary class="cursor-pointer px-4 py-3 font-heading font-medium text-primary" aria-label="Toggle main menu">Menu</summary>
+    <nav aria-label="Mobile navigation">
+    <ul class="space-y-1 px-4 pb-4">
+      {navigation.header.map((item) => (
+        <li>
+          <a href={item.href} class="block py-1 text-primary">{item.label}</a>
+          {item.children && item.children.map((c) => <a href={c.href} class="block py-1 pl-4 text-sm text-secondary">{c.label}</a>)}
+        </li>
+      ))}
+    </ul>
+    </nav>
+  </details>
+</header>

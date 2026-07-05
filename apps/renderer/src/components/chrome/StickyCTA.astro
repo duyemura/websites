@@ -1,0 +1,19 @@
+---
+import { content } from "../../lib/content";
+const { business } = content;
+---
+<div id="sticky-cta" class="fixed inset-x-0 bottom-0 z-30 hidden items-center justify-between gap-4 bg-primary px-4 py-3 text-white shadow-lg sm:justify-center">
+  <span class="hidden font-heading sm:inline">Ready to get started?</span>
+  <a href={business.primaryCta.url} data-track="contact" class="rounded-lg bg-accent px-5 py-2 font-heading font-semibold text-white">{business.primaryCta.label}</a>
+</div>
+<script is:inline>
+  (function () {
+    var bar = document.getElementById("sticky-cta");
+    if (!bar) return;
+    var shown = false;
+    window.addEventListener("scroll", function () {
+      var show = window.scrollY > window.innerHeight * 0.7;
+      if (show !== shown) { shown = show; bar.classList.toggle("hidden", !show); bar.classList.toggle("flex", show); }
+    }, { passive: true });
+  })();
+</script>

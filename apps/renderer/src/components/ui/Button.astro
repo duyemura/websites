@@ -1,0 +1,7 @@
+---
+const { href, variant = "primary", track } = Astro.props as { href: string; variant?: "primary" | "outline"; track?: string };
+const cls = variant === "primary"
+  ? "inline-block rounded-lg bg-accent px-6 py-3 font-heading font-semibold text-white hover:opacity-90"
+  : "inline-block rounded-lg border-2 border-primary px-6 py-3 font-heading font-semibold text-primary hover:bg-primary hover:text-white";
+---
+<a href={href} class={cls} data-track={track}><slot /></a>
