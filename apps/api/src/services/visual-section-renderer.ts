@@ -4,14 +4,12 @@ import type { HierarchySection } from "../types/site-hierarchy";
 import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 import { modelForTask } from "../ai/model-picker";
 import { chatCompletion, type ChatContentPart } from "../ai/llm-client";
-import type { TailwindInstruction } from "../utils/pipeline/breakpoint-tailwind";
-
 export interface RenderVisualBlockInput {
   section: HierarchySection;
   evidence?: SectionVisualEvidenceRow;
   designSystem: DesignSystemV2;
-  /** Pre-computed responsive tailwind instructions from breakpoint deltas. */
-  tailwindInstructions?: TailwindInstruction[];
+  /** Responsive tailwind instructions (deprecated — no longer populated). */
+  tailwindInstructions?: never[];
   /** Optional extra prompt text appended to the base prompt (e.g. astro check
    *  errors on retry, or shared-component prop expectations). */
   extraInstructions?: string;
@@ -218,7 +216,7 @@ function buildVisualPrompt(
   designSystem: DesignSystemV2,
   previousTag?: string,
   nextTag?: string,
-  tailwindInstructions?: TailwindInstruction[],
+  tailwindInstructions?: never[],
   evidence?: SectionVisualEvidenceRow,
   extraInstructions?: string,
   animationNames?: string[],
@@ -227,12 +225,7 @@ function buildVisualPrompt(
   const tokens = designSystem.global.tokens;
   const rules = designSystem.global.rules;
 
-  const instructions = tailwindInstructions ?? [];
-  const responsiveBlock = instructions.length
-    ? `\n\nResponsive behavior (REQUIRED — derived from the source site's actual breakpoints):\n${instructions
-        .map((t) => `- ${t.selector}: ${t.instruction}`)
-        .join("\n")}`
-    : "";
+  const responsiveBlock = "";
 
   const captures = evidence?.interactionCaptures ?? [];
   const interactionBlock = captures.length

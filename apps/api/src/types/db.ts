@@ -5,7 +5,7 @@
 
 import type { ColumnType } from "kysely";
 
-export type AiActivityAction = "analyze" | "apply_suggestion" | "edit" | "generate" | "generate_image" | "memory_update" | "publish" | "qa" | "replicate" | "suggest";
+export type AiActivityAction = "analyze" | "apply_suggestion" | "edit" | "generate" | "generate_image" | "memory_update" | "publish" | "qa" | "suggest";
 
 export type AiActivityOutcome = "failure" | "partial" | "rejected" | "success" | "user_edited";
 

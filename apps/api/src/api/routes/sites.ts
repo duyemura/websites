@@ -819,7 +819,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .values({
             workspaceUuid,
             siteUuid: site.uuid,
-            type: "replicate_site",
+            type: "run_playbook",
             status: "pending",
             input: jsonb({ siteUuid: site.uuid, workspaceUuid, url, options: {} }),
             options: jsonb({}),
@@ -828,11 +828,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .executeTakeFirstOrThrow();
 
         try {
-          await fastify.queues.replicateSite.queue.add("replicate_site", {
-            workspaceUuid,
+          await fastify.queues.pipeline.queue.add("pipeline", {
+            kind: "run",
             siteUuid: site.uuid,
-            url,
-            aiJobUuid: aiJob.uuid,
+            workspaceUuid,
+            input: { url },
           });
         } catch (err) {
           await fastify.db
@@ -1155,7 +1155,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       schema: {
         params: z.object({ uuid: z.string().uuid() }),
         querystring: z.object({
-          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "suggest"]).optional(),
           outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
           limit: z.coerce.number().int().min(1).max(500).optional().default(50),
         }),

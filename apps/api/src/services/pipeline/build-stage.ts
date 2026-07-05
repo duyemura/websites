@@ -6,10 +6,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type {
-  DesignSystemV2,
-  ResponsiveRule,
-} from "../../types/design-system-v2";
+import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type {
   HierarchyPage,
   HierarchySection,
@@ -33,10 +30,6 @@ import {
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
 import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
-import {
-  breakpointDeltasToTailwind,
-  type TailwindInstruction,
-} from "../../utils/pipeline/breakpoint-tailwind";
 import {
   renderVisualBlock,
   renderVisualBlockWithFlag,
@@ -117,17 +110,6 @@ function getEvidenceForSection(
   );
 }
 
-/**
- * Build the responsive rule set for a section from the (site-wide) design
- * system rules. Rules from the design system apply globally; we return them
- * all — the LLM prompt lists them per selector so it can pick the ones that
- * matter for this section.
- */
-function tailwindForSection(designSystem: DesignSystemV2): TailwindInstruction[] {
-  const rules: ResponsiveRule[] = designSystem.responsive?.rules ?? [];
-  if (rules.length === 0) return [];
-  return breakpointDeltasToTailwind(rules);
-}
 
 /**
  * Media re-hosting pre-pass: downloads every mediaUrls entry across the
@@ -314,7 +296,7 @@ export async function renderSharedComponents(
   config: Config,
 ): Promise<Map<string, string>> {
   const built = new Map<string, string>();
-  const tailwind = tailwindForSection(designSystem);
+  const tailwind: never[] = [];
 
   // Collect first-member sections for each unique sharedComponentId.
   const byId = new Map<
@@ -363,7 +345,7 @@ async function renderPageSections(
   animationNames: string[],
   lottieUrls: string[],
 ): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
-  const tailwind = tailwindForSection(designSystem);
+  const tailwind: never[] = [];
 
   // Render all sections in parallel — each LLM call is independent.
   const results = await Promise.all(
@@ -718,7 +700,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
       if (!ownerPage || !ownerSection) continue;
 
       const row = getEvidenceForSection(evidence, ownerSection);
-      const tailwind = tailwindForSection(designSystem);
+      const tailwind: never[] = [];
       try {
         const retry = await renderVisualBlockWithFlag({
           section: ownerSection,

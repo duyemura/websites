@@ -7,7 +7,6 @@ export default fp(
     const unclassifiedAssets = bull.build("unclassified_assets");
     const generatePage = bull.build("generate_page");
     const generateAssets = bull.build("generate_assets");
-    const replicateSite = bull.build("replicate_site");
     const sitePublish = bull.build("site_publish");
     const playbookRun = bull.build("playbook_run");
     const pipeline = bull.build("pipeline");
@@ -19,7 +18,6 @@ export default fp(
       unclassifiedAssets,
       generatePage,
       generateAssets,
-      replicateSite,
       sitePublish,
       playbookRun,
       pipeline,
@@ -70,10 +68,6 @@ declare module "../bullmq" {
     generate_assets: {
       data: { workspaceUuid: string; siteUuid?: string | null; assetGenerationUuid: string; userUuid: string; assetJobUuid?: string };
       result: unknown;
-    };
-    replicate_site: {
-      data: { workspaceUuid: string; siteUuid: string; url: string; aiJobUuid: string };
-      result: { aiJobUuid: string; attemptId: string; status: string };
     };
     site_publish: {
       data: { siteUuid: string; deploymentUuid: string };
@@ -130,7 +124,6 @@ declare module "fastify" {
       unclassifiedAssets: ReturnType<typeof bull.build<"unclassified_assets">>;
       generatePage: ReturnType<typeof bull.build<"generate_page">>;
       generateAssets: ReturnType<typeof bull.build<"generate_assets">>;
-      replicateSite: ReturnType<typeof bull.build<"replicate_site">>;
       sitePublish: ReturnType<typeof bull.build<"site_publish">>;
       playbookRun: ReturnType<typeof bull.build<"playbook_run">>;
       pipeline: ReturnType<typeof bull.build<"pipeline">>;

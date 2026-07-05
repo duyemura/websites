@@ -383,30 +383,6 @@ function detectFailedStage(
   return stages[0] ?? "extract";
 }
 
-// ---------- Self-heal ----------
-
-async function selfHeal(opts: {
-  siteUuid: string;
-  workspaceUuid: string;
-  url: string;
-  pages: string[] | null;
-  verify: VerifyArtifact;
-  config: Config;
-  s3: ReturnType<typeof getS3Client>;
-}): Promise<VerifyArtifact | null> {
-  const { verify } = opts;
-  if (verify.actionable.length === 0) return null;
-
-  const uniqueStages = Array.from(
-    new Set(verify.actionable.map((a) => a.suggestedStage)),
-  ) as PipelineStage[];
-  // Include a final verify after re-runs.
-  const rerunStages: PipelineStage[] = [...uniqueStages, "verify"];
-
-  const outcome = await runStages({ ...opts, stages: rerunStages });
-  return outcome.verify ?? null;
-}
-
 // ---------- Aggregation ----------
 
 interface BuildArtifactPayload {
@@ -425,7 +401,6 @@ interface PerUrlRow {
   segment?: SegmentArtifact;
   buildArtifact?: BuildArtifactPayload;
   verify?: VerifyArtifact;
-  verifyPostHeal?: VerifyArtifact;
   failedStage?: PipelineStage;
   error?: string;
   durationMs: number;
@@ -460,13 +435,7 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
   const masterScoresPre = successful
     .map((r) => r.verify?.scores.masterFidelity)
     .filter((n): n is number => typeof n === "number");
-  const masterScoresPost = successful
-    .map(
-      (r) =>
-        r.verifyPostHeal?.scores.masterFidelity ??
-        r.verify?.scores.masterFidelity,
-    )
-    .filter((n): n is number => typeof n === "number");
+  const masterScoresPost = masterScoresPre;
 
   const rung1Counts = successful.flatMap(
     (r) => r.segment?.pages.map((p) => p.ladder.rung1Count) ?? [],
@@ -493,16 +462,6 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
 
   const scoreBins = [0, 20, 40, 60, 70, 80, 90, 100];
   const preHist = histogram(masterScoresPre, scoreBins);
-  const postHist = histogram(masterScoresPost, scoreBins);
-
-  const healedCount = successful.filter(
-    (r) =>
-      r.verifyPostHeal &&
-      r.verify &&
-      r.verifyPostHeal.scores.masterFidelity >
-        r.verify.scores.masterFidelity,
-  ).length;
-  const healedAttempted = successful.filter((r) => r.verifyPostHeal).length;
 
   const lines: string[] = [];
   const today = new Date().toISOString().slice(0, 10);
@@ -527,17 +486,9 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
   lines.push(`- Failed runs: ${failed.length}/${rows.length}`);
   if (masterScoresPre.length) {
     lines.push(
-      `- Master fidelity (pre-heal): min ${Math.min(...masterScoresPre)}, median ${median(masterScoresPre).toFixed(1)}, max ${Math.max(...masterScoresPre)}`,
+      `- Master fidelity: min ${Math.min(...masterScoresPre)}, median ${median(masterScoresPre).toFixed(1)}, max ${Math.max(...masterScoresPre)}`,
     );
   }
-  if (masterScoresPost.length) {
-    lines.push(
-      `- Master fidelity (post-heal): min ${Math.min(...masterScoresPost)}, median ${median(masterScoresPost).toFixed(1)}, max ${Math.max(...masterScoresPost)}`,
-    );
-  }
-  lines.push(
-    `- Self-heal effectiveness: ${healedCount}/${healedAttempted} runs improved after re-running suggested stages`,
-  );
   lines.push(
     `- Vision-usage rate: ${visionRate.toFixed(1)}% of segmented pages (${visionUsedCount}/${visionPages.length})`,
   );
@@ -556,9 +507,9 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
   lines.push("## 2. Per-URL results");
   lines.push("");
   lines.push(
-    "| # | URL | Duration | Sections | Rung1 | Vision | Fidelity (pre) | Fidelity (post) | Failed stage | Deploy |",
+    "| # | URL | Duration | Sections | Rung1 | Vision | Fidelity | Failed stage | Deploy |",
   );
-  lines.push("|---|---|---|---|---|---|---|---|---|---|");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
   for (const [i, r] of rows.entries()) {
     const sections = r.segment
       ? r.segment.pages.reduce((s, p) => s + p.sections.length, 0)
@@ -575,15 +526,12 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
         : r.segment
           ? "no"
           : "—";
-    const pre = r.verify?.scores.masterFidelity ?? "—";
-    const post =
-      r.verifyPostHeal?.scores.masterFidelity ??
-      (r.verify ? r.verify.scores.masterFidelity : "—");
+    const fidelity = r.verify?.scores.masterFidelity ?? "—";
     const failed = r.failedStage ?? "";
     const deployUrl = r.buildArtifact?.deployUrl ?? "";
     const deployCell = deployUrl ? `[view](${deployUrl})` : "—";
     lines.push(
-      `| ${i + 1} | ${r.url} | ${(r.durationMs / 1000).toFixed(1)}s | ${sections} | ${rung1} | ${vision} | ${pre} | ${post} | ${failed} | ${deployCell} |`,
+      `| ${i + 1} | ${r.url} | ${(r.durationMs / 1000).toFixed(1)}s | ${sections} | ${rung1} | ${vision} | ${fidelity} | ${failed} | ${deployCell} |`,
     );
   }
   lines.push("");
@@ -599,17 +547,9 @@ function renderReport(rows: PerUrlRow[], args: Args): string {
 
   lines.push("## 4. Fidelity distribution");
   lines.push("");
-  lines.push("### Pre-heal");
-  lines.push("");
   lines.push("| Range | Count |");
   lines.push("|---|---|");
   for (const b of preHist) lines.push(`| ${b.range} | ${b.count} |`);
-  lines.push("");
-  lines.push("### Post-heal");
-  lines.push("");
-  lines.push("| Range | Count |");
-  lines.push("|---|---|");
-  for (const b of postHist) lines.push(`| ${b.range} | ${b.count} |`);
   lines.push("");
 
   if (failed.length > 0) {
@@ -747,22 +687,6 @@ async function main() {
           "segment",
         );
         if (stored) row.segment = stored.payload;
-      }
-
-      if (row.verify && row.verify.actionable.length > 0) {
-        console.log(
-          `  ↺ self-heal: ${row.verify.actionable.length} actionable items`,
-        );
-        const healed = await selfHeal({
-          siteUuid,
-          workspaceUuid,
-          url,
-          pages: args.pages,
-          verify: row.verify,
-          config,
-          s3,
-        });
-        if (healed) row.verifyPostHeal = healed;
       }
 
       const sections = row.segment
