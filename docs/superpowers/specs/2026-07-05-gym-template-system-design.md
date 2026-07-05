@@ -568,6 +568,60 @@ Auto-generated `/near/{city}` pages for service area cities using the AI content
 
 ---
 
+## REVISION 2 (2026-07-05, same day) — supersedes conflicting statements above
+
+Decisions from the follow-up design session. Where these conflict with earlier sections, **this section wins**.
+
+### 1. Whole-site swap, not per-route page-replace
+The Managed upgrade is a **redesign**, not a pixel-preserving port. Mixing template pages and mirror pages across routes produces a jarring mid-session design switch. Therefore: the template deploy replaces the **entire site** in one publish. The mirror remains in S3 as an instant rollback. The `page-replace` transform machinery is NOT used for the Managed upgrade (it remains useful for adding AI-generated pages to Hosted-tier mirrors).
+
+### 2. Versioning system
+New table `site_versions`: `uuid, site_uuid, workspace_uuid, version (int), kind ('mirror'|'template'), deploy_prefix, label, created_at, published_at`. Every deploy (mirror capture, template build, template content edit) is an immutable S3 prefix recorded as a version. **The mirror is version 1.** Publish = repoint `current/` at a version's prefix (reuses `promoteDeploy`). Rollback = publish an older version — rolling back to the mirror is not special. Preview any version = its immutable prefix URL (noindex).
+
+### 3. Schedule page IS a template page
+Under whole-site swap nothing stays a mirror page. New page type: `/schedule` — Hero + embedded PushPress booking widget (`widgetEmbedHtml` from content) + CTABand. Schema addition: `pages.schedule: { hero, widgetEmbedHtml?, note? }`.
+
+### 4. Navigation, social, announcement (schema gap fix)
+New top-level `navigation` on `GymSiteContent`:
+```typescript
+interface Navigation {
+  announcement?: { text: string; url?: string }   // e.g. "Try 28 Days for $28"
+  header: NavItem[]                                // supports one level of children (dropdowns)
+  footer: FooterGroup[]                            // link groups: Programs, About, Legal...
+  membersApp?: { ios?: string; android?: string }
+}
+interface NavItem { label: string; href: string; children?: NavItem[] }
+interface FooterGroup { label: string; links: { label: string; href: string }[] }
+```
+And on `BusinessInfo`: `social?: { facebook?, instagram?, twitter?, tiktok?, youtube? }` — rendered in footer AND emitted as `sameAs` in LocalBusiness schema.
+
+### 5. 301 redirect map on swap — HARD REQUIREMENT
+Template routes will not match old-site URLs. At template deploy: diff the mirror crawl's URL set against the template's emitted routes; for every orphaned old path, emit a redirect page (meta-refresh + canonical now; CloudFront Function 301 later). Never let a previously-indexed URL 404 after the swap.
+
+### 6. Content wells — default-on page types
+`/local-guide` (RichContent-driven) plus the blog supporting a `category` dimension (Education / Newsletters / Recipes / Resources). Gym SEO traffic concentrates in these wells (Torrance/KSA evidence). Template ships the routes, internal links (footer + homepage), and schema; AI fills content at onboarding (Phase 2b).
+
+### 7. Utility pages, 404, favicon, RSS, llms.txt, IndexNow
+- `/legal/:slug` pages fed by `ContentBlock[]` (privacy policy, terms).
+- Branded `404.astro` (S3/CloudFront error document points at it).
+- Favicon + webmanifest from `brand.logoUrl`.
+- `rss.xml` for the blog.
+- **`llms.txt`** generated from content (business summary, programs, location, FAQ digest) — AEO for AI crawlers.
+- **IndexNow ping** at publish time (go-live flow, not template build).
+
+### 8. Forms: capture contract ships now; system later
+`POST {meta.apiBaseUrl}/api/forms/{meta.siteId}/{formId}` with known fields + `utm_*` hidden inputs → honeypot check → `leads` table → redirect back with `?submitted=1`. Requires new `SiteMeta` fields: `siteId: string`, `apiBaseUrl: string`. Forms-as-a-system (CRM routing, notifications, dashboards) is a separate future design.
+
+### 9. GSC ownership
+PushPress creates/owns Search Console properties programmatically (service account) at **go-live**: verify → create property → submit sitemap → IndexNow. Template only carries the verification token. Search Analytics ingestion = Phase 2b data moat.
+
+### 10. Scope clarifications
+- Multi-location: separate template/add-on later.
+- Images: plain `<img loading="lazy">` with dimensions in v1 (fixture uses remote URLs); Astro `<Image>` optimization lands when content mapper serves rehosted S3 assets.
+- The build/deploy runner in Phase 2a is a service + CLI script (no HTTP route/queue yet — that arrives with the content mapper in 2b).
+
+---
+
 ## File Structure
 
 ```
