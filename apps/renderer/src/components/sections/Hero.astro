@@ -1,0 +1,31 @@
+---
+import Button from "../ui/Button.astro";
+import type { HeroContent } from "../../types/gym-content";
+const { hero, h1 = true } = Astro.props as { hero: HeroContent; h1?: boolean };
+const Tag = h1 ? "h1" : "h2";
+
+// Validate the background URL before interpolating into CSS to prevent injection
+// (CSS url() context is not escaped by Astro's HTML escaper).
+// Only allow http/https/root-relative paths; encode the rest.
+let safeBgUrl = "";
+if (hero.backgroundImageUrl) {
+  try {
+    const u = new URL(hero.backgroundImageUrl, "https://x");
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      safeBgUrl = encodeURI(hero.backgroundImageUrl);
+    }
+  } catch {
+    // malformed URL — leave empty, hero renders with solid bg-primary
+  }
+}
+const bg = safeBgUrl
+  ? `background-image:linear-gradient(rgba(15,23,42,.65),rgba(15,23,42,.65)),url('${safeBgUrl}')`
+  : "";
+---
+<section class="bg-primary bg-cover bg-center py-24 text-center text-white" style={bg}>
+  <div class="mx-auto max-w-3xl px-4">
+    <Tag data-testid="hero-headline" class="font-heading text-4xl font-bold sm:text-5xl">{hero.headline}</Tag>
+    {hero.subheading && <p class="mt-4 text-lg text-slate-200">{hero.subheading}</p>}
+    {hero.ctaLabel && hero.ctaUrl && <div class="mt-8"><Button href={hero.ctaUrl} track="contact">{hero.ctaLabel}</Button></div>}
+  </div>
+</section>

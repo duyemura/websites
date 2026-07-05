@@ -57,6 +57,7 @@ const rootCss = [
     <LocalBusinessSchema />
     <style is:inline set:html={rootCss}></style>
     <Tracking />
+    {image && <link rel="preload" as="image" href={image} fetchpriority="high" />}
     <slot name="head" />
   </head>
   <body class="font-body text-secondary bg-white">

@@ -1,0 +1,21 @@
+---
+import Container from "../ui/Container.astro";
+import type { Testimonial } from "../../types/gym-content";
+const { items } = Astro.props as { items: Testimonial[] };
+---
+{items.length > 0 && (
+  <section class="py-16">
+    <Container>
+      <div class="grid gap-8 sm:grid-cols-2">
+        {items.map((t) => (
+          <figure class="rounded-xl bg-slate-50 p-6">
+            <blockquote class="text-lg text-primary">"{t.quote}"</blockquote>
+            <figcaption class="mt-4 text-sm font-semibold text-secondary">
+              {t.name}{t.program && <span class="font-normal"> · {t.program}</span>}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </Container>
+  </section>
+)}

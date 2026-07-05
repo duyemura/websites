@@ -1,0 +1,19 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import type { Feature } from "../../types/gym-content";
+const { items, headline } = Astro.props as { items: Feature[]; headline: string };
+---
+<section class="bg-slate-50 py-16">
+  <Container>
+    <SectionHeading title={headline} />
+    <div class="grid grid-cols-2 gap-6 sm:grid-cols-3">
+      {items.map((f) => (
+        <div class="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
+          <span class="text-2xl">{f.icon}</span>
+          <span class="font-heading font-medium text-primary">{f.label}</span>
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

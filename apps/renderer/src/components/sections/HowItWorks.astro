@@ -1,0 +1,20 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import type { Step } from "../../types/gym-content";
+const { steps, headline } = Astro.props as { steps: Step[]; headline: string };
+---
+<section class="bg-slate-50 py-16">
+  <Container>
+    <SectionHeading title={headline} />
+    <ol class="grid gap-8 sm:grid-cols-3">
+      {steps.map((s) => (
+        <li class="text-center">
+          <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent font-heading text-xl font-bold text-white">{s.number}</span>
+          <h3 class="mt-4 font-heading text-lg font-semibold text-primary">{s.headline}</h3>
+          <p class="mt-2 text-secondary">{s.body}</p>
+        </li>
+      ))}
+    </ol>
+  </Container>
+</section>

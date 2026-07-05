@@ -1,0 +1,30 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import { content, programBySlug } from "../../lib/content";
+const { slugs, headline } = Astro.props as { slugs: string[]; headline: string };
+const programs = slugs.map(programBySlug);
+const promo = content.business.trialCta;
+---
+<section class="py-16">
+  <Container>
+    <SectionHeading title={headline} />
+    {promo && (
+      <p class="mb-8 text-center">
+        <a href={promo.url} data-track="trial" class="inline-block rounded-full bg-accent px-4 py-1 text-sm font-semibold text-white">{promo.label}</a>
+      </p>
+    )}
+    <div class="grid gap-8 sm:grid-cols-3">
+      {programs.map((p) => (
+        <a href={`/programs/${p.slug}`} class="group overflow-hidden rounded-xl shadow transition hover:shadow-lg">
+          <img src={p.coverImageUrl} alt={p.name} width="800" height="600" loading="lazy" class="aspect-[4/3] w-full object-cover" />
+          <div class="p-5">
+            <h3 class="font-heading text-xl font-semibold text-primary group-hover:text-accent">{p.name}</h3>
+            <p class="mt-2 text-sm text-secondary">{p.shortDescription}</p>
+            <span class="mt-3 inline-block font-semibold text-accent">Learn more →</span>
+          </div>
+        </a>
+      ))}
+    </div>
+  </Container>
+</section>

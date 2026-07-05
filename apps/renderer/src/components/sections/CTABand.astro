@@ -1,0 +1,8 @@
+---
+import Button from "../ui/Button.astro";
+const { headline, ctaLabel, ctaUrl } = Astro.props as { headline: string; ctaLabel?: string; ctaUrl?: string };
+---
+<section class="bg-primary py-14 text-center text-white">
+  <h2 class="font-heading text-3xl font-bold">{headline}</h2>
+  {ctaLabel && ctaUrl && <div class="mt-6"><Button href={ctaUrl} track="contact">{ctaLabel}</Button></div>}
+</section>

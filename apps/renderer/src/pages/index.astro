@@ -1,8 +1,28 @@
 ---
 import GymLayout from "../layouts/GymLayout.astro";
+import Hero from "../components/sections/Hero.astro";
+import ValueProps from "../components/sections/ValueProps.astro";
+import FeatureGrid from "../components/sections/FeatureGrid.astro";
+import ProgramCards from "../components/sections/ProgramCards.astro";
+import HowItWorks from "../components/sections/HowItWorks.astro";
+import Testimonials from "../components/sections/Testimonials.astro";
+import FAQ from "../components/sections/FAQ.astro";
+import CTABand from "../components/sections/CTABand.astro";
+import Location from "../components/sections/Location.astro";
 import { content, geoTitle } from "../lib/content";
 const home = content.pages.home;
+const { business } = content;
 ---
 <GymLayout title={geoTitle("CrossFit, Bootcamp & Personal Training")} description={home.hero.subheading} path="/" image={home.hero.backgroundImageUrl}>
-  <h1 data-testid="hero-headline" class="font-heading text-4xl">{home.hero.headline}</h1>
+  <Hero hero={home.hero} />
+  <ValueProps items={home.valueProps} />
+  <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />
+  <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />
+  <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />
+  <ValueProps items={home.communityProps} headline={home.communityHeadline} />
+  <CTABand headline={home.trustHeadline} />
+  <Testimonials items={home.testimonials} />
+  <Location />
+  <FAQ items={home.faq} />
+  <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
 </GymLayout>

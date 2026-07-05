@@ -87,3 +87,34 @@ describe("chrome", () => {
     expect($("#sticky-cta").text()).toContain(gym.business.primaryCta.label);
   });
 });
+
+describe("homepage", () => {
+  it("renders all six FeatureGrid items and four community props", () => {
+    const $ = loadPage("index.html");
+    for (const f of gym.pages.home.features) expect($("body").text()).toContain(f.label);
+    for (const p of gym.pages.home.communityProps) expect($("body").text()).toContain(p.headline);
+  });
+
+  it("renders program cards for each featured program with links", () => {
+    const $ = loadPage("index.html");
+    for (const slug of gym.pages.home.featuredPrograms) {
+      expect($(`a[href="/programs/${slug}"]`).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("renders FAQ as accessible details/summary and emits FAQPage schema", () => {
+    const $ = loadPage("index.html");
+    expect($("details.faq-item").length).toBe(gym.pages.home.faq.length);
+    const faq = jsonLd($).find((s) => s["@type"] === "FAQPage") as any;
+    expect(faq).toBeTruthy();
+    expect(faq.mainEntity.length).toBe(gym.pages.home.faq.length);
+    expect(faq.mainEntity[0].name).toBe(gym.pages.home.faq[0].question);
+  });
+
+  it("renders the location section with address, directions link, and map embed", () => {
+    const $ = loadPage("index.html");
+    expect($("body").text()).toContain(gym.business.address.street);
+    expect($('a[href^="https://www.google.com/maps"]').length).toBeGreaterThan(0);
+    expect($(`iframe[src="${gym.business.mapEmbedUrl}"]`).length).toBe(1);
+  });
+});
