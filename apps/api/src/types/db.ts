@@ -261,6 +261,18 @@ export interface Playbooks {
   workspaceUuid: string | null;
 }
 
+export interface SiteVersions {
+  uuid: Generated<string>;
+  siteUuid: string;
+  workspaceUuid: string;
+  version: number;
+  kind: string;
+  deployPrefix: string;
+  label: string | null;
+  createdAt: Generated<Timestamp>;
+  publishedAt: Timestamp | null;
+}
+
 export interface SiteTransforms {
   uuid: Generated<string>;
   siteUuid: string;
@@ -400,6 +412,7 @@ export interface DB {
   pipelineArtifacts: PipelineArtifacts;
   playbooks: Playbooks;
   siteTransforms: SiteTransforms;
+  siteVersions: SiteVersions;
   sites: Sites;
   templates: Templates;
   themes: Themes;

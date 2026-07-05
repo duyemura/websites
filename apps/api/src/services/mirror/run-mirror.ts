@@ -131,6 +131,15 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
     // Promote to stable serving prefix for CloudFront
     await promoteDeploy(s3Client, bucket, siteUuid, deploy.deployPrefix);
 
+    // Record this mirror deploy as version 1 (or next version if re-run)
+    const { recordSiteVersion } = await import("../site-versions.js");
+    const versionRow = await recordSiteVersion(db, {
+      siteUuid, workspaceUuid, kind: "mirror",
+      deployPrefix: deploy.deployPrefix, label: "Site capture",
+    });
+    await db.updateTable("siteVersions").set({ publishedAt: new Date() })
+      .where("uuid", "=", versionRow.uuid).execute();
+
     await db.updateTable("sites").set({ mirrorStatus: "mirrored" }).where("uuid", "=", siteUuid).execute();
 
     return {

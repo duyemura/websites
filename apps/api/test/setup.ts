@@ -16,6 +16,7 @@ async function resetDatabase() {
     "docs",
     "pages",
     "leads",
+    "site_versions",
     "site_transforms",
     "sites",
     "themes",
