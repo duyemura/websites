@@ -42,26 +42,44 @@ export interface DeployTemplateInput {
   bucket: string;
   siteUuid: string;
   workspaceUuid: string;
-  /** The validated GymSiteContent object to build with. */
-  content: unknown;
+  /** The validated GymSiteContent object to build with. If omitted, buildGymJson is called automatically. */
+  content?: unknown;
+  /** API base URL forwarded to the content mapper (e.g. CDN_BASE_URL). */
+  apiBaseUrl?: string;
+  /** Public site URL forwarded to the content mapper. */
+  siteUrl?: string;
   /** Absolute path to apps/renderer. */
   rendererDir: string;
   label?: string;
-  log: { info: (o: object, m: string) => void };
+  log: { info: (o: object, m: string) => void; warn?: (o: object, m: string) => void };
 }
 
 export async function deployTemplate(input: DeployTemplateInput) {
-  const { db, s3Client, bucket, siteUuid, workspaceUuid, content, rendererDir, log } = input;
+  const { db, s3Client, bucket, siteUuid, workspaceUuid, rendererDir, log } = input;
 
-  // 1. Inject content + build
-  await fs.writeFile(path.join(rendererDir, "src/content/gym.json"), JSON.stringify(content, null, 2));
+  // 1. Resolve content — use provided value or fall back to the content mapper
+  let gymJson = input.content;
+  if (!gymJson) {
+    const { buildGymJson } = await import("./content-mapper.js");
+    const { content: mapped, warnings } = await buildGymJson(db, siteUuid, {
+      apiBaseUrl: input.apiBaseUrl ?? "",
+      siteUrl: input.siteUrl ?? "",
+    });
+    if (warnings.length > 0) {
+      (log.warn ?? log.info)({ siteUuid, warnings }, "content mapper used defaults");
+    }
+    gymJson = mapped;
+  }
+
+  // 2. Inject content + build
+  await fs.writeFile(path.join(rendererDir, "src/content/gym.json"), JSON.stringify(gymJson, null, 2));
   await new Promise<void>((resolve, reject) => {
     const child = spawn("pnpm", ["build"], { cwd: rendererDir, stdio: "inherit" });
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`astro build exited ${code}`))));
     child.on("error", reject);
   });
 
-  // 2. Upload dist to an immutable prefix
+  // 3. Upload dist to an immutable prefix
   const deployPrefix = `sites/${siteUuid}/deploys/tpl-${Date.now()}`;
   const distDir = path.join(rendererDir, "dist");
   const files = await walk(distDir);
@@ -74,7 +92,7 @@ export async function deployTemplate(input: DeployTemplateInput) {
   }
   log.info({ deployPrefix, fileCount: files.length }, "template dist uploaded");
 
-  // 3. Redirect map: old mirror URLs that no longer exist → redirect pages
+  // 4. Redirect map: old mirror URLs that no longer exist → redirect pages
   const crawl = await loadArtifact<MirrorCrawlArtifact>(db, { siteUuid, workspaceUuid }, "mirror-crawl");
   const oldPaths = crawl?.payload.pages.map((p) => p.path) ?? [];
   const newRoutes = files
@@ -90,7 +108,7 @@ export async function deployTemplate(input: DeployTemplateInput) {
   }
   log.info({ redirects: redirects.length }, "redirect pages written");
 
-  // 4. Record the version (publish is a separate, explicit call)
+  // 5. Record the version (publish is a separate, explicit call)
   const version = await recordSiteVersion(db, {
     siteUuid, workspaceUuid, kind: "template", deployPrefix,
     label: input.label ?? "Template build",

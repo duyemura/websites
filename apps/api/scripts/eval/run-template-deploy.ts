@@ -22,13 +22,13 @@ async function main() {
   const siteUuid = arg("site");
   const contentPath = arg("content");
   const publish = process.argv.includes("--publish");
-  if (!siteUuid || !contentPath) {
-    console.error("Usage: --site <uuid> --content <path-to-gym.json> [--publish]");
+  if (!siteUuid) {
+    console.error("Usage: --site <uuid> [--content <path-to-gym.json>] [--publish]");
     process.exit(1);
   }
 
-  const site = await db.selectFrom("sites").select(["uuid", "workspaceUuid"]).where("uuid", "=", siteUuid).executeTakeFirstOrThrow();
-  const content = JSON.parse(readFileSync(contentPath, "utf8"));
+  const site = await db.selectFrom("sites").select(["uuid", "workspaceUuid", "customDomain"]).where("uuid", "=", siteUuid).executeTakeFirstOrThrow();
+  const content = contentPath ? JSON.parse(readFileSync(contentPath, "utf8")) : undefined;
   const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
   const s3Client = getS3Client({
     endpoint: config.S3_ENDPOINT, region: config.S3_REGION,
@@ -39,7 +39,12 @@ async function main() {
   const result = await deployTemplate({
     db, s3Client, bucket,
     siteUuid: site.uuid, workspaceUuid: site.workspaceUuid,
-    content, rendererDir,
+    content,
+    apiBaseUrl: config.CDN_BASE_URL,
+    siteUrl: site.customDomain
+      ? `https://${site.customDomain}`
+      : `${config.CDN_BASE_URL}/sites/${site.uuid}/current`,
+    rendererDir,
     log: { info: (o, m) => console.log(m, o) },
   });
   console.log(`Version ${result.version} @ ${result.deployPrefix} — ${result.routes} routes, ${result.redirects.length} redirects`);
