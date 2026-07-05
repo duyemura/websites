@@ -1,0 +1,19 @@
+---
+import { content, absUrl } from "../../lib/content";
+const { title, description, path, image } = Astro.props as { title: string; description: string; path: string; image?: string };
+const url = absUrl(path);
+// Prefer the explicit hero/cover image; fall back to homepage hero (1600×900) rather than
+// the logo (200×60) which doesn't meet Twitter/Facebook minimum dimensions for card previews.
+const img = image ?? content.pages.home.hero.backgroundImageUrl ?? content.brand.logoUrl;
+---
+<meta property="og:type" content="website" />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={url} />
+<meta property="og:image" content={img} />
+<meta property="og:image:alt" content={title} />
+<meta property="og:site_name" content={content.business.name} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={img} />

@@ -16,3 +16,14 @@ export function programBySlug(slug: string) {
 export function programGeoHeadline(p: { name: string; geoHeadline?: string }) {
   return p.geoHeadline ?? `${p.name} in ${content.business.geo.city}, ${content.business.geo.stateAbbr}`;
 }
+
+/**
+ * Build an absolute URL from a root-relative path.
+ * Trims trailing slash from siteUrl and ensures path starts with /
+ * so callers can't accidentally produce double-slashes.
+ */
+export function absUrl(path: string): string {
+  const base = content.meta.siteUrl.replace(/\/+$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}

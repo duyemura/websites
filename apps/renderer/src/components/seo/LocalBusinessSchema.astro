@@ -1,0 +1,40 @@
+---
+import { content } from "../../lib/content";
+const { business, meta, brand } = content;
+const sameAs = Object.values(business.social ?? {}).filter(Boolean);
+const schema = {
+  "@context": "https://schema.org",
+  "@type": ["LocalBusiness", "SportsActivityLocation"],
+  name: business.name,
+  description: business.tagline,
+  image: brand.logoUrl,
+  url: meta.siteUrl,
+  ...(business.email && { email: business.email }),
+  telephone: business.phone,
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: business.address.street,
+    addressLocality: business.address.city,
+    addressRegion: business.geo.stateAbbr,
+    postalCode: business.address.zip,
+    addressCountry: "US",
+  },
+  ...(business.coordinates && {
+    geo: { "@type": "GeoCoordinates", latitude: business.coordinates.lat, longitude: business.coordinates.lng },
+  }),
+  openingHoursSpecification: business.hours.map((h) => ({
+    "@type": "OpeningHoursSpecification", dayOfWeek: h.days, opens: h.opens, closes: h.closes,
+  })),
+  areaServed: [business.geo.city, ...(business.serviceArea ?? [])],
+  ...(business.aggregateRating && {
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: business.aggregateRating.ratingValue,
+      reviewCount: String(business.aggregateRating.reviewCount),
+      bestRating: business.aggregateRating.bestRating ?? "5",
+    },
+  }),
+  ...(sameAs.length > 0 && { sameAs }),
+};
+---
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

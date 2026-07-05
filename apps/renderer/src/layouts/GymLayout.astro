@@ -1,5 +1,8 @@
 ---
 import { content } from "../lib/content";
+import CanonicalMeta from "../components/seo/CanonicalMeta.astro";
+import OpenGraph from "../components/seo/OpenGraph.astro";
+import LocalBusinessSchema from "../components/seo/LocalBusinessSchema.astro";
 
 interface Props {
   title?: string;
@@ -44,6 +47,9 @@ const rootCss = [
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href={fontsHref} />
+    <CanonicalMeta path={path} />
+    <OpenGraph title={pageTitle} description={pageDescription} path={path} image={image} />
+    <LocalBusinessSchema />
     <style is:inline set:html={rootCss}></style>
     <slot name="head" />
   </head>

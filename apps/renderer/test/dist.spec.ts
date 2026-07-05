@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadPage, gym, builtCss } from "./helpers";
+import { loadPage, gym, builtCss, jsonLd } from "./helpers";
 
 describe("layout skeleton", () => {
   it("homepage renders with gym name in title and exact hero headline", () => {
@@ -19,5 +19,34 @@ describe("layout skeleton", () => {
   it("sr-only class is present in built CSS (AEO entity anchor must be off-screen, not missing)", () => {
     // If Tailwind drops sr-only from the bundle, the AEO paragraph becomes visible body text
     expect(builtCss()).toMatch(/\.sr-only\s*\{/);
+  });
+});
+
+describe("SEO layer", () => {
+  it("homepage has canonical URL, robots index, and verification tag", () => {
+    const $ = loadPage("index.html");
+    expect($('link[rel="canonical"]').attr("href")).toBe(`${gym.meta.siteUrl}/`);
+    expect($('meta[name="robots"]').attr("content")).toBe("index,follow");
+    expect($('meta[name="google-site-verification"]').attr("content")).toBe(gym.meta.googleSiteVerification);
+  });
+
+  it("homepage has Open Graph + Twitter card tags", () => {
+    const $ = loadPage("index.html");
+    expect($('meta[property="og:title"]').attr("content")).toBeTruthy();
+    expect($('meta[property="og:url"]').attr("content")).toBe(`${gym.meta.siteUrl}/`);
+    expect($('meta[name="twitter:card"]').attr("content")).toBe("summary_large_image");
+  });
+
+  it("every page carries LocalBusiness+SportsActivityLocation with NAP, geo, hours, rating, sameAs", () => {
+    const $ = loadPage("index.html");
+    const lb = jsonLd($).find((s) => Array.isArray(s["@type"]) && (s["@type"] as string[]).includes("LocalBusiness"));
+    expect(lb).toBeTruthy();
+    expect(lb!["name"]).toBe(gym.business.name);
+    expect(lb!["telephone"]).toBe(gym.business.phone);
+    expect((lb!["geo"] as any).latitude).toBe(gym.business.coordinates.lat);
+    expect((lb!["aggregateRating"] as any).reviewCount).toBe(String(gym.business.aggregateRating.reviewCount));
+    expect(lb!["sameAs"]).toContain(gym.business.social.facebook);
+    expect((lb!["areaServed"] as string[])).toContain("Leawood");
+    expect(lb!["description"]).toBe(gym.business.tagline);
   });
 });
