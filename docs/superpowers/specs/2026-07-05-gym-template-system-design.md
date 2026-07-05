@@ -30,7 +30,7 @@ Six page types cover every gym website pattern. The schedule page is deliberatel
 
 ## Section Components
 
-Twelve section types cover all content patterns observed across gym sites. Every page is composed from a subset of these.
+Thirteen section types cover all content patterns observed across gym sites. Every page is composed from a subset of these. `RichContent` is the escape hatch for content that doesn't fit a named type.
 
 | Component | Used on | Description |
 |-----------|---------|-------------|
@@ -45,7 +45,8 @@ Twelve section types cover all content patterns observed across gym sites. Every
 | `Location` | Home, Contact | Address, hours, directions link, optional map embed |
 | `PricingForm` | Pricing | Lead capture form (name, email, phone → lead) |
 | `BlogList` | Blog index | Post cards: title, date, excerpt, image, link |
-| `BlogPost` | Blog post | Rich text article with author, date, tags |
+| `BlogPost` | Blog post | Markdown body + cover image, author, date, tags |
+| `RichContent` | Any page | Generic flexible section — typed block union (see below) |
 
 ---
 
@@ -110,6 +111,7 @@ interface HomeContent {
   howItWorks: Step[]
   testimonials: Testimonial[]
   faq: FAQItem[]
+  richContent?: RichContentSection[]  // inserted between named sections
 }
 
 interface ProgramContent {
@@ -190,13 +192,35 @@ interface TeamMember {
 interface BlogPost {
   slug: string
   title: string
-  publishedAt: string  // ISO date
+  publishedAt: string       // ISO date
   excerpt: string
-  body: string         // markdown or HTML
+  body: string              // Markdown — Astro renders natively via @astrojs/markdown-remark.
+                            // LLMs write clean markdown naturally. Images use standard
+                            // ![alt](url) syntax with URLs rehosted to S3.
   coverImageUrl?: string
   author?: string
   tags?: string[]
+  keyBlocks?: ContentBlock[] // Optional featured callouts shown above the markdown body
 }
+
+// --- Generic content block (the flexible escape hatch) ---
+// Used by RichContent section for anything that doesn't fit a named section type:
+// narrative paragraphs, video embeds, award grids, announcements, partnerships.
+
+type ContentBlock =
+  | { type: "text";    html: string }
+  | { type: "image";   url: string; alt: string; caption?: string }
+  | { type: "video";   url: string; poster?: string }
+  | { type: "columns"; columns: ContentBlock[][] }
+  | { type: "callout"; text: string; style: "info" | "warning" | "tip" }
+  | { type: "embed";   html: string }  // third-party widgets, maps, iframes
+
+interface RichContentSection {
+  headline?: string
+  blocks: ContentBlock[]
+}
+
+// Any page can have richContent?: RichContentSection[] between its named sections.
 ```
 
 ---
@@ -255,7 +279,15 @@ apps/renderer/
         Location.astro
         PricingForm.astro    # React component (form state)
         BlogList.astro
-        BlogPost.astro
+        BlogPost.astro       # Renders markdown body via Astro Content Collections
+        RichContent.astro    # Iterates ContentBlock[] and renders sub-types
+      blocks/               # Sub-components used by RichContent
+        TextBlock.astro
+        ImageBlock.astro
+        VideoBlock.astro
+        ColumnsBlock.astro
+        CalloutBlock.astro
+        EmbedBlock.astro
       ui/
         Button.astro
         Card.astro
