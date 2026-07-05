@@ -1,16 +1,14 @@
 import type { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 
-import {
-  PIPELINE_STAGES,
-  type PipelineStage,
-} from "../../types/pipeline-artifacts";
+import type { PipelineStage } from "../../types/pipeline-artifacts";
 import {
   loadArtifact,
   type ArtifactContext,
 } from "../../utils/pipeline/artifact-store";
 
-const StageEnum = z.enum(PIPELINE_STAGES);
+const REBUILD_STAGES = ["extract", "segment", "docgen", "build", "verify"] as const;
+const StageEnum = z.enum(REBUILD_STAGES);
 
 const StagePayloadSchema = z
   .object({
@@ -160,7 +158,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       const parsedStage = StageEnum.safeParse(request.params.stage);
       if (!parsedStage.success) {
         return reply.code(400).send({
-          error: `Unknown stage "${request.params.stage}". Expected one of: ${PIPELINE_STAGES.join(", ")}.`,
+          error: `Unknown stage "${request.params.stage}". Expected one of: ${REBUILD_STAGES.join(", ")}.`,
         });
       }
       const stage = parsedStage.data;

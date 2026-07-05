@@ -2,13 +2,14 @@ import type { Job } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import type { QueueConfig } from "../../bullmq";
 import { getS3Client } from "../../s3";
-import type { PipelineStage } from "../../types/pipeline-artifacts";
 import { saveArtifact } from "../../utils/pipeline/artifact-store";
 import { saveSiteDocs } from "../../utils/site-docs";
 
+type RebuildStage = "extract" | "segment" | "docgen" | "build" | "verify";
+
 interface StageJobPayload {
   kind: "stage";
-  stage: PipelineStage;
+  stage: RebuildStage;
   siteUuid: string;
   workspaceUuid: string;
   input: {
@@ -147,7 +148,7 @@ async function runPipeline(
   fastify: FastifyInstance,
   job: RunJobPayload,
 ): Promise<unknown> {
-  const stages: PipelineStage[] = [
+  const stages: RebuildStage[] = [
     "extract",
     "segment",
     "docgen",
