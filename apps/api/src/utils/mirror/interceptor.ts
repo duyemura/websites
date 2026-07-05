@@ -110,7 +110,9 @@ export const INTERCEPTOR_SCRIPT = /* js */ `(function () {
   }
 
   if (window.MutationObserver) {
-    new MutationObserver(wireAll).observe(document.documentElement, {
+    new MutationObserver(function () {
+      try { wireAll(); } catch (e) {}
+    }).observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
