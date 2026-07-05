@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadPage, gym, builtCss, jsonLd } from "./helpers";
+import { loadPage, gym, builtCss, jsonLd, readDist } from "./helpers";
 
 describe("layout skeleton", () => {
   it("homepage renders with gym name in title and exact hero headline", () => {
@@ -48,5 +48,19 @@ describe("SEO layer", () => {
     expect(lb!["sameAs"]).toContain(gym.business.social.facebook);
     expect((lb!["areaServed"] as string[])).toContain("Leawood");
     expect(lb!["description"]).toBe(gym.business.tagline);
+  });
+});
+
+describe("tracking layer", () => {
+  it("injects GTM when googleTagManagerId is set (fixture has one)", () => {
+    const html = readDist("index.html");
+    expect(html).toContain(`googletagmanager.com/gtm.js`);
+    expect(html).toContain(gym.meta.googleTagManagerId);
+  });
+
+  it("loads UTM tracker and events scripts on every page", () => {
+    const $ = loadPage("index.html");
+    expect($('script[src="/scripts/utm-tracker.js"]').length).toBe(1);
+    expect($('script[src="/scripts/tracking-events.js"]').length).toBe(1);
   });
 });

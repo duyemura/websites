@@ -1,8 +1,9 @@
 ---
-import { content } from "../lib/content";
+import { content, safeTrackingId } from "../lib/content";
 import CanonicalMeta from "../components/seo/CanonicalMeta.astro";
 import OpenGraph from "../components/seo/OpenGraph.astro";
 import LocalBusinessSchema from "../components/seo/LocalBusinessSchema.astro";
+import Tracking from "../components/tracking/Tracking.astro";
 
 interface Props {
   title?: string;
@@ -14,6 +15,7 @@ interface Props {
 }
 const { title, description, path, image } = Astro.props;
 const { meta, business, brand } = content;
+const gtmId = safeTrackingId(meta.googleTagManagerId);
 
 const pageTitle = title ?? meta.defaultTitle;
 const pageDescription = description ?? meta.defaultDescription;
@@ -51,9 +53,18 @@ const rootCss = [
     <OpenGraph title={pageTitle} description={pageDescription} path={path} image={image} />
     <LocalBusinessSchema />
     <style is:inline set:html={rootCss}></style>
+    <Tracking />
     <slot name="head" />
   </head>
   <body class="font-body text-secondary bg-white">
+    {gtmId && (
+      <noscript>
+        <iframe
+          src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+          height="0" width="0" style="display:none;visibility:hidden"
+        ></iframe>
+      </noscript>
+    )}
     <slot />
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
     <p class="sr-only">

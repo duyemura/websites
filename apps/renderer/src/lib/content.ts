@@ -18,6 +18,15 @@ export function programGeoHeadline(p: { name: string; geoHeadline?: string }) {
 }
 
 /**
+ * Validate a third-party tracking ID before interpolating it into JS/HTML.
+ * Tracking IDs (GTM-XXXXX, G-XXXXX, numeric pixel IDs) only contain word
+ * chars and hyphens. Returns "" if the value is absent or contains anything
+ * that could break out of a JS string literal or HTML attribute.
+ */
+export const safeTrackingId = (id: string | undefined): string =>
+  id && /^[\w-]+$/.test(id.trim()) ? id.trim() : "";
+
+/**
  * Build an absolute URL from a root-relative path.
  * Trims trailing slash from siteUrl and ensures path starts with /
  * so callers can't accidentally produce double-slashes.
