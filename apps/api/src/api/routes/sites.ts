@@ -1009,6 +1009,40 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
+  fastify.patch(
+    "/sites/:uuid/notify-email",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        body: z.object({
+          notifyEmail: z.string().email().nullable(),
+        }),
+        response: {
+          200: z.object({ ok: z.literal(true) }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const siteUuid = request.params.uuid;
+      const workspaceUuid = request.workspace.uuid;
+      const { notifyEmail } = request.body;
+
+      const result = await fastify.db
+        .updateTable("sites")
+        .set({ notifyEmail, updatedAt: new Date() })
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!result.numUpdatedRows || result.numUpdatedRows === 0n) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      return reply.code(200).send({ ok: true });
+    },
+  );
+
   fastify.post(
     "/sites/:uuid/re-skin",
     {
