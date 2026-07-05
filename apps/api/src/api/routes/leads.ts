@@ -2,6 +2,26 @@ import type { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import { listLeads } from "../../services/leads";
 
+const LeadItemSchema = z.object({
+  uuid: z.string(),
+  formId: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  name: z.string().nullable(),
+  sourcePath: z.string().nullable(),
+  fields: z.unknown(),
+  createdAt: z.string(),
+});
+
+const LeadPageSchema = z.object({
+  leads: z.array(LeadItemSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+
+const ErrorSchema = z.object({ error: z.string() });
+
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   fastify.get(
     "/workspaces/:workspaceUuid/sites/:siteUuid/leads",
@@ -16,6 +36,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           limit: z.coerce.number().int().min(1).max(100).default(50),
           formId: z.string().max(200).optional(),
         }),
+        response: {
+          200: LeadPageSchema,
+          404: ErrorSchema,
+        },
       },
     },
     async (request, reply) => {
@@ -33,7 +57,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       if (!site) return reply.code(404).send({ error: "Site not found" });
 
       const result = await listLeads(fastify.db, { siteUuid, workspaceUuid, page, limit, formId });
-      return reply.code(200).send(result);
+      return reply.code(200).send({
+        ...result,
+        leads: result.leads.map((lead) => ({
+          ...lead,
+          createdAt: lead.createdAt.toISOString(),
+        })),
+      });
     },
   );
 
