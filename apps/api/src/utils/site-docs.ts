@@ -1,5 +1,5 @@
 import type { Kysely } from "kysely";
-import type { DB } from "../types/db";
+import type { DB, Json } from "../types/db";
 import {
   generateBrandGuidelines,
   BRAND_GUIDELINES_DOC_KEY,
@@ -50,6 +50,7 @@ export interface GeneratedSiteDoc {
   key: string;
   title: string;
   content: string;
+  contentJson?: Record<string, unknown>;
   source: "ai_extracted";
 }
 
@@ -345,6 +346,7 @@ async function makeBusinessInfoDoc(
       key: "business-info",
       title: "Business info",
       content: renderExtractedBusinessInfo(ctx.extracted),
+      contentJson: ctx.extracted as Record<string, unknown>,
       source: "ai_extracted",
     };
   }
@@ -1055,6 +1057,7 @@ export async function saveSiteDocs(
         .set({
           title: doc.title,
           content: doc.content,
+          contentJson: (doc.contentJson ?? null) as Json | null,
           source: doc.source,
           status: "active",
           updatedAt: new Date(),
@@ -1070,6 +1073,7 @@ export async function saveSiteDocs(
           key: doc.key,
           title: doc.title,
           content: doc.content,
+          contentJson: (doc.contentJson ?? null) as Json | null,
           source: doc.source,
           status: "active",
           siteUuid: docSite,
