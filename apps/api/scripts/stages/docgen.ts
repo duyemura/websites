@@ -3,15 +3,13 @@ import {
   runDocgenStage,
 } from "../../src/services/pipeline/docgen-stage";
 import { saveSiteDocs } from "../../src/utils/site-docs";
+import { saveArtifact } from "../../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 export const docgenStage: StageRunner = {
   label: "docgen",
   requires: ["extract", "segment"],
-  // docgen produces site docs (written to the docs table), not a pipeline
-  // artifact — so produces is empty to prevent the skip-if-artifact logic
-  // from suppressing re-runs.
-  produces: "",
+  produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
     const docs = await runDocgenStage({
@@ -24,6 +22,11 @@ export const docgenStage: StageRunner = {
     });
 
     await saveSiteDocs(ctx.db, ctx.workspaceUuid, docs, ctx.siteUuid);
+
+    await saveArtifact(ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "docgen" as any, {
+      docCount: docs.length,
+      docKeys: docs.map((d) => d.key),
+    });
 
     ctx.log(`  Saved ${docs.length} site docs`);
 
