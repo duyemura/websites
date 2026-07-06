@@ -1,4 +1,6 @@
 // apps/api/scripts/milo.ts
+// Must be first — loads apps/api/.env (DB_PORT=5434 etc.) before database module initializes
+import "dotenv/config";
 import { configDotenv } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
