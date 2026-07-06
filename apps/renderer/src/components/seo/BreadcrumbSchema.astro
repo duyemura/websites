@@ -1,0 +1,12 @@
+---
+import { content, absUrl } from "../../lib/content";
+const { crumbs } = Astro.props as { crumbs: { name: string; path: string }[] };
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [{ name: "Home", path: "/" }, ...crumbs].map((c, i) => ({
+    "@type": "ListItem", position: i + 1, name: c.name, item: absUrl(c.path),
+  })),
+};
+---
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

@@ -3,7 +3,8 @@ import type { DB } from "../types/db";
 import type { SiteBlueprint } from "./site-blueprint";
 import type { TemplateShellPage } from "@ploy-gyms/shared-types";
 
-const BLUEPRINT_DOC_KEY = "blueprint-draft";
+export const BLUEPRINT_DOC_KEY = "blueprint-draft";
+export const BLUEPRINT_DOC_TITLE = "Blueprint draft";
 
 const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
 
@@ -70,7 +71,7 @@ ${JSON.stringify(blueprint, null, 2)}
         workspaceUuid,
         siteUuid,
         key: BLUEPRINT_DOC_KEY,
-        title: "Blueprint draft",
+        title: BLUEPRINT_DOC_TITLE,
         content,
         source: "ai_extracted",
         status: "active",

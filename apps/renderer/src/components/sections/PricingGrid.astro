@@ -1,0 +1,28 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import Button from "../ui/Button.astro";
+import type { PricingGridContent } from "../../types/gym-content";
+const { grid } = Astro.props as { grid: PricingGridContent };
+---
+<section class="py-16">
+  <Container>
+    {grid.headline && <SectionHeading title={grid.headline} subtitle={grid.subheading} />}
+    <!-- pt-4 gives the badge room above the card top edge; overflow-visible ensures
+         future ancestor overflow:hidden can't silently clip it -->
+    <div class="grid gap-8 overflow-visible pt-4 lg:grid-cols-3">
+      {grid.plans.map((plan) => (
+        <div class={`relative overflow-visible rounded-2xl border p-8 ${plan.highlighted ? "border-accent shadow-xl" : "border-slate-200"}`}>
+          {plan.badge && <span class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-accent px-4 py-1 text-xs font-bold uppercase text-white">{plan.badge}</span>}
+          <h3 class="font-heading text-xl font-semibold text-primary">{plan.name}</h3>
+          <p class="mt-4"><span class="font-heading text-4xl font-bold text-primary">{plan.price}</span>{plan.period && <span class="text-secondary">{plan.period}</span>}</p>
+          {plan.description && <p class="mt-2 text-sm text-secondary">{plan.description}</p>}
+          <ul class="mt-6 space-y-2 text-sm">
+            {plan.features.map((f) => <li class="flex gap-2"><span class="text-accent">✔</span>{f}</li>)}
+          </ul>
+          <div class="mt-8"><Button href={plan.cta.url} variant={plan.highlighted ? "primary" : "outline"} track="trial">{plan.cta.label}</Button></div>
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

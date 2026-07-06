@@ -18,6 +18,7 @@ const app: FastifyPluginCallback = (fastify, opts, done) => {
     void fastify.register(AutoLoad, {
       dir: workersDir,
       options: opts,
+      ignoreFilter: /__tests__\/|\/__tests__\.[tj]sx?$/,
     });
   }
 

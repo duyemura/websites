@@ -68,6 +68,14 @@ export default fp(
         return;
       }
 
+      // Public lead capture — hit by anonymous gym-site visitors.
+      if (
+        request.method === "POST" &&
+        /^(\/api)?\/forms\/[^/]+\/[^/]+\/?$/.test(pathname)
+      ) {
+        return;
+      }
+
       const token = extractToken(request.headers.authorization as string | undefined);
 
       if (!token) {

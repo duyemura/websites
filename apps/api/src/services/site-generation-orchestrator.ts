@@ -2,15 +2,30 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
 import type { FastifyInstance } from "fastify";
-import type { SiteBlueprint, PageBuildStatus } from "../utils/site-blueprint";
-import { loadBlueprintDoc, saveBlueprintDoc, updatePageStatus, pageBySlug, remainingPlannedSlugs } from "../utils/blueprint-io";
-import { loadOrBuildDesignSystem, saveDesignSystemDoc } from "../utils/design-system-io";
+import type { SiteSection } from "@ploy-gyms/shared-types";
+import type { PageBuildStatus, SiteHierarchy, HierarchySection } from "../types/site-hierarchy";
+import {
+  loadSiteHierarchyDoc,
+  saveSiteHierarchyDoc,
+  updatePageStatus,
+  advanceNextPage,
+  pageBySlug,
+  remainingPlannedSlugs,
+} from "../utils/site-hierarchy-io";
+import { loadDesignSystemDoc, saveDesignSystemDoc } from "../utils/design-system-io";
+import { loadSectionVisualEvidenceDoc } from "../utils/section-visual-evidence-io";
 import { resolveReferenceScreenshot } from "../utils/screenshot-assets";
 import { getJobCostUsd } from "../utils/job-budget";
-import { generateAstroPage } from "./astro-code-generator";
+import { generateAstroPage, signS3AssetUrls } from "./astro-code-generator";
 import { runPageQa, type QaIssue } from "./page-qa";
 import { logAiActivity } from "./ai-activity";
 import { jsonb } from "../utils/jsonb";
+import type { DesignSystemV2 } from "../types/design-system-v2";
+import type { SectionVisualEvidence } from "../types/section-visual-evidence";
+import { renderVisualBlock } from "./visual-section-renderer";
+import { renderSemanticSection } from "../utils/section-component-registry";
+import { makeDefaultHeader, makeDefaultFooter } from "./astro-code-generator";
+import { renderSharedComponents } from "./pipeline/build-stage";
 
 export interface OrchestratorContext {
   db: Kysely<DB>;
@@ -83,15 +98,30 @@ function generateAttemptId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function loadSiteAndBlueprint(db: Kysely<DB>, workspaceUuid: string, siteUuid: string) {
+async function loadSiteAndHierarchy(db: Kysely<DB>, workspaceUuid: string, siteUuid: string) {
   const site = await db.selectFrom("sites").selectAll().where("uuid", "=", siteUuid).executeTakeFirst();
   if (!site) throw new Error(`Site ${siteUuid} not found`);
   if (site.workspaceUuid !== workspaceUuid) throw new Error("Site does not belong to workspace");
 
-  const blueprint = await loadBlueprintDoc(db, workspaceUuid, siteUuid);
-  if (!blueprint) throw new Error(`Blueprint draft not found for site ${siteUuid}`);
+  const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
+  if (!hierarchy) throw new Error(`Site hierarchy not found for site ${siteUuid}`);
 
-  return { site, blueprint };
+  return { site, hierarchy };
+}
+
+async function loadDesignSystemV2(
+  db: Kysely<DB>,
+  workspaceUuid: string,
+  siteUuid: string,
+): Promise<DesignSystemV2> {
+  const doc = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
+  if (!doc) {
+    throw new Error(`Design system not found for site ${siteUuid}`);
+  }
+  if (doc.version !== "2") {
+    throw new Error(`Design system v${doc.version} is not supported; migration to v2 is required`);
+  }
+  return doc as DesignSystemV2;
 }
 
 async function updateAiJobState(
@@ -137,7 +167,7 @@ async function updateSiteMemory(
   if (updates.qaIssues && updates.qaIssues.length > 0) {
     const issuesBlock = `\n\n## QA issues\n\n${updates.qaIssues.map((i) => `- ${i}`).join("\n")}`;
     if (content.includes("## QA issues")) {
-      content = content.replace(/## QA issues\n\n[\s\S]*?(?=\n## |$)/, issuesBlock.trim());
+      content = content.replace(/## QA issues\n\n[\s\S]*?(?=\n## |$)/, () => issuesBlock.trim());
     } else {
       content += issuesBlock;
     }
@@ -146,7 +176,7 @@ async function updateSiteMemory(
   if (updates.recentEdits && updates.recentEdits.length > 0) {
     const editsBlock = `\n\n## Recent edits\n\n${updates.recentEdits.map((e) => `- ${e}`).join("\n")}`;
     if (content.includes("## Recent edits")) {
-      content = content.replace(/## Recent edits\n\n[\s\S]*?(?=\n## |$)/, editsBlock.trim());
+      content = content.replace(/## Recent edits\n\n[\s\S]*?(?=\n## |$)/, () => editsBlock.trim());
     } else {
       content += editsBlock;
     }
@@ -202,9 +232,31 @@ async function createParentAiJob(
   return row.uuid;
 }
 
+function hierarchyHeroToSiteSection(section: HierarchySection): SiteSection {
+  return {
+    id: section.id,
+    type: "Hero",
+    props: {
+      title: section.content.heading ?? "",
+      subtitle: section.content.body ?? "",
+      eyebrow: section.content.eyebrow ?? null,
+      cta: section.content.cta ?? null,
+      backgroundImage: section.content.images?.[0]?.url ?? null,
+      styleHint: section.styleHint ?? null,
+    },
+  };
+}
+
+function getEvidenceForSection(
+  visualEvidence: SectionVisualEvidence | null,
+  section: HierarchySection,
+): import("../types/section-visual-evidence").SectionVisualEvidenceRow | undefined {
+  return visualEvidence?.rows.find((row) => row.evidenceId === section.evidenceId);
+}
+
 export async function startSiteBuild(input: StartSiteBuildInput): Promise<StartSiteBuildOutput> {
   const { db, queues, config, workspaceUuid, siteUuid, requestedMode, existingAiJobUuid } = input;
-  const { site, blueprint } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
+  const { site, hierarchy } = await loadSiteAndHierarchy(db, workspaceUuid, siteUuid);
 
   const mode = requestedMode ?? (site.mode as SiteMode);
   const preset = resolvePreset(input.accuracy);
@@ -240,15 +292,15 @@ export async function startSiteBuild(input: StartSiteBuildInput): Promise<StartS
     aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options);
   }
 
+  const designSystem = await loadDesignSystemV2(db, workspaceUuid, siteUuid);
+  await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
+
   const referenceScreenshotUrl =
     mode === "replication" && site.sourceUrl
       ? (await resolveReferenceScreenshot(db, config, workspaceUuid, siteUuid, site.sourceUrl, "index"))?.url ?? null
       : null;
 
-  const designSystem = await loadOrBuildDesignSystem(db, config, workspaceUuid, siteUuid, mode, blueprint, referenceScreenshotUrl);
-  await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
-
-  const firstSlug = blueprint.build_plan.build_order[0] ?? "index";
+  const firstSlug = hierarchy.buildPlan.buildOrder[0] ?? "index";
   const attemptId = generateAttemptId();
   await queues.generatePage.queue.add("generate_page", {
     workspaceUuid,
@@ -269,7 +321,7 @@ export async function startSiteBuild(input: StartSiteBuildInput): Promise<StartS
 
 export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput> {
   const { db, config, workspaceUuid, siteUuid, pageSlug, aiJobUuid, attemptId, mode, referenceScreenshotUrl } = input;
-  const { site, blueprint } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
+  const { site, hierarchy } = await loadSiteAndHierarchy(db, workspaceUuid, siteUuid);
   const resolvedMode = mode ?? (site.mode as SiteMode);
   const resolvedReferenceUrl =
     referenceScreenshotUrl ??
@@ -282,18 +334,68 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
   const preset = resolvePreset(options.accuracy);
   const fidelityThreshold = options.fidelityThreshold ?? preset.fidelityThreshold;
 
-  const designSystem = await loadOrBuildDesignSystem(db, config, workspaceUuid, siteUuid, resolvedMode, blueprint, resolvedReferenceUrl);
-  if (!designSystem) {
-    throw new Error(`Design system not available for site ${siteUuid}`);
-  }
+  const designSystem = await loadDesignSystemV2(db, workspaceUuid, siteUuid);
+  const visualEvidence = await loadSectionVisualEvidenceDoc(db, workspaceUuid, siteUuid);
 
-  const page = pageBySlug(blueprint, pageSlug);
+  const page = pageBySlug(hierarchy, pageSlug);
   if (!page) {
-    throw new Error(`Page ${pageSlug} not found in blueprint`);
+    throw new Error(`Page ${pageSlug} not found in site hierarchy`);
   }
 
-  let currentBlueprint = updatePageStatus(blueprint, pageSlug, "in_progress");
-  await saveBlueprintDoc(db, workspaceUuid, siteUuid, currentBlueprint);
+  // Sign private S3 asset URLs before rendering so the generic visual block
+  // renderer and semantic shell renderers receive usable image URLs.
+  const signedDesignSystem = await signS3AssetUrls(designSystem, config);
+  const signedPage = await signS3AssetUrls(page, config);
+  const signedVisualEvidence = visualEvidence ? await signS3AssetUrls(visualEvidence, config) : visualEvidence;
+
+  let currentHierarchy = updatePageStatus(hierarchy, pageSlug, "in_progress");
+  await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, currentHierarchy);
+
+  const renderedSections: { section: HierarchySection; source: string }[] = [];
+  for (let i = 0; i < signedPage.sections.length; i++) {
+    const section = signedPage.sections[i];
+    if (!section) continue;
+    // Sections that resolve to a shared component don't get an individual
+    // section file — the astro code generator writes them to
+    // `src/components/shared/{id}.astro` and imports them in the page. Skip
+    // rendering here to avoid unnecessary work / redundant LLM calls.
+    if (section.sharedComponentId) continue;
+    const previousTag = signedPage.sections[i - 1]?.tag;
+    const nextTag = signedPage.sections[i + 1]?.tag;
+
+    if (section.tag === "header") {
+      const headerSection = signedDesignSystem.global.shell.header ?? makeDefaultHeader(signedDesignSystem);
+      renderedSections.push({ section, source: renderSemanticSection(headerSection) });
+    } else if (section.tag === "footer") {
+      const footerSection = signedDesignSystem.global.shell.footer ?? makeDefaultFooter(signedDesignSystem);
+      renderedSections.push({ section, source: renderSemanticSection(footerSection) });
+    } else if (section.tag === "hero") {
+      renderedSections.push({ section, source: renderSemanticSection(hierarchyHeroToSiteSection(section)) });
+    } else {
+      const evidence = getEvidenceForSection(signedVisualEvidence, section);
+      const source = await renderVisualBlock({
+        section,
+        evidence,
+        designSystem: signedDesignSystem,
+        previousTag,
+        nextTag,
+        config,
+      });
+      renderedSections.push({ section, source });
+    }
+  }
+
+  // Render shared components used by this page (if any) so downstream imports
+  // in `generateAstroPage` resolve. Without this, sections with
+  // `sharedComponentId` are skipped above but the corresponding
+  // `src/components/shared/{id}.astro` files are never written and astro
+  // build fails with a missing-import error.
+  const sharedComponents = await renderSharedComponents(
+    [signedPage],
+    signedDesignSystem,
+    signedVisualEvidence,
+    config,
+  );
 
   const generated = await generateAstroPage({
     db,
@@ -301,14 +403,16 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     workspaceUuid,
     siteUuid,
     pageSlug,
-    designSystem,
-    page,
+    designSystem: signedDesignSystem,
+    page: signedPage,
+    renderedSections,
     mode: resolvedMode,
     attemptId,
+    sharedComponents,
   });
 
   if (!generated.buildSuccess) {
-    await updatePageStatusAndLog(db, workspaceUuid, siteUuid, pageSlug, "planned", currentBlueprint, aiJobUuid, `Astro build failed for ${pageSlug}`, 0);
+    await updatePageStatusAndLog(db, workspaceUuid, siteUuid, pageSlug, "planned", currentHierarchy, aiJobUuid, `Astro build failed for ${pageSlug}`, 0);
     throw new Error(`Astro build failed for ${pageSlug}: ${generated.buildLog ?? "unknown error"}`);
   }
 
@@ -328,8 +432,9 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
 
   const passed = qa.passed;
   const status: PageBuildStatus = passed ? "built" : "planned";
-  currentBlueprint = updatePageStatus(currentBlueprint, pageSlug, status);
-  await saveBlueprintDoc(db, workspaceUuid, siteUuid, currentBlueprint);
+  currentHierarchy = updatePageStatus(currentHierarchy, pageSlug, status);
+  currentHierarchy = advanceNextPage(currentHierarchy);
+  await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, currentHierarchy);
 
   const existingPage = await db.selectFrom("pages").select("uuid").where("siteUuid", "=", siteUuid).where("slug", "=", pageSlug).executeTakeFirst();
   if (existingPage) {
@@ -345,6 +450,20 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
       })
       .where("uuid", "=", existingPage.uuid)
       .execute();
+  } else {
+    await db
+      .insertInto("pages")
+      .values({
+        siteUuid,
+        title: generated.metaTitle,
+        slug: pageSlug,
+        isHomePage: pageSlug === "index",
+        metaTitle: generated.metaTitle,
+        metaDescription: generated.metaDescription,
+        sections: jsonb(generated.pageSections),
+        status: "draft",
+      })
+      .execute();
   }
 
   if (pageSlug === "index") {
@@ -356,7 +475,12 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
         status: passed ? "success" : "failed",
         artifactUrl: generated.previewUrl,
         previewUrl: generated.previewUrl,
-        metadata: jsonb({ mode: resolvedMode, fidelityScore: qa.fidelityScore, issues: qa.issues }),
+        metadata: jsonb({
+          mode: resolvedMode,
+          fidelityScore: qa.fidelityScore,
+          issues: qa.issues,
+          s3: generated.s3,
+        }),
       })
       .execute();
   }
@@ -400,13 +524,13 @@ async function updatePageStatusAndLog(
   siteUuid: string,
   pageSlug: string,
   status: PageBuildStatus,
-  blueprint: SiteBlueprint,
+  hierarchy: SiteHierarchy,
   aiJobUuid: string,
   summary: string,
   fidelityScore: number,
 ) {
-  const updated = updatePageStatus(blueprint, pageSlug, status);
-  await saveBlueprintDoc(db, workspaceUuid, siteUuid, updated);
+  const updated = updatePageStatus(hierarchy, pageSlug, status);
+  await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, updated);
   await updateAiJobState(db, aiJobUuid, { state: { phase: "failed", currentSlug: pageSlug }, steps: [{ name: `build_${pageSlug}`, status: "failed" }] });
   await logAiActivity(db, {
     workspaceUuid,
@@ -422,14 +546,18 @@ async function updatePageStatusAndLog(
 
 export async function approvePage(input: ApprovePageInput): Promise<ApprovePageOutput> {
   const { db, queues, workspaceUuid, siteUuid, pageSlug, userUuid } = input;
-  const { blueprint } = await loadSiteAndBlueprint(db, workspaceUuid, siteUuid);
+  const { hierarchy } = await loadSiteAndHierarchy(db, workspaceUuid, siteUuid);
 
-  if (blueprint.build_plan.page_status[pageSlug] !== "built") {
+  const page = pageBySlug(hierarchy, pageSlug);
+  if (!page) {
+    throw new Error(`Page ${pageSlug} not found in site hierarchy`);
+  }
+  if (hierarchy.buildPlan.pageStatus[pageSlug] !== "built") {
     throw new Error(`Page ${pageSlug} is not built yet and cannot be approved`);
   }
 
-  const approvedBlueprint = updatePageStatus(blueprint, pageSlug, "approved");
-  await saveBlueprintDoc(db, workspaceUuid, siteUuid, approvedBlueprint);
+  const approvedHierarchy = updatePageStatus(hierarchy, pageSlug, "approved");
+  await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, approvedHierarchy);
 
   const parentJob = await db
     .selectFrom("aiJobs")
@@ -443,7 +571,7 @@ export async function approvePage(input: ApprovePageInput): Promise<ApprovePageO
   }
   const aiJobUuid = parentJob.uuid;
 
-  const remaining = remainingPlannedSlugs(approvedBlueprint, pageSlug);
+  const remaining = remainingPlannedSlugs(approvedHierarchy, pageSlug);
   for (const slug of remaining) {
     const attemptId = generateAttemptId();
     await queues.generatePage.queue.add("generate_page", {
@@ -461,4 +589,49 @@ export async function approvePage(input: ApprovePageInput): Promise<ApprovePageO
   });
 
   return { approved: pageSlug, remainingPagesEnqueued: remaining };
+}
+
+export interface ReSkinSiteInput extends Pick<OrchestratorContext, "db" | "queues" | "config" | "workspaceUuid" | "siteUuid" | "userUuid"> {
+  designSystem: DesignSystemV2;
+}
+
+export async function reSkinSite(input: ReSkinSiteInput): Promise<{ enqueued: string[] }> {
+  const { db, queues, workspaceUuid, siteUuid, userUuid, designSystem } = input;
+
+  await saveDesignSystemDoc(db, workspaceUuid, siteUuid, designSystem);
+
+  const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
+  if (!hierarchy) {
+    throw new Error(`Site hierarchy not found for site ${siteUuid}`);
+  }
+
+  const slugs = hierarchy.buildPlan.buildOrder.filter((slug) => {
+    const status = hierarchy.buildPlan.pageStatus[slug];
+    return status === "built" || status === "approved";
+  });
+
+  if (slugs.length === 0) {
+    return { enqueued: [] };
+  }
+
+  const options = { accuracy: "accurate", mode: hierarchy.siteMetadata.mode, reskin: true };
+  const aiJobUuid = await createParentAiJob(db, workspaceUuid, siteUuid, "replicate_site", options);
+
+  for (const slug of slugs) {
+    const attemptId = generateAttemptId();
+    await queues.generatePage.queue.add("generate_page", {
+      workspaceUuid,
+      siteUuid,
+      pageSlug: slug,
+      aiJobUuid,
+      attemptId,
+      mode: hierarchy.siteMetadata.mode,
+    });
+  }
+
+  await updateSiteMemory(db, workspaceUuid, siteUuid, {
+    recentEdits: [`${new Date().toISOString()} - Re-skinned site with new design system by ${userUuid ?? "system"}`],
+  });
+
+  return { enqueued: slugs };
 }

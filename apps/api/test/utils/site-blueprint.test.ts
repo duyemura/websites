@@ -48,7 +48,7 @@ describe("buildSiteBlueprint", () => {
     const bp = buildSiteBlueprint(baseScrape);
     expect(bp.design_tokens.colors.primary).toBe("#ff4d00");
     expect(bp.design_tokens.colors.background).toBe("#ffffff");
-    expect(bp.design_tokens.fonts.body).toBe("Inter");
+    expect(bp.design_tokens.fonts.body).toBe("Inter, sans-serif");
     expect(bp.design_tokens.radius).toBe("0.5rem");
   });
 
@@ -95,7 +95,9 @@ describe("buildSiteBlueprint", () => {
     const about = home.sections.find((s) => s.type === "Text" && s.props.title === "About us");
     expect(about?.props.body).toBe(baseScrape.description);
 
-    const offerings = home.sections.find((s) => s.type === "SiteCardGroup");
+    const offerings = home.sections.find(
+      (s) => s.type === "SiteCardGroup" && s.props.title === "What we offer",
+    );
     expect(offerings?.props.cards).toEqual([
       { title: baseScrape.offerings[0].name, description: baseScrape.offerings[0].description },
     ]);
@@ -134,10 +136,10 @@ describe("buildSiteBlueprint", () => {
       designTokens: [],
     };
     const bp = buildSiteBlueprint(minimal);
-    expect(bp.design_tokens.colors.primary).toBe("#111111");
+    expect(bp.design_tokens.colors.primary).toBe("#171717");
     expect(bp.design_tokens.colors.background).toBe("#ffffff");
-    expect(bp.design_tokens.fonts.heading).toBe("Sans-serif");
-    expect(bp.design_tokens.fonts.body).toBe("Sans-serif");
+    expect(bp.design_tokens.fonts.heading).toBe("Sans-serif, sans-serif");
+    expect(bp.design_tokens.fonts.body).toBe("Sans-serif, sans-serif");
   });
 
   test("derives muted and mutedForeground from surface and textMuted roles", () => {

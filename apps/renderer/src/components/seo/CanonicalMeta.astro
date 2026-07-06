@@ -1,0 +1,9 @@
+---
+import { content, absUrl } from "../../lib/content";
+const { path } = Astro.props as { path: string };
+const { meta } = content;
+---
+<link rel="canonical" href={absUrl(path)} />
+<meta name="robots" content={meta.preview ? "noindex,nofollow" : "index,follow"} />
+{meta.googleSiteVerification && <meta name="google-site-verification" content={meta.googleSiteVerification} />}
+{meta.bingVerification && <meta name="msvalidate.01" content={meta.bingVerification} />}

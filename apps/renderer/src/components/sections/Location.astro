@@ -1,0 +1,27 @@
+---
+import Container from "../ui/Container.astro";
+import { content } from "../../lib/content";
+const { business } = content;
+if (!business.mapEmbedUrl && !business.address?.street) return;
+const mapsQuery = encodeURIComponent(`${business.name} ${business.address.street} ${business.address.city} ${business.geo.stateAbbr}`);
+const directions = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+const areaCopy = business.serviceArea?.length
+  ? `${business.name} is located in ${business.geo.city}, ${business.geo.state}, and serves members from nearby communities including ${business.serviceArea.join(", ")}.`
+  : `${business.name} is located in ${business.geo.city}, ${business.geo.state}.`;
+---
+<section class="bg-slate-50 py-16">
+  <Container>
+    <div class="grid items-center gap-10 lg:grid-cols-2">
+      <div>
+        <h2 class="font-heading text-3xl font-bold text-primary">Find us in {business.geo.city}</h2>
+        <p class="mt-4 text-secondary">{areaCopy}</p>
+        <address class="mt-4 not-italic font-semibold text-primary">{business.address.street}, {business.address.city}, {business.geo.stateAbbr} {business.address.zip}</address>
+        <p class="mt-2"><a href={`tel:${business.phone.replace(/[^0-9+]/g, "")}`} class="text-accent">{business.phone}</a></p>
+        <a href={directions} rel="noopener noreferrer" target="_blank" class="mt-4 inline-block font-semibold text-accent">Get directions →</a>
+      </div>
+      {business.mapEmbedUrl && (
+        <iframe src={business.mapEmbedUrl} title={`Map to ${business.name}`} width="600" height="400" loading="lazy" class="h-80 w-full rounded-xl border-0" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
+      )}
+    </div>
+  </Container>
+</section>

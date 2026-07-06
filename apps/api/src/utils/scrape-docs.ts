@@ -7,6 +7,45 @@ import type {
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
+
+export interface ScrapedSection {
+  id: string;
+  type: string;
+  heading?: string;
+  body?: string;
+  address?: string;
+  widgetUrl?: string;
+  intent?: string;
+  cta?: { label: string; href: string };
+  visualEvidence: SectionVisualEvidenceRow;
+  items?: { title?: string; description?: string; imageUrl?: string }[];
+  images?: { url: string; alt?: string; context?: string }[];
+  styleHint?: {
+    theme?: "dark" | "light";
+    centered?: boolean;
+    columns?: number;
+    imagePosition?: "left" | "right" | "background" | "none";
+    sourceOrder?: number;
+    align?: "left" | "center" | "right";
+    eyebrow?: string;
+    uppercase?: boolean;
+    ctaStyle?: "primary" | "dark" | "outline";
+    heroTextColor?: string;
+    heroCtaBg?: string;
+    heroCtaColor?: string;
+    heroCtaRadius?: string;
+    heroCtaHasIcon?: boolean;
+    heroCtaUppercase?: boolean;
+    heroCtaBold?: boolean;
+    heroCtaTransform?: string;
+    heroCtaPadding?: string;
+    subtitleUppercase?: boolean;
+    eyebrowBg?: string;
+    eyebrowColor?: string;
+    eyebrowPadding?: string;
+  };
+}
 
 export interface ScrapedWebsiteData {
   url: string;
@@ -31,8 +70,20 @@ export interface ScrapedWebsiteData {
   team: { name?: string; role?: string; bio?: string }[];
   offerings: { name?: string; description?: string; price?: string }[];
   contact: { phone?: string; email?: string; social?: { platform: string; url: string }[] };
+  sections?: ScrapedSection[];
   screenshotUrls?: string[];
   rawHtml?: string;
+  /** Visual style of the header/menu CTA, if one exists. */
+  headerCtaStyle?: {
+    bg?: string;
+    color?: string;
+    radius?: string;
+    padding?: string;
+    uppercase?: boolean;
+    bold?: boolean;
+    light?: boolean;
+    fontSize?: string;
+  };
 }
 
 type NicheRule = {

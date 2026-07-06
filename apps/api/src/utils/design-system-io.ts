@@ -4,15 +4,17 @@ import type { Config } from "../plugins/env";
 import type { SiteBlueprint } from "./site-blueprint";
 import { loadBlueprintDoc } from "./blueprint-io";
 import { buildDesignSystem, type DesignSystem } from "./design-system";
+import type { DesignSystemV2 } from "../types/design-system-v2";
 
-const DESIGN_SYSTEM_DOC_KEY = "design-system";
+export const DESIGN_SYSTEM_DOC_KEY = "design-system";
+export const DESIGN_SYSTEM_DOC_TITLE = "Design system";
 const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
 
 export async function loadDesignSystemDoc(
   db: Kysely<DB>,
   workspaceUuid: string,
   siteUuid: string,
-): Promise<DesignSystem | null> {
+): Promise<DesignSystem | DesignSystemV2 | null> {
   const doc = await db
     .selectFrom("docs")
     .select("content")
@@ -27,8 +29,8 @@ export async function loadDesignSystemDoc(
   const match = doc.content.match(JSON_FENCE_RE);
   const jsonText = match?.[1] ?? doc.content;
   try {
-    const parsed = JSON.parse(jsonText) as DesignSystem;
-    if (parsed.version !== "1") return null;
+    const parsed = JSON.parse(jsonText) as DesignSystem | DesignSystemV2;
+    if (parsed.version !== "1" && parsed.version !== "2") return null;
     return parsed;
   } catch {
     return null;
@@ -39,7 +41,7 @@ export async function saveDesignSystemDoc(
   db: Kysely<DB>,
   workspaceUuid: string,
   siteUuid: string,
-  designSystem: DesignSystem,
+  designSystem: DesignSystem | DesignSystemV2,
 ): Promise<void> {
   const content = `# Design system
 
@@ -73,7 +75,7 @@ ${JSON.stringify(designSystem, null, 2)}
         workspaceUuid,
         siteUuid,
         key: DESIGN_SYSTEM_DOC_KEY,
-        title: "Design system",
+        title: DESIGN_SYSTEM_DOC_TITLE,
         content,
         source: "ai_extracted",
         status: "active",
@@ -90,20 +92,32 @@ export async function loadOrBuildDesignSystem(
   _mode: "replication" | "template" | "greenfield",
   fallbackBlueprint?: SiteBlueprint,
   referenceScreenshotUrl?: string | null,
+  force = false,
 ): Promise<DesignSystem> {
-  const existing = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
-  if (existing) return existing;
-
-  if (!fallbackBlueprint) {
-    const blueprint = await loadBlueprintDoc(db, workspaceUuid, siteUuid);
-    if (!blueprint) {
-      throw new Error(`No design-system doc or blueprint found for site ${siteUuid}`);
-    }
-    return buildDesignSystem({ blueprint, referenceScreenshotUrl });
+  if (!force) {
+    const existing = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
+    if (existing?.version === "1") return existing;
+    // A v2 doc can be rebuilt from the blueprint for v1 consumers until the
+    // full migration to the new doc shape is complete.
   }
 
+  const blueprint = fallbackBlueprint ?? (await loadBlueprintDoc(db, workspaceUuid, siteUuid));
+  if (!blueprint) {
+    throw new Error(`No design-system doc or blueprint found for site ${siteUuid}`);
+  }
+
+  const brand = blueprint.brand_identity;
+  const homePage = blueprint.pages.find((p) => p.isHomePage);
   return buildDesignSystem({
-    blueprint: fallbackBlueprint,
+    blueprint,
+    brand: brand
+      ? {
+          logo: brand.logo,
+          headingStyle: brand.heading_style,
+        }
+      : undefined,
     referenceScreenshotUrl,
+    sectionOrder: blueprint.reference?.section_order,
+    homePagePrimaryCta: homePage?.primaryCta,
   });
 }

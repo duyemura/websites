@@ -23,20 +23,38 @@ describe("POST /sites/:uuid/pages/:slug/approve", () => {
     });
     const siteUuid = site.json().uuid;
 
-    const blueprint = {
-      site_metadata: {
+    const hierarchy = {
+      version: "1",
+      siteMetadata: {
         framework: "astro",
         mode: "replication",
-        target_url: "https://example.com",
-        generated_at: new Date().toISOString(),
+        targetUrl: "https://example.com",
+        generatedAt: new Date().toISOString(),
       },
-      design_tokens: {},
-      global_shell: {},
-      pages: [],
-      build_plan: {
-        next_page: "about",
-        page_status: { index: "built", about: "planned", contact: "planned" },
-        build_order: ["index", "about", "contact"],
+      pages: [
+        {
+          slug: "index",
+          isHomePage: true,
+          title: "Home",
+          sections: [],
+        },
+        {
+          slug: "about",
+          isHomePage: false,
+          title: "About",
+          sections: [],
+        },
+        {
+          slug: "contact",
+          isHomePage: false,
+          title: "Contact",
+          sections: [],
+        },
+      ],
+      buildPlan: {
+        nextPage: "about",
+        pageStatus: { index: "built", about: "planned", contact: "planned" },
+        buildOrder: ["index", "about", "contact"],
       },
     };
 
@@ -45,9 +63,9 @@ describe("POST /sites/:uuid/pages/:slug/approve", () => {
       .values({
         workspaceUuid,
         siteUuid,
-        key: "blueprint-draft",
-        title: "Blueprint draft",
-        content: `# Blueprint draft\n\n## Site blueprint\n\n\`\`\`json\n${JSON.stringify(blueprint, null, 2)}\n\`\`\``,
+        key: "site-hierarchy",
+        title: "Site hierarchy",
+        content: `# Site hierarchy\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify(hierarchy, null, 2)}\n\`\`\``,
         source: "ai_extracted",
         status: "active",
       })
@@ -111,20 +129,26 @@ describe("POST /sites/:uuid/pages/:slug/approve", () => {
     });
     const siteUuid = site.json().uuid;
 
-    const blueprint = {
-      site_metadata: {
+    const hierarchy = {
+      version: "1",
+      siteMetadata: {
         framework: "astro",
         mode: "replication",
-        target_url: "https://example.com",
-        generated_at: new Date().toISOString(),
+        targetUrl: "https://example.com",
+        generatedAt: new Date().toISOString(),
       },
-      design_tokens: {},
-      global_shell: {},
-      pages: [],
-      build_plan: {
-        next_page: "index",
-        page_status: { index: "planned" },
-        build_order: ["index"],
+      pages: [
+        {
+          slug: "index",
+          isHomePage: true,
+          title: "Home",
+          sections: [],
+        },
+      ],
+      buildPlan: {
+        nextPage: "index",
+        pageStatus: { index: "planned" },
+        buildOrder: ["index"],
       },
     };
 
@@ -133,9 +157,9 @@ describe("POST /sites/:uuid/pages/:slug/approve", () => {
       .values({
         workspaceUuid,
         siteUuid,
-        key: "blueprint-draft",
-        title: "Blueprint draft",
-        content: `# Blueprint draft\n\n## Site blueprint\n\n\`\`\`json\n${JSON.stringify(blueprint, null, 2)}\n\`\`\``,
+        key: "site-hierarchy",
+        title: "Site hierarchy",
+        content: `# Site hierarchy\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify(hierarchy, null, 2)}\n\`\`\``,
         source: "ai_extracted",
         status: "active",
       })

@@ -1,0 +1,21 @@
+---
+import type { Step } from "../../types/gym-content";
+const { steps, headline } = Astro.props as { steps: Step[]; headline: string };
+if (!steps?.length) return;
+---
+<section class="bg-primary py-20 text-white">
+  <div class="mx-auto max-w-6xl px-6">
+    {headline && <h2 class="mb-12 text-center font-heading text-4xl font-black uppercase">{headline}</h2>}
+    <ol class="grid gap-8 sm:grid-cols-3">
+      {steps.map((step) => (
+        <li class="text-center">
+          <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent font-heading text-2xl font-black text-white">
+            {step.number}
+          </div>
+          <h3 class="font-heading text-lg font-bold uppercase">{step.headline}</h3>
+          <p class="mt-2 text-slate-300 text-sm">{step.body}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

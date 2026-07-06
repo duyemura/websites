@@ -1,0 +1,17 @@
+---
+import GymLayout from "../../layouts/GymLayout.astro";
+import Block from "../../components/blocks/Block.astro";
+import Container from "../../components/ui/Container.astro";
+import { content } from "../../lib/content";
+export function getStaticPaths() {
+  return content.pages.legal.map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props;
+const { business } = content;
+---
+<GymLayout title={`${page.title} | ${business.name}`} description={page.title} path={`/legal/${page.slug}`}>
+  <section class="py-16"><Container>
+    <h1 class="mb-8 font-heading text-3xl font-bold text-primary">{page.title}</h1>
+    <div class="space-y-6">{page.blocks.map((b) => <Block block={b} />)}</div>
+  </Container></section>
+</GymLayout>

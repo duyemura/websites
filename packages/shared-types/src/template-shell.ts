@@ -24,6 +24,13 @@ export const TemplateShellPageSchema = z.object({
   isHomePage: z.boolean().default(true),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
+  /** Primary CTA for this page; other pages can fall back to the homepage CTA. */
+  primaryCta: z
+    .object({
+      label: z.string(),
+      href: z.string(),
+    })
+    .optional(),
   sections: z.array(SiteSectionSchema),
 });
 export type TemplateShellPage = z.infer<typeof TemplateShellPageSchema>;

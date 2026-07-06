@@ -9,7 +9,7 @@ const booleanFromEnv = (defaultValue: boolean) =>
     .default(defaultValue ? "true" : "false")
     .transform((v) => v === "true");
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]),
   SERVICE: z.enum(Service.options as [string, ...string[]]),
   DB_HOST: z.string(),
@@ -50,6 +50,7 @@ const ConfigSchema = z.object({
   GOOGLE_PLACES_API_KEY: z.string().optional(),
   FAL_KEY: z.string().optional(),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/dev/image-to-image"),
+  SES_FROM_EMAIL: z.string().email().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

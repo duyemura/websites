@@ -1,0 +1,45 @@
+---
+import { content } from "../../lib/content";
+const { formId, submitLabel = "Send", includeMessage = true } = Astro.props as { formId: string; submitLabel?: string; includeMessage?: boolean };
+const { meta } = content;
+const action = `${meta.apiBaseUrl}/api/forms/${meta.siteId}/${formId}`;
+---
+<div class="mx-auto max-w-lg">
+  <!-- role=status + aria-live: screen readers announce this when it becomes visible -->
+  <p data-form-success role="status" aria-live="polite" class="mb-4 hidden rounded-lg bg-emerald-50 p-4 text-emerald-800">Thanks — we got it. We'll be in touch shortly.</p>
+  <form data-lead-form action={action} method="post" class="space-y-4">
+    <!-- Honeypot: off-screen, not display:none, so bots can fill it but humans can't see it.
+         display:none is fine for UX but off-screen is the classic pattern that avoids
+         aria-hidden on a focusable element (ARIA authoring practice violation). -->
+    <input type="text" name="_hp" value="" tabindex="-1" autocomplete="off"
+           class="fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+    <label class="block">
+      <span class="font-heading text-sm font-semibold text-primary">Name</span>
+      <input required type="text" name="name" maxlength="100" autocomplete="name"
+             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+    </label>
+    <label class="block">
+      <span class="font-heading text-sm font-semibold text-primary">Email</span>
+      <input required type="email" name="email" maxlength="200" autocomplete="email" inputmode="email"
+             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+    </label>
+    <label class="block">
+      <span class="font-heading text-sm font-semibold text-primary">Phone</span>
+      <input type="tel" name="phone" maxlength="30" autocomplete="tel" inputmode="tel"
+             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+    </label>
+    {includeMessage && (
+      <label class="block">
+        <span class="font-heading text-sm font-semibold text-primary">Message</span>
+        <textarea name="message" rows="4" maxlength="2000"
+                  class="mt-1 w-full rounded-lg border border-slate-300 p-3"></textarea>
+      </label>
+    )}
+    <button type="submit" class="w-full rounded-lg bg-accent px-6 py-3 font-heading font-semibold text-white">{submitLabel}</button>
+  </form>
+</div>
+<script is:inline>
+  if (new URLSearchParams(location.search).get("submitted") === "1") {
+    document.querySelectorAll("[data-form-success]").forEach(function (el) { el.classList.remove("hidden"); });
+  }
+</script>

@@ -16,6 +16,37 @@ function domainsMatch(a?: string, b?: string): boolean {
   return cleanA === cleanB && cleanA.length > 0;
 }
 
+function normalizeWords(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+}
+
+function wordOverlap(a: string, b: string): number {
+  const setA = new Set(normalizeWords(a));
+  const setB = new Set(normalizeWords(b));
+  if (setA.size === 0 || setB.size === 0) return 0;
+  const intersection = [...setA].filter((w) => setB.has(w)).length;
+  return intersection / Math.max(setA.size, setB.size);
+}
+
+function hostWordOverlap(listingName: string, targetHostname: string): number {
+  const hostRoot = targetHostname.replace(/^www\./, "").split(".")[0] ?? "";
+  const hostWords = normalizeWords(hostRoot);
+  const listingWords = normalizeWords(listingName);
+  if (hostWords.length === 0) return 0;
+  return listingWords.filter((w) => hostWords.includes(w)).length / hostWords.length;
+}
+
+function isStrongGmbMatch(listing: GmbListing, targetHostname: string, scrapedName: string): boolean {
+  if (domainsMatch(listing.websiteUri, targetHostname)) return true;
+  if (wordOverlap(listing.name, scrapedName) >= 0.5) return true;
+  if (hostWordOverlap(listing.name, targetHostname) >= 0.5) return true;
+  return false;
+}
+
 function pickBestListing(listings: GmbListing[], targetHostname: string): GmbListing | undefined {
   if (listings.length === 0) return undefined;
   if (listings.length === 1) return listings[0];
@@ -114,7 +145,7 @@ export async function enrichWithGmb(
     }
   }
 
-  if (!listing) {
+  if (!listing || !isStrongGmbMatch(listing, targetHostname, data.businessName ?? "")) {
     return { data, result: { applied: false } };
   }
 

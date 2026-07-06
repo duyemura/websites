@@ -6,7 +6,23 @@ import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../s3";
+import { getS3Client, getSignedDownloadUrl } from "../s3";
+
+async function signScreenshotUrl(
+  config: Config,
+  storageKey: string,
+): Promise<string> {
+  return getSignedDownloadUrl({
+    endpoint: config.S3_ENDPOINT,
+    region: config.S3_REGION,
+    accessKeyId: config.S3_ACCESS_KEY,
+    secretAccessKey: config.S3_SECRET_KEY,
+    sessionToken: config.S3_SESSION_TOKEN,
+    bucket: config.S3_ASSETS_BUCKET,
+    key: storageKey,
+    expiresIn: 3600,
+  });
+}
 
 export async function resolveReferenceScreenshot(
   db: Kysely<DB>,
@@ -18,11 +34,12 @@ export async function resolveReferenceScreenshot(
 ): Promise<{ assetUuid: string; url: string } | null> {
   const existing = await db
     .selectFrom("assets")
-    .select(["uuid", "url"])
+    .select(["uuid", "url", "storageKey"])
     .where("workspaceUuid", "=", workspaceUuid)
     .where("type", "=", "image")
     .$call((q) =>
       q.where("metadata", "@>", {
+        siteUuid,
         tags: ["reference-screenshot", pageSlug],
       } as Json),
     )
@@ -30,10 +47,16 @@ export async function resolveReferenceScreenshot(
     .executeTakeFirst();
 
   if (existing) {
-    return { assetUuid: existing.uuid, url: existing.url };
+    // Reconstruct a fresh signed URL from storageKey so private S3 objects
+    // can be downloaded by the QA pipeline.
+    const signedUrl = await signScreenshotUrl(config, existing.storageKey);
+    return { assetUuid: existing.uuid, url: signedUrl };
   }
 
-  const targetUrl = pageSlug === "index" ? sourceUrl : new URL(pageSlug, sourceUrl).toString();
+  const baseUrl = sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")
+    ? sourceUrl
+    : `https://${sourceUrl}`;
+  const targetUrl = pageSlug === "index" ? baseUrl : new URL(pageSlug, baseUrl).toString();
 
   let browser: Browser | undefined;
   let tmpPath: string | undefined;
@@ -76,8 +99,7 @@ export async function resolveReferenceScreenshot(
       }),
     );
 
-    const baseUrl = config.CDN_BASE_URL.replace(/\/$/, "");
-    const publicUrl = `${baseUrl}/${bucket}/${storageKey}`;
+    const signedUrl = await signScreenshotUrl(config, storageKey);
 
     const asset = await db
       .insertInto("assets")
@@ -87,18 +109,19 @@ export async function resolveReferenceScreenshot(
         type: "image",
         source: "screenshot",
         mimeType: "image/png",
-        url: publicUrl,
+        url: signedUrl,
         storageKey,
         metadata: {
           filename: `${pageSlug}.png`,
           description: `Reference screenshot of ${targetUrl}`,
           tags: ["reference-screenshot", pageSlug],
+          siteUuid,
         },
       })
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    return { assetUuid: asset.uuid, url: asset.url };
+    return { assetUuid: asset.uuid, url: signedUrl };
   } catch (err) {
     console.error("Failed to capture reference screenshot", { siteUuid, pageSlug, err });
     return null;

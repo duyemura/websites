@@ -1,0 +1,32 @@
+---
+import GymLayout from "../../layouts/GymLayout.astro";
+import ProgramCards from "../../components/sections/ProgramCards.astro";
+import CTABand from "../../components/sections/CTABand.astro";
+import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
+import Container from "../../components/ui/Container.astro";
+import { content } from "../../lib/content";
+const { business, pages } = content;
+const title = `Programs | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
+const slugs = pages.programs.map((p) => p.slug);
+const programNames = pages.programs.map((p) => p.name).join(", ");
+const desc = `Explore programs at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}: ${programNames}.`.slice(0, 157);
+---
+<GymLayout
+  title={title}
+  description={desc}
+  path="/programs"
+>
+  <Fragment slot="head">
+    <BreadcrumbSchema crumbs={[{ name: "Programs", path: "/programs" }]} />
+  </Fragment>
+  <section class="bg-primary py-16">
+    <Container>
+      <h1 class="font-heading text-4xl font-black uppercase text-white text-center">
+        Our Programs
+      </h1>
+      <p class="mt-4 text-center text-slate-300">{business.name} in {business.geo.city}, {business.geo.stateAbbr}</p>
+    </Container>
+  </section>
+  <ProgramCards slugs={slugs} headline="" />
+  <CTABand headline="Not sure which program is right for you?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>

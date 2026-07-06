@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import ExifReader from "exifreader";
+import { sanitizeJsonValue } from "./sanitize-json";
 
 export interface ExtractedImageMetadata {
   width?: number;
@@ -48,12 +49,12 @@ async function parseExif(buffer: Buffer): Promise<Record<string, unknown> | unde
               typeof v === "object" && "description" in v ? v.description : v,
             );
           } else {
-            cleaned[innerKey] = innerValue;
+            cleaned[innerKey] = sanitizeJsonValue(innerValue);
           }
         }
         picked[key] = cleaned;
       } else {
-        picked[key] = value;
+        picked[key] = sanitizeJsonValue(value);
       }
     }
     return Object.keys(picked).length > 0 ? picked : undefined;

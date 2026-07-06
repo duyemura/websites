@@ -2,7 +2,11 @@ import { describe, test, expect } from "vitest";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/utils/brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
-import { generateSiteDocs } from "../../src/utils/site-docs";
+import { generateSiteDocs, generateSiteDocsFromTemplate, generateSiteDocsForGreenfield } from "../../src/utils/site-docs";
+import type { SiteHierarchy } from "../../src/types/site-hierarchy";
+import type { DesignSystemV2 } from "../../src/types/design-system-v2";
+import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
+import type { TemplateShell } from "@ploy-gyms/shared-types";
 
 async function docKeys(docs: Promise<ReturnType<typeof generateSiteDocs>>): Promise<string[]> {
   return (await docs).map((d) => d.key);
@@ -45,6 +49,35 @@ const baseScrape: ScrapedWebsiteData = {
     ],
   },
   screenshotUrls: ["https://example-gym.com/screenshot.png"],
+  sections: [
+    {
+      id: "section-hero",
+      type: "Hero",
+      heading: "Train with purpose",
+      body: "We build fitness for real life.",
+      cta: { label: "Book a class", href: "#cta" },
+      visualEvidence: {
+        evidenceId: "ev-hero",
+        pageSlug: "index",
+        sectionId: "section-hero",
+        boundingBox: { x: 0, y: 0, width: 1200, height: 600 },
+        computedStyles: [],
+      },
+    },
+    {
+      id: "section-features",
+      type: "SiteCardGroup",
+      heading: "What we offer",
+      items: [{ title: "Group class", description: "One hour" }],
+      visualEvidence: {
+        evidenceId: "ev-features",
+        pageSlug: "index",
+        sectionId: "section-features",
+        boundingBox: { x: 0, y: 600, width: 1200, height: 400 },
+        computedStyles: [],
+      },
+    },
+  ],
 };
 
 const baseGmb: GmbListing = {
@@ -109,7 +142,9 @@ describe("generateSiteDocs", () => {
       BRAND_GUIDELINES_DOC_KEY,
       "business-info",
       "site-strategy",
-      "blueprint-draft",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
     ]);
   });
 
@@ -255,16 +290,187 @@ describe("generateSiteDocs", () => {
     expect(brand.content).toContain("inclusive");
   });
 
-  test("blueprint draft doc contains a populated site blueprint, not an empty placeholder", async () => {
-    const docs = await generateSiteDocs(baseScrape);
-    const blueprint = docs.find((d) => d.key === "blueprint-draft")!;
-    expect(blueprint.content).toContain("## Site blueprint");
-    expect(blueprint.content).toContain('"site_metadata"');
-    expect(blueprint.content).toContain('"target_url": "https://example-gym.com"');
-    expect(blueprint.content).toContain('"pages"');
-    expect(blueprint.content).toContain('"slug": "index"');
-    expect(blueprint.content).toContain('"slug": "classes"');
-    expect(blueprint.content).not.toContain('"design_tokens": {}');
-    expect(blueprint.content).not.toContain('"pages": []');
+  test("no longer emits the retired blueprint-draft doc", async () => {
+    const docs = await generateSiteDocs(baseScrape, baseGmb);
+    const keys = docs.map((d) => d.key);
+    expect(keys).not.toContain("blueprint-draft");
+  });
+
+  test("emits site-hierarchy, design-system, and section-visual-evidence docs", async () => {
+    const docs = await generateSiteDocs(baseScrape, baseGmb);
+    const keys = docs.map((d) => d.key);
+    expect(keys).toContain("site-hierarchy");
+    expect(keys).toContain("design-system");
+    expect(keys).toContain("section-visual-evidence");
+
+    const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
+    const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(hierarchy.pages[0].slug).toBe("index");
+    expect(hierarchy.pages[0].sections.length).toBeGreaterThan(0);
+    expect(hierarchy.pages[0].sections[0].intent).toBeDefined();
+
+    const evidenceDoc = docs.find((d) => d.key === "section-visual-evidence")!;
+    const evidence: SectionVisualEvidence = JSON.parse(evidenceDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(evidence.rows.length).toBeGreaterThan(0);
+    expect(evidence.rows[0].boundingBox.width).toBeGreaterThan(0);
+  });
+});
+
+const templateShellFixture: TemplateShell = {
+  source: {
+    type: "url",
+    url: "https://template-source.example.com",
+    scrapedAt: new Date().toISOString(),
+  },
+  theme: {
+    colors: {
+      primary: "#111111",
+      primaryForeground: "#ffffff",
+      background: "#ffffff",
+      foreground: "#171717",
+      muted: "#f5f5f5",
+      mutedForeground: "#737373",
+      border: "#e5e5e5",
+    },
+    fonts: {
+      heading: "Inter",
+      body: "Inter",
+    },
+    radius: "0.5rem",
+  },
+  page: {
+    title: "Template homepage",
+    slug: "index",
+    isHomePage: true,
+    metaTitle: "Template homepage meta",
+    metaDescription: "Template homepage description",
+    sections: [
+      {
+        id: "header-shell",
+        type: "SiteHeader",
+        props: {
+          logo: { type: "text", value: "{{placeholder-001: business name}}" },
+          navLinks: [
+            { label: "Classes", href: "/classes" },
+            { label: "Coaches", href: "/coaches" },
+          ],
+          ctaLabel: "Join now",
+          ctaHref: "#cta",
+        },
+      },
+      {
+        id: "hero-shell",
+        type: "Hero",
+        props: {
+          title: "{{placeholder-002: headline}}",
+          subtitle: "{{placeholder-003: subheadline}}",
+          cta: { label: "{{placeholder-004: CTA}}", href: "#cta" },
+          backgroundImage: null,
+          layout: "center",
+        },
+      },
+      {
+        id: "features-shell",
+        type: "SiteCardGroup",
+        props: {
+          title: "{{placeholder-005: section title}}",
+          layout: "grid",
+          cards: [
+            { title: "{{placeholder-006: card title}}", description: "{{placeholder-007: card description}}" },
+          ],
+        },
+      },
+      {
+        id: "footer-shell",
+        type: "SiteFooter",
+        props: {
+          businessName: "{{placeholder-008: business name}}",
+          navLinks: [],
+          socialLinks: [],
+          copyright: "© 2026 {{placeholder-008: business name}}. All rights reserved.",
+        },
+      },
+    ],
+  },
+  placeholders: [
+    { key: "placeholder-001", label: "Logo / business name", sectionId: "header-shell", propPath: "logo.value" },
+    { key: "placeholder-002", label: "Hero headline", sectionId: "hero-shell", propPath: "title" },
+  ],
+  instructions: "Use the template structure and replace every placeholder.",
+};
+
+describe("generateSiteDocsFromTemplate", () => {
+  test("emits the six expected core docs", () => {
+    const docs = generateSiteDocsFromTemplate(
+      "Beta Template",
+      { key: "gym-neutro", name: "Gym Neutro", instructions: null },
+      templateShellFixture,
+    );
+    const keys = docs.map((d) => d.key);
+    expect(keys).toEqual([
+      "site-memory",
+      "site-strategy",
+      "business-info",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
+    ]);
+  });
+
+  test("parsed hierarchy has a homepage with sections in template order", () => {
+    const docs = generateSiteDocsFromTemplate(
+      "Beta Template",
+      { key: "gym-neutro", name: "Gym Neutro", instructions: null },
+      templateShellFixture,
+    );
+    const hierarchyDoc = docs.find((d) => d.key === "site-hierarchy")!;
+    const hierarchy: SiteHierarchy = JSON.parse(hierarchyDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(hierarchy.pages[0].slug).toBe("index");
+    expect(hierarchy.pages[0].sections.length).toBe(templateShellFixture.page.sections.length - 2);
+
+    const sectionTags = hierarchy.pages[0].sections.map((s) => s.tag);
+    expect(sectionTags).not.toContain("header");
+    expect(sectionTags).toContain("hero");
+    expect(sectionTags).toContain("feature-grid");
+    expect(sectionTags).not.toContain("footer");
+
+    const designSystemDoc = docs.find((d) => d.key === "design-system")!;
+    const designSystem: DesignSystemV2 = JSON.parse(designSystemDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(designSystem.global.shell.header).toBeDefined();
+    expect(designSystem.global.shell.footer).toBeDefined();
+
+    const hero = hierarchy.pages[0].sections.find((s) => s.tag === "hero")!;
+    expect(hero.evidenceId).toBe("template-index-hero-shell");
+    expect(hero.content.heading).toMatch(/^\{\{placeholder-/);
+  });
+});
+
+describe("generateSiteDocsForGreenfield", () => {
+  test("emits the six expected core docs", () => {
+    const docs = generateSiteDocsForGreenfield(
+      { uuid: "site-uuid-1", name: "Greenfield Gym", workspaceUuid: "ws-uuid-1" },
+      { primaryColor: "#ff4d00", fontHeading: "Montserrat", fontBody: "Inter" },
+      { businessName: "Greenfield Gym", tagline: "Stronger every day.", description: "A fresh gym brand." },
+    );
+    const keys = docs.map((d) => d.key);
+    expect(keys).toEqual([
+      "site-memory",
+      "site-strategy",
+      "business-info",
+      "design-system",
+      "site-hierarchy",
+      "section-visual-evidence",
+    ]);
+  });
+
+  test("design system uses the provided primary color", () => {
+    const docs = generateSiteDocsForGreenfield(
+      { uuid: "site-uuid-2", name: "Greenfield Gym", workspaceUuid: "ws-uuid-2" },
+      { primaryColor: "#ff4d00" },
+      { businessName: "Greenfield Gym" },
+    );
+    const designSystemDoc = docs.find((d) => d.key === "design-system")!;
+    const designSystem = JSON.parse(designSystemDoc.content.match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(designSystem.global.tokens.colors.primary).toBe("#ff4d00");
   });
 });

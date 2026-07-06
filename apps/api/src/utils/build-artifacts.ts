@@ -1,7 +1,7 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { getS3Client } from "../s3";
+import { getS3Client, buildS3ObjectUrl } from "../s3";
 import type { Config } from "../plugins/env";
 
 export interface UploadBuildArtifactsInput {
@@ -19,17 +19,17 @@ export interface BuildArtifactUrls {
   artifactUrl: string;
   sourcePrefix: string;
   distPrefix: string;
+  s3: {
+    bucket: string;
+    previewKey: string;
+    artifactPrefix: string;
+  };
 }
 
 export async function uploadBuildArtifacts(input: UploadBuildArtifactsInput): Promise<BuildArtifactUrls> {
   const bucket = input.config.S3_DEPLOYMENTS_BUCKET;
   if (!bucket) {
     throw new Error("S3_DEPLOYMENTS_BUCKET is not configured");
-  }
-
-  const cdn = (input.config.CDN_DEPLOYMENTS_BASE_URL ?? input.config.CDN_BASE_URL)?.replace(/\/$/, "");
-  if (!cdn) {
-    throw new Error("CDN_DEPLOYMENTS_BASE_URL or CDN_BASE_URL is not configured");
   }
 
   const s3 = getS3Client({
@@ -46,10 +46,32 @@ export async function uploadBuildArtifacts(input: UploadBuildArtifactsInput): Pr
   await uploadDirectory(s3, bucket, input.distDir, distPrefix);
 
   const previewPath = input.pageSlug === "index" ? "index.html" : `${input.pageSlug}/index.html`;
-  const previewUrl = `${cdn}/${bucket}/${distPrefix}/${previewPath}`;
-  const artifactUrl = `${cdn}/${bucket}/${distPrefix}/`;
+  const previewKey = path.posix.join(distPrefix, previewPath);
+  // Preview artifacts are public so users can open them directly in a browser.
+  const previewUrl = buildS3ObjectUrl({
+    endpoint: input.config.S3_ENDPOINT,
+    region: input.config.S3_REGION,
+    bucket,
+    key: previewKey,
+  });
+  const artifactUrl = buildS3ObjectUrl({
+    endpoint: input.config.S3_ENDPOINT,
+    region: input.config.S3_REGION,
+    bucket,
+    key: distPrefix,
+  });
 
-  return { previewUrl, artifactUrl, sourcePrefix, distPrefix };
+  return {
+    previewUrl,
+    artifactUrl,
+    sourcePrefix,
+    distPrefix,
+    s3: {
+      bucket,
+      previewKey,
+      artifactPrefix: distPrefix,
+    },
+  };
 }
 
 async function uploadDirectory(
@@ -60,23 +82,25 @@ async function uploadDirectory(
 ): Promise<void> {
   const entries = await readdir(localDir);
   await Promise.all(
-    entries.map(async (entry) => {
-      const localPath = path.join(localDir, entry);
-      const info = await stat(localPath);
-      const key = path.posix.join(keyPrefix, entry);
-      if (info.isDirectory()) {
-        return uploadDirectory(s3, bucket, localPath, key);
-      }
-      const body = await readFile(localPath);
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: body,
-          ContentType: contentTypeForPath(localPath),
-        }),
-      );
-    }),
+    entries
+      .filter((entry) => entry !== "node_modules" && entry !== ".git")
+      .map(async (entry) => {
+        const localPath = path.join(localDir, entry);
+        const info = await stat(localPath);
+        const key = path.posix.join(keyPrefix, entry);
+        if (info.isDirectory()) {
+          return uploadDirectory(s3, bucket, localPath, key);
+        }
+        const body = await readFile(localPath);
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: body,
+            ContentType: contentTypeForPath(localPath),
+          }),
+        );
+      }),
   );
 }
 

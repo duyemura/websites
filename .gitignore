@@ -15,3 +15,15 @@ build
 coverage
 *.tgz
 .turbo
+.claude/
+CLAUDE.md
+docs/superpowers/plans/*.md
+apps/api/.env.e2e
+apps/api/*.pid
+apps/api/scrape-response.json
+apps/api/tmp_*.ts
+apps/api/tmp_*.js
+tmp_*.js
+apps/renderer/.astro/data-store.json
+apps/renderer/.astro/settings.json
+apps/api/scripts/eval/runs/

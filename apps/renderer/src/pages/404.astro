@@ -1,0 +1,16 @@
+---
+import GymLayout from "../layouts/GymLayout.astro";
+import Button from "../components/ui/Button.astro";
+import { content } from "../lib/content";
+const { business } = content;
+---
+<GymLayout title={`Page not found | ${business.name}`} description="That page has moved or never existed." path="/404">
+  <section class="py-24 text-center">
+    <h1 class="font-heading text-5xl font-bold text-primary">404</h1>
+    <p class="mt-4 text-lg text-secondary">That page has moved or never existed — but the workouts are still here.</p>
+    <div class="mt-8 flex justify-center gap-4">
+      <Button href="/">Back home</Button>
+      <Button href={business.primaryCta.url} variant="outline">{business.primaryCta.label}</Button>
+    </div>
+  </section>
+</GymLayout>

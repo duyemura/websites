@@ -1,0 +1,82 @@
+---
+import { content, absUrl } from "../../lib/content";
+import type { ProgramContent } from "../../types/gym-content";
+
+const { programs } = Astro.props as { programs: ProgramContent[] };
+if (!programs?.length) return;
+
+const { business, meta, brand } = content;
+
+// iCal short format (RFC 5545) — unambiguous for Google
+const DAY_MAP: Record<string, string> = {
+  Monday: "MO",
+  Tuesday: "TU",
+  Wednesday: "WE",
+  Thursday: "TH",
+  Friday: "FR",
+  Saturday: "SA",
+  Sunday: "SU",
+};
+
+const location = {
+  "@type": "Place",
+  name: business.name,
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: business.address.street,
+    addressLocality: business.address.city,
+    addressRegion: business.geo.stateAbbr,
+    postalCode: business.address.zip,
+    addressCountry: "US",
+  },
+  ...(business.coordinates && {
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: business.coordinates.lat,
+      longitude: business.coordinates.lng,
+    },
+  }),
+};
+
+const organizer = {
+  "@type": "Organization",
+  name: business.name,
+  url: meta.siteUrl,
+};
+
+// Build one event per program × hour-block combination.
+// Each hour block becomes a separate eventSchedule with its own byDay.
+const events = programs.flatMap((program) =>
+  business.hours.flatMap((block) => {
+    const byDay = block.days.map((d) => DAY_MAP[d]).filter(Boolean);
+    if (!byDay.length) return [];
+    return [{
+      "@type": "Event",
+      name: `${program.name} at ${business.name}`,
+      ...(program.shortDescription && { description: program.shortDescription }),
+      eventStatus: "https://schema.org/EventScheduled",
+      eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+      location,
+      organizer,
+      url: absUrl(`/programs/${encodeURIComponent(program.slug)}`),
+      ...(brand.logoUrl && { image: brand.logoUrl }),
+      eventSchedule: {
+        "@type": "Schedule",
+        byDay,
+        startTime: block.opens,
+        endTime: block.closes,
+        repeatFrequency: "P1W",
+      },
+    }];
+  })
+);
+
+// If no hours blocks are configured, no events can be generated.
+if (!events.length) return;
+
+const schema = {
+  "@context": "https://schema.org",
+  "@graph": events,
+};
+---
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

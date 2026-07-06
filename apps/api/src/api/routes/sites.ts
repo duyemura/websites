@@ -9,8 +9,9 @@ import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
-import { generateSiteDocs, saveSiteDocs } from "../../utils/site-docs";
+import { generateSiteDocs, generateSiteDocsFromTemplate, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
+import { cropSectionScreenshots } from "../../utils/section-screenshots";
 import { HttpUrlSchema } from "../../utils/http-url";
 import { TemplateShellSchema } from "@ploy-gyms/shared-types";
 import type { TemplateShell } from "@ploy-gyms/shared-types";
@@ -22,10 +23,15 @@ import {
 import {
   startSiteBuild,
   approvePage,
+  reSkinSite,
 } from "../../services/site-generation-orchestrator";
+import { DesignSystemV2Schema } from "../../types/design-system-v2";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
 import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
 import { loadBlueprintDoc } from "../../utils/blueprint-io";
+import { loadSiteHierarchyDoc } from "../../utils/site-hierarchy-io";
+import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
+import { loadDesignSystemDoc } from "../../utils/design-system-io";
 import { jsonb } from "../../utils/jsonb";
 import { resolveBuildCommand } from "../../services/build-assistant/registry";
 
@@ -146,6 +152,12 @@ const BuildCommandResponseSchema = z.object({
   userMessage: z.string().optional(),
 });
 
+const HierarchyReviewResponseSchema = z.object({
+  hierarchy: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+  visualEvidence: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+  designSystem: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+});
+
 function normalizeUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -176,84 +188,6 @@ function deriveSiteName(url: string, fallback?: string): string {
   } catch {
     return "Imported site";
   }
-}
-
-function generateSiteDocsFromTemplate(
-  siteName: string,
-  template: { key: string; name: string; instructions: string | null },
-  shell: TemplateShell,
-): import("../../utils/site-docs").GeneratedSiteDoc[] {
-  const now = new Date().toISOString();
-  const instructions = template.instructions ?? "No template instructions provided.";
-
-  const siteMemory = [
-    `# Site memory: ${siteName}`,
-    "",
-    `- **Created from template**: ${template.name} (${template.key})`,
-    `- **Created at**: ${now}`,
-    `- **Source URL**: ${shell.source.url}`,
-    "",
-    "## Template structure",
-    "",
-    shell.page.sections.map((s) => `- ${s.type} (${s.id})`).join("\n"),
-    "",
-    "## Placeholders",
-    "",
-    shell.placeholders.length > 0
-      ? shell.placeholders.map((p) => `- **${p.key}** — ${p.label}`).join("\n")
-      : "- No placeholders defined.",
-  ].join("\n");
-
-  const siteStrategy = [
-    `# Site strategy: ${siteName}`,
-    "",
-    `Build a site using the **${template.name}** template. The template's structure and spacing were extracted from ${shell.source.url}.`,
-    "",
-    "## AI instructions from template",
-    "",
-    instructions,
-    "",
-    "## Build plan",
-    "",
-    "1. Read [[workspace-memory]] and [[brand-guidelines]].",
-    "2. Use the business info below to replace every placeholder in the template.",
-    "3. Preserve section order from the template unless the user asks otherwise.",
-    "4. Generate real copy that matches the gym's tone, not the source website's brand.",
-    "",
-    "## Next action",
-    "",
-    "Fill out [[business-info]] with the gym's real details, then generate the homepage.",
-  ].join("\n");
-
-  const businessInfo = [
-    `# Business info: ${siteName}`,
-    "",
-    "Fill in the details below so the AI can replace the template placeholders with real copy.",
-    "",
-    "## Required information",
-    "",
-    "- **Business name**:",
-    "- **Tagline / one-liner**:",
-    "- **Address**:",
-    "- **Hours**:",
-    "- **Phone**:",
-    "- **Email**:",
-    "- **Primary offerings / classes**:",
-    "- **Coaches / team members**:",
-    "- **Member testimonials**:",
-    "",
-    "## Brand notes",
-    "",
-    "- **Tone**: (e.g., energetic, welcoming, elite, community-focused)",
-    "- **Colors**: (the template uses a neutral shell; apply brand colors from [[brand-guidelines]])",
-    "- **Hero image direction**: (describe the desired main photo)",
-  ].join("\n");
-
-  return [
-    { key: "site-memory", title: "Site memory", content: siteMemory, source: "ai_extracted" },
-    { key: "site-strategy", title: "Site strategy", content: siteStrategy, source: "ai_extracted" },
-    { key: "business-info", title: "Business info", content: businessInfo, source: "ai_extracted" },
-  ];
 }
 
 const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
@@ -380,6 +314,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           slug,
           status: "draft",
           themeUuid,
+          ...(templateRecord ? { mode: "template" as const } : {}),
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -460,6 +395,41 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
       }));
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/hierarchy-review",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: HierarchyReviewResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const [hierarchy, visualEvidence, designSystem] = await Promise.all([
+        loadSiteHierarchyDoc(fastify.db, workspaceUuid, siteUuid),
+        loadSectionVisualEvidenceDoc(fastify.db, workspaceUuid, siteUuid),
+        loadDesignSystemDoc(fastify.db, workspaceUuid, siteUuid),
+      ]);
+
+      return { hierarchy, visualEvidence, designSystem };
     },
   );
 
@@ -633,15 +603,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           storageKey: string;
         } | null = null;
 
+        const s3 = getS3Client({
+          endpoint: fastify.config.S3_ENDPOINT,
+          region: fastify.config.S3_REGION,
+          accessKeyId: fastify.config.S3_ACCESS_KEY,
+          secretAccessKey: fastify.config.S3_SECRET_KEY,
+          sessionToken: fastify.config.S3_SESSION_TOKEN,
+        });
+
         try {
           const screenshotBuffer = await readFile(screenshotPath);
-          const s3 = getS3Client({
-            endpoint: fastify.config.S3_ENDPOINT,
-            region: fastify.config.S3_REGION,
-            accessKeyId: fastify.config.S3_ACCESS_KEY,
-            secretAccessKey: fastify.config.S3_SECRET_KEY,
-            sessionToken: fastify.config.S3_SESSION_TOKEN,
-          });
           const storageKey = path.posix.join(
             "workspaces",
             workspaceUuid,
@@ -678,7 +649,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               metadata: {
                 filename: "screenshot.png",
                 description: `Full-page screenshot of ${url} captured during scrape`,
-                tags: ["scrape", "screenshot"],
+                tags: ["scrape", "screenshot", "reference-screenshot", "index"],
               },
             })
             .returningAll()
@@ -693,6 +664,59 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         } catch {
           // Screenshot upload is best-effort; continue without it.
           data.screenshotUrls = [];
+        }
+
+        try {
+          const evidenceRows = data.sections?.map((s) => s.visualEvidence) ?? [];
+          const cropped = await cropSectionScreenshots(screenshotPath, evidenceRows);
+          for (const shot of cropped) {
+            try {
+              const storageKey = path.posix.join(
+                "workspaces",
+                workspaceUuid,
+                "sites",
+                newSiteUuid,
+                "sections",
+                `${shot.evidenceId}.png`,
+              );
+              await s3.send(
+                new PutObjectCommand({
+                  Bucket: fastify.config.S3_ASSETS_BUCKET,
+                  Key: storageKey,
+                  Body: shot.buffer,
+                  ContentType: "image/png",
+                }),
+              );
+              const url = buildS3ObjectUrl({
+                endpoint: fastify.config.S3_ENDPOINT,
+                region: fastify.config.S3_REGION,
+                bucket: fastify.config.S3_ASSETS_BUCKET,
+                key: storageKey,
+              });
+              await fastify.db
+                .insertInto("assets")
+                .values({
+                  workspaceUuid,
+                  name: shot.metadata.filename,
+                  type: "image",
+                  source: "screenshot",
+                  mimeType: "image/png",
+                  url,
+                  storageKey,
+                  metadata: shot.metadata,
+                })
+                .execute();
+              const row = evidenceRows.find((r) => r.evidenceId === shot.evidenceId);
+              if (row) row.screenshotUrl = url;
+            } catch (err) {
+              fastify.log.warn(
+                { err, evidenceId: shot.evidenceId },
+                "Failed to upload section screenshot",
+              );
+            }
+          }
+        } catch {
+          // Section screenshot upload is best-effort; continue without it.
         }
 
         try {
@@ -742,12 +766,19 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         const siteName = deriveSiteName(url, name);
         const baseSlug = deriveSiteSlug(url);
 
-        const docs = await generateSiteDocs(data, gmbListing, fastify.config, {
-          db: fastify.db,
-          workspaceUuid: request.workspace.uuid,
-          userUuid: request.user.uuid,
-          siteUuid: newSiteUuid,
-        });
+        const docs = await generateSiteDocs(
+          data,
+          gmbListing,
+          fastify.config,
+          {
+            db: fastify.db,
+            workspaceUuid: request.workspace.uuid,
+            userUuid: request.user.uuid,
+            siteUuid: newSiteUuid,
+          },
+          screenshotAsset?.url ?? null,
+          "replication",
+        );
 
         // Find a unique slug in this workspace.
         let uniqueSlug = baseSlug;
@@ -788,7 +819,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .values({
             workspaceUuid,
             siteUuid: site.uuid,
-            type: "replicate_site",
+            type: "run_playbook",
             status: "pending",
             input: jsonb({ siteUuid: site.uuid, workspaceUuid, url, options: {} }),
             options: jsonb({}),
@@ -797,11 +828,11 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           .executeTakeFirstOrThrow();
 
         try {
-          await fastify.queues.replicateSite.queue.add("replicate_site", {
-            workspaceUuid,
+          await fastify.queues.pipeline.queue.add("pipeline", {
+            kind: "run",
             siteUuid: site.uuid,
-            url,
-            aiJobUuid: aiJob.uuid,
+            workspaceUuid,
+            input: { url },
           });
         } catch (err) {
           await fastify.db
@@ -978,6 +1009,113 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
+  fastify.patch(
+    "/sites/:uuid/notify-email",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        body: z.object({
+          notifyEmail: z.string().email().nullable(),
+        }),
+        response: {
+          200: z.object({ ok: z.literal(true) }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const siteUuid = request.params.uuid;
+      const workspaceUuid = request.workspace.uuid;
+      const { notifyEmail } = request.body;
+
+      const result = await fastify.db
+        .updateTable("sites")
+        .set({ notifyEmail, updatedAt: new Date() })
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!result.numUpdatedRows || result.numUpdatedRows === 0n) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      return reply.code(200).send({ ok: true });
+    },
+  );
+
+  fastify.post(
+    "/sites/:uuid/redeploy-template",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          202: z.object({ ok: z.literal(true), jobId: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const siteUuid = request.params.uuid;
+      const workspaceUuid = request.workspace.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!site) return reply.code(404).send({ error: "Site not found" });
+
+      const job = await fastify.queues.deployTemplate.queue.add(
+        "deploy_template",
+        { siteUuid, workspaceUuid },
+      );
+
+      return reply.code(202).send({ ok: true, jobId: job.id ?? "" });
+    },
+  );
+
+  fastify.post(
+    "/sites/:uuid/re-skin",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        body: z.object({ designSystem: DesignSystemV2Schema }),
+        response: {
+          202: z.object({ success: z.boolean(), enqueued: z.array(z.string()) }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const result = await reSkinSite({
+        db: fastify.db,
+        queues: fastify.queues,
+        config: fastify.config,
+        workspaceUuid,
+        siteUuid,
+        userUuid: request.user.uuid,
+        designSystem: request.body.designSystem,
+      });
+
+      return reply.status(202).send({ success: true, enqueued: result.enqueued });
+    },
+  );
+
   async function previewRedirect(
     request: import("fastify").FastifyRequest<{
       Params: { uuid: string; attemptId: string };
@@ -1084,7 +1222,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       schema: {
         params: z.object({ uuid: z.string().uuid() }),
         querystring: z.object({
-          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "replicate", "suggest"]).optional(),
+          actionType: z.enum(["analyze", "apply_suggestion", "edit", "generate", "memory_update", "publish", "qa", "suggest"]).optional(),
           outcome: z.enum(["failure", "partial", "rejected", "success", "user_edited"]).optional(),
           limit: z.coerce.number().int().min(1).max(500).optional().default(50),
         }),

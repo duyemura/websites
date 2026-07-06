@@ -154,8 +154,12 @@ function buildOllamaUrl(baseUrl: string): string {
 }
 
 function buildOpenRouterUrl(baseUrl: string): string {
-  return `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  const base = baseUrl.replace(/\/$/, "");
+  // Base URL may already include /v1 (e.g. https://openrouter.ai/api/v1)
+  return base.endsWith("/v1") ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
 }
+
+const LLM_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per call
 
 export async function chatCompletion(
   options: ChatOptions,
@@ -185,6 +189,7 @@ export async function chatCompletion(
         },
         ...(options.jsonMode ? { format: "json" } : {}),
       }),
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
 
     response = await parseResponse(fetchResponse);
@@ -203,6 +208,7 @@ export async function chatCompletion(
         max_tokens: options.maxTokens,
         ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
 
     response = await parseResponse(fetchResponse);

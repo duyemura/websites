@@ -1,0 +1,40 @@
+---
+import { content } from "../../lib/content";
+const { navigation, business, brand } = content;
+const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
+---
+<footer class="bg-primary py-12 text-white">
+  <div class="mx-auto grid max-w-6xl gap-8 px-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div>
+      <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="lazy" />
+      <!-- NAP — must match LocalBusiness schema exactly -->
+      <address class="mt-4 not-italic text-sm text-slate-300">
+        {business.name}<br />
+        {business.address.street}<br />
+        {business.address.city}, {business.geo.stateAbbr} {business.address.zip}<br />
+        <a href={`tel:${business.phone.replace(/[^0-9+]/g, "")}`}>{business.phone}</a>
+      </address>
+    </div>
+    {navigation.footer.map((group) => (
+      <div>
+        <h3 class="font-heading font-semibold uppercase tracking-wide">{group.label}</h3>
+        <ul class="mt-3 space-y-2 text-sm text-slate-300">
+          {group.links.map((l) => <li><a href={l.href} class="hover:text-white">{l.label}</a></li>)}
+        </ul>
+      </div>
+    ))}
+    <div>
+      <h3 class="font-heading font-semibold uppercase tracking-wide">Follow us</h3>
+      <ul class="mt-3 space-y-2 text-sm text-slate-300">
+        {socials.map(([name, url]) => <li><a href={url} rel="noopener noreferrer" target="_blank" class="capitalize hover:text-white">{name}</a></li>)}
+      </ul>
+      {navigation.membersApp && (
+        <div class="mt-4 space-y-1 text-sm text-slate-300">
+          {navigation.membersApp.ios && <a class="block hover:text-white" href={navigation.membersApp.ios} rel="noopener noreferrer" target="_blank">Members App (iOS)</a>}
+          {navigation.membersApp.android && <a class="block hover:text-white" href={navigation.membersApp.android} rel="noopener noreferrer" target="_blank">Members App (Android)</a>}
+        </div>
+      )}
+    </div>
+  </div>
+  <p class="mt-10 text-center text-xs text-slate-400">© {new Date().getFullYear()} {business.name}. All rights reserved.</p>
+</footer>

@@ -7,9 +7,25 @@ import type {
   ScrapedTextStyle,
 } from "@ploy-gyms/shared-types";
 import type { ScrapedWebsiteData } from "./scrape-docs";
+import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 import { dedupeFaqs } from "./faqs";
 import { extractSocialProfiles } from "./social-links";
 import { isHttpUrl } from "./http-url";
+
+const CSS_ARTIFACT_PATTERN = /^\s*[*.#[@:\w-]+\s*\{/;
+const MAX_NAV_LABEL_LENGTH = 60;
+
+function isCleanNavLink(link: { label: string; href: string }): boolean {
+  const label = link.label.trim();
+  if (!label || label.length > MAX_NAV_LABEL_LENGTH) return false;
+  if (CSS_ARTIFACT_PATTERN.test(label)) return false;
+  if (label.startsWith("<") || label.startsWith("{") || label.startsWith("//")) return false;
+  return true;
+}
+
+function cleanNavLinks(links: { label: string; href: string }[]): { label: string; href: string }[] {
+  return links.filter(isCleanNavLink).map((link) => ({ label: link.label.trim(), href: link.href }));
+}
 
 export interface ScrapeOptions {
   url: string;
@@ -30,6 +46,7 @@ interface ComputedStyleSample {
   fontFamily: string;
   fontSize: string;
   fontWeight: string;
+  textTransform: string;
   borderRadius: string;
   borderTopWidth: string;
   borderRightWidth: string;
@@ -48,6 +65,42 @@ interface ColorCandidate {
   contexts: string[];
 }
 
+interface ScrapedSection {
+  id: string;
+  type: string;
+  heading?: string;
+  body?: string;
+  intent?: string;
+  cta?: { label: string; href: string };
+  visualEvidence: SectionVisualEvidenceRow;
+  items?: { title?: string; description?: string; imageUrl?: string }[];
+  images?: { url: string; alt?: string; context?: string }[];
+  styleHint?: {
+    theme?: "dark" | "light";
+    centered?: boolean;
+    columns?: number;
+    imagePosition?: "left" | "right" | "background" | "none";
+    sourceOrder?: number;
+    align?: "left" | "center" | "right";
+    eyebrow?: string;
+    uppercase?: boolean;
+    ctaStyle?: "primary" | "dark" | "outline";
+    heroTextColor?: string;
+    heroCtaBg?: string;
+    heroCtaColor?: string;
+    heroCtaRadius?: string;
+    heroCtaHasIcon?: boolean;
+    heroCtaUppercase?: boolean;
+    heroCtaBold?: boolean;
+    heroCtaTransform?: string;
+    heroCtaPadding?: string;
+    subtitleUppercase?: boolean;
+    eyebrowBg?: string;
+    eyebrowColor?: string;
+    eyebrowPadding?: string;
+  };
+}
+
 interface BrowserExtractionResult {
   samples: ComputedStyleSample[];
   extraColors: { hex: string; context: string; area: number }[];
@@ -58,6 +111,16 @@ interface BrowserExtractionResult {
   businessName: string;
   tagline: string;
   images: ScrapedImage[];
+  headerCtaStyle?: {
+    bg?: string;
+    color?: string;
+    radius?: string;
+    padding?: string;
+    uppercase?: boolean;
+    bold?: boolean;
+    light?: boolean;
+    fontSize?: string;
+  };
   faqs: { question: string; answer: string }[];
   offerings: { name?: string; description?: string; price?: string }[];
   locations: { name?: string; address?: string; hours?: string }[];
@@ -66,15 +129,15 @@ interface BrowserExtractionResult {
   grids: { columns: number; element: string; className: string }[];
   distinctiveComponents: { type: string; label: string }[];
   externalLinks: string[];
+  sections: ScrapedSection[];
 }
 
 // Browser-side extraction as a string so esbuild/tsx function-name transforms
 // (e.g. __name) do not leak into the browser context.
-/* eslint-disable no-useless-escape */
-const BROWSER_EXTRACTION_SCRIPT = `
+const BROWSER_EXTRACTION_SCRIPT = String.raw`
 (function() {
   function colorToHex(color) {
-    const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
     if (!match) return null;
     const r = parseInt(match[1], 10);
     const g = parseInt(match[2], 10);
@@ -86,7 +149,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
 
   function colorsFromGradient(image) {
     const colors = [];
-    const rgbMatches = image.match(/rgba?\\([^)]+\\)/g) || [];
+    const rgbMatches = image.match(/rgba?\([^)]+\)/g) || [];
     for (const m of rgbMatches) {
       const hex = colorToHex(m);
       if (hex) colors.push(hex);
@@ -100,7 +163,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
   }
 
   const selectors = [
-    "body", "header", "main", "section", "footer",
+    "body", "body > div", "header", "main", "section", "footer",
     "h1", "h2", "h3", "h4", "p", "a", "button", "nav", "input",
     ".btn", "[class*='button']", "[class*='cta']", "[class*='accent']",
     "[class*='hero']", "[class*='card']", "svg"
@@ -113,10 +176,15 @@ const BROWSER_EXTRACTION_SCRIPT = `
     const rect = el.getBoundingClientRect();
     const area = rect.width * rect.height;
     const className = (el.className || "").toString();
+    const lowerClass = className.toLowerCase();
+    // Skip absolute overlays/backdrops; their dark color often masquerades as the page background.
+    if (lowerClass.includes("overlay") || lowerClass.includes("backdrop")) {
+      return null;
+    }
     const isButton =
       el.tagName === "BUTTON" ||
-      className.toLowerCase().includes("button") ||
-      className.toLowerCase().includes("btn");
+      lowerClass.includes("button") ||
+      lowerClass.includes("btn");
 
     for (const pseudo of ["::before", "::after"]) {
       const pseudoStyle = window.getComputedStyle(el, pseudo);
@@ -144,6 +212,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
       fontFamily: style.fontFamily,
       fontSize: style.fontSize,
       fontWeight: style.fontWeight,
+      textTransform: style.textTransform,
       borderRadius: style.borderRadius,
       borderTopWidth: style.borderTopWidth,
       borderRightWidth: style.borderRightWidth,
@@ -155,7 +224,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
       maxWidth: style.maxWidth,
       boxShadow: style.boxShadow,
     };
-  });
+  }).filter(Boolean);
 
   // Capture CSS custom properties that resolve to colors.
   const rootStyle = window.getComputedStyle(document.documentElement);
@@ -239,7 +308,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
   const navLinks = navAnchors
     .map(function(el) {
       return {
-        label: ((el.textContent || "").trim().split("\\n")[0] || "").trim(),
+        label: ((el.textContent || "").trim().split("\n")[0] || "").trim(),
         href: el.href || "#",
       };
     })
@@ -250,6 +319,59 @@ const BROWSER_EXTRACTION_SCRIPT = `
       return true;
     })
     .slice(0, 8);
+
+  function detectHeaderCtaStyle() {
+    const header = document.querySelector("header, [role='banner'], .navbar, .nav");
+    if (!header) return undefined;
+    const candidates = Array.from(header.querySelectorAll("a[class*='cta'], a[class*='button'], a[class*='btn'], button"));
+    const visible = candidates.filter(function(el) {
+      const rect = el.getBoundingClientRect();
+      const s = window.getComputedStyle(el);
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      if (s.display === "none" || s.visibility === "hidden") return false;
+      const opacity = parseFloat(s.opacity || "1");
+      if (isNaN(opacity) || opacity < 0.05) return false;
+      return true;
+    });
+    function isOnTop(el) {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const top = document.elementFromPoint(x, y);
+      return top === el || el.contains(top);
+    }
+    const onTop = visible.filter(isOnTop);
+    const pool = onTop.length > 0 ? onTop : visible;
+    const ordered = pool.slice().sort(function(a, b) {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return br.width * br.height - ar.width * ar.height;
+    });
+    const cta = ordered[0];
+    if (!cta) return undefined;
+    const textEl = cta.querySelector("p, span, .text, [class*='text']") || cta;
+    const textStyle = window.getComputedStyle(textEl);
+    const btnStyle = window.getComputedStyle(cta);
+    const bgEl = Array.from(cta.querySelectorAll("*")).find(function(child) {
+      const bg = window.getComputedStyle(child).backgroundColor;
+      return bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+    });
+    const bgStyle = bgEl ? window.getComputedStyle(bgEl) : btnStyle;
+    const transform = (textStyle.textTransform || "").toLowerCase();
+    const weight = parseInt(textStyle.fontWeight || "0", 10);
+    return {
+      bg: rgbToHex(bgStyle.backgroundColor),
+      color: rgbToHex(textStyle.color),
+      radius: bgStyle.borderRadius,
+      padding: btnStyle.padding,
+      fontSize: textStyle.fontSize,
+      uppercase: transform === "uppercase",
+      bold: weight >= 700,
+      light: weight < 400 && weight > 0,
+    };
+  }
+
+  const headerCtaStyle = detectHeaderCtaStyle();
 
   function titleCase(words) {
     return words.map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }).join(" ");
@@ -286,10 +408,24 @@ const BROWSER_EXTRACTION_SCRIPT = `
     // Bonus if the candidate appears in visible page text (headings, paragraphs)
     if (allText.includes(lower)) score += 2;
 
+    // Strong bonus when the candidate words match the domain/hostname root.
+    const domainRoot = document.location.hostname.replace(/^www\./, "").split(".")[0] || "";
+    const domainWords = domainRoot.toLowerCase().split(/[-_\s]/).filter(function(w) { return w.length > 2; });
+    const candidateWords = lower.split(/\s+/).filter(function(w) { return w.length > 2; });
+    const domainMatches = candidateWords.filter(function(w) { return domainWords.indexOf(w) !== -1; }).length;
+    score += domainMatches * 3;
+
     // Penalty for vague location-only names like "Torrance Gym"
     const genericSuffixes = ["gym","fitness","training","studio","club","center","health","wellness","sports"];
     const lastWord = lower.split(/\s+/).pop() || "";
     if (genericSuffixes.includes(lastWord) && unique.size <= 2) score -= 1;
+
+    // Penalty when the candidate contains UI-descriptive phrases that appear in
+    // decorative image alt attributes (e.g. "main navigation logo", "header logo",
+    // "company logo", "site logo"). These indicate the alt text describes the
+    // image element itself rather than the brand name.
+    if (/\b(navigation|header|footer|company|main|primary)\s+(logo|icon)\b/.test(lower)) score -= 5;
+    if (/\b(logo|icon)\b/.test(lower) && source === "logo") score -= 2;
 
     // Slight penalty for very long names
     if (name.length > 60) score -= 1;
@@ -315,23 +451,98 @@ const BROWSER_EXTRACTION_SCRIPT = `
     return raw.replace(/\s*[-|—].*$/g, "").trim();
   }
 
+  function normalizeAddress(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function getSchemaTypes(item) {
+    const t = item["@type"];
+    if (!t) return [];
+    return Array.isArray(t) ? t.map(String) : [String(t)];
+  }
+
+  function isOfferLike(types) {
+    return types.some(function(t) { return t === "Offer" || t === "Service"; });
+  }
+
+  function isOfferContainer(types) {
+    return types.some(function(t) { return t === "OfferCatalog" || t === "AggregateOffer"; });
+  }
+
+  function extractTextOffers(item, target) {
+    if (!item || typeof item !== "object") return;
+    const types = getSchemaTypes(item);
+    if (isOfferContainer(types)) {
+      // Containers only group leaf offers; recurse without collecting the container itself.
+      for (const key of ["itemListElement", "offers", "hasOfferCatalog", "makesOffer"]) {
+        const child = item[key];
+        if (!child) continue;
+        if (Array.isArray(child)) {
+          for (const c of child) extractTextOffers(c, target);
+        } else {
+          extractTextOffers(child, target);
+        }
+      }
+      return;
+    }
+    if (isOfferLike(types)) {
+      let name = "";
+      let description = "";
+      if (item.itemOffered && typeof item.itemOffered === "object") {
+        name = item.itemOffered.name || "";
+        description = item.itemOffered.description || "";
+      }
+      if (!name) name = item.name || "";
+      if (!description) description = item.description || "";
+      if (name && typeof name === "string") {
+        target.push({ name: name.trim(), description: (description || "").trim().slice(0, 400) });
+      }
+    }
+    // Recurse into common nested keys in case items are wrapped.
+    for (const key of ["itemOffered", "itemListElement", "hasOfferCatalog", "offers", "makesOffer"]) {
+      const child = item[key];
+      if (!child) continue;
+      if (Array.isArray(child)) {
+        for (const c of child) extractTextOffers(c, target);
+      } else {
+        extractTextOffers(child, target);
+      }
+    }
+  }
+
   const rawTitle = document.title;
   const title = cleanTitle(rawTitle);
 
   const nameCandidates = [];
+  const jsonldAddresses = [];
+  const jsonldOfferings = [];
 
   // 1. Schema.org structured data is the canonical source for business identity.
   document.querySelectorAll('script[type="application/ld+json"]').forEach(function(el) {
     try {
-      const data = JSON.parse(el.textContent || "");
+      const raw = (el.textContent || "").replace(/[\n\r\t]/g, " ");
+      const data = JSON.parse(raw);
       const items = Array.isArray(data) ? data : [data];
       for (const item of items) {
+        extractTextOffers(item, jsonldOfferings);
         const type = (item["@type"] || "").toLowerCase();
-        if (type.includes("organization") || type.includes("localbusiness") || type.includes("website") || type.includes("place")) {
+        if (type.includes("organization") || type.includes("localbusiness") || type.includes("website") || type.includes("place") || type.includes("gym") || type.includes("exercise") || type.includes("business")) {
           if (item.name && typeof item.name === "string") nameCandidates.push({ name: item.name.trim(), source: "jsonld" });
           // Some gyms nest the business under "mainEntityOfPage" or a parent org
           if (item.parentOrganization?.name && typeof item.parentOrganization.name === "string") {
             nameCandidates.push({ name: item.parentOrganization.name.trim(), source: "jsonld" });
+          }
+          // Extract authoritative address from structured data when available.
+          const rawAddress = item.address;
+          if (rawAddress && typeof rawAddress === "object") {
+            const street = (rawAddress.streetAddress || "").trim();
+            const city = (rawAddress.addressLocality || "").trim();
+            const state = (rawAddress.addressRegion || "").trim();
+            const zip = (rawAddress.postalCode || "").trim();
+            const country = (rawAddress.addressCountry || "").trim();
+            const cityState = [city, state].filter(Boolean).join(", ");
+            const addressLine = [street, cityState, zip, country].filter(Boolean).join(" ");
+            if (addressLine.length >= 10) jsonldAddresses.push(addressLine);
           }
         }
       }
@@ -383,19 +594,125 @@ const BROWSER_EXTRACTION_SCRIPT = `
   const ogDescription = document.querySelector('meta[property="og:description"]')?.getAttribute("content") || "";
   const tagline = metaDescription || ogDescription || paragraphs[0] || "";
 
-  const images = Array.from(document.querySelectorAll("img"))
-    .filter(function(img) {
-      const rect = img.getBoundingClientRect();
-      return rect.width >= 100 && rect.height >= 100;
+  function isInsideHomeLink(img) {
+    let node = img.parentElement;
+    while (node && node !== document.body) {
+      if (node.tagName === "A") {
+        const href = (node.getAttribute("href") || "").trim();
+        if (href === "/" || href === "./") return true;
+        try {
+          const url = new URL(href, window.location.href);
+          if (url.pathname === "/" && url.hostname === window.location.hostname) return true;
+        } catch (e) {}
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  function scoreLogoCandidate(img, rect, src) {
+    let score = 0;
+    const alt = (img.alt || "").toLowerCase();
+    const className = (img.className || "").toString().toLowerCase();
+    const parent = img.parentElement;
+    const parentClass = parent ? (parent.className || "").toString().toLowerCase() : "";
+    const fileName = (src || "").split("?")[0].split("/").pop().toLowerCase();
+
+    if (isInsideHomeLink(img)) score += 100;
+    if (className.includes("logo") || parentClass.includes("logo")) score += 60;
+    if (alt.includes("logo")) score += 50;
+    if (className.includes("brand") || parentClass.includes("brand")) score += 40;
+
+    // Prefer the primary logo file and avoid secondary/slogan variants.
+    if (fileName.includes("primary")) score += 50;
+    if (fileName.includes("logo")) score += 20;
+    if (fileName.includes("secondary")) score -= 100;
+    if (fileName.includes("logosecondary")) score -= 150;
+
+    if (rect.width >= 60 && rect.width <= 400 && rect.height >= 20 && rect.height <= 200) score += 20;
+    if (rect.top < 150) score += 20;
+
+    // A real logo is small; reject large photos even if their filename/class hints at logo.
+    if (rect.width > 500 || rect.height > 300 || rect.width * rect.height > 120000) {
+      score -= 300;
+    }
+
+    const ratio = rect.width / rect.height;
+    if (ratio > 4 || ratio < 0.25) score -= 40;
+
+    if (alt.includes("icon") || alt.includes("arrow") || alt.includes("menu") || alt.includes("hamburger") || alt.includes("close")) score -= 80;
+    if (className.includes("icon") || className.includes("avatar")) score -= 50;
+    if (className.includes("invisible") || img.style.display === "none" || img.style.visibility === "hidden" || rect.width === 0 || rect.height === 0) score -= 100;
+
+    return score;
+  }
+
+  const imageCandidates = Array.from(document.querySelectorAll("img")).map(function(img) {
+    const rect = img.getBoundingClientRect();
+    return { img: img, rect: rect, src: img.currentSrc || img.src, alt: img.alt || "" };
+  });
+
+  let bestLogo = null;
+  let bestLogoScore = -Infinity;
+  for (const candidate of imageCandidates) {
+    if (candidate.rect.width < 60 || candidate.rect.height < 20) continue;
+    const score = scoreLogoCandidate(candidate.img, candidate.rect, candidate.src);
+    if (score > bestLogoScore) {
+      bestLogoScore = score;
+      bestLogo = candidate;
+    }
+  }
+  const logoSrc = bestLogo && bestLogoScore > 0 ? bestLogo.src : null;
+
+  function extractBgUrl(style) {
+    const image = style.backgroundImage;
+    if (!image || image === "none") return null;
+    // Match quoted or unquoted url(...) values. Quoted values may contain
+    // parentheses (e.g. "Frame%20(1).svg"); unquoted values stop at the first
+    // closing paren as required by valid CSS.
+    const m = image.match(/url\(\s*(["']?)(.*?)\1\s*\)/);
+    return m ? m[2] : null;
+  }
+
+  const seenImageSrcs = new Set();
+  const bgCandidates = [];
+  for (const el of Array.from(document.querySelectorAll("section, div, article, header, footer"))) {
+    const style = window.getComputedStyle(el);
+    const bgUrl = extractBgUrl(style);
+    if (!bgUrl || bgUrl.indexOf("data:") === 0) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 100 || rect.height < 100) continue;
+    const isHero = rect.width >= window.innerWidth * 0.8 && rect.top < window.innerHeight * 0.6;
+    bgCandidates.push({ img: null, rect: rect, src: bgUrl, alt: "", context: isHero ? "hero" : "background" });
+  }
+
+  const isSvgUrl = function(url) { return /\.svg(?:\?|$)/i.test(url || ""); };
+
+  const images = imageCandidates
+    .concat(bgCandidates)
+    .filter(function(item) {
+      const rect = item.rect;
+      const isLogo = logoSrc && item.src === logoSrc;
+      // Always keep SVGs/icons regardless of rendered size: they are vector and
+      // are frequently used as small section icons (20x20) that would otherwise
+      // be discarded. Photos must still meet the minimum size threshold.
+      const isVectorIcon = isSvgUrl(item.src);
+      return isLogo || isVectorIcon || (rect.width >= 100 && rect.height >= 100);
     })
-    .slice(0, 12)
-    .map(function(img) {
-      const rect = img.getBoundingClientRect();
-      const src = img.currentSrc || img.src;
-      const alt = img.alt || "";
-      let context = "other";
-      if (rect.width >= window.innerWidth * 0.8 && rect.top < window.innerHeight * 0.6) context = "hero";
-      else if (alt.toLowerCase().includes("logo")) context = "logo";
+    .filter(function(item) {
+      if (seenImageSrcs.has(item.src)) return false;
+      seenImageSrcs.add(item.src);
+      return true;
+    })
+    .slice(0, 40)
+    .map(function(item) {
+      const rect = item.rect;
+      const src = item.src;
+      const alt = item.alt || "";
+      let context = item.context || "other";
+      if (logoSrc && src === logoSrc) context = "logo";
+      else if (isSvgUrl(src)) context = "icon";
+      else if (rect.width >= window.innerWidth * 0.8 && rect.top < window.innerHeight * 0.6) context = "hero";
       else if (alt.toLowerCase().includes("team") || alt.toLowerCase().includes("coach")) context = "team";
       else if (alt.toLowerCase().includes("testimonial")) context = "testimonial";
       else if (rect.width / rect.height > 2.5 || rect.height / rect.width > 2.5) context = "background";
@@ -447,7 +764,7 @@ const BROWSER_EXTRACTION_SCRIPT = `
     }
   }
 
-  const offerings = [];
+  let offerings = [];
   function isInsideTeamSection(el) {
     let node = el;
     while (node && node !== document.body) {
@@ -497,9 +814,31 @@ const BROWSER_EXTRACTION_SCRIPT = `
     }
   }
 
+  // Prefer JSON-LD offer catalog (authoritative) over heuristically scraped cards.
+  if (jsonldOfferings.length > 0) {
+    const domDescriptions = {};
+    for (const o of offerings) {
+      if (o.name) domDescriptions[o.name] = o.description;
+    }
+    const seen = new Set();
+    offerings = [];
+    for (const o of jsonldOfferings) {
+      if (!o.name || seen.has(o.name)) continue;
+      seen.add(o.name);
+      offerings.push({
+        name: o.name,
+        description: o.description || domDescriptions[o.name] || "",
+        price: "",
+      });
+    }
+  }
+
   const locations = [];
-  const addressPattern = /\d+\s+[^\\n]{3,}\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pl|Place|Ct|Court)\b/i;
+  const addressPattern = /\d+\s+[^\n]{3,}\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pl|Place|Ct|Court)\b/i;
+  // Strict city/state/zip pattern (e.g. "Overland Park, KS 66212").
   const cityStatePattern = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s*[A-Za-z\s]+\d{5}(-\d{4})?\b/;
+  // Loose city/state pattern for text that only mentions city and state without a zip.
+  const looseCityStatePattern = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s*[A-Z][a-z]+\b/;
   const seenAddresses = new Set();
 
   function isInsideNavOrFooter(el) {
@@ -514,13 +853,13 @@ const BROWSER_EXTRACTION_SCRIPT = `
   }
 
   function recordLocation(text) {
-    const cleaned = text.replace(/\\s+/g, " ").replace(/\\n+/g, ", ").trim();
-    if (!cleaned || seenAddresses.has(cleaned)) return;
-    if (cleaned.length < 15 || cleaned.length > 300) return;
-    if (addressPattern.test(cleaned) || cityStatePattern.test(cleaned)) {
-      seenAddresses.add(cleaned);
-      locations.push({ address: cleaned });
-    }
+    const cleaned = text.replace(/\s+/g, " ").replace(/\n+/g, ", ").trim();
+    if (!cleaned || cleaned.length < 15 || cleaned.length > 300) return;
+    if (!addressPattern.test(cleaned) && !cityStatePattern.test(cleaned) && !looseCityStatePattern.test(cleaned)) return;
+    const key = normalizeAddress(cleaned);
+    if (seenAddresses.has(key)) return;
+    seenAddresses.add(key);
+    locations.push({ address: cleaned });
   }
 
   // First pass: elements that explicitly claim to be addresses.
@@ -579,6 +918,25 @@ const BROWSER_EXTRACTION_SCRIPT = `
     externalLinks.push(href);
   }
 
+  // Prefer structured-data addresses over plain-text regex matches.
+  const finalLocations = [];
+  const finalLocationKeys = new Set();
+  function addFinalLocation(address) {
+    const key = normalizeAddress(address);
+    if (!key || finalLocationKeys.has(key)) return;
+    finalLocationKeys.add(key);
+    finalLocations.push({ address: address });
+  }
+  for (const address of jsonldAddresses) {
+    addFinalLocation(address);
+  }
+  for (const loc of locations) {
+    addFinalLocation(loc.address);
+  }
+
+  // Generic section extraction: walk top-level page sections and infer type.
+  const sections = extractGenericSections();
+
   return {
     samples: samples,
     extraColors: extraColors,
@@ -591,16 +949,767 @@ const BROWSER_EXTRACTION_SCRIPT = `
     images: images,
     faqs: faqs,
     offerings: offerings,
-    locations: locations,
+    locations: finalLocations,
     team: team,
     testimonials: testimonials,
     grids: grids,
     distinctiveComponents: distinctiveComponents,
     externalLinks: externalLinks,
+    sections: sections,
+    headerCtaStyle: headerCtaStyle,
   };
+
+  function isContainer(el) {
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    return tag === "section" || tag === "article" || tag === "main" || tag === "div";
+  }
+
+  function isLikelySectionRoot(el) {
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (tag === "section" || tag === "article") return true;
+    const cls = (el.className || "").toString().toLowerCase();
+    const id = String(el.id || "").toLowerCase();
+    // Some builders (Webflow) wrap the hero in a <header> tag. Treat it as a
+    // section root only when it carries the primary heading.
+    if (tag === "header" && (el.querySelector("h1") || /hero/i.test(cls) || /hero/i.test(id))) return true;
+    // Explicit, strong section-type hints. Avoid generic wrapper names like
+    // "wrapper", "container", "layout", "row", "content" that often group real
+    // sections and cause us to miss them.
+    const strongHints = ["section", "band", "hero", "feature", "about", "offer", "step", "process", "testimonial", "cta", "contact", "location", "faq", "review", "gallery"];
+    if (strongHints.some((h) => cls.includes(h) || id.includes(h))) return true;
+    return false;
+  }
+
+  function getDirectText(el) {
+    let text = "";
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) text += node.textContent || "";
+      else if (node.nodeType === Node.ELEMENT_NODE && ["P", "SPAN", "STRONG", "EM", "BR"].indexOf(node.tagName) !== -1) {
+        text += node.textContent || "";
+      }
+    }
+    return text.replace(/\s+/g, " ").trim();
+  }
+
+  function findHeading(el) {
+    const h = el.querySelector("h1, h2, h3");
+    return h ? (h.textContent || "").trim() : "";
+  }
+
+  function findBody(el, heading) {
+    const ps = Array.from(el.querySelectorAll("p")).filter(function(p) {
+      const t = (p.textContent || "").trim();
+      return t.length > 20 && t !== heading;
+    });
+    return ps.map(function(p) { return (p.textContent || "").trim(); }).join("\n\n").slice(0, 600);
+  }
+
+  function findButton(el) {
+    const b = el.querySelector("a[class*='button'], a[class*='btn'], button, a[class*='cta']");
+    return b ? { label: (b.textContent || "").trim(), href: b.getAttribute("href") || "#" } : null;
+  }
+
+  function findHeroButton(el) {
+    // The hero CTA should be scoped to the hero section, never a header/nav CTA.
+    // Look for a button/cta class first; fall back to the first link that looks
+    // like a CTA if no explicit class is found.
+    let b = el.querySelector("a[class*='cta'], a[class*='button'], a[class*='btn']");
+    if (!b) {
+      const links = Array.from(el.querySelectorAll("a")).filter(function(a) {
+        const href = a.getAttribute("href") || "";
+        const text = (a.textContent || "").trim();
+        return text.length > 0 && text.length < 60 && !href.startsWith("tel:") && !href.startsWith("mailto:");
+      });
+      b = links[0];
+    }
+    return b ? { label: (b.textContent || "").trim(), href: b.getAttribute("href") || "#" } : null;
+  }
+
+  function findSectionImages(el) {
+    const out = [];
+    const seen = new Set();
+    for (const img of Array.from(el.querySelectorAll("img"))) {
+      const src = img.currentSrc || img.src;
+      if (!src || seen.has(src)) continue;
+      const rect = img.getBoundingClientRect();
+      const isSvg = /\.svg([?#].*)?$/i.test(src);
+      // Skip tiny decorative bitmaps inside sections; keep small SVG icons and
+      // any image that is a clear background hero.
+      if (rect.width < 40 && rect.height < 40 && !isSvg) continue;
+      seen.add(src);
+      out.push({ url: src, alt: img.alt || "", context: isSvg ? "icon" : "section" });
+    }
+    for (const node of Array.from(el.querySelectorAll("*"))) {
+      const style = window.getComputedStyle(node);
+      const bg = extractBgUrl(style);
+      if (bg && !seen.has(bg) && bg.indexOf("data:") !== 0) {
+        seen.add(bg);
+        out.push({ url: bg, alt: "", context: "background" });
+      }
+    }
+    return out.slice(0, 6);
+  }
+
+  function findFAQItems(el) {
+    const out = [];
+    const seen = new Set();
+    const toggles = el.querySelectorAll("details, [class*='faq'], [class*='accordion']");
+    for (const toggle of Array.from(toggles)) {
+      const questionEl = toggle.tagName === "DETAILS"
+        ? toggle.querySelector(":scope > summary")
+        : toggle.querySelector("summary, [class*='question'], h3, h4, button");
+      const question = (questionEl?.textContent || "").trim();
+      let answer = "";
+      if (toggle.tagName === "DETAILS") {
+        const answerContainer = toggle.querySelector(":scope > :not(summary)");
+        answer = (answerContainer?.textContent || "").trim();
+      } else {
+        const answerEl = toggle.querySelector("[class*='answer'] p, p, div");
+        answer = (answerEl?.textContent || "").trim();
+      }
+      if (!question || !answer || answer === question) continue;
+      if (seen.has(question)) continue;
+      seen.add(question);
+      out.push({ title: question, description: answer.slice(0, 500) });
+    }
+    return out.slice(0, 12);
+  }
+
+  function inferSectionType(el, heading, body, imgs, hasButton) {
+    const cls = (el.className || "").toString().toLowerCase();
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    const text = (el.textContent || "").toLowerCase();
+
+    // Hero: first section, large heading, CTA, full-bleed background.
+    const rect = el.getBoundingClientRect();
+    const isFirst = !el.previousElementSibling || rect.top < window.innerHeight * 0.5;
+    const h1 = el.querySelector("h1");
+    if (isFirst && h1 && hasButton && (imgs.some(function(i) { return i.context === "background"; }) || rect.height >= window.innerHeight * 0.5)) {
+      return "Hero";
+    }
+
+    // FAQ
+    if (cls.includes("faq") || cls.includes("accordion") || el.querySelector("details")) return "SiteFAQ";
+
+    // Reviews
+    if (cls.includes("testimonial") || cls.includes("review") || el.querySelector("blockquote")) return "SiteReviews";
+
+    // Location: class hints or address patterns in heading/body.
+    const locationBody = (heading || "") + "\n" + (body || "");
+    if (cls.includes("location") || cls.includes("visit") || cls.includes("address") || cityStatePattern.test(locationBody) || looseCityStatePattern.test(locationBody) || addressPattern.test(locationBody)) return "SiteLocation";
+
+    // CTA: standalone heading + button, little body. Check before steps so a
+    // punchy CTA heading like "The hardest step is always the first step."
+    // doesn't get classified as a steps section.
+    const ctaHeadingPattern = /\b(join|start|get|claim|book|schedule|free|today|now)\b/i;
+    if (hasButton && (!body || body.length < 200) && (!imgs.length || imgs.length <= 1)) {
+      if (!heading || heading.length < 120 || ctaHeadingPattern.test(heading)) return "SiteCTA";
+    }
+
+    // Steps: explicit class/text hints, heading keywords, or numbered/sequential cards.
+    const stepHeadingPattern = /\b(getting started|how it works|our process|the process|step[s]?\b|easy|start today|join today|become a member)\b/i;
+    if (cls.includes("step") || cls.includes("process") || /step\s*\d/i.test(text) || stepHeadingPattern.test(heading || "")) {
+      return "SiteSteps";
+    }
+    const cards = findCards(el, heading);
+    const isSequentialCards =
+      cards.length >= 3 &&
+      cards.length <= 5 &&
+      cards.filter((c) => /^\s*(\d+|one|two|three|four|five|first|second|third)/i.test(c.title || "")).length >= cards.length * 0.5;
+    if (isSequentialCards) return "SiteSteps";
+
+    // Card group: multiple titled items (reuse cards already inspected for steps).
+    if (cards.length >= 2) return "SiteCardGroup";
+
+    // Image gallery: mostly images.
+    if (imgs.length >= 4 && (!heading || body.length < 100)) return "SiteImageGallery";
+
+    // Default to text.
+    return "Text";
+  }
+
+  function getDepth(ancestor, descendant) {
+    let depth = 0;
+    let node = descendant;
+    while (node && node !== ancestor) {
+      node = node.parentElement;
+      depth++;
+    }
+    return depth;
+  }
+
+  function scoreCardContainer(container) {
+    const children = Array.from(container.children).filter(function(c) {
+      const rect = c.getBoundingClientRect();
+      return rect.width > 60 && rect.height > 40;
+    });
+    let score = 0;
+    for (const child of children) {
+      const hasHeading = child.querySelector("h2, h3, h4, h5, .title, [class*='title']") !== null;
+      const hasDesc = child.querySelector("p, [class*='description']") !== null;
+      const hasImg = child.querySelector("img") !== null;
+      if (hasHeading) score += 2;
+      if (hasDesc) score += 1;
+      if (hasImg) score += 1;
+    }
+    return score;
+  }
+
+  function svgToDataUrl(svg) {
+    try {
+      const serializer = new XMLSerializer();
+      let str = serializer.serializeToString(svg);
+      if (!str.includes("xmlns=")) str = str.replace("<svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"");
+      return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(str)));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function findCardIcon(child) {
+    const svg = child.querySelector(".icon-svg svg, .mb-svg svg, svg");
+    if (!svg) return null;
+    const viewBox = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number).filter(function(n) { return !isNaN(n); });
+    const width = viewBox[2] || parseFloat(svg.getAttribute("width")) || 200;
+    if (width > 200) return null;
+    return svgToDataUrl(svg);
+  }
+
+  function extractCardsFromContainer(container, sectionHeading) {
+    const out = [];
+    const seenTitles = new Set();
+    for (const child of Array.from(container.children)) {
+      const rect = child.getBoundingClientRect();
+      if (rect.width < 60 || rect.height < 40) continue;
+      const titleEl = child.querySelector("h2, h3, h4, h5, .title, [class*='title'], [class*='name']");
+      let title = (titleEl?.textContent || "").trim();
+      if (!title) {
+        const strong = child.querySelector("strong, b");
+        title = (strong?.textContent || "").trim();
+      }
+      if (!title || title.length > 100 || seenTitles.has(title)) continue;
+      // The section heading itself sometimes sits inside the same grid as the
+      // cards (e.g. a hero card layout). Skip it so it doesn't become a card.
+      if (sectionHeading && title.toLowerCase() === sectionHeading.toLowerCase()) continue;
+      seenTitles.add(title);
+      const desc = (child.querySelector("p, [class*='description'], [class*='summary']")?.textContent || "").trim().slice(0, 300);
+
+      // Collect every image candidate inside the card (photos, SVG icons, and
+      // CSS background images), then prefer the largest non-SVG photo. This
+      // prevents tiny SVG icons from shadowing full-bleed card photos.
+      const candidates = [];
+      for (const img of Array.from(child.querySelectorAll("img"))) {
+        const src = img.currentSrc || img.src;
+        if (src) candidates.push({ src, rect: img.getBoundingClientRect(), isSvg: isSvgUrl(src) });
+      }
+      const iconSvg = findCardIcon(child);
+      if (iconSvg) candidates.push({ src: iconSvg, rect: { width: 40, height: 40 }, isSvg: true });
+      for (const node of Array.from(child.querySelectorAll("*[style*='background-image']"))) {
+        const bg = extractBgUrl(window.getComputedStyle(node));
+        if (bg && bg.indexOf("data:") !== 0) {
+          candidates.push({ src: bg, rect: node.getBoundingClientRect(), isSvg: isSvgUrl(bg) });
+        }
+      }
+      let best = null;
+      let bestScore = -1;
+      for (const cand of candidates) {
+        const area = cand.rect.width * cand.rect.height;
+        // Strongly prefer photos; among photos prefer larger area. SVGs only win
+        // when there are no photos at all.
+        const score = cand.isSvg ? Math.max(0, area - 1000) : area + 100000;
+        if (score > bestScore) {
+          bestScore = score;
+          best = cand;
+        }
+      }
+      const imgUrl = best ? best.src : undefined;
+
+      out.push({ title: title, description: desc || undefined, imageUrl: imgUrl });
+    }
+    return out;
+  }
+
+  function findCards(el, sectionHeading) {
+    // Cards are rarely direct children of a section; they live inside a grid,
+    // flex row, or list container. Find the highest-scoring layout container
+    // inside the section whose children look like cards.
+    const candidates = Array.from(el.querySelectorAll("*")).filter(function(node) {
+      if (node === el) return false;
+      const style = window.getComputedStyle(node);
+      const display = style.display;
+      const isLayout = display === "grid" || display === "flex" || display === "inline-flex" || node.tagName === "UL" || node.tagName === "OL";
+      if (!isLayout) return false;
+      const kids = Array.from(node.children).filter(function(c) {
+        const rect = c.getBoundingClientRect();
+        return rect.width > 60 && rect.height > 40;
+      });
+      return kids.length >= 2;
+    });
+    candidates.sort(function(a, b) {
+      const scoreA = scoreCardContainer(a);
+      const scoreB = scoreCardContainer(b);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return getDepth(el, a) - getDepth(el, b);
+    });
+    for (const container of candidates) {
+      const cards = extractCardsFromContainer(container, sectionHeading);
+      if (cards.length >= 2) return cards;
+    }
+    return [];
+  }
+
+  function detectTheme(el) {
+    const style = window.getComputedStyle(el);
+    const bg = style.backgroundColor;
+    const hex = colorToHex(bg);
+    if (!hex) return undefined;
+    const clean = hex.replace("#", "");
+    const full = clean.length === 3 ? clean.split("").map(function(c) { return c + c; }).join("") : clean;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum < 0.5 ? "dark" : "light";
+  }
+
+  function detectColumns(el) {
+    const style = window.getComputedStyle(el);
+    if (style.display === "grid") {
+      const tracks = style.gridTemplateColumns.split(" ").filter(function(t) { return t.trim().length > 0; });
+      return tracks.length;
+    }
+    const children = Array.from(el.children).filter(function(c) { return c.getBoundingClientRect().width > 50; });
+    if (children.length < 2) return 1;
+    const tops = children.map(function(c) { return c.getBoundingClientRect().top; });
+    const firstRowTop = tops[0];
+    return tops.filter(function(t) { return Math.abs(t - firstRowTop) < 20; }).length;
+  }
+
+  function detectHeroAlign(el) {
+    const h1 = el.querySelector("h1");
+    if (!h1) return "center";
+    const style = window.getComputedStyle(h1);
+    const textAlign = style.textAlign;
+    if (textAlign === "left" || textAlign === "start") return "left";
+    if (textAlign === "right" || textAlign === "end") return "right";
+    const wrap = el.querySelector(".content, .hero-content, .text-wrapper, [class*='align-left']");
+    if (wrap && String(wrap.className || "").toLowerCase().includes("left")) return "left";
+    return "center";
+  }
+
+  function detectHeroEyebrow(el) {
+    const h1 = el.querySelector("h1");
+    if (!h1) return undefined;
+
+    const candidates = Array.from(el.querySelectorAll("p, span, div, h2, h3, h4")).filter(function(node) {
+      const text = (node.textContent || "").trim();
+      if (!text || text.length < 3 || text.length > 80) return false;
+      if (text === (h1.textContent || "").trim()) return false;
+      return !!(node.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
+    if (candidates.length === 0) return undefined;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const cand of candidates) {
+      const style = window.getComputedStyle(cand);
+      const bg = style.backgroundColor;
+      const hasDistinctBg = bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+      const rect = cand.getBoundingClientRect();
+      const h1Rect = h1.getBoundingClientRect();
+      const distance = h1Rect.top - rect.bottom;
+      const score = (hasDistinctBg ? 1000 : 0) - distance;
+      if (score > bestScore) {
+        bestScore = score;
+        best = cand;
+      }
+    }
+
+    if (!best) return undefined;
+    const bestStyle = window.getComputedStyle(best);
+    const text = (best.textContent || "").trim();
+    if (!text) return undefined;
+
+    return {
+      text,
+      bg: rgbToHex(bestStyle.backgroundColor),
+      color: rgbToHex(bestStyle.color),
+      padding: bestStyle.padding,
+    };
+  }
+
+  function detectHeroUppercase(el) {
+    const h1 = el.querySelector("h1");
+    if (!h1) return true;
+    const style = window.getComputedStyle(h1);
+    const transform = (style.textTransform || "").toLowerCase();
+    if (transform === "uppercase") return true;
+    if (transform === "none" || transform === "capitalize") return false;
+    return true;
+  }
+
+  function detectHeroTextColor(el) {
+    const h1 = el.querySelector("h1");
+    if (!h1) return undefined;
+    const color = rgbToHex(window.getComputedStyle(h1).color);
+    return color || undefined;
+  }
+
+  function detectSubtitleUppercase(el, heading) {
+    const ps = Array.from(el.querySelectorAll("p")).filter(function(p) {
+      const t = (p.textContent || "").trim();
+      return t.length > 20 && t !== heading;
+    });
+    const first = ps[0];
+    if (!first) return undefined;
+    const transform = (window.getComputedStyle(first).textTransform || "").toLowerCase();
+    return transform === "uppercase";
+  }
+
+  function detectHeroCtaColors(el) {
+    const btn = el.querySelector("a[class*='button'], a[class*='btn'], a[class*='cta'], button");
+    if (!btn) return undefined;
+    const style = window.getComputedStyle(btn);
+    const bg = rgbToHex(style.backgroundColor);
+    const color = rgbToHex(style.color);
+    if (!bg || !color) return undefined;
+    return { bg, color };
+  }
+
+  function detectHeroCtaAppearance(el) {
+    const btn = el.querySelector("a[class*='button'], a[class*='btn'], a[class*='cta'], button");
+    if (!btn) return undefined;
+    const textEl = btn.querySelector("p, span, .text, [class*='text']") || btn;
+    const textStyle = window.getComputedStyle(textEl);
+    const btnStyle = window.getComputedStyle(btn);
+    const bgEl = Array.from(btn.querySelectorAll("*")).find(function(child) {
+      const bg = window.getComputedStyle(child).backgroundColor;
+      return bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+    });
+    const bgStyle = bgEl ? window.getComputedStyle(bgEl) : btnStyle;
+    const hasIcon = !!btn.querySelector("svg, img, i, [class*='arrow'], [class*='chevron'], [class*='icon']");
+    const transform = (textStyle.textTransform || "").toLowerCase();
+    const weight = parseInt(textStyle.fontWeight || "0", 10);
+    return {
+      bg: rgbToHex(bgStyle.backgroundColor),
+      color: rgbToHex(textStyle.color),
+      radius: bgStyle.borderRadius,
+      hasIcon,
+      uppercase: transform === "uppercase",
+      bold: weight >= 700,
+      transform: btnStyle.transform,
+      padding: btnStyle.padding,
+    };
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === "rgba(0, 0, 0, 0)") return null;
+    const m = rgb.match(/\d+/g);
+    if (!m || m.length < 3) return null;
+    return "#" + m.slice(0, 3).map(function(x) {
+      const hex = parseInt(x, 10).toString(16);
+      return hex.length === 1 ? "0" + hex : hex;
+    }).join("");
+  }
+
+  function isDarkColor(hex) {
+    if (!hex) return false;
+    const clean = hex.replace("#", "");
+    const full = clean.length === 3 ? clean.split("").map(function(c) { return c + c; }).join("") : clean;
+    const r = parseInt(full.slice(0, 2), 16) || 0;
+    const g = parseInt(full.slice(2, 4), 16) || 0;
+    const b = parseInt(full.slice(4, 6), 16) || 0;
+    return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+  }
+
+  function captureComputedStyleSnapshot(el, selectorName) {
+    if (!el) return null;
+    const style = window.getComputedStyle(el);
+    return {
+      selector: selectorName || el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""),
+      tagName: el.tagName,
+      className: (el.className || "").toString() || undefined,
+      backgroundColor: style.backgroundColor || undefined,
+      color: style.color || undefined,
+      fontFamily: style.fontFamily || undefined,
+      fontSize: style.fontSize || undefined,
+      fontWeight: style.fontWeight || undefined,
+      textTransform: style.textTransform || undefined,
+      textAlign: style.textAlign || undefined,
+      lineHeight: style.lineHeight || undefined,
+      letterSpacing: style.letterSpacing || undefined,
+      borderRadius: style.borderRadius || undefined,
+      padding: style.padding || undefined,
+      margin: style.margin || undefined,
+      boxShadow: style.boxShadow || undefined,
+      display: style.display || undefined,
+      flexDirection: style.flexDirection || undefined,
+      justifyContent: style.justifyContent || undefined,
+      alignItems: style.alignItems || undefined,
+      gap: style.gap || undefined,
+    };
+  }
+
+  function sanitizeOuterHTML(el) {
+    if (!el || !el.outerHTML) return "";
+    let html = el.outerHTML;
+    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+    html = html.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+    html = html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, "");
+    html = html.replace(/\s+on\w+=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+on\w+='[^']*'/gi, "");
+    html = html.replace(/\s+on\w+=[^\s>]+/gi, "");
+    html = html.replace(/\s+srcset=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+srcset='[^']*'/gi, "");
+    html = html.replace(/\s+style=\"[^\"]*\"/gi, "");
+    html = html.replace(/\s+style='[^']*'/gi, "");
+    html = html.replace(/\s+/g, " ").trim();
+    const MAX = 8192;
+    return html.length > MAX ? html.slice(0, MAX) : html;
+  }
+
+  function inferSectionLayoutHint(root, computedStyles, images) {
+    const style = window.getComputedStyle(root);
+    const cls = (root.className || "").toString().toLowerCase();
+    const bgImage = style.backgroundImage;
+    const hasBackgroundImage = !!(bgImage && bgImage !== "none");
+    const hasOverlay = !!root.querySelector("[class*='overlay'], [class*='backdrop']");
+    const bg = style.backgroundColor;
+    const hex = colorToHex(bg);
+    let theme;
+    if (hex) {
+      const clean = hex.replace("#", "");
+      const full = clean.length === 3 ? clean.split("").map(function(c) { return c + c; }).join("") : clean;
+      const r = parseInt(full.slice(0, 2), 16);
+      const g = parseInt(full.slice(2, 4), 16);
+      const b = parseInt(full.slice(4, 6), 16);
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      theme = lum < 0.5 ? "dark" : "light";
+    }
+    const align = detectHeroAlign(root);
+    const columns = detectColumns(root);
+    let imagePosition = "none";
+    if (hasBackgroundImage || images.some(function(i) { return i.context === "background"; })) {
+      imagePosition = "background";
+    } else if (images.length > 0) {
+      imagePosition = "left";
+    }
+    const hasBorder = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some(function(w) { return w && w !== "0px"; });
+    return { theme: theme, centered: align === "center", columns: columns, imagePosition: imagePosition, align: align, hasBackgroundImage: hasBackgroundImage, hasBorder: hasBorder, hasOverlay: hasOverlay };
+  }
+
+  function findFirstCta(root) {
+    return root.querySelector("a[class*='button'], a[class*='btn'], a[class*='cta'], button") || null;
+  }
+
+  // Returns true for global chrome elements (site header nav, site footer, cookie banners,
+  // marquee tickers) that should not be treated as content sections, regardless of their
+  // class names. This prevents site-builder-specific chrome (Shopify header-group,
+  // genesis footer-aside, etc.) from appearing in the section list.
+  function isGlobalChromeEl(el) {
+    const cls = (el.className || "").toString().toLowerCase();
+    const id = String(el.id || "").toLowerCase();
+    // Global nav / header groups (Shopify, Webflow, generic)
+    if (/\b(header-group|nav-group|section-header(?!\w)|site-header|masthead|topbar|top-bar)\b/.test(cls + " " + id)) return true;
+    // Global footer groups
+    if (/\b(footer-group|section-footer(?!\w)|site-footer|footer-section(?!\w))\b/.test(cls + " " + id)) return true;
+    // Cookie / consent banners
+    if (/\b(cookie|consent|gdpr|privacy-banner|cc-window|pc-banner|onetrust)\b/.test(cls + " " + id)) return true;
+    // Marquee / scrolling tickers (decorative, no real content)
+    if (/\b(marquee|ticker|scrolling-banner|scroll-banner|scroller)\b/.test(cls + " " + id)) return true;
+    return false;
+  }
+
+  function extractGenericSections() {
+    const roots = [];
+    const bodyEl = document.body;
+    if (!bodyEl) return [];
+
+    // Collect likely section roots, skipping header/footer/nav.
+    function collectRoots(el) {
+      if (el.tagName === "NAV" || el.tagName === "FOOTER") return;
+      if (el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+      if (isGlobalChromeEl(el)) return; // skip site chrome (nav bars, footers, cookie banners, marquees)
+      if (isLikelySectionRoot(el)) {
+        roots.push(el);
+        return;
+      }
+      for (const child of Array.from(el.children)) {
+        collectRoots(child);
+      }
+    }
+    collectRoots(bodyEl);
+
+    // If no explicit section roots, fall back to top-level direct children of body/main.
+    if (roots.length === 0) {
+      for (const child of Array.from(bodyEl.children)) {
+        if (["HEADER", "NAV", "FOOTER", "SCRIPT", "STYLE"].indexOf(child.tagName) !== -1) continue;
+        roots.push(child);
+      }
+    }
+
+    const out = [];
+    let order = 0;
+    for (const root of roots) {
+      const rect = root.getBoundingClientRect();
+      if (rect.height < 80) continue; // Skip tiny wrappers.
+      const heading = findHeading(root);
+      const body = findBody(root, heading);
+      let button = findButton(root);
+      const images = findSectionImages(root);
+      const type = inferSectionType(root, heading, body, images, !!button);
+      let items;
+      if (type === "SiteCardGroup" || type === "SiteSteps") {
+        const cards = findCards(root, heading);
+        if (cards.length >= 2) items = cards;
+      } else if (type === "SiteFAQ") {
+        const faqs = findFAQItems(root);
+        if (faqs.length >= 1) items = faqs;
+      } else if (type === "Hero") {
+        // Make sure the hero CTA is taken from inside the hero section, not from
+        // a header or nav CTA elsewhere on the page.
+        const heroBtn = findHeroButton(root);
+        if (heroBtn) {
+          button = heroBtn;
+          items = [{ title: heroBtn.label, description: heroBtn.href }];
+        }
+      }
+
+      const ctaAppearance = detectHeroCtaAppearance(root);
+      const eyebrow = detectHeroEyebrow(root);
+      const styleHint = {
+        theme: detectTheme(root),
+        centered: true,
+        columns: detectColumns(root),
+        imagePosition: images.some(function(i) { return i.context === "background"; }) ? "background" : images.length ? "left" : "none",
+        sourceOrder: order,
+        align: detectHeroAlign(root),
+        eyebrow: eyebrow?.text,
+        uppercase: detectHeroUppercase(root),
+        subtitleUppercase: detectSubtitleUppercase(root, heading),
+        ctaStyle: "primary",
+        heroTextColor: detectHeroTextColor(root),
+        heroCtaBg: ctaAppearance?.bg,
+        heroCtaColor: ctaAppearance?.color,
+        heroCtaRadius: ctaAppearance?.radius,
+        heroCtaHasIcon: ctaAppearance?.hasIcon,
+        heroCtaUppercase: ctaAppearance?.uppercase,
+        heroCtaBold: ctaAppearance?.bold,
+        heroCtaTransform: ctaAppearance?.transform,
+        heroCtaPadding: ctaAppearance?.padding,
+        eyebrowBg: eyebrow?.bg,
+        eyebrowColor: eyebrow?.color,
+        eyebrowPadding: eyebrow?.padding,
+      };
+
+      // Build per-section visual evidence for downstream screenshot cropping and doc generation.
+      const pageSlug = "index";
+      const sectionId = "section-" + order;
+      const evidenceId = "section-" + pageSlug + "-" + order;
+      const rootRect = root.getBoundingClientRect();
+      const computedSnapshots = [];
+      computedSnapshots.push(captureComputedStyleSnapshot(root, "root"));
+      const firstHeading = root.querySelector("h1, h2, h3");
+      if (firstHeading) computedSnapshots.push(captureComputedStyleSnapshot(firstHeading, "heading"));
+      const firstParagraph = root.querySelector("p");
+      if (firstParagraph) computedSnapshots.push(captureComputedStyleSnapshot(firstParagraph, "paragraph"));
+      const firstCta = findFirstCta(root);
+      if (firstCta) computedSnapshots.push(captureComputedStyleSnapshot(firstCta, "cta"));
+      let firstVisual = root.querySelector("img");
+      if (!firstVisual) {
+        const bgNode = Array.from(root.querySelectorAll("*")).find(function(n) {
+          const s = window.getComputedStyle(n);
+          return s.backgroundImage && s.backgroundImage !== "none";
+        });
+        firstVisual = bgNode || null;
+      }
+      if (firstVisual) computedSnapshots.push(captureComputedStyleSnapshot(firstVisual, "image"));
+      const layoutHint = inferSectionLayoutHint(root, computedSnapshots, images);
+      const visualEvidence = {
+        evidenceId: evidenceId,
+        pageSlug: pageSlug,
+        sectionId: sectionId,
+        boundingBox: { x: rootRect.x, y: rootRect.y, width: rootRect.width, height: rootRect.height },
+        computedStyles: computedSnapshots.filter(function(s) { return s !== null; }),
+        domSnippet: sanitizeOuterHTML(root),
+        layoutHint: layoutHint,
+      };
+
+      // For location sections, find the most specific address line inside the
+      // section so the renderer can show a real map address instead of prose.
+      let address;
+      if (type === "SiteLocation") {
+        const addressTexts = Array.from(root.querySelectorAll("h1, h2, h3, h4, h5, h6, p, li, address"))
+          .map(function(node) { return (node.textContent || "").trim(); })
+          .filter(function(t) { return t.length >= 15 && t.length <= 200; })
+          .filter(function(t) { return addressPattern.test(t) || cityStatePattern.test(t) || looseCityStatePattern.test(t); });
+        address = addressTexts[0] || heading || body;
+      }
+
+      // Reviews loaded via third-party iframe widgets still need to render.
+      let widgetUrl;
+      if (type === "SiteReviews") {
+        const iframe = root.querySelector("iframe");
+        if (iframe && iframe.src && iframe.src.indexOf("http") === 0) {
+          widgetUrl = iframe.src;
+        }
+      }
+
+      // Drop decorative arrow/checkmark icons from step cards so the numbered
+      // circle remains the only visual marker (matching most source designs).
+      if (type === "SiteSteps" && items) {
+        for (const item of items) {
+          const url = item.imageUrl || "";
+          if (/\.svg([?#].*)?$/i.test(url) && /arrow|down|right|chevron|dropdown|check/i.test(url.toLowerCase())) {
+            item.imageUrl = undefined;
+          }
+        }
+      }
+
+      // FAQ sections extract both a plain-text body and accordion items. Keep
+      // only the intro text as the body so questions don't render twice.
+      let finalBody = body || undefined;
+      if (type === "SiteFAQ" && items && items.length > 0) {
+        const firstQuestion = items[0].title || "";
+        const allText = (root.textContent || "").replace(/\s+/g, " ").trim();
+        const qIndex = allText.indexOf(firstQuestion);
+        if (qIndex > 0) {
+          const intro = allText.slice(0, qIndex).trim();
+          const introWithoutHeading = heading ? intro.replace(new RegExp(heading.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&"), "i"), "").trim() : intro;
+          finalBody = introWithoutHeading || undefined;
+        }
+      }
+
+      const section = {
+        id: sectionId,
+        type: type,
+        heading: heading || undefined,
+        body: finalBody,
+        address: address || undefined,
+        widgetUrl: widgetUrl,
+        intent: type + " section" + (heading ? ": " + heading : ""),
+        cta: button || undefined,
+        visualEvidence: visualEvidence,
+        items: items,
+        images: images.length ? images : undefined,
+        styleHint: styleHint,
+      };
+
+      // CTA section: attach button info as items so renderer can show it.
+      if (type === "SiteCTA" && button) {
+        section.items = [{ title: button.label, description: button.href }];
+      }
+
+      out.push(section);
+      order++;
+    }
+
+    return out.slice(0, 15);
+  }
 })()
 `;
-/* eslint-enable no-useless-escape */
+
 
 async function runBrowserExtraction(page: Page): Promise<BrowserExtractionResult> {
   return page.evaluate(BROWSER_EXTRACTION_SCRIPT as unknown as () => BrowserExtractionResult);
@@ -689,6 +1798,12 @@ function detectSaturation(hex: string): number {
   return hslFromRgb(rgb).s;
 }
 
+const BROWSER_LINK_COLORS = new Set(["#0000EE", "#0000FF", "#551A8B", "#0000CD"]);
+
+function isBrowserLinkColor(hex: string): boolean {
+  return BROWSER_LINK_COLORS.has(hex.toUpperCase());
+}
+
 function roleForColor(hex: string, contexts: string[]): ScrapedColor["role"] {
   const lum = detectLuminance(hex);
   const sat = detectSaturation(hex);
@@ -769,13 +1884,22 @@ function buildColors(samples: ComputedStyleSample[], extraColors: { hex: string;
     return candidates[hex];
   }
 
+  let bodyBackground: string | null = null;
+  let bodyForeground: string | null = null;
+
   for (const s of samples) {
+    const isBodyOrHtml = s.tagName === "BODY" || s.tagName === "HTML";
     const isButton = s.tagName === "BUTTON" || s.className.toLowerCase().includes("button") || s.className.toLowerCase().includes("btn");
     const isLink = s.tagName === "A";
     const isHeading = s.tagName.startsWith("H");
     const bg = toHex(s.backgroundColor);
     const fg = toHex(s.color);
     const bd = toHex(s.borderColor);
+
+    if (isBodyOrHtml) {
+      if (bg) bodyBackground = bg;
+      if (fg) bodyForeground = fg;
+    }
 
     if (bg) {
       const c = getCandidate(bg);
@@ -820,8 +1944,47 @@ function buildColors(samples: ComputedStyleSample[], extraColors: { hex: string;
   const sorted = Object.values(candidates).sort((a, b) => b.count - a.count);
   const unique = uniqueColors(sorted);
 
-  // Assign roles. First pass: pick the strongest saturated color as the primary accent.
+  // Determine the dominant background and foreground from sampled area so dark-mode
+  // sites (black body / white text) get the correct roles instead of assuming
+  // white is always the background and black is always text.
+  const COLOR_MATCH_DISTANCE = 18;
+  function matchesColor(hex: string, target: string | null | undefined): boolean {
+    if (!target) return false;
+    const a = rgbFromHex(hex);
+    const b = rgbFromHex(target);
+    if (!a || !b) return hex.toUpperCase() === target.toUpperCase();
+    return colorDistance(a, b) < COLOR_MATCH_DISTANCE;
+  }
+
+  // Prefer the canonical BODY/HTML background/foreground colors when available.
+  // Fallback to the largest-area sampled colors only if the body itself is
+  // transparent or not captured (e.g. some frameworks use a wrapper div).
+  const dominantBg = bodyBackground
+    ? { area: Number.MAX_SAFE_INTEGER, hex: bodyBackground, lum: detectLuminance(bodyBackground) }
+    : Object.values(candidates).reduce<{ area: number; hex: string; lum: number } | null>((best, c) => {
+        const isBgContext = c.contexts.some((ctx) => ctx.includes("background") || ctx.includes("surface"));
+        if (!isBgContext) return best;
+        if (!best || c.area > best.area) return { area: c.area, hex: c.hex, lum: detectLuminance(c.hex) };
+        return best;
+      }, null);
+
+  const dominantFg = bodyForeground
+    ? { area: Number.MAX_SAFE_INTEGER, hex: bodyForeground, lum: detectLuminance(bodyForeground) }
+    : Object.values(candidates).reduce<{ area: number; hex: string; lum: number } | null>((best, c) => {
+        const isTextContext = c.contexts.some((ctx) => ctx.includes("text"));
+        if (!isTextContext) return best;
+        const lum = detectLuminance(c.hex);
+        const bgLum = dominantBg?.lum ?? 0.5;
+        const contrast = Math.abs(lum - bgLum);
+        if (contrast < 0.25) return best; // skip colors too close to the background
+        if (!best || c.area > best.area) return { area: c.area, hex: c.hex, lum };
+        return best;
+      }, null);
+
+  // Assign roles. First pass: pick the strongest saturated color as the primary accent,
+  // but never promote browser default link colors to brand accents.
   const accentIndex = unique.findIndex((u) => {
+    if (isBrowserLinkColor(u.hex)) return false;
     const c = candidates[u.hex];
     if (!c) return false;
     return c.saturation > 40 && (c.contexts.includes("background") || c.contexts.includes("button background") || c.contexts.includes("link text"));
@@ -834,7 +1997,17 @@ function buildColors(samples: ComputedStyleSample[], extraColors: { hex: string;
   const colors: ScrapedColor[] = [];
   let accentCount = 0;
   for (const u of unique.slice(0, 10)) {
-    const role = roleForColor(u.hex, u.contexts);
+    let role: ScrapedColor["role"];
+    if (matchesColor(u.hex, dominantBg?.hex)) {
+      role = "background";
+    } else if (matchesColor(u.hex, dominantFg?.hex)) {
+      role = "text";
+    } else {
+      role = roleForColor(u.hex, u.contexts);
+      if (role === "accent" && isBrowserLinkColor(u.hex)) {
+        role = detectLuminance(u.hex) > 0.5 ? "textMuted" : "text";
+      }
+    }
     let token = tokenName(role, colors.filter((c) => c.role === role).length);
     // Brand-specific naming: the first saturated accent becomes brand-primary.
     if (role === "accent" && accentCount === 0) {
@@ -944,12 +2117,14 @@ function buildTypeScale(samples: ComputedStyleSample[]): ScrapedTextStyle[] {
           (matches.length || 1);
     const baseToken = pxToTailwind(Math.round(avgPx));
     const { label, notes } = semanticMap[el] ?? { label: el };
+    const hasUppercase = matches.some((s) => (s.textTransform || "").toLowerCase() === "uppercase");
+    const finalNotes = hasUppercase ? `${notes}, text-transform uppercase` : notes;
     scale.push({
       element: label,
       mobile: baseToken,
       tablet: bumpTailwind(baseToken),
       desktop: bumpTailwind(bumpTailwind(baseToken)),
-      notes,
+      notes: finalNotes,
     });
   }
   return scale;
@@ -1137,6 +2312,22 @@ function formatBorderWidth(value: string): string {
   return value;
 }
 
+function dedupeLocations(locations: { name?: string; address?: string; hours?: string }[]): { name?: string; address?: string; hours?: string }[] {
+  const byNumberZip = new Map<string, { name?: string; address?: string; hours?: string }>();
+  for (const loc of locations) {
+    const address = loc.address ?? "";
+    const number = address.match(/\d+/)?.[0] ?? "";
+    const zip = address.match(/\b\d{5}(-\d{4})?\b/)?.[0] ?? "";
+    if (!number || !zip) continue;
+    const key = `${number}|${zip}`;
+    const existing = byNumberZip.get(key);
+    if (!existing || (existing.address ?? "").split(/\s+/).length > address.split(/\s+/).length) {
+      byNumberZip.set(key, loc);
+    }
+  }
+  return Array.from(byNumberZip.values());
+}
+
 export async function scrapeWebsite(browser: Browser, options: ScrapeOptions): Promise<ScrapedWebsiteData> {
   const { url, takeScreenshot = true, screenshotPath, captureHtml = false, maxWaitMs = 5000 } = options;
   if (!isHttpUrl(url)) {
@@ -1172,18 +2363,19 @@ export async function scrapeWebsite(browser: Browser, options: ScrapeOptions): P
       headings: extracted.headings,
       paragraphs: extracted.paragraphs,
       buttons: extracted.buttons,
-      navLinks: extracted.navLinks,
+      navLinks: cleanNavLinks(extracted.navLinks),
       colors,
       fonts,
       fontSizes: typeScale,
       images: extracted.images,
+      sections: extracted.sections,
       layoutRules: [
         { element: "Container", value: "max-width centered layout" },
       ],
       designTokens,
       faqs: dedupeFaqs(extracted.faqs),
       testimonials: extracted.testimonials,
-      locations: extracted.locations,
+      locations: dedupeLocations(extracted.locations),
       team: extracted.team,
       offerings: extracted.offerings,
       contact: {
@@ -1191,6 +2383,7 @@ export async function scrapeWebsite(browser: Browser, options: ScrapeOptions): P
       },
       screenshotUrls,
       rawHtml,
+      headerCtaStyle: extracted.headerCtaStyle,
     };
   } finally {
     await page.close();

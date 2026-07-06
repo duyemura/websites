@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { buildDesignSystem, type DesignSystem } from "../design-system";
+import { buildDesignSystem, sanitizeTokens, type DesignSystem } from "../design-system";
 import type { ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
 
 const tokens: ThemeTokens = {
@@ -61,7 +61,7 @@ describe("design-system", () => {
     expect(designSystem.version).toBe("1");
     expect(designSystem.siteMetadata.framework).toBe("astro");
     expect(designSystem.siteMetadata.mode).toBe("replication");
-    expect(designSystem.global.tokens).toEqual(tokens);
+    expect(designSystem.global.tokens).toEqual(sanitizeTokens(tokens));
     expect(designSystem.global.shell.header).toEqual(header);
     expect(designSystem.global.shell.footer).toEqual(footer);
     expect(designSystem.global.shell.navLinks).toEqual([{ label: "Home", href: "/" }]);
@@ -80,9 +80,60 @@ describe("design-system", () => {
     expect(designSystem.reference.screenshotUrl).toBeNull();
   });
 
+  test("buildDesignSystem defaults brand identity from blueprint tokens", () => {
+    const designSystem = buildDesignSystem({ blueprint });
+
+    expect(designSystem.brand.logo).toEqual({
+      type: "text",
+      value: "Acme Gym",
+    });
+    expect(designSystem.brand.headingStyle).toEqual({ uppercase: false, bold: true });
+  });
+
+  test("buildDesignSystem accepts explicit brand identity and section order", () => {
+    const designSystem = buildDesignSystem({
+      blueprint,
+      brand: {
+        logo: { type: "image", value: "https://cdn.example.com/logo.png", alt: "Acme Gym" },
+        headingStyle: { uppercase: true, bold: true, condensed: true },
+      },
+      sectionOrder: ["Hero", "Text", "SiteCardGroup"],
+    });
+
+    expect(designSystem.brand.logo).toEqual({
+      type: "image",
+      value: "https://cdn.example.com/logo.png",
+      alt: "Acme Gym",
+    });
+    expect(designSystem.brand.headingStyle).toEqual({
+      uppercase: true,
+      bold: true,
+      condensed: true,
+    });
+    expect(designSystem.reference.sectionOrder).toEqual(["Hero", "Text", "SiteCardGroup"]);
+  });
+
+  test("buildDesignSystem preserves provided tokens without mode adjustment", () => {
+    const darkBlueprint = {
+      ...blueprint,
+      design_tokens: {
+        ...tokens,
+        colors: {
+          ...tokens.colors,
+          background: "#111111",
+          foreground: "#ffffff",
+        },
+      },
+    };
+    const designSystem = buildDesignSystem({ blueprint: darkBlueprint });
+    expect(designSystem.global.tokens.colors.background).toBe("#111111");
+    expect(designSystem.global.tokens.colors.foreground).toBe("#ffffff");
+  });
+
   test("DesignSystem type accepts required shape", () => {
     const ds: DesignSystem = buildDesignSystem({ blueprint });
     expect(ds.siteMetadata.targetUrl).toBe("https://example.com");
     expect(ds.siteMetadata.generatedAt).toBe("2026-07-01T00:00:00.000Z");
+    expect(ds.brand.headingStyle).toBeDefined();
   });
 });

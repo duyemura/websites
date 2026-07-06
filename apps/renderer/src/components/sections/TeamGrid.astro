@@ -1,0 +1,21 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import type { TeamMember } from "../../types/gym-content";
+const { team } = Astro.props as { team: TeamMember[] };
+---
+<section class="py-16">
+  <Container>
+    <SectionHeading title="Our coaching team" />
+    <div class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-4">
+      {team.map((m) => (
+        <div class="text-center">
+          <img src={m.photoUrl} alt={m.name} width="400" height="400" loading="lazy" class="aspect-square w-full rounded-xl object-cover" />
+          <h3 class="mt-3 font-heading font-semibold text-primary">{m.name}</h3>
+          <p class="text-sm text-secondary">{m.title}</p>
+          {m.bio && <p class="mt-1 text-sm text-secondary">{m.bio}</p>}
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

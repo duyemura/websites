@@ -8,7 +8,27 @@ import {
 import { assertAllowedDocKey } from "./doc-registry";
 import type { GmbListing } from "@ploy-gyms/gmb-client";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
-import { buildSiteBlueprint } from "./site-blueprint";
+import { buildSiteHierarchy } from "./site-hierarchy-builder";
+import { buildDesignSystemV2 } from "./design-system-builder";
+import { buildSectionVisualEvidence } from "./section-visual-evidence-builder";
+import {
+  SITE_HIERARCHY_DOC_KEY,
+  SITE_HIERARCHY_DOC_TITLE,
+} from "./site-hierarchy-io";
+import {
+  DESIGN_SYSTEM_DOC_KEY,
+  DESIGN_SYSTEM_DOC_TITLE,
+} from "./design-system-io";
+import {
+  SECTION_VISUAL_EVIDENCE_DOC_KEY,
+  SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+} from "./section-visual-evidence-io";
+import type { SiteHierarchy, CanonicalSectionTag, HierarchySection, HierarchyPage } from "../types/site-hierarchy";
+import type { DesignSystemV2 } from "../types/design-system-v2";
+import type { SectionVisualEvidence } from "../types/section-visual-evidence";
+import type { TemplateShell, SiteSection, ThemeTokens } from "@ploy-gyms/shared-types";
+import { sanitizeTokens } from "./design-system";
+import type { BrandLogo, HeadingStyle } from "./design-system";
 import type { Config } from "../plugins/env";
 import {
   extractBusinessInfoFields,
@@ -32,6 +52,11 @@ export interface GeneratedSiteDoc {
   content: string;
   source: "ai_extracted";
 }
+
+const SITE_STRATEGY_DOC_KEY = "site-strategy";
+const SITE_STRATEGY_DOC_TITLE = "Site strategy";
+const BUSINESS_INFO_DOC_KEY = "business-info";
+const BUSINESS_INFO_DOC_TITLE = "Business info";
 
 export interface DocGenerationContext {
   scraped: ScrapedWebsiteData;
@@ -94,7 +119,7 @@ function renderExtractedBusinessInfo(extracted: BusinessInfoExtractionResult): s
 
   if (extracted.location) {
     lines.push("## Location", "", `- **Address**: ${extracted.location.address}`, "");
-    if (extracted.location.hours.length > 0) {
+    if ((extracted.location.hours ?? []).length > 0) {
       lines.push("**Hours**", "");
       for (const h of extracted.location.hours) {
         lines.push(`- ${h.day}: ${h.hours}`);
@@ -398,23 +423,545 @@ Generate the homepage from the blueprint draft, workspace memory, business info,
   };
 }
 
-function makeBlueprintDraftDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
-  const blueprint = buildSiteBlueprint(ctx.scraped);
+function makeSiteHierarchyDoc(
+  ctx: DocGenerationContext,
+  mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
+): GeneratedSiteDoc {
+  const hierarchy = buildSiteHierarchy(ctx.scraped, mode);
   return {
-    key: "blueprint-draft",
-    title: "Blueprint draft",
-    content: `# Blueprint draft
-
-This doc holds the initial JSON blueprint derived from the scraped source site.
-
-## Site blueprint
-
-\`\`\`json
-${JSON.stringify(blueprint, null, 2)}
-\`\`\`
-`,
+    key: SITE_HIERARCHY_DOC_KEY,
+    title: SITE_HIERARCHY_DOC_TITLE,
+    content: `# Site hierarchy\n\nThis doc holds the semantic page/section hierarchy.\n\n## Site hierarchy\n\n\`\`\`json\n${JSON.stringify(hierarchy, null, 2)}\n\`\`\`\n`,
     source: "ai_extracted",
   };
+}
+
+function makeDesignSystemDoc(
+  ctx: DocGenerationContext,
+  screenshotUrl?: string | null,
+  mode: DesignSystemV2["siteMetadata"]["mode"] = "replication",
+): GeneratedSiteDoc {
+  const designSystem = buildDesignSystemV2(ctx.scraped, screenshotUrl, mode);
+  return {
+    key: DESIGN_SYSTEM_DOC_KEY,
+    title: DESIGN_SYSTEM_DOC_TITLE,
+    content: `# Design system\n\nThis doc holds the locked global design system used to build every page.\n\n## Design system\n\n\`\`\`json\n${JSON.stringify(designSystem, null, 2)}\n\`\`\`\n`,
+    source: "ai_extracted",
+  };
+}
+
+function makeSectionVisualEvidenceDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
+  const evidence = buildSectionVisualEvidence(ctx.scraped);
+  return {
+    key: SECTION_VISUAL_EVIDENCE_DOC_KEY,
+    title: SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+    content: `# Section visual evidence\n\nThis doc holds per-section screenshots, computed styles, and DOM snippets used by the generic visual block renderer.\n\n## Section visual evidence\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`,
+    source: "ai_extracted",
+  };
+}
+
+function makeJsonDocContent(title: string, description: string, value: unknown): string {
+  return `# ${title}\n\n${description}\n\n## ${title.toLowerCase()}\n\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\`\n`;
+}
+
+function mapSiteSectionTypeToTag(type: string): CanonicalSectionTag {
+  switch (type) {
+    case "SiteHeader":
+      return "header";
+    case "Hero":
+      return "hero";
+    case "SiteFooter":
+      return "footer";
+    case "SiteCTA":
+      return "cta-band";
+    case "SiteCardGroup":
+      return "feature-grid";
+    case "SiteSteps":
+      return "steps-band";
+    case "SiteReviews":
+      return "testimonial-band";
+    case "SiteLocation":
+      return "location-block";
+    case "SiteFAQ":
+      return "faq-block";
+    case "Text":
+    case "SiteBlock":
+      return "content-block";
+    case "SiteMedia":
+    case "SiteGallery":
+      return "media-block";
+    default:
+      return "unknown";
+  }
+}
+
+function sectionTagIntent(tag: CanonicalSectionTag): string {
+  const intents: Record<CanonicalSectionTag, string> = {
+    hero: "Introduce the brand, state the core promise, and drive the primary conversion action.",
+    header: "Global site navigation and brand identity.",
+    footer: "Contact, legal, and secondary navigation.",
+    "cta-band": "Isolate a single high-priority conversion action.",
+    "content-block": "Communicate a message with text and supporting imagery.",
+    "media-block": "Showcase media to set tone or demonstrate the experience.",
+    "feature-grid": "Present multiple offerings or benefits in a scannable grid.",
+    "testimonial-band": "Build trust through social proof.",
+    "location-block": "Provide location and visit details.",
+    "faq-block": "Address common objections with collapsible answers.",
+    "social-proof-band": "Reinforce credibility via logos, stats, or community signals.",
+    "steps-band": "Explain a process in sequential steps.",
+    schedule: "Display schedule details or booking availability.",
+    team: "Introduce the coaches, instructors, or team members.",
+    contact: "Provide primary contact channels and next steps.",
+    unknown: "Present the captured content in a layout faithful to the source.",
+  };
+  return intents[tag];
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isCta(value: unknown): value is { label: string; href: string } {
+  return value !== null && typeof value === "object" && "label" in value && "href" in value && isString(value.label) && isString(value.href);
+}
+
+function asItemArray(value: unknown): { title?: string; description?: string; imageUrl?: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => item !== null && typeof item === "object")
+    .map((item) => ({
+      title: isString(item.title) ? item.title : undefined,
+      description: isString(item.description) ? item.description : undefined,
+      imageUrl: isString(item.imageUrl) ? item.imageUrl : undefined,
+    }));
+}
+
+function asImageArray(value: unknown): { url: string; alt?: string; context?: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is { url: string; alt?: string; context?: string } | string => {
+      if (typeof item === "string") return true;
+      return item !== null && typeof item === "object" && "url" in item && isString(item.url);
+    })
+    .map((item) =>
+      typeof item === "string"
+        ? { url: item }
+        : { url: item.url, alt: item.alt, context: item.context },
+    );
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((v): v is string => typeof v === "string");
+}
+
+function extractSectionContent(section: SiteSection): HierarchySection["content"] {
+  const props = section.props;
+  const content: HierarchySection["content"] = {};
+
+  const heading = firstString(props.title, props.heading, props.headline);
+  if (heading) content.heading = heading;
+
+  const eyebrow = firstString(props.eyebrow, props.kicker, props.label);
+  if (eyebrow) content.eyebrow = eyebrow;
+
+  const body = firstString(props.body, props.subtitle, props.description);
+  if (body) content.body = body;
+
+  if (isCta(props.cta)) {
+    content.cta = props.cta;
+  }
+
+  const itemArray =
+    [props.cards, props.steps, props.features, props.reviews, props.items]
+      .map(asItemArray)
+      .find((arr) => arr.length > 0) ?? [];
+  if (itemArray.length > 0) {
+    content.items = itemArray;
+  }
+
+  const images = asImageArray(props.images);
+  if (images.length > 0) {
+    content.images = images;
+  } else if (isString(props.imageUrl)) {
+    content.images = [{ url: props.imageUrl }];
+  } else if (isString(props.backgroundImage)) {
+    content.images = [{ url: props.backgroundImage, context: "background" }];
+  }
+
+  return content;
+}
+
+function buildTemplateDesignSystem(
+  shell: TemplateShell,
+  siteName: string,
+  screenshotUrl?: string | null,
+): DesignSystemV2 {
+  const tokens = sanitizeTokens(shell.theme);
+  const headerSection = shell.page.sections.find((s) => s.type === "SiteHeader");
+  const footerSection = shell.page.sections.find((s) => s.type === "SiteFooter");
+
+  const heroSection = shell.page.sections.find((s) => s.type === "Hero");
+  const homePagePrimaryCta = isCta(heroSection?.props.cta) ? heroSection.props.cta : undefined;
+
+  const logo: BrandLogo = { type: "text", value: siteName };
+  const headingStyle: HeadingStyle = { uppercase: false, bold: true };
+
+  return {
+    version: "2",
+    siteMetadata: {
+      framework: "astro",
+      mode: "template",
+      targetUrl: shell.source.url,
+      businessName: siteName,
+      generatedAt: new Date().toISOString(),
+    },
+    global: {
+      tokens,
+      shell: {
+        header: headerSection,
+        footer: footerSection,
+      },
+      rules: {
+        spacing: "Default section vertical padding derived from the template; hero uses larger vertical spacing.",
+        radius: tokens.radius,
+        maxWidth: "max-w-6xl with responsive gutters.",
+        grid: "2–3 column grids for feature lists; single column on mobile.",
+        defaultTheme: tokens.colors.background === "#0A0A0A" ? "dark" : "light",
+      },
+    },
+    business: { name: siteName },
+    brand: { logo, headingStyle },
+    reference: { screenshotUrl, homePagePrimaryCta },
+  };
+}
+
+function buildTemplateSiteHierarchy(
+  shell: TemplateShell,
+  siteName: string,
+): SiteHierarchy {
+  const pageSlug = shell.page.slug || "index";
+  const contentSections = shell.page.sections.filter(
+    (section) => section.type !== "SiteHeader" && section.type !== "SiteFooter",
+  );
+  const pageSections: HierarchySection[] = contentSections.map((section) => {
+    const tag = mapSiteSectionTypeToTag(section.type);
+    return {
+      id: section.id,
+      tag,
+      intent: sectionTagIntent(tag),
+      content: extractSectionContent(section),
+      evidenceId: `template-${pageSlug}-${section.id}`,
+    };
+  });
+
+  const homePage: HierarchyPage = {
+    slug: pageSlug,
+    isHomePage: shell.page.isHomePage,
+    title: shell.page.title || siteName,
+    metaTitle: shell.page.metaTitle,
+    metaDescription: shell.page.metaDescription,
+    primaryCta: pageSections.find((s) => s.tag === "hero")?.content.cta,
+    sections: pageSections,
+  };
+
+  return {
+    version: "1",
+    siteMetadata: {
+      framework: "astro",
+      mode: "template",
+      targetUrl: shell.source.url,
+      businessName: siteName,
+      generatedAt: new Date().toISOString(),
+    },
+    pages: [homePage],
+    buildPlan: {
+      nextPage: pageSlug,
+      pageStatus: { [pageSlug]: "in_progress" },
+      buildOrder: [pageSlug],
+    },
+  };
+}
+
+function buildEmptySectionVisualEvidence(): SectionVisualEvidence {
+  return { version: "1", rows: [] };
+}
+
+export function generateSiteDocsFromTemplate(
+  siteName: string,
+  template: { key: string; name: string; instructions: string | null },
+  shell: TemplateShell,
+): GeneratedSiteDoc[] {
+  const now = new Date().toISOString();
+  const instructions = template.instructions ?? "No template instructions provided.";
+
+  const siteMemory = [
+    `# Site memory: ${siteName}`,
+    "",
+    `- **Created from template**: ${template.name} (${template.key})`,
+    `- **Created at**: ${now}`,
+    `- **Source URL**: ${shell.source.url}`,
+    "",
+    "## Template structure",
+    "",
+    shell.page.sections.map((s) => `- ${s.type} (${s.id})`).join("\n"),
+    "",
+    "## Placeholders",
+    "",
+    shell.placeholders.length > 0
+      ? shell.placeholders.map((p) => `- **${p.key}** — ${p.label}`).join("\n")
+      : "- No placeholders defined.",
+  ].join("\n");
+
+  const siteStrategy = [
+    `# Site strategy: ${siteName}`,
+    "",
+    `Build a site using the **${template.name}** template. The template's structure and spacing were extracted from ${shell.source.url}.`,
+    "",
+    "## AI instructions from template",
+    "",
+    instructions,
+    "",
+    "## Build plan",
+    "",
+    "1. Read [[workspace-memory]] and [[brand-guidelines]].",
+    "2. Use the business info below to replace every placeholder in the template.",
+    "3. Preserve section order from the template unless the user asks otherwise.",
+    "4. Generate real copy that matches the gym's tone, not the source website's brand.",
+    "",
+    "## Next action",
+    "",
+    "Fill out [[business-info]] with the gym's real details, then generate the homepage.",
+  ].join("\n");
+
+  const businessInfo = [
+    `# Business info: ${siteName}`,
+    "",
+    "Fill in the details below so the AI can replace the template placeholders with real copy.",
+    "",
+    "## Required information",
+    "",
+    "- **Business name**:",
+    "- **Tagline / one-liner**:",
+    "- **Address**:",
+    "- **Hours**:",
+    "- **Phone**:",
+    "- **Email**:",
+    "- **Primary offerings / classes**:",
+    "- **Coaches / team members**:",
+    "- **Member testimonials**:",
+    "",
+    "## Brand notes",
+    "",
+    "- **Tone**: (e.g., energetic, welcoming, elite, community-focused)",
+    "- **Colors**: (the template uses a neutral shell; apply brand colors from [[brand-guidelines]])",
+    "- **Hero image direction**: (describe the desired main photo)",
+  ].join("\n");
+
+  const designSystem = buildTemplateDesignSystem(shell, siteName);
+  const hierarchy = buildTemplateSiteHierarchy(shell, siteName);
+  const evidence = buildEmptySectionVisualEvidence();
+
+  const docs: GeneratedSiteDoc[] = [
+    { key: SITE_MEMORY_DOC_KEY, title: SITE_MEMORY_DOC_TITLE, content: siteMemory, source: "ai_extracted" },
+    { key: SITE_STRATEGY_DOC_KEY, title: SITE_STRATEGY_DOC_TITLE, content: siteStrategy, source: "ai_extracted" },
+    { key: BUSINESS_INFO_DOC_KEY, title: BUSINESS_INFO_DOC_TITLE, content: businessInfo, source: "ai_extracted" },
+    {
+      key: DESIGN_SYSTEM_DOC_KEY,
+      title: DESIGN_SYSTEM_DOC_TITLE,
+      content: makeJsonDocContent("Design system", "This doc holds the locked global design system used to build every page.", designSystem),
+      source: "ai_extracted",
+    },
+    {
+      key: SITE_HIERARCHY_DOC_KEY,
+      title: SITE_HIERARCHY_DOC_TITLE,
+      content: makeJsonDocContent("Site hierarchy", "This doc holds the semantic page/section hierarchy.", hierarchy),
+      source: "ai_extracted",
+    },
+    {
+      key: SECTION_VISUAL_EVIDENCE_DOC_KEY,
+      title: SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+      content: `# Section visual evidence\n\nThis doc holds per-section screenshots, computed styles, and DOM snippets used by the generic visual block renderer. Template mode has no captured evidence yet; reference the source screenshot in [[design-system]].reference.screenshotUrl.\n\n## Section visual evidence\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`,
+      source: "ai_extracted",
+    },
+  ];
+
+  validateGeneratedDocs(docs);
+  return docs;
+}
+
+export function generateSiteDocsForGreenfield(
+  site: { uuid: string; name: string; workspaceUuid: string },
+  brandMemory: { primaryColor?: string; fontHeading?: string; fontBody?: string },
+  businessInput: { businessName: string; tagline?: string; description?: string },
+): GeneratedSiteDoc[] {
+  const now = new Date().toISOString();
+
+  const siteMemory = [
+    `# Site memory: ${site.name}`,
+    "",
+    `- **Created from brand input**: greenfield`,
+    `- **Created at**: ${now}`,
+    `- **Workspace**: ${site.workspaceUuid}`,
+    "",
+    "## Site structure",
+    "",
+    "- Homepage (index) with placeholder hero and primary CTA.",
+  ].join("\n");
+
+  const siteStrategy = [
+    `# Site strategy: ${site.name}`,
+    "",
+    "Build a new site from the provided brand and business details.",
+    "",
+    "## Build plan",
+    "",
+    "1. Read [[workspace-memory]] and [[brand-guidelines]].",
+    "2. Expand the homepage sections below with real copy and imagery.",
+    "3. Add additional pages only when the business info justifies them.",
+    "",
+    "## Next action",
+    "",
+    "Fill out [[business-info]] with the gym's real details, then generate the homepage.",
+  ].join("\n");
+
+  const businessInfo = [
+    `# Business info: ${businessInput.businessName}`,
+    "",
+    businessInput.tagline ? `**Tagline**: ${businessInput.tagline}` : "",
+    businessInput.description ? `**Description**: ${businessInput.description}` : "",
+    "",
+    "## Required information",
+    "",
+    "- **Business name**:",
+    "- **Tagline / one-liner**:",
+    "- **Address**:",
+    "- **Hours**:",
+    "- **Phone**:",
+    "- **Email**:",
+    "- **Primary offerings / classes**:",
+    "- **Coaches / team members**:",
+    "- **Member testimonials**:",
+  ].filter(Boolean).join("\n");
+
+  const greenfieldTokens: ThemeTokens = sanitizeTokens({
+    colors: {
+      primary: brandMemory.primaryColor ?? "#171717",
+      primaryForeground: "#ffffff",
+      background: "#ffffff",
+      foreground: "#171717",
+      muted: "#f5f5f5",
+      mutedForeground: "#737373",
+      border: "#e5e5e5",
+    },
+    fonts: {
+      heading: brandMemory.fontHeading ?? "Sans-serif",
+      body: brandMemory.fontBody ?? "Sans-serif",
+    },
+    radius: "0.5rem",
+  });
+
+  const logo: BrandLogo = { type: "text", value: businessInput.businessName };
+  const headingStyle: HeadingStyle = { uppercase: false, bold: true };
+  const homePagePrimaryCta = { label: "Get started", href: "#cta" };
+
+  const designSystem: DesignSystemV2 = {
+    version: "2",
+    siteMetadata: {
+      framework: "astro",
+      mode: "greenfield",
+      businessName: businessInput.businessName,
+      generatedAt: now,
+    },
+    global: {
+      tokens: greenfieldTokens,
+      shell: {
+        header: undefined,
+        footer: undefined,
+      },
+      rules: {
+        spacing: "Default section vertical padding; hero uses larger vertical spacing.",
+        radius: greenfieldTokens.radius,
+        maxWidth: "max-w-6xl with responsive gutters.",
+        grid: "2–3 column grids for feature lists; single column on mobile.",
+        defaultTheme: "light",
+      },
+    },
+    business: {
+      name: businessInput.businessName,
+      tagline: businessInput.tagline,
+    },
+    brand: { logo, headingStyle },
+    reference: { screenshotUrl: null, homePagePrimaryCta },
+  };
+
+  const heroSection: HierarchySection = {
+    id: "hero-greenfield",
+    tag: "hero",
+    intent: sectionTagIntent("hero"),
+    content: {
+      heading: businessInput.businessName,
+      body: businessInput.tagline ?? businessInput.description ?? "",
+      cta: homePagePrimaryCta,
+    },
+    evidenceId: "greenfield-index-hero-greenfield",
+  };
+
+  const hierarchy: SiteHierarchy = {
+    version: "1",
+    siteMetadata: {
+      framework: "astro",
+      mode: "greenfield",
+      businessName: businessInput.businessName,
+      generatedAt: now,
+    },
+    pages: [
+      {
+        slug: "index",
+        isHomePage: true,
+        title: businessInput.businessName,
+        metaTitle: businessInput.tagline
+          ? `${businessInput.businessName} — ${businessInput.tagline}`
+          : businessInput.businessName,
+        metaDescription: businessInput.description,
+        primaryCta: heroSection.content.cta,
+        sections: [heroSection],
+      },
+    ],
+    buildPlan: {
+      nextPage: "index",
+      pageStatus: { index: "in_progress" },
+      buildOrder: ["index"],
+    },
+  };
+
+  const evidence = buildEmptySectionVisualEvidence();
+
+  const docs: GeneratedSiteDoc[] = [
+    { key: SITE_MEMORY_DOC_KEY, title: SITE_MEMORY_DOC_TITLE, content: siteMemory, source: "ai_extracted" },
+    { key: SITE_STRATEGY_DOC_KEY, title: SITE_STRATEGY_DOC_TITLE, content: siteStrategy, source: "ai_extracted" },
+    { key: BUSINESS_INFO_DOC_KEY, title: BUSINESS_INFO_DOC_TITLE, content: businessInfo, source: "ai_extracted" },
+    {
+      key: DESIGN_SYSTEM_DOC_KEY,
+      title: DESIGN_SYSTEM_DOC_TITLE,
+      content: makeJsonDocContent("Design system", "This doc holds the locked global design system used to build every page.", designSystem),
+      source: "ai_extracted",
+    },
+    {
+      key: SITE_HIERARCHY_DOC_KEY,
+      title: SITE_HIERARCHY_DOC_TITLE,
+      content: makeJsonDocContent("Site hierarchy", "This doc holds the semantic page/section hierarchy.", hierarchy),
+      source: "ai_extracted",
+    },
+    {
+      key: SECTION_VISUAL_EVIDENCE_DOC_KEY,
+      title: SECTION_VISUAL_EVIDENCE_DOC_TITLE,
+      content: `# Section visual evidence\n\nThis doc holds per-section screenshots, computed styles, and DOM snippets used by the generic visual block renderer. Greenfield mode has no captured evidence yet.\n\n## Section visual evidence\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`,
+      source: "ai_extracted",
+    },
+  ];
+
+  validateGeneratedDocs(docs);
+  return docs;
 }
 
 export async function generateSiteDocs(
@@ -422,6 +969,8 @@ export async function generateSiteDocs(
   gmb?: GmbListing,
   config?: Config,
   memoryCtx?: WorkspaceMemoryContext,
+  screenshotUrl?: string | null,
+  mode: SiteHierarchy["siteMetadata"]["mode"] = "replication",
 ): Promise<GeneratedSiteDoc[]> {
   const ctx: DocGenerationContext = { scraped: data, gmb };
   const brandInput = buildBrandGuidelinesInput(ctx);
@@ -461,7 +1010,9 @@ export async function generateSiteDocs(
     },
     await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
     makeSiteStrategyDoc(ctx),
-    makeBlueprintDraftDoc(ctx),
+    makeDesignSystemDoc(ctx, screenshotUrl, mode),
+    makeSiteHierarchyDoc(ctx, mode),
+    makeSectionVisualEvidenceDoc(ctx),
   ];
 
   validateGeneratedDocs(docs);

@@ -2,8 +2,8 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
 import type { ScrapedImage } from "@ploy-gyms/shared-types";
-import { getS3Client } from "../s3";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getS3Client, buildS3ObjectUrl } from "../s3";
+import { PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import path from "node:path";
 import crypto from "node:crypto";
 import { isHttpUrl, isInternalUrl } from "./http-url";
@@ -140,15 +140,50 @@ export async function downloadScrapedAssets(
       .where("workspaceUuid", "=", workspaceUuid)
       .where("source", "=", "scraped")
       .where("metadata", "@>", JSON.stringify({ originalUrl }))
+      // Scope asset reuse to the current site so generated pages never reference
+      // an old site's S3 prefix. Re-scraping the same site still reuses; a new
+      // site always gets its own copy under its own prefix.
+      .where("storageKey", "like", `workspaces/${workspaceUuid}/sites/${siteUuid}/%`)
       .executeTakeFirst();
 
     if (existing) {
-      byOriginalUrl.set(originalUrl, {
-        assetUuid: existing.uuid,
-        url: existing.url,
-        storageKey: existing.storageKey,
+      // Reconstruct the URL from storageKey so old assets with malformed URLs
+      // (e.g. bucket duplicated in the path) still produce a working public URL.
+      const publicUrl = buildS3ObjectUrl({
+        endpoint: config.S3_ENDPOINT,
+        region: config.S3_REGION,
+        bucket: config.S3_ASSETS_BUCKET,
+        key: existing.storageKey,
       });
-      continue;
+
+      // If the stored URL does not match the current storage config (e.g. the
+      // bucket or endpoint changed), or the S3 object no longer exists, fall
+      // through and re-upload the asset under the new site so previews don't
+      // reference broken/missing objects.
+      let objectExists = false;
+      if (publicUrl === existing.url) {
+        try {
+          await s3.send(
+            new HeadObjectCommand({
+              Bucket: config.S3_ASSETS_BUCKET,
+              Key: existing.storageKey,
+            }),
+          );
+          objectExists = true;
+        } catch {
+          objectExists = false;
+        }
+      }
+
+      if (objectExists) {
+        byOriginalUrl.set(originalUrl, {
+          assetUuid: existing.uuid,
+          url: publicUrl,
+          storageKey: existing.storageKey,
+        });
+        continue;
+      }
+      // Otherwise fall through to re-download and upload to current storage.
     }
 
     const downloaded = await downloadAsset(originalUrl);
@@ -180,8 +215,12 @@ export async function downloadScrapedAssets(
       }),
     );
 
-    const baseUrl = config.CDN_BASE_URL.replace(/\/$/, "");
-    const publicUrl = `${baseUrl}/${config.S3_ASSETS_BUCKET}/${storageKey}`;
+    const publicUrl = buildS3ObjectUrl({
+      endpoint: config.S3_ENDPOINT,
+      region: config.S3_REGION,
+      bucket: config.S3_ASSETS_BUCKET,
+      key: storageKey,
+    });
 
     const asset = await db
       .insertInto("assets")

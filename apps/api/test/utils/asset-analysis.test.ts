@@ -4,7 +4,6 @@ import type { Kysely } from "kysely";
 import type { DB } from "../../src/types/db";
 import { db, config } from "../../src/database";
 import { analyzeAsset } from "../../src/utils/asset-analysis";
-import type { Config } from "../../src/plugins/env";
 import { getS3Client } from "../../src/s3";
 
 vi.mock("../../src/ai/llm-with-logging", () => ({

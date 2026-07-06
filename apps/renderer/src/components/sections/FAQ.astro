@@ -1,0 +1,23 @@
+---
+import Container from "../ui/Container.astro";
+import SectionHeading from "../ui/SectionHeading.astro";
+import FAQSchema from "../seo/FAQSchema.astro";
+import type { FAQItem } from "../../types/gym-content";
+const { items, headline = "Questions? We have the answers." } = Astro.props as { items: FAQItem[]; headline?: string };
+---
+{items.length > 0 && (
+  <section class="py-16">
+    <Container>
+      <SectionHeading title={headline} />
+      <div class="mx-auto max-w-3xl divide-y divide-slate-200">
+        {items.map((f) => (
+          <details class="faq-item py-4">
+            <summary class="cursor-pointer rounded font-heading font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">{f.question}</summary>
+            <p class="mt-2 text-secondary">{f.answer}</p>
+          </details>
+        ))}
+      </div>
+    </Container>
+    <FAQSchema items={items} />
+  </section>
+)}

@@ -13,25 +13,13 @@ export type AiJobStatus = "cancelled" | "completed" | "failed" | "pending" | "ru
 
 export type AiJobType = "generate_assets" | "generate_page" | "replicate_site" | "run_playbook";
 
+export type AssetGenerationStatus = "analyzing" | "failed" | "generating" | "pending" | "ready" | "uploaded";
+
+export type AssetGenerationUseCase = "b_roll" | "background" | "blog_header" | "hero" | "program_page" | "social";
+
 export type AssetSource = "ai_generated" | "scraped" | "screenshot" | "upload";
 
 export type AssetType = "document" | "font" | "icon" | "image" | "logo" | "video";
-
-export type AssetGenerationStatus =
-  | "analyzing"
-  | "failed"
-  | "generating"
-  | "pending"
-  | "ready"
-  | "uploaded";
-
-export type AssetGenerationUseCase =
-  | "background"
-  | "b_roll"
-  | "blog_header"
-  | "hero"
-  | "program_page"
-  | "social";
 
 export type DeploymentStatus = "building" | "failed" | "pending" | "success";
 
@@ -111,26 +99,13 @@ export interface AiJobs {
   workspaceUuid: string;
 }
 
-export interface Assets {
-  createdAt: Generated<Timestamp>;
-  metadata: Json | null;
-  mimeType: string | null;
-  name: string;
-  source: Generated<AssetSource>;
-  storageKey: string;
-  type: AssetType;
-  url: string;
-  uuid: Generated<string>;
-  workspaceUuid: string;
-}
-
 export interface AssetGenerations {
   costUsd: Numeric | null;
   createdAt: Generated<Timestamp>;
   failureReason: string | null;
   generatedAssetUuid: string | null;
   metadata: Json | null;
-  outputSpec: Generated<Json>;
+  outputSpec: Json;
   promptSnapshot: Json | null;
   provider: string | null;
   providerJobId: string | null;
@@ -142,6 +117,19 @@ export interface AssetGenerations {
   updatedAt: Generated<Timestamp>;
   useCase: AssetGenerationUseCase;
   userUuid: string;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface Assets {
+  createdAt: Generated<Timestamp>;
+  metadata: Json | null;
+  mimeType: string | null;
+  name: string;
+  source: Generated<AssetSource>;
+  storageKey: string;
+  type: AssetType;
+  url: string;
   uuid: Generated<string>;
   workspaceUuid: string;
 }
@@ -169,6 +157,20 @@ export interface Docs {
   status: Generated<DocStatus>;
   title: string;
   updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface Leads {
+  createdAt: Generated<Timestamp>;
+  email: string | null;
+  fields: Json;
+  formId: string;
+  ip: string | null;
+  name: string | null;
+  phone: string | null;
+  siteUuid: string;
+  sourcePath: string | null;
   uuid: Generated<string>;
   workspaceUuid: string;
 }
@@ -225,6 +227,16 @@ export interface Pages {
   uuid: Generated<string>;
 }
 
+export interface PipelineArtifacts {
+  createdAt: Generated<Timestamp>;
+  payload: Json;
+  siteUuid: string;
+  stage: string;
+  uuid: Generated<string>;
+  version: number;
+  workspaceUuid: string;
+}
+
 export interface Playbooks {
   category: string | null;
   createdAt: Generated<Timestamp>;
@@ -241,14 +253,17 @@ export interface Playbooks {
 }
 
 export interface Sites {
+  cloudfrontDomain: string | null;
   createdAt: Generated<Timestamp>;
   customDomain: string | null;
   defaultMetaDescription: string | null;
   defaultMetaTitle: string | null;
   faviconUrl: string | null;
   integrations: Json | null;
+  mirrorStatus: string | null;
   mode: Generated<SiteMode>;
   name: string;
+  notifyEmail: string | null;
   ogImageUrl: string | null;
   publishedAt: Timestamp | null;
   schemaJson: Json | null;
@@ -259,6 +274,33 @@ export interface Sites {
   themeUuid: string | null;
   updatedAt: Generated<Timestamp>;
   uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface SiteTransforms {
+  author: Generated<string>;
+  createdAt: Generated<Timestamp>;
+  ordinal: number;
+  pageGlob: string;
+  payload: Json;
+  selector: string | null;
+  siteUuid: string;
+  status: Generated<string>;
+  type: string;
+  updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface SiteVersions {
+  createdAt: Generated<Timestamp>;
+  deployPrefix: string;
+  kind: string;
+  label: string | null;
+  publishedAt: Timestamp | null;
+  siteUuid: string;
+  uuid: Generated<string>;
+  version: number;
   workspaceUuid: string;
 }
 
@@ -303,15 +345,6 @@ export interface Users {
   uuid: Generated<string>;
 }
 
-export interface WorkspaceMemberships {
-  createdAt: Generated<Timestamp>;
-  role: Generated<MembershipRole>;
-  updatedAt: Generated<Timestamp>;
-  userUuid: string;
-  uuid: Generated<string>;
-  workspaceUuid: string;
-}
-
 export interface WorkspaceBrandMemory {
   businessArchetype: string | null;
   businessName: string | null;
@@ -327,6 +360,15 @@ export interface WorkspaceBrandMemory {
   richContext: Json | null;
   signageNotes: string | null;
   updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+  workspaceUuid: string;
+}
+
+export interface WorkspaceMemberships {
+  createdAt: Generated<Timestamp>;
+  role: Generated<MembershipRole>;
+  updatedAt: Generated<Timestamp>;
+  userUuid: string;
   uuid: Generated<string>;
   workspaceUuid: string;
 }
@@ -354,12 +396,16 @@ export interface DB {
   assets: Assets;
   deployments: Deployments;
   docs: Docs;
+  leads: Leads;
   llmModelPricing: LlmModelPricing;
   organizationMemberships: OrganizationMemberships;
   organizations: Organizations;
   pages: Pages;
+  pipelineArtifacts: PipelineArtifacts;
   playbooks: Playbooks;
   sites: Sites;
+  siteTransforms: SiteTransforms;
+  siteVersions: SiteVersions;
   templates: Templates;
   themes: Themes;
   users: Users;

@@ -1,0 +1,39 @@
+---
+import { content, absUrl } from "../../lib/content";
+const { name, path, description, image, areaServedOverride } = Astro.props as {
+  name: string;
+  path: string;
+  description?: string;
+  image?: string;
+  areaServedOverride?: { "@type": string; name: string }[];
+};
+const { business, brand } = content;
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name,
+  serviceType: name,
+  ...(description && { description }),
+  ...(image && { image }),
+  provider: {
+    "@type": "LocalBusiness",
+    name: business.name,
+    url: absUrl("/"),
+    telephone: business.phone,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: business.address.street,
+      addressLocality: business.address.city,
+      addressRegion: business.geo.stateAbbr,
+      postalCode: business.address.zip,
+      addressCountry: "US",
+    },
+    image: brand.logoUrl,
+  },
+  // Deduplicate cities in case primary city also appears in serviceArea
+  areaServed: areaServedOverride ?? Array.from(new Set([business.geo.city, ...(business.serviceArea ?? [])]))
+    .map((c) => ({ "@type": "City", name: c })),
+  url: absUrl(path),
+};
+---
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

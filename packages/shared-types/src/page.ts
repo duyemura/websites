@@ -15,6 +15,8 @@ export const SiteSectionSchema = z.object({
     "SiteBlock",
     "SiteLocation",
     "SiteReviews",
+    "SiteCTA",
+    "SiteSteps",
   ]),
   props: z.record(z.unknown()),
   meta: z
