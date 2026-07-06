@@ -159,14 +159,61 @@ In both cases, `workspaceUuid` comes from the site record (or the eval workspace
 
 ---
 
+## Stage prerequisites
+
+Stages depend on artifacts from earlier stages. If a prerequisite artifact is missing, the stage fails immediately with a clear error rather than silently producing bad output.
+
+| Stage | Requires artifact from |
+|---|---|
+| `mirror` | nothing (entry point) |
+| `extract` | nothing (independent Playwright scrape, not mirror) |
+| `segment` | `extract` artifact |
+| `docgen` | `extract` + `segment` artifacts |
+| `eval` | `mirror-deploy` artifact |
+| `audit` | `mirror-deploy` artifact (and optionally `docgen` docs) |
+| `template` | `docgen` docs (all 9 keys present) |
+| `template-eval` | template `site_versions` row |
+
+Note: `mirror` and `extract` are independent entry points — `extract` is a fresh Playwright scrape for structured content extraction, separate from the mirror crawl. A site can have one without the other.
+
+When the CLI runs stages in sequence, it validates prerequisites before starting each stage. If `--stages docgen` is requested and `segment` artifact is missing, the error is: `"docgen requires segment artifact — run with --stages segment,docgen"`.
+
+---
+
 ## Extensibility
 
-Adding a new stage (e.g., `audit` later) requires:
-1. Create `stages/audit.ts` implementing `runAuditStage(ctx): Promise<StageResult>`
-2. Add to the stage registry in `milo.ts`
-3. Immediately available as `--stages audit`
+Every stage implements a single interface:
 
-No changes to the CLI parser or report formatter.
+```typescript
+interface StageRunner {
+  /** Human-readable name shown in the report table */
+  label: string;
+  /** Artifacts this stage requires — checked before running */
+  requires: string[];
+  /** Artifact this stage produces — checked for skip/resume logic */
+  produces: string;
+  /** Run the stage and return a measurable result */
+  run(ctx: StageContext): Promise<StageResult>;
+}
+```
+
+Adding a new stage requires:
+1. Create `stages/newstage.ts` implementing `StageRunner`
+2. Register it in the stage map in `milo.ts` — one line: `{ "newstage": newStageRunner }`
+3. Immediately available as `--stages newstage`
+
+No changes to the CLI parser, report formatter, or prerequisite checker — all of those work generically from the registry.
+
+Example — adding the `audit` stage later:
+```typescript
+// stages/audit.ts
+export const auditStage: StageRunner = {
+  label: "audit",
+  requires: ["mirror-deploy"],
+  produces: "site-audit",
+  run: async (ctx) => { /* ... */ },
+};
+```
 
 ---
 
