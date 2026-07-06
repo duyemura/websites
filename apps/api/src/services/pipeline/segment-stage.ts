@@ -429,13 +429,12 @@ async function extractStylesAtViewport(
 
       // CTA button — identified by DOM structure, not color.
       const CTA_CLASS_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free.?trial|start)\b/i;
-      const isPhoneOrEmail = (href: string | null) => !!href && (href.startsWith("tel:") || href.startsWith("mailto:"));
       const candidates: { el: Element; score: number }[] = [];
       for (const btn of Array.from(el.querySelectorAll("a[href], button"))) {
         const rect = btn.getBoundingClientRect();
         if (rect.width < 50 || rect.height < 28) continue;
         const href = (btn as HTMLAnchorElement).getAttribute("href") ?? null;
-        if (isPhoneOrEmail(href)) continue;
+        if (!!href && (href.startsWith("tel:") || href.startsWith("mailto:"))) continue;
         const text = (btn as HTMLElement).textContent?.trim() ?? "";
         if (!text || text.length > 60) continue;
         const cls = (btn as HTMLElement).className ?? "";

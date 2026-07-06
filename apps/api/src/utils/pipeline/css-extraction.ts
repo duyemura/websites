@@ -10,16 +10,19 @@ export interface ExtractedCss {
 }
 
 export async function extractCss(page: Page): Promise<ExtractedCss> {
-  const inPage = await page.evaluate(() => {
-    const tokens: Record<string, string> = {};
-    const breakpoints: string[] = [];
-    const animations: Array<{ name: string; css: string }> = [];
-    const crossOriginSheets: string[] = [];
+  const inPage = await page.evaluate(`(function() {
+    var tokens = {};
+    var breakpoints = [];
+    var animations = [];
+    var crossOriginSheets = [];
 
-    const walkRules = (rules: CSSRuleList) => {
-      for (const rule of Array.from(rules)) {
+    function walkRules(rules) {
+      for (var i = 0; i < rules.length; i++) {
+        var rule = rules[i];
         if (rule instanceof CSSStyleRule && rule.selectorText === ":root") {
-          for (const prop of Array.from(rule.style)) {
+          var props = Array.from(rule.style);
+          for (var j = 0; j < props.length; j++) {
+            var prop = props[j];
             if (prop.startsWith("--"))
               tokens[prop] = rule.style.getPropertyValue(prop).trim();
           }
@@ -30,22 +33,28 @@ export async function extractCss(page: Page): Promise<ExtractedCss> {
           animations.push({ name: rule.name, css: rule.cssText });
         }
       }
-    };
+    }
 
-    for (const sheet of Array.from(document.styleSheets)) {
+    var sheets = Array.from(document.styleSheets);
+    for (var i = 0; i < sheets.length; i++) {
       try {
-        walkRules(sheet.cssRules);
-      } catch {
-        if (sheet.href) crossOriginSheets.push(sheet.href);
+        walkRules(sheets[i].cssRules);
+      } catch (e) {
+        if (sheets[i].href) crossOriginSheets.push(sheets[i].href);
       }
     }
     return {
-      tokens,
-      breakpoints: [...new Set(breakpoints)],
-      animations,
-      crossOriginSheets,
+      tokens: tokens,
+      breakpoints: Array.from(new Set(breakpoints)),
+      animations: animations,
+      crossOriginSheets: crossOriginSheets,
     };
-  });
+  })()`) as {
+    tokens: Record<string, string>;
+    breakpoints: string[];
+    animations: Array<{ name: string; css: string }>;
+    crossOriginSheets: string[];
+  };
 
   // Cross-origin sheets: fetch text and regex-parse (no CSSOM access).
   for (const href of inPage.crossOriginSheets) {

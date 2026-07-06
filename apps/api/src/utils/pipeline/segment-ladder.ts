@@ -59,32 +59,34 @@ export async function semanticScan(page: Page): Promise<SectionCandidate[]> {
 }
 
 export async function visualBoundaryScan(page: Page): Promise<SectionCandidate[]> {
-  const raw = await page.evaluate(() => {
+  const raw = await page.evaluate(`(function() {
     // Walk direct+nested children of body, collecting large blocks with a resolved background.
-    const blocks: Array<{ top: number; bottom: number; bg: string; text: string; heading?: string }> = [];
-    const walk = (el: Element) => {
-      const r = el.getBoundingClientRect();
+    var blocks = [];
+    function walk(el) {
+      var r = el.getBoundingClientRect();
       if (r.height < 80 || r.width < window.innerWidth * 0.5) {
-        for (const child of Array.from(el.children)) walk(child);
+        var children = Array.from(el.children);
+        for (var i = 0; i < children.length; i++) walk(children[i]);
         return;
       }
-      const bg = getComputedStyle(el).backgroundColor;
-      const transparent = bg === "rgba(0, 0, 0, 0)" || bg === "transparent";
+      var bg = getComputedStyle(el).backgroundColor;
+      var transparent = bg === "rgba(0, 0, 0, 0)" || bg === "transparent";
       if (!transparent) {
         blocks.push({
           top: r.top + window.scrollY,
           bottom: r.bottom + window.scrollY,
-          bg,
-          text: (el as HTMLElement).innerText.slice(0, 500),
-          heading: el.querySelector("h1,h2,h3")?.textContent?.trim() ?? undefined,
+          bg: bg,
+          text: (el.innerText || "").slice(0, 500),
+          heading: (el.querySelector("h1,h2,h3") || {textContent: null}).textContent || undefined,
         });
         return; // don't descend into a painted band
       }
-      for (const child of Array.from(el.children)) walk(child);
-    };
+      var children = Array.from(el.children);
+      for (var i = 0; i < children.length; i++) walk(children[i]);
+    }
     walk(document.body);
-    return { blocks, pageWidth: document.documentElement.scrollWidth };
-  });
+    return { blocks: blocks, pageWidth: document.documentElement.scrollWidth };
+  })()`) as { blocks: Array<{ top: number; bottom: number; bg: string; text: string; heading?: string }>; pageWidth: number };
 
   // Adjacent blocks with different backgrounds = distinct sections.
   const sorted = raw.blocks.sort((a, b) => a.top - b.top);
