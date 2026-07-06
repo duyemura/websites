@@ -14,6 +14,10 @@
  * Writes eval-report-mirror-<host>-<timestamp>.md alongside this file.
  */
 import "dotenv/config";
+// Also load root .env for DB/Redis vars not present in apps/api/.env
+import { configDotenv } from "dotenv";
+import { resolve } from "path";
+configDotenv({ path: resolve(import.meta.dirname, "../../../../.env"), override: false });
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
