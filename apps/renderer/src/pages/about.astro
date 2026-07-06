@@ -11,7 +11,7 @@ const about = content.pages.about;
 const { business } = content;
 const title = `About ${business.name} | Gym in ${business.geo.city}, ${business.geo.stateAbbr}`;
 ---
-<GymLayout title={title} description={about.gymStory.slice(0, 155)} path="/about" image={about.hero.backgroundImageUrl}>
+<GymLayout title={title} description={about.gymStory?.slice(0, 155) || `Learn about ${business.name}, a gym in ${business.geo.city}, ${business.geo.stateAbbr}. ${business.tagline}`} path="/about" image={about.hero.backgroundImageUrl}>
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "About", path: "/about" }]} /></Fragment>
   <Hero hero={about.hero} />
   <section class="py-16"><Container><p class="mx-auto max-w-3xl text-center text-lg text-secondary">{about.gymStory}</p></Container></section>

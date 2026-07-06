@@ -6,9 +6,9 @@ import { content } from "../../lib/content";
 const { blog } = content.pages;
 const { business } = content;
 const posts = [...blog.posts].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-const title = `Fitness Tips & News | ${business.name} Blog`;
+const title = `Fitness Tips & News in ${business.geo.city}, ${business.geo.stateAbbr} | ${business.name}`;
 ---
-<GymLayout title={title} description={`Fitness tips, local guides, and news from ${business.name}.`} path="/blog">
+<GymLayout title={title} description={`Fitness tips, nutrition advice, and gym news from ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}.`} path="/blog">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Blog", path: "/blog" }]} /></Fragment>
   <section class="py-16">
     <Container>

@@ -9,7 +9,7 @@ const s = content.pages.schedule;
 const { business } = content;
 const title = `Class Schedule | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 ---
-<GymLayout title={title} description={s.hero.subheading ?? `Class schedule at ${business.name}`} path="/schedule">
+<GymLayout title={title} description={`View the class schedule at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. CrossFit, bootcamp, and personal training classes available.`} path="/schedule">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Schedule", path: "/schedule" }]} /></Fragment>
   <Hero hero={s.hero} />
   <section class="py-16">
