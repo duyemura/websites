@@ -1,5 +1,6 @@
 ---
 import type { Testimonial } from "../../types/gym-content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 const { headline, items } = Astro.props as { headline?: string; items: Testimonial[] };
 if (!items?.length) return;
 ---
@@ -11,7 +12,8 @@ if (!items?.length) return;
         <div class="rounded-lg bg-slate-800 p-8">
           <p class="font-heading text-lg font-medium leading-relaxed text-white">"{t.quote}"</p>
           <div class="mt-6 flex items-center gap-3">
-            {t.photoUrl && <img src={t.photoUrl} alt={t.name} width="40" height="40" class="h-10 w-10 rounded-full object-cover" />}
+            {t.photoUrl && t.photoUrl !== NO_IMAGE && <img src={t.photoUrl} alt={t.name} width="40" height="40" class="h-10 w-10 rounded-full object-cover" />}
+            {!t.photoUrl && <div class="h-10 w-10 rounded-full bg-muted" />}
             <div>
               <p class="font-semibold text-white text-sm">{t.name}</p>
               {t.program && <p class="text-xs text-accent uppercase tracking-wide">{t.program}</p>}

@@ -33,12 +33,12 @@
     "mapEmbedUrl": "https://www.google.com/maps/embed?pb=fixture"
   },
   "brand": {
-    "primaryColor": "#0f172a",
-    "secondaryColor": "#334155",
-    "accentColor": "#f59e0b",
-    "headingFont": "Oswald",
+    "primaryColor": "#111111",
+    "secondaryColor": "#171717",
+    "accentColor": "#737373",
+    "headingFont": "Inter",
     "bodyFont": "Inter",
-    "logoUrl": "https://placehold.co/200x60?text=GYM",
+    "logoUrl": "__NO_IMAGE__",
     "logoAlt": "Your Gym Name"
   },
   "navigation": {
@@ -80,7 +80,7 @@
         "subheading": "Our gym is dedicated to making you stronger, leaner, and healthier so you can live a life without limitations.",
         "ctaLabel": "Get Started!",
         "ctaUrl": "/contact",
-        "backgroundImageUrl": "https://placehold.co/1600x900?text=Hero"
+        "backgroundImageUrl": "__NO_IMAGE__"
       },
       "valueProps": [
         { "icon": "🏠", "headline": "A Welcoming Gym Near You", "body": "A friendly club environment for people at all fitness levels." },
@@ -129,8 +129,8 @@
         "slug": "group-strength",
         "name": "Group Strength",
         "shortDescription": "Coach-led strength and conditioning for every level.",
-        "coverImageUrl": "https://placehold.co/800x600?text=Group+Strength",
-        "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=Group+Strength" },
+        "coverImageUrl": "__NO_IMAGE__",
+        "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "What is group strength training?", "body": "Coach-led strength and conditioning sessions built around functional movements, professional coaching, structured programming, and a supportive community." },
         "whatMakesUsDifferent": [
           "Coach-led every class — guidance from start to finish",
@@ -156,8 +156,8 @@
         "slug": "cardio-bootcamp",
         "name": "Cardio Bootcamp",
         "shortDescription": "High-energy circuit training. Zero barbells, all results.",
-        "coverImageUrl": "https://placehold.co/800x600?text=Cardio+Bootcamp",
-        "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=Cardio+Bootcamp" },
+        "coverImageUrl": "__NO_IMAGE__",
+        "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Why it works", "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss." },
         "whatMakesUsDifferent": ["Beginner-friendly by design", "No barbell complexity", "Coached, not just supervised", "Fun, loud, motivating"],
         "whatToExpect": { "headline": "What you'll do in class", "steps": ["Warm-Up", "Circuit Training", "Cool Down & Stretch"] },
@@ -174,8 +174,8 @@
         "slug": "personal-training",
         "name": "Personal Training",
         "shortDescription": "A 360-degree approach: training, lifestyle, and nutrition.",
-        "coverImageUrl": "https://placehold.co/800x600?text=PT",
-        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Free Consultation", "ctaUrl": "/contact", "backgroundImageUrl": "https://placehold.co/1600x900?text=PT" },
+        "coverImageUrl": "__NO_IMAGE__",
+        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Free Consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Life without limitations", "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery — with a baseline assessment and personalized tracking." },
         "whatMakesUsDifferent": ["Baseline health assessment", "Lifestyle and nutrition coaching included", "Personalized tracking", "VIP experience"],
         "whatToExpect": { "headline": "How it works", "steps": ["Assessment", "Personal plan", "Weekly sessions", "Ongoing adjustments"] },
@@ -190,13 +190,13 @@
       }
     ],
     "about": {
-      "hero": { "headline": "Meet Our Team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "https://placehold.co/1600x900?text=Team" },
+      "hero": { "headline": "Meet Our Team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "__NO_IMAGE__" },
       "gymStory": "Your Gym Name is a fitness center in Your City, Your State helping busy adults build strength, improve conditioning, and stay consistent with their health. Members travel from Your City and the surrounding area.",
       "team": [
-        { "name": "Alex Morgan", "title": "Owner", "photoUrl": "https://placehold.co/400x400?text=AM" },
-        { "name": "Jordan Smith", "title": "Owner & Founder", "photoUrl": "https://placehold.co/400x400?text=JS" },
-        { "name": "Taylor Lee", "title": "Fitness Instructor", "photoUrl": "https://placehold.co/400x400?text=TL" },
-        { "name": "Morgan Chen", "title": "Fitness Instructor", "photoUrl": "https://placehold.co/400x400?text=MC" }
+        { "name": "Alex Morgan", "title": "Owner", "photoUrl": "__NO_IMAGE__" },
+        { "name": "Jordan Smith", "title": "Owner & Founder", "photoUrl": "__NO_IMAGE__" },
+        { "name": "Taylor Lee", "title": "Fitness Instructor", "photoUrl": "__NO_IMAGE__" },
+        { "name": "Morgan Chen", "title": "Fitness Instructor", "photoUrl": "__NO_IMAGE__" }
       ]
     },
     "pricing": {
@@ -229,9 +229,9 @@
           "publishedAt": "2026-05-01",
           "excerpt": "Thinking about joining a gym in Your City? Here are ten reasons to start now.",
           "category": "Education",
-          "coverImageUrl": "https://placehold.co/1200x630?text=Blog1",
+          "coverImageUrl": "__NO_IMAGE__",
           "author": "Jordan Smith",
-          "body": "## Why now?\n\nJoining a gym is the highest-leverage health decision most adults make.\n\n1. **Coaching** beats guessing.\n2. **Community** beats willpower.\n\n![Members training](https://placehold.co/800x450?text=Training)\n\nCome see us in Your City."
+          "body": "## Why now?\n\nJoining a gym is the highest-leverage health decision most adults make.\n\n1. **Coaching** beats guessing.\n2. **Community** beats willpower.\n\n![Members training]()\n\nCome see us in Your City."
         },
         {
           "slug": "5-healthy-restaurant-tips",

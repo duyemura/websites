@@ -8,8 +8,10 @@ import {
   DEFAULT_PROGRAMS,
   DEFAULT_BUSINESS_NAME,
   DEFAULT_CITY,
+  NO_IMAGE,
   placeholderImage,
 } from "@ploy-gyms/shared-types/template-baseline";
+
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
@@ -220,13 +222,13 @@ export function extractPages(
     slug: p.slug,
     name: p.name,
     shortDescription: "Coach-led training for every fitness level.",
-    coverImageUrl: placeholderImage(p.name, 800, 600),
+    coverImageUrl: NO_IMAGE,
     hero: {
       headline: `Try our ${p.name}`,
       subheading: "",
       ctaLabel: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.label,
       ctaUrl: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.url,
-      backgroundImageUrl: placeholderImage(p.name, 1600, 900),
+      backgroundImageUrl: NO_IMAGE,
     },
     whatIsIt: { headline: `What is ${p.name.toLowerCase()}?`, body: "" },
     whatMakesUsDifferent: [],
@@ -259,7 +261,7 @@ export function extractPages(
 
   const aboutPage = byClass("about")[0];
   const about: AboutContent = {
-    hero: aboutPage ? heroFromPage(aboutPage) : { headline: "About Us" },
+    hero: aboutPage ? heroFromPage(aboutPage) : { headline: "About Us", backgroundImageUrl: NO_IMAGE },
     gymStory: "",
     team: [],
   };

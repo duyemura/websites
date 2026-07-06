@@ -1,5 +1,6 @@
 ---
 import { content } from "../../lib/content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 const { business, meta, brand } = content;
 const sameAs = Object.values(business.social ?? {}).filter(Boolean);
 const schema = {
@@ -7,7 +8,7 @@ const schema = {
   "@type": ["LocalBusiness", "SportsActivityLocation"],
   name: business.name,
   description: business.tagline,
-  image: brand.logoUrl,
+  ...(brand.logoUrl && brand.logoUrl !== NO_IMAGE && { image: brand.logoUrl }),
   url: meta.siteUrl,
   ...(business.email && { email: business.email }),
   telephone: business.phone,

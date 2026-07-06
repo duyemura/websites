@@ -3,8 +3,10 @@ import type { HeroContent } from "../../types/gym-content";
 const { hero, h1 = true } = Astro.props as { hero: HeroContent; h1?: boolean };
 const Tag = h1 ? "h1" : "h2";
 
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+
 let safeBgUrl = "";
-if (hero.backgroundImageUrl) {
+if (hero.backgroundImageUrl && hero.backgroundImageUrl !== NO_IMAGE) {
   try {
     const u = new URL(hero.backgroundImageUrl, "https://x");
     if ((u.protocol === "http:" || u.protocol === "https:") && !u.hostname.includes("placehold.co")) {

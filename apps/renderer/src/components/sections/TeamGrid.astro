@@ -1,6 +1,7 @@
 ---
 import Container from "../ui/Container.astro";
 import SectionHeading from "../ui/SectionHeading.astro";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import type { TeamMember } from "../../types/gym-content";
 const { team } = Astro.props as { team: TeamMember[] };
 ---
@@ -10,7 +11,11 @@ const { team } = Astro.props as { team: TeamMember[] };
     <div class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-4">
       {team.map((m) => (
         <div class="text-center">
-          <img src={m.photoUrl} alt={m.name} width="400" height="400" loading="lazy" class="aspect-square w-full rounded-xl object-cover" />
+          {m.photoUrl && m.photoUrl !== NO_IMAGE ? (
+            <img src={m.photoUrl} alt={m.name} width="400" height="400" loading="lazy" class="aspect-square w-full rounded-xl object-cover" />
+          ) : (
+            <div class="aspect-square w-full rounded-xl bg-muted" />
+          )}
           <h3 class="mt-3 font-heading font-semibold text-primary">{m.name}</h3>
           <p class="text-sm text-secondary">{m.title}</p>
           {m.bio && <p class="mt-1 text-sm text-secondary">{m.bio}</p>}

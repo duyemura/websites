@@ -2,6 +2,7 @@
 import GymLayout from "../../layouts/GymLayout.astro";
 import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
 import Container from "../../components/ui/Container.astro";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import { content } from "../../lib/content";
 const { blog } = content.pages;
 const { business } = content;
@@ -16,7 +17,7 @@ const title = `Fitness Tips & News in ${business.geo.city}, ${business.geo.state
       <div class="mx-auto max-w-2xl space-y-10">
         {posts.map((post) => (
           <article class="overflow-hidden rounded-xl shadow">
-            {post.coverImageUrl && (
+            {post.coverImageUrl && post.coverImageUrl !== NO_IMAGE && (
               <a href={`/blog/${post.slug}`}><img src={post.coverImageUrl} alt={post.title} width="1200" height="630" loading="lazy" class="aspect-[1.91/1] w-full object-cover" /></a>
             )}
             <div class="p-6">

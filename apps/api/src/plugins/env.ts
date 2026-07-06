@@ -51,6 +51,8 @@ export const ConfigSchema = z.object({
   FAL_KEY: z.string().optional(),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/dev/image-to-image"),
   SES_FROM_EMAIL: z.string().email().optional(),
+  /** CloudFront KVS ARN — used to auto-write domain→S3 routing on go-live */
+  CLOUDFRONT_KVS_ARN: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

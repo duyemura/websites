@@ -70,18 +70,16 @@ function computeSimilarity(a: Buffer, b: Buffer): { score: number; heightDeltaPx
 // ---------- CDN path helpers ----------
 
 /**
- * Convert a page path to the CDN URL for the promoted current/ version.
- * Mirror pages live at: sites/{siteUuid}/current/{path}/index.html
- * Root maps to: sites/{siteUuid}/current/index.html
+ * Convert a page path to the public CDN URL.
+ * CloudFront's milo-gym-router function rewrites:
+ *   /sites/{siteUuid}/path/  ->  sites/{siteUuid}/current/path/index.html
+ * so eval URLs must NOT include the `current/` prefix.
  */
 function mirrorUrl(cdnBase: string, siteUuid: string, pagePath: string): string {
   const base = cdnBase.replace(/\/$/, "");
-  if (pagePath === "/") {
-    return `${base}/sites/${siteUuid}/current/index.html`;
-  }
-  // Normalise: strip trailing slash, add /index.html
-  const normalised = pagePath.replace(/\/$/, "");
-  return `${base}/sites/${siteUuid}/current${normalised}/index.html`;
+  // Keep trailing slash so the router appends index.html for directory URLs.
+  const normalised = pagePath === "/" ? "/" : pagePath.replace(/\/$/, "");
+  return `${base}/sites/${siteUuid}${normalised}`;
 }
 
 // ---------- Stage ----------

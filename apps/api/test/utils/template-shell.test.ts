@@ -38,7 +38,7 @@ describe("buildTemplateShell", () => {
     expect(shell.theme.colors.primary).toBe("#111111");
     expect(shell.theme.colors.accent).toBeUndefined();
     expect(shell.theme.colors.background).toBe("#ffffff");
-    expect(shell.theme.fonts.heading).toBe("Sans-serif");
+    expect(shell.theme.fonts.heading).toBe("Inter");
   });
 
   test("anonymizes page title and meta description", () => {

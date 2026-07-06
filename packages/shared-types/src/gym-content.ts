@@ -44,13 +44,15 @@ export interface BusinessInfo {
   mapEmbedUrl?: string;         // Google Maps embed iframe src
 }
 
+export const NO_IMAGE = "__NO_IMAGE__";
+
 export interface BrandTokens {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
   headingFont: string;          // Google Fonts family name
   bodyFont: string;
-  logoUrl: string;
+  logoUrl: string | typeof NO_IMAGE;
   logoAlt: string;
 }
 

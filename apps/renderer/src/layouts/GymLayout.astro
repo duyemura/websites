@@ -1,5 +1,6 @@
 ---
 import { content, safeTrackingId } from "../lib/content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import CanonicalMeta from "../components/seo/CanonicalMeta.astro";
 import OpenGraph from "../components/seo/OpenGraph.astro";
 import LocalBusinessSchema from "../components/seo/LocalBusinessSchema.astro";
@@ -62,8 +63,8 @@ const rootCss = [
     <LocalBusinessSchema />
     <style is:inline set:html={rootCss}></style>
     <Tracking />
-    {image && <link rel="preload" as="image" href={image} fetchpriority="high" />}
-    <link rel="icon" href={brand.logoUrl} />
+    {image && image !== NO_IMAGE && <link rel="preload" as="image" href={image} fetchpriority="high" />}
+    <link rel="icon" href={brand.logoUrl !== NO_IMAGE ? brand.logoUrl : "/favicon.ico"} />
     <link rel="manifest" href="/site.webmanifest" />
     <slot name="head" />
   </head>

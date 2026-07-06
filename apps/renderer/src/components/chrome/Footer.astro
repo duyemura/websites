@@ -1,12 +1,17 @@
 ---
 import { content } from "../../lib/content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 const { navigation, business, brand } = content;
 const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
 ---
 <footer class="bg-primary py-12 text-white">
   <div class="mx-auto grid max-w-6xl gap-8 px-4 sm:grid-cols-2 lg:grid-cols-4">
     <div>
-      <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="lazy" />
+      {brand.logoUrl && brand.logoUrl !== NO_IMAGE ? (
+        <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="lazy" />
+      ) : (
+        <span class="font-heading text-xl font-bold uppercase tracking-wider text-white">{business.name}</span>
+      )}
       <!-- NAP — must match LocalBusiness schema exactly -->
       <address class="mt-4 not-italic text-sm text-slate-300">
         {business.name}<br />

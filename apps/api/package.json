@@ -25,6 +25,7 @@
     "milo": "tsx scripts/milo.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1079.0",
     "@aws-sdk/client-s3": "^3.1075.0",
     "@aws-sdk/client-ses": "^3.1079.0",
     "@aws-sdk/s3-request-presigner": "^3.1075.0",

@@ -1,5 +1,6 @@
 ---
 import { marked } from "marked";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import GymLayout from "../../layouts/GymLayout.astro";
 import BlogPostingSchema from "../../components/seo/BlogPostingSchema.astro";
 import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
@@ -29,7 +30,7 @@ const path = `/blog/${post.slug}`;
           <time datetime={post.publishedAt}>{new Date(post.publishedAt + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</time>
           {post.author && <span> · {post.author}</span>}
         </p>
-        {post.coverImageUrl && <img src={post.coverImageUrl} alt={post.title} width="1200" height="630" loading="eager" class="mt-6 rounded-xl" />}
+        {post.coverImageUrl && post.coverImageUrl !== NO_IMAGE && <img src={post.coverImageUrl} alt={post.title} width="1200" height="630" loading="eager" class="mt-6 rounded-xl" />}
         <div class="prose mt-8 max-w-none" set:html={body} />
       </div>
     </Container>

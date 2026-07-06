@@ -39,16 +39,6 @@ export const DEFAULT_PROGRAMS = [
   { slug: "personal-training", name: "Personal Training" },
 ] as const;
 
-export const DEFAULT_BRAND_TOKENS: BrandTokens = {
-  primaryColor: DEFAULT_TEMPLATE_TOKENS.colors.primary,
-  secondaryColor: DEFAULT_TEMPLATE_TOKENS.colors.foreground,
-  accentColor: DEFAULT_TEMPLATE_TOKENS.colors.mutedForeground,
-  headingFont: DEFAULT_TEMPLATE_TOKENS.fonts.heading,
-  bodyFont: DEFAULT_TEMPLATE_TOKENS.fonts.body,
-  logoUrl: `https://placehold.co/200x60?text=${encodeURIComponent(DEFAULT_BUSINESS_NAME).replace(/%20/g, "+")}`,
-  logoAlt: DEFAULT_BUSINESS_NAME,
-};
-
 export const DEFAULT_BUSINESS_PLACEHOLDER: Omit<BusinessInfo, "hours"> = {
   name: DEFAULT_BUSINESS_NAME,
   tagline: DEFAULT_TAGLINE,
@@ -72,6 +62,14 @@ export const DEFAULT_BUSINESS_PLACEHOLDER: Omit<BusinessInfo, "hours"> = {
   },
 };
 
+import { NO_IMAGE } from "./gym-content.js";
+
+/**
+ * Sentinel for "use a plain HTML/CSS background instead of an image".
+ * Exported from gym-content.ts and re-exported here for backwards compatibility.
+ */
+export { NO_IMAGE };
+
 /** Placehold.co label for a generic image. Prefer plain ASCII labels so the URL stays readable. */
 export const placeholderImage = (label: string, width = 800, height = 600): string =>
   `https://placehold.co/${width}x${height}?text=${encodeURIComponent(label).replace(/%20/g, "+")}`;
@@ -79,3 +77,13 @@ export const placeholderImage = (label: string, width = 800, height = 600): stri
 /** Program names that generic gym templates use by default. */
 export const defaultProgramName = (slug: string): string =>
   DEFAULT_PROGRAMS.find((p) => p.slug === slug)?.name ?? slug;
+
+export const DEFAULT_BRAND_TOKENS: BrandTokens = {
+  primaryColor: DEFAULT_TEMPLATE_TOKENS.colors.primary,
+  secondaryColor: DEFAULT_TEMPLATE_TOKENS.colors.foreground,
+  accentColor: DEFAULT_TEMPLATE_TOKENS.colors.mutedForeground,
+  headingFont: DEFAULT_TEMPLATE_TOKENS.fonts.heading,
+  bodyFont: DEFAULT_TEMPLATE_TOKENS.fonts.body,
+  logoUrl: NO_IMAGE,
+  logoAlt: DEFAULT_BUSINESS_NAME,
+};

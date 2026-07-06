@@ -67,6 +67,27 @@ export function goLiveSiteProcessor(fastify: FastifyInstance) {
         .where("uuid", "=", siteUuid)
         .execute();
 
+      // Write customDomain → S3 prefix to CloudFront KVS so the domain routes automatically.
+      // Non-fatal: KVS write failure does not roll back the go-live.
+      try {
+        const { CloudFrontKeyValueStoreClient, PutKeyCommand, DescribeKeyValueStoreCommand } =
+          await import("@aws-sdk/client-cloudfront-keyvaluestore");
+        const KVS_ARN = fastify.config.CLOUDFRONT_KVS_ARN;
+        if (KVS_ARN && site.customDomain) {
+          const kvsClient = new CloudFrontKeyValueStoreClient({});
+          const desc = await kvsClient.send(new DescribeKeyValueStoreCommand({ KvsARN: KVS_ARN }));
+          await kvsClient.send(new PutKeyCommand({
+            KvsARN: KVS_ARN,
+            IfMatch: desc.ETag,
+            Key: site.customDomain,
+            Value: `sites/${siteUuid}/current`,
+          }));
+          fastify.log.info({ siteUuid, customDomain: site.customDomain }, "KVS routing written");
+        }
+      } catch (kvsErr) {
+        fastify.log.warn({ siteUuid, err: kvsErr }, "KVS write failed — domain routing must be set manually");
+      }
+
       fastify.log.info({ jobId: job.id, siteUuid, host }, "Site went live");
       return { status: "live", siteUrl: host };
     } catch (err) {

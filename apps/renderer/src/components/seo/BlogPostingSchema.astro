@@ -1,7 +1,9 @@
 ---
 import { content, absUrl } from "../../lib/content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import type { BlogPost } from "../../types/gym-content";
 const { post } = Astro.props as { post: BlogPost };
+const blogImage = post.coverImageUrl && post.coverImageUrl !== NO_IMAGE ? post.coverImageUrl : undefined;
 const schema = {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
@@ -11,7 +13,7 @@ const schema = {
   ...(post.author && { author: { "@type": "Person", name: post.author } }),
   publisher: { "@type": "Organization", name: content.business.name },
   url: absUrl(`/blog/${post.slug}`),
-  ...(post.coverImageUrl && { image: post.coverImageUrl }),
+  ...(blogImage && { image: blogImage }),
 };
 ---
 <script type="application/ld+json" set:html={JSON.stringify(schema)} />

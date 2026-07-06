@@ -1,5 +1,6 @@
 ---
 import { content } from "../../lib/content";
+import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
 import Button from "../ui/Button.astro";
 const { navigation, business, brand } = content;
 ---
@@ -13,9 +14,9 @@ const { navigation, business, brand } = content;
   )}
   <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
     <a href="/">
-      {brand.logoUrl
+      {brand.logoUrl && brand.logoUrl !== NO_IMAGE
         ? <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="eager" class="h-10 w-auto" />
-        : <span class="font-heading text-xl font-bold uppercase tracking-wider text-primary">{business.name}</span>
+        : <span class="font-heading text-xl font-bold uppercase tracking-wider text-white">{business.name}</span>
       }
     </a>
     <nav aria-label="Main">
