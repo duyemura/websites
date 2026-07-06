@@ -70,7 +70,7 @@ export const cloneStage: StageRunner = {
     const costs = estimateMirrorCosts(result.pageCount, assetCount);
 
     return {
-      stage: "mirror",
+      stage: "clone",
       status: deduped.length > 0 ? "warn" : "pass",
       durationMs: 0,
       metrics: {
