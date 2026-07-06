@@ -19,17 +19,27 @@ export const GET: APIRoute = () => {
     return lines.join("\n");
   }).join("\n\n");
 
+  const programsSection = pages.programs.length
+    ? `## Programs\n\n${business.name} offers the following programs:\n\n${programDetails}`
+    : "";
+
   const pricingSection = pages.pricing?.grid?.plans?.length
     ? `## Membership pricing\n\n${pages.pricing.grid.plans.map((plan) =>
         `- **${plan.name}**: ${plan.price}${plan.period ? ` ${plan.period}` : ""}${plan.description ? ` — ${plan.description}` : ""}`
       ).join("\n")}`
     : "";
 
+  const howItWorksSection = `## How to get started\n\n${pages.home.howItWorks?.map((s) => `${s.number}. **${s.headline}** — ${s.body}`).join("\n") || `Contact us at ${business.phone} to get started.`}`;
+
   const testimonialsSection = pages.home.testimonials?.length
     ? `## Member testimonials\n\n${pages.home.testimonials.slice(0, 5).map((t) =>
         `"${t.quote}" — ${t.name}${t.program ? ` (${t.program})` : ""}`
       ).join("\n\n")}`
     : "";
+
+  const optionalSections = [programsSection, pricingSection, howItWorksSection, testimonialsSection]
+    .filter(Boolean)
+    .join("\n\n");
 
   const body = `# ${business.name}
 
@@ -48,19 +58,7 @@ ${business.name} is a gym located at ${business.address.street}, ${business.addr
 
 ${hours}
 
-## Programs
-
-${business.name} offers the following programs:
-
-${programDetails}
-
-${pricingSection}
-
-## How to get started
-
-${pages.home.howItWorks?.map((s) => `${s.number}. **${s.headline}** — ${s.body}`).join("\n") || `Contact us at ${business.phone} to get started.`}
-
-${testimonialsSection}
+${optionalSections}
 
 ## Frequently asked questions
 

@@ -6,10 +6,12 @@ import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import Container from "../components/ui/Container.astro";
 import { content } from "../lib/content";
 const s = content.pages.schedule;
-const { business } = content;
+const { business, pages } = content;
 const title = `Class Schedule | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
+const programNames = pages.programs.slice(0, 2).map(p => p.name).join(", ");
+const scheduleDesc = `View the class schedule at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. ${programNames ? `${programNames} and more — ` : ""}find a class that works for you.`;
 ---
-<GymLayout title={title} description={`View the class schedule at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. CrossFit, bootcamp, and personal training classes available.`} path="/schedule">
+<GymLayout title={title} description={scheduleDesc} path="/schedule">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Schedule", path: "/schedule" }]} /></Fragment>
   <Hero hero={s.hero} />
   <section class="py-16">
