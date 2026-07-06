@@ -68,6 +68,11 @@ pnpm milo --site <uuid> --stages template,template-eval
 
 **`--site` requires stages** — no default, since we don't know what already exists.
 
+**Output verbosity flags:**
+- `--verbose` (default for TTY) — per-page log lines, full warning list
+- `--quiet` — final report table only, no intermediate output; suitable for CI/pipes
+- `--progress` — live progress bar showing current stage + pages processed (TTY only)
+
 ---
 
 ## Stage result shape
@@ -100,7 +105,9 @@ audit          ✅ PASS  8 issues (3 high, 5 medium)             1s
 Total                                                          353s
 ```
 
-Warnings are listed below the table. Failures stop the pipeline (subsequent stages are skipped and marked `skipped`).
+Warnings are listed below the table. **Warnings are deduplicated and categorized** — 809 identical Elementor warnings become one entry: `⚠️ Elementor site detected — dynamic JS features will not render in static mirror (809 pages affected)`. The raw warning list is available with `--verbose`.
+
+Failures stop the pipeline (subsequent stages are skipped and marked `skipped`).
 
 ---
 
@@ -118,6 +125,8 @@ Before running a stage, check if its primary artifact already exists in the DB. 
 | `audit` | `site-audit` artifact |
 | `template` | Latest `site_versions` row with `kind: "template"` |
 | `template-eval` | Always re-runs |
+
+**Intra-stage resumability:** The `mirror` stage is the most expensive and most likely to crash mid-run on large sites. It saves artifacts at each sub-stage (crawl → assets → snapshot → deploy). If it crashes after snapshot but before deploy, a re-run skips crawl + assets + snapshot and starts from deploy. This is implemented by checking sub-stage artifacts in the mirror stage runner, not just the final `mirror-deploy` artifact.
 
 ---
 
@@ -214,6 +223,32 @@ export const auditStage: StageRunner = {
   run: async (ctx) => { /* ... */ },
 };
 ```
+
+---
+
+## Production parity
+
+**The CLI must use the exact same service functions as the BullMQ workers.** No CLI-specific logic, no duplicated code paths. If `milo.ts --stages mirror` calls a different code path than the `mirror_site` worker, bugs will pass eval but fail in production.
+
+Concretely: `stages/mirror.ts` calls `runMirrorPipeline()` from `src/services/mirror/run-mirror.ts` — the same function the `mirror-site` worker calls. Same for every stage.
+
+---
+
+## Concurrency guard
+
+Before starting the `mirror` stage, the CLI checks `sites.mirrorStatus`. If it is `"crawling"` or `"deploying"`, the run is rejected with: `"Site is already being mirrored — wait for it to complete or reset the status"`. This prevents two concurrent runs corrupting `sites/<uuid>/current/`. The mirror stage sets status to `"crawling"` at start and `"mirrored"` (or `"failed"`) at end, same as the worker.
+
+---
+
+## CMS detection
+
+During the `mirror` stage, the snapshot warnings are scanned for known CMS/builder signatures (Elementor, Webflow, Squarespace, Wix, Shopify). If detected, a site-level property `cms` is written to the site record. The report shows it as a single line: `CMS detected: Elementor` — not as 809 per-page warnings.
+
+Known signatures:
+- `dynamic plugin (Elementor` → `elementor`
+- `plugin:Webflow` → `webflow`
+- `Squarespace` → `squarespace`
+- `wixsite` → `wix`
 
 ---
 
