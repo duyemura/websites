@@ -47,7 +47,8 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   return registry;
 }
 
-const DEFAULT_STAGES_FOR_URL = ["mirror", "extract", "segment", "contract", "docgen", "eval"];
+// extract/segment/contract are the old replication pipeline — not needed for mirror+template approach
+const DEFAULT_STAGES_FOR_URL = ["mirror", "content", "template"];
 
 function parseArgs() {
   const argv = process.argv.slice(2);
