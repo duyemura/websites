@@ -339,106 +339,83 @@ async function scrollThrough(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-async function extractContent(page: Page): Promise<Omit<CapturedPage["content"], "lottieUrls">> {
-  return page.evaluate(() => {
-    const meta: Record<string, string> = {};
-    for (const el of Array.from(document.querySelectorAll("meta[name],meta[property]"))) {
-      const key = el.getAttribute("name") ?? el.getAttribute("property") ?? "";
-      const value = el.getAttribute("content") ?? "";
-      if (key && value) meta[key] = value;
-    }
-
-    const jsonLd: unknown[] = [];
-    for (const el of Array.from(
-      document.querySelectorAll('script[type="application/ld+json"]'),
-    )) {
-      try {
-        jsonLd.push(JSON.parse(el.textContent ?? ""));
-      } catch {
-        /* malformed */
-      }
-    }
-
-    // Business name priority: JSON-LD > og:site_name > og:title > <title>. NEVER image alt.
-    const ldName = jsonLd
-      .flatMap((b) => (Array.isArray(b) ? b : [b]))
-      .map((b) => (b as { name?: string })?.name)
-      .find((n) => typeof n === "string" && n.length > 0);
-    const businessName =
-      ldName ?? meta["og:site_name"] ?? meta["og:title"] ?? (document.title || undefined);
-
-    const classify = (src: string): "map" | "schedule" | "form" | "video" | "other" =>
-      /google\.[^/]*\/maps|maps\.google/.test(src)
-        ? "map"
-        : /calendly|schedule|booking|zenplanner|wodify|pushpress/.test(src)
-          ? "schedule"
-          : /typeform|jotform|forms\./.test(src)
-            ? "form"
-            : /youtube|vimeo|wistia/.test(src)
-              ? "video"
-              : "other";
-
-    const nav =
-      document.querySelector("nav") ?? document.querySelector("header") ?? document.body;
-
-    // Primary CTA: first prominent button/link near the page H1, identified by DOM structure.
-    // Done at the page level so it's independent of how the segmenter slices the page.
-    const primaryCta = (() => {
-      const h1 = document.querySelector("h1") ?? document.querySelector("h2");
-      if (!h1) return undefined;
-      const h1Rect = h1.getBoundingClientRect();
-      const CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start|tour)\b/i;
-      let best: { label: string; href: string; score: number } | undefined;
-      for (const el of Array.from(document.querySelectorAll("a[href],button"))) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width < 50 || rect.height < 28) continue;
-        const href = (el as HTMLAnchorElement).getAttribute("href") ?? "";
-        if (href.startsWith("tel:") || href.startsWith("mailto:")) continue;
-        const text = (el as HTMLElement).textContent?.trim() ?? "";
-        if (!text || text.length > 60) continue;
-        const cls = ((el as HTMLElement).className ?? "").toString();
-        const classScore = CTA_RE.test(cls) ? 10 : 0;
-        const distScore = Math.max(0, 5 - Math.abs(rect.top - h1Rect.bottom) / 200);
-        const score = classScore + distScore;
-        if (!best || score > best.score) best = { label: text, href, score };
-      }
-      return best ? { label: best.label, href: best.href } : undefined;
-    })();
-
-    return {
-      title: document.title,
-      businessName,
-      rawText: document.body.innerText.replace(/\s+/g, " ").trim(),
-      headings: Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6"))
-        .map((h) => ({
-          level: Number(h.tagName[1]),
-          text: (h as HTMLElement).innerText.trim(),
-        }))
-        .filter((h) => h.text.length > 0),
-      navLinks: Array.from(nav.querySelectorAll("a[href]"))
-        .map((a) => ({
-          label: (a as HTMLElement).innerText.trim(),
-          href: a.getAttribute("href") ?? "",
-        }))
-        .filter((l) => l.label.length > 0),
-      meta,
-      jsonLd,
-      primaryCta,
-      iframes: Array.from(document.querySelectorAll("iframe[src]")).map((f) => {
-        const src = f.getAttribute("src") ?? "";
-        return { src, kind: classify(src) };
-      }),
-      videos: Array.from(document.querySelectorAll("video"))
-        .map((v) => ({
-          src:
-            v.getAttribute("src") ??
-            v.querySelector("source")?.getAttribute("src") ??
-            "",
-          poster: v.getAttribute("poster") ?? undefined,
-        }))
-        .filter((v) => v.src.length > 0),
-    };
+// String literal so esbuild/tsx __name polyfills don't leak into the browser context.
+const EXTRACT_CONTENT_SCRIPT = String.raw`(function() {
+  var meta = {};
+  Array.from(document.querySelectorAll("meta[name],meta[property]")).forEach(function(el) {
+    var key = el.getAttribute("name") || el.getAttribute("property") || "";
+    var value = el.getAttribute("content") || "";
+    if (key && value) meta[key] = value;
   });
+
+  var jsonLd = [];
+  Array.from(document.querySelectorAll('script[type="application/ld+json"]')).forEach(function(el) {
+    try { jsonLd.push(JSON.parse(el.textContent || "")); } catch(e) {}
+  });
+
+  var ldName = jsonLd
+    .reduce(function(a, b) { return a.concat(Array.isArray(b) ? b : [b]); }, [])
+    .map(function(b) { return b && b.name; })
+    .find(function(n) { return typeof n === "string" && n.length > 0; });
+  var businessName = ldName || meta["og:site_name"] || meta["og:title"] || document.title || undefined;
+
+  var nav = document.querySelector("nav") || document.querySelector("header") || document.body;
+
+  var h1 = document.querySelector("h1") || document.querySelector("h2");
+  var primaryCta = undefined;
+  if (h1) {
+    var h1Rect = h1.getBoundingClientRect();
+    var CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start|tour)\b/i;
+    var best = undefined;
+    Array.from(document.querySelectorAll("a[href],button")).forEach(function(el) {
+      var rect = el.getBoundingClientRect();
+      if (rect.width < 50 || rect.height < 28) return;
+      var href = el.getAttribute("href") || "";
+      if (href.startsWith("tel:") || href.startsWith("mailto:")) return;
+      var text = (el.textContent || "").trim();
+      if (!text || text.length > 60) return;
+      var cls = (el.className || "").toString();
+      var classScore = CTA_RE.test(cls) ? 10 : 0;
+      var distScore = Math.max(0, 5 - Math.abs(rect.top - h1Rect.bottom) / 200);
+      var score = classScore + distScore;
+      if (!best || score > best.score) best = { label: text, href: href, score: score };
+    });
+    if (best) primaryCta = { label: best.label, href: best.href };
+  }
+
+  return {
+    title: document.title,
+    businessName: businessName,
+    rawText: document.body.innerText.replace(/\s+/g, " ").trim(),
+    headings: Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6"))
+      .map(function(h) { return { level: Number(h.tagName[1]), text: (h.innerText || "").trim() }; })
+      .filter(function(h) { return h.text.length > 0; }),
+    navLinks: Array.from(nav.querySelectorAll("a[href]"))
+      .map(function(a) { return { label: (a.innerText || "").trim(), href: a.getAttribute("href") || "" }; })
+      .filter(function(l) { return l.label.length > 0; }),
+    meta: meta,
+    jsonLd: jsonLd,
+    primaryCta: primaryCta,
+    iframes: Array.from(document.querySelectorAll("iframe[src]")).map(function(f) {
+      var src = f.getAttribute("src") || "";
+      var kind = /google\.[^/]*\/maps|maps\.google/.test(src) ? "map"
+        : /calendly|schedule|booking|zenplanner|wodify|pushpress/.test(src) ? "schedule"
+        : /typeform|jotform|forms\./.test(src) ? "form"
+        : /youtube|vimeo|wistia/.test(src) ? "video"
+        : "other";
+      return { src: src, kind: kind };
+    }),
+    videos: Array.from(document.querySelectorAll("video"))
+      .map(function(v) {
+        var src = v.getAttribute("src") || (v.querySelector("source") ? v.querySelector("source").getAttribute("src") : "") || "";
+        return { src: src, poster: v.getAttribute("poster") || undefined };
+      })
+      .filter(function(v) { return v.src.length > 0; }),
+  };
+})()`;
+
+async function extractContent(page: Page): Promise<Omit<CapturedPage["content"], "lottieUrls">> {
+  return page.evaluate(EXTRACT_CONTENT_SCRIPT as unknown as () => Omit<CapturedPage["content"], "lottieUrls">);
 }
 
 interface TrackedStyle {
