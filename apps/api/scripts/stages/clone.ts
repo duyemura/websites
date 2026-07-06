@@ -1,4 +1,4 @@
-// apps/api/scripts/stages/mirror.ts
+// apps/api/scripts/stages/clone.ts
 import { runMirrorPipeline } from "../../src/services/mirror/run-mirror";
 import { CRAWL_TIER_PAID, CRAWL_TIER_FREE } from "../../src/types/mirror";
 import { dedupeWarnings, estimateMirrorCosts } from "./types";
@@ -22,8 +22,8 @@ function detectCms(warnings: string[]): string | null {
   return null;
 }
 
-export const mirrorStage: StageRunner = {
-  label: "mirror",
+export const cloneStage: StageRunner = {
+  label: "clone",
   requires: [],
   produces: "mirror-deploy",
   async run(ctx: StageContext): Promise<StageResult> {

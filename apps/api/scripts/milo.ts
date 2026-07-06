@@ -20,7 +20,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   // Lazy: only attempt to load stages that exist
   const registry: Record<string, StageRunner> = {};
   const stageModules: [string, string][] = [
-    ["mirror", "./stages/mirror.js"],
+    ["clone", "./stages/clone.js"],
     ["eval", "./stages/eval.js"],
     ["extract", "./stages/extract.js"],
     ["segment", "./stages/segment.js"],
@@ -48,7 +48,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
 }
 
 // Default: clone the site, build docs, extract content. Template is the explicit paid upsell.
-const DEFAULT_STAGES_FOR_URL = ["mirror", "docgen", "content"];
+const DEFAULT_STAGES_FOR_URL = ["clone", "docgen", "content"];
 
 function parseArgs() {
   const argv = process.argv.slice(2);
