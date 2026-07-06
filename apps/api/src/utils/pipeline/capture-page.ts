@@ -67,34 +67,28 @@ export async function detectLottieAssets(page: Page): Promise<string[]> {
   const found = await page.evaluate((baseUrl: string): string[] => {
     const urls = new Set<string>();
 
-    function toAbsolute(src: string): string {
-      try {
-        return new URL(src, baseUrl).href;
-      } catch {
-        return src;
-      }
-    }
-
     // 1. <lottie-player src="...">
     for (const el of Array.from(document.querySelectorAll("lottie-player[src]"))) {
       const src = el.getAttribute("src");
-      if (src) urls.add(toAbsolute(src));
+      if (src) {
+        try { urls.add(new URL(src, baseUrl).href); } catch { urls.add(src); }
+      }
     }
 
     // 2. data-src attributes pointing to .json
     for (const el of Array.from(document.querySelectorAll("[data-src]"))) {
       const src = el.getAttribute("data-src") ?? "";
-      if (src.endsWith(".json") || src.includes("lottie")) urls.add(toAbsolute(src));
+      if (src.endsWith(".json") || src.includes("lottie")) {
+        try { urls.add(new URL(src, baseUrl).href); } catch { urls.add(src); }
+      }
     }
 
     // 3. Inline script text: lottie.loadAnimation({ path: "..." })
-    const scriptEls = Array.from(document.querySelectorAll("script:not([src])"));
-    for (const script of scriptEls) {
+    for (const script of Array.from(document.querySelectorAll("script:not([src])"))) {
       const text = script.textContent ?? "";
-      // Match path: "..." or animationData patterns
       const pathMatches = text.matchAll(/loadAnimation\s*\(\s*\{[^}]*path\s*:\s*["']([^"']+\.json[^"']*)/g);
       for (const m of pathMatches) {
-        if (m[1]) urls.add(toAbsolute(m[1]));
+        if (m[1]) { try { urls.add(new URL(m[1], baseUrl).href); } catch { urls.add(m[1]); } }
       }
     }
 
@@ -238,61 +232,61 @@ export async function capturePage(
   // Step 11: Computed theme — read from live DOM via getComputedStyle.
   // Completely framework-agnostic: captures final rendered values regardless
   // of whether styles came from CSS files, JS injection, CSS variables, etc.
-  const computedTheme = await page.evaluate((): ComputedThemeRaw => {
-    const body = document.body;
-    const bodyStyle = getComputedStyle(body);
-    const heading = document.querySelector("h1, h2, h3");
-    const headingStyle = heading ? getComputedStyle(heading) : null;
+  // String literal avoids esbuild __name polyfill leaking into browser context.
+  const COMPUTED_THEME_SCRIPT = String.raw`(function() {
+    var body = document.body;
+    var bodyStyle = getComputedStyle(body);
+    var heading = document.querySelector("h1, h2, h3");
+    var headingStyle = heading ? getComputedStyle(heading) : null;
 
-    // Primary accent: the most saturated background color among visible interactive
-    // elements. Saturation distinguishes brand colors (high) from near-blacks,
-    // near-whites, and grays (low) — which naïve "non-transparent" checks miss.
-    const rgbSaturation = (rgb: string): number => {
-      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    function rgbSaturation(rgb) {
+      var m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
       if (!m) return 0;
-      const r = +(m[1] ?? 0) / 255, g = +(m[2] ?? 0) / 255, b = +(m[3] ?? 0) / 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var r = +m[1] / 255, g = +m[2] / 255, b = +m[3] / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
       if (max === min) return 0;
-      const l = (max + min) / 2;
+      var l = (max + min) / 2;
       return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
-    };
-    let primaryAccent: string | null = null;
-    let bestSat = 0.15; // minimum saturation threshold to qualify as a brand color
-    const candidateEls = Array.from(
-      document.querySelectorAll("a, button, [class*='btn'], [class*='cta'], [class*='button']"),
+    }
+
+    var primaryAccent = null;
+    var bestSat = 0.15;
+    var candidateEls = Array.from(
+      document.querySelectorAll("a, button, [class*='btn'], [class*='cta'], [class*='button']")
     ).slice(0, 60);
-    for (const el of candidateEls) {
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      if (rect.width < 40 || rect.height < 24) continue; // skip tiny/invisible elements
-      const bg = getComputedStyle(el as Element).backgroundColor;
-      const sat = rgbSaturation(bg);
+    for (var i = 0; i < candidateEls.length; i++) {
+      var el = candidateEls[i];
+      var rect = el.getBoundingClientRect();
+      if (rect.width < 40 || rect.height < 24) continue;
+      var bg = getComputedStyle(el).backgroundColor;
+      var sat = rgbSaturation(bg);
       if (sat > bestSat) { bestSat = sat; primaryAccent = bg; }
     }
 
-    // Section backgrounds: top-level visible sections.
-    const sectionBackgrounds: Array<{ selector: string; background: string }> = [];
-    const sectionEls = document.querySelectorAll(
-      "section, [class*='section'], [class*='hero'], [class*='banner'], main > div, body > div",
-    );
-    for (const el of Array.from(sectionEls).slice(0, 12)) {
-      const rect = el.getBoundingClientRect();
-      if (rect.height < 50) continue;
-      const bg = getComputedStyle(el as Element).backgroundColor;
-      if (!bg || bg === "rgba(0, 0, 0, 0)" || bg === "transparent") continue;
-      const cls = typeof (el as HTMLElement).className === "string"
-        ? (el as HTMLElement).className.trim().split(/\s+/)[0] : "";
-      sectionBackgrounds.push({ selector: cls || el.tagName.toLowerCase(), background: bg });
+    var sectionBackgrounds = [];
+    var sectionEls = Array.from(document.querySelectorAll(
+      "section, [class*='section'], [class*='hero'], [class*='banner'], main > div, body > div"
+    )).slice(0, 12);
+    for (var j = 0; j < sectionEls.length; j++) {
+      var sel = sectionEls[j];
+      var selRect = sel.getBoundingClientRect();
+      if (selRect.height < 50) continue;
+      var selBg = getComputedStyle(sel).backgroundColor;
+      if (!selBg || selBg === "rgba(0, 0, 0, 0)" || selBg === "transparent") continue;
+      var cls = typeof sel.className === "string" ? sel.className.trim().split(/\s+/)[0] : "";
+      sectionBackgrounds.push({ selector: cls || sel.tagName.toLowerCase(), background: selBg });
     }
 
     return {
       bodyBackground: bodyStyle.backgroundColor,
       bodyColor: bodyStyle.color,
-      headingFont: headingStyle?.fontFamily ?? bodyStyle.fontFamily,
+      headingFont: headingStyle ? headingStyle.fontFamily : bodyStyle.fontFamily,
       bodyFont: bodyStyle.fontFamily,
-      primaryAccent,
-      sectionBackgrounds,
+      primaryAccent: primaryAccent,
+      sectionBackgrounds: sectionBackgrounds,
     };
-  });
+  })()`;
+  const computedTheme = await page.evaluate(COMPUTED_THEME_SCRIPT as unknown as () => ComputedThemeRaw);
 
   await page.close();
   return {
@@ -502,225 +496,216 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
     mobileMenuBackground: string;
   };
 
-  const result = await page.evaluate((): ExtractedNavRaw | null => {
-    // ---- find the nav/header element ----
-    // Prefer the outermost banner/header container which includes BOTH the logo
-    // and the links — many frameworks (Webflow, etc.) separate logo and nav into
-    // sibling elements inside a parent wrapper rather than inside <nav> itself.
-    const navEl =
-      document.querySelector('[role="banner"]') ??
-      document.querySelector("header") ??
-      document.querySelector("nav") ??
+  // String literal avoids esbuild __name polyfill leaking into browser context
+  // (named arrow functions and named function declarations inside page.evaluate
+  // both trigger __name polyfills that don't exist in the browser).
+  const EXTRACT_NAV_SCRIPT = String.raw`(function() {
+    var navEl =
+      document.querySelector('[role="banner"]') ||
+      document.querySelector("header") ||
+      document.querySelector("nav") ||
       document.querySelector('[role="navigation"]');
     if (!navEl) return null;
 
-    const navStyle = getComputedStyle(navEl as Element);
+    var navStyle = getComputedStyle(navEl);
 
     // ---- position ----
-    const pos = navStyle.position;
-    const position: "top-fixed" | "top-sticky" | "top-static" | "left-sidebar" =
-      pos === "fixed"
-        ? "top-fixed"
-        : pos === "sticky"
-          ? "top-sticky"
-          : navStyle.left !== "auto" && parseInt(navStyle.width) < 300
-            ? "left-sidebar"
-            : "top-static";
+    var pos = navStyle.position;
+    var position =
+      pos === "fixed" ? "top-fixed"
+      : pos === "sticky" ? "top-sticky"
+      : navStyle.left !== "auto" && parseInt(navStyle.width) < 300 ? "left-sidebar"
+      : "top-static";
 
-    const background = navStyle.backgroundColor;
-    // Read text color from the first visible TEXT link (skip logo/icon-only links) —
-    // the container inherits body defaults; links have explicit brand colors.
-    const firstTextLink = Array.from(navEl.querySelectorAll("a")).find(a => {
-      const t = (a as HTMLElement).innerText?.trim();
-      return t && t.length > 1; // skip empty logo links
-    }) as HTMLAnchorElement | null;
-    const textColor = firstTextLink ? getComputedStyle(firstTextLink).color : navStyle.color;
+    var background = navStyle.backgroundColor;
+    var firstTextLink = null;
+    var allAs = Array.from(navEl.querySelectorAll("a"));
+    for (var i = 0; i < allAs.length; i++) {
+      var t = (allAs[i].innerText || "").trim();
+      if (t && t.length > 1) { firstTextLink = allAs[i]; break; }
+    }
+    var textColor = firstTextLink ? getComputedStyle(firstTextLink).color : navStyle.color;
 
     // ---- logo ----
-    // Logo is usually the first <img> in the nav, or a brand link with logo class.
-    // Look left-side first (low x position relative to navbar width).
-    const navRect = navEl.getBoundingClientRect();
-    const allImgs = Array.from(navEl.querySelectorAll("img")) as HTMLImageElement[];
-    // Prefer the image in the left third of the nav (logo area)
-    const logoImg = allImgs.find(img => {
-      const r = img.getBoundingClientRect();
-      return r.width > 8 && r.height > 8 && r.left < navRect.left + navRect.width * 0.4;
-    }) ?? allImgs[0] ?? null;
+    var navRect = navEl.getBoundingClientRect();
+    var allImgs = Array.from(navEl.querySelectorAll("img"));
+    var logoImg = null;
+    for (var li = 0; li < allImgs.length; li++) {
+      var ir = allImgs[li].getBoundingClientRect();
+      if (ir.width > 8 && ir.height > 8 && ir.left < navRect.left + navRect.width * 0.4) {
+        logoImg = allImgs[li]; break;
+      }
+    }
+    if (!logoImg && allImgs.length > 0) logoImg = allImgs[0];
 
-    let logo: { type: "image" | "text"; value: string; alt?: string };
+    var logo;
     if (logoImg) {
       logo = { type: "image", value: logoImg.src, alt: logoImg.alt || undefined };
     } else {
-      // Text logo: brand link or first prominent link in left area
-      const brandEl = (
-        navEl.querySelector('[class*="brand"],[class*="logo"],[class*="Brand"],[class*="Logo"]') ??
-        Array.from(navEl.querySelectorAll("a")).find(a => {
-          const r = (a as HTMLElement).getBoundingClientRect();
-          return r.left < navRect.left + navRect.width * 0.4 && r.width > 20;
-        })
-      ) as HTMLElement | null;
-      logo = { type: "text", value: brandEl?.innerText?.trim() ?? "" };
+      var brandEl =
+        navEl.querySelector('[class*="brand"],[class*="logo"],[class*="Brand"],[class*="Logo"]') ||
+        (function() {
+          var navAnchors = Array.from(navEl.querySelectorAll("a"));
+          for (var bi = 0; bi < navAnchors.length; bi++) {
+            var br = navAnchors[bi].getBoundingClientRect();
+            if (br.left < navRect.left + navRect.width * 0.4 && br.width > 20) return navAnchors[bi];
+          }
+          return null;
+        })();
+      logo = { type: "text", value: brandEl ? (brandEl.innerText || "").trim() : "" };
     }
 
-    // ---- saturation helper (same as computedTheme) ----
-    const rgbSaturation = (rgb: string): number => {
-      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    // ---- saturation helper ----
+    function rgbSaturation(rgb) {
+      var m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
       if (!m) return 0;
-      const r = +(m[1] ?? 0) / 255, g = +(m[2] ?? 0) / 255, b = +(m[3] ?? 0) / 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var r = +m[1] / 255, g = +m[2] / 255, b = +m[3] / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
       if (max === min) return 0;
-      const l = (max + min) / 2;
+      var l = (max + min) / 2;
       return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
-    };
+    }
 
-    // ---- CTA: prominent action button in nav ----
-    // Use class-name signals as primary (works even when background is set via
-    // shorthand/gradient — `backgroundColor` alone returns transparent in that case).
-    // Fall back to saturation if no class match found.
-    const NAV_CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start)\b/i;
-    let cta: ExtractedNavRaw["cta"] | undefined;
-    let bestCtaScore = 0;
-    for (const el of Array.from(navEl.querySelectorAll("a[href], button"))) {
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      if (rect.width < 40 || rect.height < 16) continue;
-      const s = getComputedStyle(el as Element);
-      const cls = ((el as HTMLElement).className ?? "").toString();
-      const classScore = NAV_CTA_RE.test(cls) ? 10 : 0;
-      // Check both backgroundColor and the background shorthand (sites may set only "background")
-      const bgColor = s.backgroundColor !== "rgba(0, 0, 0, 0)" ? s.backgroundColor : (s.background.match(/rgba?\([^)]+\)/) ?? [])[0] ?? "";
-      const sat = rgbSaturation(bgColor || s.backgroundColor);
-      const satScore = sat > 0.15 ? Math.round(sat * 5) : 0;
-      const score = classScore + satScore;
+    // ---- CTA ----
+    var NAV_CTA_RE = /\b(btn|button|cta|action|primary|get.?started|sign.?up|join|enroll|book|schedule|free|start)\b/i;
+    var cta = undefined;
+    var bestCtaScore = 0;
+    var ctaEls = Array.from(navEl.querySelectorAll("a[href], button"));
+    for (var ci = 0; ci < ctaEls.length; ci++) {
+      var cel = ctaEls[ci];
+      var crect = cel.getBoundingClientRect();
+      if (crect.width < 40 || crect.height < 16) continue;
+      var cs = getComputedStyle(cel);
+      var cls = (cel.className || "").toString();
+      var classScore = NAV_CTA_RE.test(cls) ? 10 : 0;
+      var bgColor = cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? cs.backgroundColor
+        : ((cs.background.match(/rgba?\([^)]+\)/) || [])[0] || "");
+      var sat = rgbSaturation(bgColor || cs.backgroundColor);
+      var satScore = sat > 0.15 ? Math.round(sat * 5) : 0;
+      var score = classScore + satScore;
       if (score > bestCtaScore) {
         bestCtaScore = score;
-        const bg = bgColor || s.backgroundColor;
+        var bg = bgColor || cs.backgroundColor;
         cta = {
-          label: (el as HTMLElement).innerText?.trim() ?? "",
-          href: (el as HTMLAnchorElement).href ?? (el as HTMLElement).getAttribute("href") ?? "#",
+          label: (cel.innerText || "").trim(),
+          href: cel.href || cel.getAttribute("href") || "#",
           background: bg,
-          color: s.color,
-          borderRadius: s.borderRadius,
+          color: cs.color,
+          borderRadius: cs.borderRadius,
         };
       }
     }
 
-    // ---- links: generic extraction that works without <ul>/<li> ----
-    // Many frameworks (Webflow, etc.) use flat <a> + dropdown wrapper divs.
-    // Strategy: find the nav menu container, then extract top-level link items.
-    function extractLinksFromEl(container: Element, isRoot = false): NavLinkRaw[] {
-      const result: NavLinkRaw[] = [];
-      const seen = new Set<string>();
+    // ---- links ----
+    function getText(el) { return (el.textContent || "").trim(); }
 
-      // innerText is layout-dependent and returns "" for display:none elements
-      // (closed dropdowns). Always use textContent for link labels.
-      const getText = (el: Element) => el.textContent?.trim() ?? "";
+    function extractLinksFromEl(container, isRoot) {
+      var res = [];
+      var seen = {};
+      var children = Array.from(container.children);
+      for (var k = 0; k < children.length; k++) {
+        var child = children[k];
+        var tag = child.tagName.toLowerCase();
 
-      // Walk direct children looking for link-like elements
-      for (const child of Array.from(container.children)) {
-        const tag = child.tagName.toLowerCase();
-
-        // <li> — classic pattern
         if (tag === "li") {
-          const anchor = child.querySelector(":scope > a[href]") as HTMLAnchorElement | null;
+          var anchor = child.querySelector(":scope > a[href]");
           if (!anchor) continue;
-          const label = getText(anchor);
-          const href = anchor.getAttribute("href") ?? "";
-          if (!label || seen.has(label)) continue;
-          seen.add(label);
-          const subList = child.querySelector(":scope > ul, :scope > ol, :scope > [class*='dropdown'], :scope > [class*='submenu']");
-          const children = subList ? extractLinksFromEl(subList) : undefined;
-          result.push({ label, href, ...(children?.length ? { children } : {}) });
+          var label = getText(anchor);
+          var href = anchor.getAttribute("href") || "";
+          if (!label || seen[label]) continue;
+          seen[label] = true;
+          var subList = child.querySelector(":scope > ul, :scope > ol, :scope > [class*='dropdown'], :scope > [class*='submenu']");
+          var subChildren = subList ? extractLinksFromEl(subList, false) : undefined;
+          var item = { label: label, href: href };
+          if (subChildren && subChildren.length) item.children = subChildren;
+          res.push(item);
           continue;
         }
 
-        // <a href> — direct link (use textContent so hidden brand links don't count)
         if (tag === "a") {
-          const a = child as HTMLAnchorElement;
-          const href = a.getAttribute("href") ?? "";
-          if (!href) continue;
-          const label = getText(a);
-          if (!label || seen.has(label)) continue;
-          // Skip if in logo area (left 30% of nav) — only at root level
+          var ahref = child.getAttribute("href") || "";
+          if (!ahref) continue;
+          var alabel = getText(child);
+          if (!alabel || seen[alabel]) continue;
           if (isRoot) {
-            const r = a.getBoundingClientRect();
-            if (r.left < navRect.left + navRect.width * 0.3) continue;
+            var ar = child.getBoundingClientRect();
+            if (ar.left < navRect.left + navRect.width * 0.3) continue;
           }
-          seen.add(label);
-          result.push({ label, href });
+          seen[alabel] = true;
+          res.push({ label: alabel, href: ahref });
           continue;
         }
 
-        // Dropdown wrapper div (Webflow w-dropdown, Bootstrap dropdown, etc.)
         if (tag === "div") {
-          // Find the trigger — the visible label (toggle div, button, or direct link)
-          const trigger = child.querySelector(
+          var trigger = child.querySelector(
             ":scope > [class*='toggle'], :scope > [class*='trigger'], :scope > button, :scope > a[href]"
-          ) as HTMLElement | null;
+          );
           if (trigger) {
-            // Standard dropdown: trigger + panel sibling
-            const label = getText(trigger);
-            const href = (trigger as HTMLAnchorElement).getAttribute("href") ?? "#";
-            if (label && !seen.has(label)) {
-              seen.add(label);
-              // Panel: direct child that isn't the trigger and contains links
-              const panel = Array.from(child.children).find(
-                c => c !== trigger && c.querySelector("a[href]")
-              ) as Element | undefined;
-              const children = panel ? extractLinksFromEl(panel) : undefined;
-              result.push({ label, href, ...(children?.length ? { children } : {}) });
+            var tlabel = getText(trigger);
+            var thref = trigger.getAttribute("href") || "#";
+            if (tlabel && !seen[tlabel]) {
+              seen[tlabel] = true;
+              var panel = null;
+              var divChildren = Array.from(child.children);
+              for (var p = 0; p < divChildren.length; p++) {
+                if (divChildren[p] !== trigger && divChildren[p].querySelector("a[href]")) {
+                  panel = divChildren[p]; break;
+                }
+              }
+              var pChildren = panel ? extractLinksFromEl(panel, false) : undefined;
+              var ditem = { label: tlabel, href: thref };
+              if (pChildren && pChildren.length) ditem.children = pChildren;
+              res.push(ditem);
             }
           } else {
-            // No trigger — transparent link wrapper (e.g. Webflow CMS list, flex div).
-            // Collect ALL links from the subtree generically — works for any depth of
-            // wrapper divs whether the site uses w-dyn-list, flex containers, etc.
-            const deepLinks = Array.from(child.querySelectorAll("a[href]")) as HTMLAnchorElement[];
-            for (const deepLink of deepLinks) {
-              const label = getText(deepLink);
-              const href = deepLink.getAttribute("href") ?? "";
-              if (label && !seen.has(label)) {
-                seen.add(label);
-                result.push({ label, href });
+            var deepLinks = Array.from(child.querySelectorAll("a[href]"));
+            for (var dl = 0; dl < deepLinks.length; dl++) {
+              var dlabel = getText(deepLinks[dl]);
+              var dhref = deepLinks[dl].getAttribute("href") || "";
+              if (dlabel && !seen[dlabel]) {
+                seen[dlabel] = true;
+                res.push({ label: dlabel, href: dhref });
               }
             }
           }
         }
       }
-      return result;
+      return res;
     }
 
-    // Find the menu container: prefer <nav> inside the banner, or the banner itself
-    const menuEl =
-      navEl.querySelector("nav") ??
-      navEl.querySelector('[role="navigation"]') ??
-      navEl.querySelector("ul")?.parentElement ??
+    var menuEl =
+      navEl.querySelector("nav") ||
+      navEl.querySelector('[role="navigation"]') ||
+      (navEl.querySelector("ul") ? navEl.querySelector("ul").parentElement : null) ||
       navEl;
-    const links = extractLinksFromEl(menuEl, true);
+    var links = extractLinksFromEl(menuEl, true);
 
     // ---- mobile toggle ----
-    const toggleEl = navEl.querySelector(
-      '[class*="hamburger"],[class*="menu-toggle"],[class*="nav-toggle"],[aria-controls],[class*="mobile-nav"],[class*="burger"]',
+    var toggleEl = navEl.querySelector(
+      '[class*="hamburger"],[class*="menu-toggle"],[class*="nav-toggle"],[aria-controls],[class*="mobile-nav"],[class*="burger"]'
     );
-    const hasMobileToggle = toggleEl !== null;
+    var hasMobileToggle = toggleEl !== null;
 
     // ---- mobile menu background ----
-    const mobileMenuEl = document.querySelector(
-      '[class*="mobile-menu"],[class*="drawer"],[class*="mobile-nav"],[class*="nav-drawer"]',
-    ) as HTMLElement | null;
-    const mobileMenuBackground = mobileMenuEl
+    var mobileMenuEl = document.querySelector(
+      '[class*="mobile-menu"],[class*="drawer"],[class*="mobile-nav"],[class*="nav-drawer"]'
+    );
+    var mobileMenuBackground = mobileMenuEl
       ? getComputedStyle(mobileMenuEl).backgroundColor
       : background;
 
     return {
-      position,
-      background,
-      textColor,
-      logo,
-      links,
-      cta,
-      hasMobileToggle,
-      mobileMenuBackground,
+      position: position,
+      background: background,
+      textColor: textColor,
+      logo: logo,
+      links: links,
+      cta: cta,
+      hasMobileToggle: hasMobileToggle,
+      mobileMenuBackground: mobileMenuBackground,
     };
-  });
+  })()`;
+  const result = await page.evaluate(EXTRACT_NAV_SCRIPT as unknown as () => ExtractedNavRaw | null);
 
   return result;
 }
