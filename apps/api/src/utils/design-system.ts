@@ -16,7 +16,7 @@ function titleCaseNavLabel(label: string): string {
     .split(/\s+/)
     .map((word) => {
       if (word.length <= 1) return word.toLowerCase();
-      // Preserve existing mixed-case/acronym words (e.g., iOS, KSAC, CrossFit).
+      // Preserve existing mixed-case/acronym words (e.g., iOS, API, SaaS).
       if (!/^[a-z][a-z]*$/.test(word)) return word;
       return word.charAt(0).toUpperCase() + word.slice(1);
     })

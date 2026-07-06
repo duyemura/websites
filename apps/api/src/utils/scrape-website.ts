@@ -835,7 +835,7 @@ const BROWSER_EXTRACTION_SCRIPT = String.raw`
 
   const locations = [];
   const addressPattern = /\d+\s+[^\n]{3,}\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pl|Place|Ct|Court)\b/i;
-  // Strict city/state/zip pattern (e.g. "Overland Park, KS 66212").
+  // Strict city/state/zip pattern (e.g. "Your City, YS 00000").
   const cityStatePattern = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s*[A-Za-z\s]+\d{5}(-\d{4})?\b/;
   // Loose city/state pattern for text that only mentions city and state without a zip.
   const looseCityStatePattern = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s*[A-Z][a-z]+\b/;

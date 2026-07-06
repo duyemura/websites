@@ -1,27 +1,10 @@
 import { inferIndustry, type ScrapedWebsiteData } from "./scrape-docs";
+import { DEFAULT_TEMPLATE_TOKENS } from "@ploy-gyms/shared-types/template-baseline";
 import type {
   TemplateShell,
   TemplateShellPlaceholder,
   SiteSection,
-  ThemeTokens,
 } from "@ploy-gyms/shared-types";
-
-const NEUTRAL_THEME: ThemeTokens = {
-  colors: {
-    primary: "#111111",
-    primaryForeground: "#ffffff",
-    background: "#ffffff",
-    foreground: "#171717",
-    muted: "#f5f5f5",
-    mutedForeground: "#737373",
-    border: "#e5e5e5",
-  },
-  fonts: {
-    heading: "Sans-serif",
-    body: "Sans-serif",
-  },
-  radius: "0.5rem",
-};
 
 function createPlaceholderGenerator() {
   let counter = 0;
@@ -496,7 +479,7 @@ export function buildTemplateShell(data: ScrapedWebsiteData): TemplateShell {
       url: data.url,
       scrapedAt: new Date().toISOString(),
     },
-    theme: NEUTRAL_THEME,
+    theme: DEFAULT_TEMPLATE_TOKENS,
     page: {
       title: buildMetaTitle(data),
       slug: "index",

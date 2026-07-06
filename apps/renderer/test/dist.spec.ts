@@ -46,7 +46,7 @@ describe("SEO layer", () => {
     expect((lb!["geo"] as any).latitude).toBe(gym.business.coordinates.lat);
     expect((lb!["aggregateRating"] as any).reviewCount).toBe(String(gym.business.aggregateRating.reviewCount));
     expect(lb!["sameAs"]).toContain(gym.business.social.facebook);
-    expect((lb!["areaServed"] as string[])).toContain("Leawood");
+    expect((lb!["areaServed"] as string[])).toContain(gym.business.serviceArea[0]);
     expect(lb!["description"]).toBe(gym.business.tagline);
   });
 });
@@ -131,18 +131,19 @@ describe("program pages", () => {
   });
 
   it("emits Service + BreadcrumbList schema on program pages", () => {
-    const $ = loadPage("programs/crossfit-classes/index.html");
+    const firstProgram = gym.pages.programs[0];
+    const $ = loadPage(`programs/${firstProgram.slug}/index.html`);
     const schemas = jsonLd($);
     const service = schemas.find((s) => s["@type"] === "Service") as any;
-    expect(service.name).toBe("CrossFit Classes");
-    expect(service.areaServed.map((a: any) => a.name)).toContain("Leawood");
+    expect(service.name).toBe(firstProgram.name);
+    expect(service.areaServed.map((a: any) => a.name)).toContain(gym.business.serviceArea[0]);
     const crumbs = schemas.find((s) => s["@type"] === "BreadcrumbList") as any;
-    expect(crumbs.itemListElement[1].name).toBe("CrossFit Classes");
+    expect(crumbs.itemListElement[2].name).toBe(firstProgram.name);
   });
 
   it("renders differentiators, class structure, and program FAQ with schema", () => {
-    const $ = loadPage("programs/crossfit-classes/index.html");
     const prog = gym.pages.programs[0];
+    const $ = loadPage(`programs/${prog.slug}/index.html`);
     for (const d of prog.whatMakesUsDifferent) expect($("body").text()).toContain(d);
     for (const s of prog.whatToExpect.steps) expect($("body").text()).toContain(s);
     expect(jsonLd($).some((s) => s["@type"] === "FAQPage")).toBe(true);
@@ -234,7 +235,7 @@ describe("discovery files", () => {
     for (const p of ["/", "/about", "/pricing", "/contact", "/schedule", "/blog", "/local-guide"]) {
       expect(xml).toContain(`<loc>${gym.meta.siteUrl}${p}</loc>`);
     }
-    expect(xml).toContain(`/programs/crossfit-classes`);
+    expect(xml).toContain(`/programs/${gym.pages.programs[0].slug}`);
     expect(xml).toContain(`/blog/${gym.pages.blog.posts[0].slug}`);
     expect(xml).not.toContain("/legal/");
   });

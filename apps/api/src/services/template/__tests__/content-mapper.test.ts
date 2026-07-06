@@ -1,4 +1,5 @@
 import { describe, test, expect } from "vitest";
+import { DEFAULT_TEMPLATE_TOKENS, DEFAULT_BUSINESS_PLACEHOLDER } from "@ploy-gyms/shared-types/template-baseline";
 import {
   extractBrand,
   extractBusiness,
@@ -114,9 +115,9 @@ describe("extractBrand", () => {
       brand: { logo: { type: "text", value: "KSA" }, headingStyle: { uppercase: false, bold: false } },
     };
     const brand = extractBrand(sparse, warnings);
-    expect(brand.primaryColor).toBe("#1a1a1a");
-    expect(brand.headingFont).toBe("Inter");
-    expect(brand.bodyFont).toBe("Inter");
+    expect(brand.primaryColor).toBe(DEFAULT_TEMPLATE_TOKENS.colors.primary);
+    expect(brand.headingFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.heading);
+    expect(brand.bodyFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.body);
     expect(brand.logoUrl).toBe("");
     expect(warnings.some((w) => w.includes("primaryColor"))).toBe(true);
   });
@@ -138,19 +139,19 @@ describe("extractBusiness", () => {
     expect(biz.geo.stateAbbr).toBe("CA");
   });
 
-  test("falls back gracefully when markdown has no address", () => {
+  test("falls back to default placeholder when markdown has no address", () => {
     const warnings: string[] = [];
     const biz = extractBusiness("No address here.", DS, warnings);
-    expect(biz.address.street).toBe("");
-    expect(biz.address.city).toBe("");
+    expect(biz.address.street).toBe(DEFAULT_BUSINESS_PLACEHOLDER.address.street);
+    expect(biz.address.city).toBe(DEFAULT_BUSINESS_PLACEHOLDER.address.city);
     expect(warnings.some((w) => w.includes("address"))).toBe(true);
   });
 
-  test("uses default CTA when design-system has none", () => {
+  test("uses baseline CTA when design-system has none", () => {
     const warnings: string[] = [];
     const noCtaDS: DesignSystemV2 = { ...DS, reference: { homePagePrimaryCta: null } };
     const biz = extractBusiness("", noCtaDS, warnings);
-    expect(biz.primaryCta).toEqual({ label: "Get started", url: "/" });
+    expect(biz.primaryCta).toEqual(DEFAULT_BUSINESS_PLACEHOLDER.primaryCta);
   });
 });
 
