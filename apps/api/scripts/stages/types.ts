@@ -37,10 +37,14 @@ export interface StageCosts {
   monthlyStorageUsd: number;
 }
 
+/** Valid artifact keys accepted by loadArtifact. Empty string ("") means stage produces no artifact and will always re-run. */
+export type ArtifactKey = string;
+
 export interface StageRunner {
   label: string;
-  requires: string[];
-  produces: string;
+  requires: ArtifactKey[];
+  /** Primary artifact key this stage produces. Empty string ("") means stage produces no artifact and will always re-run. */
+  produces: ArtifactKey;
   run(ctx: StageContext): Promise<StageResult>;
 }
 

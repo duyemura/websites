@@ -1,5 +1,4 @@
 // apps/api/scripts/milo.ts
-import "dotenv/config";
 import { configDotenv } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -149,15 +148,16 @@ async function checkPrerequisites(
 
 async function shouldSkip(
   runner: StageRunner,
+  stageName: string,
   ctx: StageContext,
   force: boolean,
 ): Promise<boolean> {
   if (force || !runner.produces) return false;
-  if (runner.label === "eval" || runner.label === "template-eval") return false;
+  if (stageName === "eval" || stageName === "template-eval") return false;
   const artifact = await loadArtifact(
     ctx.db,
     { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-    runner.produces as any,
+    runner.produces as Parameters<typeof loadArtifact>[2],
   );
   return !!artifact;
 }
@@ -193,6 +193,13 @@ function renderReport(
   console.log("─".repeat(78));
   console.log(`${"Total".padEnd(68)} ${Math.round(totalMs / 1000)}s`);
 
+  // Always show failures regardless of quiet mode
+  const failed = results.filter((r) => r.status === "fail");
+  if (failed.length > 0) {
+    console.log("\nFailures:");
+    failed.forEach((r) => console.log(`  ❌ ${r.stage}: ${r.error}`));
+  }
+
   if (!quiet) {
     const allW = results.flatMap((r) =>
       dedupeWarnings(r.warnings).map((w) => `[${r.stage}] ${w}`),
@@ -204,11 +211,6 @@ function renderReport(
         console.log(
           `  … and ${allW.length - 15} more (use --verbose for full list)`,
         );
-    }
-    const failed = results.filter((r) => r.status === "fail");
-    if (failed.length > 0) {
-      console.log("\nFailures:");
-      failed.forEach((r) => console.log(`  ❌ ${r.stage}: ${r.error}`));
     }
 
     const hasCosts = results.some((r) => r.costs);
@@ -249,7 +251,6 @@ async function main() {
   }
 
   const { siteUuid, workspaceUuid } = await resolveSite(args.url, args.site);
-  const _bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
   const s3Client = getS3Client({
     endpoint: config.S3_ENDPOINT,
     region: config.S3_REGION,
@@ -305,7 +306,7 @@ async function main() {
       break;
     }
 
-    const skip = await shouldSkip(runner, ctx, args.force);
+    const skip = await shouldSkip(runner, stageName, ctx, args.force);
     if (skip) {
       ctx.log(`  ⏭  skipped — artifact exists (--force to re-run)`);
       results.push({
@@ -332,7 +333,6 @@ async function main() {
         error: err instanceof Error ? err.message : String(err),
       };
     }
-    result.stage = stageName;
     if (!result.durationMs) result.durationMs = Date.now() - start;
     results.push(result);
 
