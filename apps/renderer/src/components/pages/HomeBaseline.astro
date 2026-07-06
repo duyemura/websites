@@ -1,0 +1,25 @@
+---
+import Hero from "../sections/Hero.astro";
+import ValueProps from "../sections/ValueProps.astro";
+import FeatureGrid from "../sections/FeatureGrid.astro";
+import ProgramCards from "../sections/ProgramCards.astro";
+import HowItWorks from "../sections/HowItWorks.astro";
+import Testimonials from "../sections/Testimonials.astro";
+import FAQ from "../sections/FAQ.astro";
+import CTABand from "../sections/CTABand.astro";
+import Location from "../sections/Location.astro";
+import { content } from "../../lib/content";
+const home = content.pages.home;
+const { business } = content;
+---
+<Hero hero={home.hero} />
+{home.valueProps?.length && <ValueProps items={home.valueProps} />}
+{home.featuredPrograms?.length && <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />}
+{home.howItWorks?.length && <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />}
+{home.testimonials?.length && <Testimonials items={home.testimonials} />}
+{home.features?.length && <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />}
+{home.communityProps?.length && <ValueProps items={home.communityProps} headline={home.communityHeadline} />}
+<CTABand headline={home.trustHeadline} />
+<Location />
+<FAQ items={home.faq} />
+<CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />

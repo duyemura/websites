@@ -1,6 +1,6 @@
 ---
 import { content } from "../../lib/content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 const { business, meta, brand } = content;
 const sameAs = Object.values(business.social ?? {}).filter(Boolean);
 const schema = {

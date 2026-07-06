@@ -22,6 +22,8 @@ export interface SiteMeta {
   googleAnalyticsId?: string;   // fallback if no GTM
   facebookPixelId?: string;     // fallback if no GTM
   tiktokPixelId?: string;       // fallback if no GTM
+  /** Which renderer template to use. Defaults to "baseline". */
+  templateTheme?: "baseline" | "impact";
 }
 
 export interface BusinessInfo {

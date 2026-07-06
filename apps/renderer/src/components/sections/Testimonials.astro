@@ -1,6 +1,6 @@
 ---
 import type { Testimonial } from "../../types/gym-content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 const { headline, items } = Astro.props as { headline?: string; items: Testimonial[] };
 if (!items?.length) return;
 ---

@@ -1,6 +1,6 @@
 ---
 import { content, programBySlug } from "../../lib/content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 const { slugs, headline } = Astro.props as { slugs: string[]; headline: string };
 if (!slugs?.length) return;
 const programs = slugs.map(programBySlug);

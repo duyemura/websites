@@ -1,0 +1,72 @@
+---
+import { content } from "../../lib/content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { navigation, business, brand } = content;
+---
+<header class="sticky top-0 z-50 bg-primary text-white">
+  {navigation.announcement && (
+    <div class="bg-accent py-2 text-center text-sm font-semibold uppercase tracking-wide text-white">
+      {navigation.announcement.url
+        ? <a href={navigation.announcement.url}>{navigation.announcement.text}</a>
+        : navigation.announcement.text}
+    </div>
+  )}
+  <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-6">
+    <a href="/" class="font-heading text-lg font-bold uppercase tracking-wider text-white">
+      {brand.logoUrl && brand.logoUrl !== NO_IMAGE
+        ? <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="eager" class="h-10 w-auto" />
+        : business.name}
+    </a>
+    <nav aria-label="Main" class="hidden lg:block">
+      <ul class="flex items-center gap-8">
+        {navigation.header.map((item) => (
+          <li class="group relative">
+            <a
+              href={item.href}
+              aria-haspopup={item.children ? "true" : undefined}
+              class="flex items-center gap-1 font-heading text-sm font-bold uppercase tracking-wide text-white hover:text-accent"
+            >
+              {item.label}
+              {item.children && <span aria-hidden="true" class="text-[10px]">▼</span>}
+            </a>
+            {item.children && (
+              <ul class="invisible absolute left-0 top-full z-20 min-w-48 border border-white/10 bg-black py-2 shadow-xl group-hover:visible group-focus-within:visible">
+                {item.children.map((c) => (
+                  <li><a href={c.href} class="block px-4 py-2 text-sm text-white hover:bg-white/10">{c.label}</a></li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+    <div class="flex items-center gap-3">
+      <a
+        href={business.primaryCta.url}
+        class="hidden bg-accent px-5 py-2.5 font-heading text-sm font-semibold uppercase tracking-wide text-white hover:bg-white hover:text-primary sm:inline-block"
+        data-track="contact"
+      >
+        {business.primaryCta.label}
+      </a>
+      <!-- Mobile nav -->
+      <details class="lg:hidden">
+        <summary class="cursor-pointer px-2 py-1 font-heading text-sm font-bold uppercase tracking-wide" aria-label="Toggle main menu">Menu</summary>
+        <nav aria-label="Mobile navigation" class="border-t border-white/10 bg-primary">
+          <ul class="space-y-1 px-4 pb-4">
+            {navigation.header.map((item) => (
+              <li>
+                <a href={item.href} class="block py-2 font-heading text-sm font-bold uppercase tracking-wide text-white">{item.label}</a>
+                {item.children && item.children.map((c) => <a href={c.href} class="block py-1 pl-4 text-sm text-white/80">{c.label}</a>)}
+              </li>
+            ))}
+            <li>
+              <a href={business.primaryCta.url} class="mt-2 inline-block bg-accent px-5 py-2.5 font-heading text-sm font-semibold uppercase tracking-wide text-white" data-track="contact">
+                {business.primaryCta.label}
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>

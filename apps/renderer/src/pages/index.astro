@@ -1,37 +1,11 @@
 ---
 import GymLayout from "../layouts/GymLayout.astro";
-import Hero from "../components/sections/Hero.astro";
-import ValueProps from "../components/sections/ValueProps.astro";
-import FeatureGrid from "../components/sections/FeatureGrid.astro";
-import ProgramCards from "../components/sections/ProgramCards.astro";
-import HowItWorks from "../components/sections/HowItWorks.astro";
-import Testimonials from "../components/sections/Testimonials.astro";
-import FAQ from "../components/sections/FAQ.astro";
-import CTABand from "../components/sections/CTABand.astro";
-import Location from "../components/sections/Location.astro";
+import HomeBaseline from "../components/pages/HomeBaseline.astro";
+import HomeImpact from "../components/pages/HomeImpact.astro";
 import { content, geoTitle } from "../lib/content";
 const home = content.pages.home;
-const { business } = content;
+const isImpact = content.meta.templateTheme === "impact";
 ---
 <GymLayout title={geoTitle("Group Strength, Cardio Bootcamp & Personal Training")} description={home.hero.subheading} path="/" image={home.hero.backgroundImageUrl}>
-  <!-- dark -->
-  <Hero hero={home.hero} />
-  <!-- light -->
-  {home.valueProps?.length && <ValueProps items={home.valueProps} />}
-  <!-- dark -->
-  {home.featuredPrograms?.length && <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />}
-  <!-- dark (primary) -->
-  {home.howItWorks?.length && <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />}
-  <!-- dark (slate-900) -->
-  {home.testimonials?.length && <Testimonials items={home.testimonials} />}
-  <!-- light (slate-50) -->
-  {home.features?.length && <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />}
-  <!-- light -->
-  {home.communityProps?.length && <ValueProps items={home.communityProps} headline={home.communityHeadline} />}
-  <!-- dark (primary) -->
-  <CTABand headline={home.trustHeadline} />
-  <!-- light (slate-50) -->
-  <Location />
-  <FAQ items={home.faq} />
-  <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+  {isImpact ? <HomeImpact /> : <HomeBaseline />}
 </GymLayout>

@@ -1,7 +1,7 @@
 ---
 import Container from "../ui/Container.astro";
 import SectionHeading from "../ui/SectionHeading.astro";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 import type { TeamMember } from "../../types/gym-content";
 const { team } = Astro.props as { team: TeamMember[] };
 ---

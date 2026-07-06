@@ -1,12 +1,14 @@
 ---
 import { content, safeTrackingId } from "../lib/content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 import CanonicalMeta from "../components/seo/CanonicalMeta.astro";
 import OpenGraph from "../components/seo/OpenGraph.astro";
 import LocalBusinessSchema from "../components/seo/LocalBusinessSchema.astro";
 import Tracking from "../components/tracking/Tracking.astro";
 import Header from "../components/chrome/Header.astro";
 import Footer from "../components/chrome/Footer.astro";
+import HeaderImpact from "../components/chrome/HeaderImpact.astro";
+import FooterImpact from "../components/chrome/FooterImpact.astro";
 import StickyCTA from "../components/chrome/StickyCTA.astro";
 
 interface Props {

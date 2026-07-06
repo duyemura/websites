@@ -7,7 +7,8 @@
     "defaultDescription": "Group strength, cardio bootcamp, and personal training in Your City, YS.",
     "preview": false,
     "googleSiteVerification": "fixture-gsc-token",
-    "googleTagManagerId": "GTM-FIXTURE1"
+    "googleTagManagerId": "GTM-FIXTURE1",
+    "templateTheme": "impact"
   },
   "business": {
     "name": "Your Gym Name",
@@ -20,7 +21,7 @@
       { "days": ["Saturday","Sunday"], "opens": "07:00", "closes": "12:00" }
     ],
     "coordinates": { "lat": 0.0000, "lng": 0.0000 },
-    "primaryCta": { "label": "Free consultation", "url": "/contact" },
+    "primaryCta": { "label": "Book your free intro", "url": "/contact" },
     "trialCta": { "label": "Start your free trial", "url": "/pricing" },
     "geo": { "city": "Your City", "state": "Your State", "stateAbbr": "YS" },
     "serviceArea": ["Nearby City 1", "Nearby City 2", "Nearby City 3", "Nearby City 4"],
@@ -33,18 +34,18 @@
     "mapEmbedUrl": "https://www.google.com/maps/embed?pb=fixture"
   },
   "brand": {
-    "primaryColor": "#111111",
-    "secondaryColor": "#171717",
-    "accentColor": "#737373",
-    "headingFont": "Inter",
-    "bodyFont": "Inter",
+    "primaryColor": "#000000",
+    "secondaryColor": "#ffffff",
+    "accentColor": "#0063ff",
+    "headingFont": "Outfit",
+    "bodyFont": "Outfit",
     "logoUrl": "__NO_IMAGE__",
     "logoAlt": "Your Gym Name"
   },
   "navigation": {
     "announcement": { "text": "Start your free trial", "url": "/pricing" },
     "header": [
-      { "label": "Programs", "href": "/programs/group-strength", "children": [
+      { "label": "Programs", "href": "/programs", "children": [
         { "label": "Group Strength", "href": "/programs/group-strength" },
         { "label": "Cardio Bootcamp", "href": "/programs/cardio-bootcamp" },
         { "label": "Personal Training", "href": "/programs/personal-training" }
@@ -63,8 +64,8 @@
       ]},
       { "label": "About", "links": [
         { "label": "About Us", "href": "/about" },
-        { "label": "Local Guide", "href": "/local-guide" },
-        { "label": "Contact Us", "href": "/contact" }
+        { "label": "Contact Us", "href": "/contact" },
+        { "label": "Local Guide", "href": "/local-guide" }
       ]},
       { "label": "Legal", "links": [
         { "label": "Privacy Policy", "href": "/legal/privacy-policy" },
@@ -76,40 +77,40 @@
   "pages": {
     "home": {
       "hero": {
-        "headline": "Get in the best shape of your life",
-        "subheading": "Our gym is dedicated to making you stronger, leaner, and healthier so you can live a life without limitations.",
-        "ctaLabel": "Get Started!",
+        "headline": "Your first session is on us",
+        "subheading": "Book a free 1-on-1 intro with a coach. We will assess your goals, walk you through the gym, and build a plan that fits your life.",
+        "ctaLabel": "Book your free intro",
         "ctaUrl": "/contact",
         "backgroundImageUrl": "__NO_IMAGE__"
       },
       "valueProps": [
-        { "icon": "🏠", "headline": "A Welcoming Gym Near You", "body": "A friendly club environment for people at all fitness levels." },
-        { "icon": "🌱", "headline": "Beginner Friendly", "body": "Every workout scales to where you are today." },
-        { "icon": "🤝", "headline": "Accountability", "body": "Coaches and community that keep you showing up." }
+        { "icon": "🏋️", "headline": "Reach new heights", "body": "Build strength and endurance with coach-led training designed for every level." },
+        { "icon": "📅", "headline": "Easy workout scheduling", "body": "Book classes and appointments in seconds with our simple scheduling tools." },
+        { "icon": "🎯", "headline": "Guidance that crushes goals", "body": "Get a clear plan and accountability from coaches who care about your progress." }
       ],
       "programsHeadline": "Every body is unique. Find a fitness routine that works for you.",
       "featuredPrograms": ["group-strength", "cardio-bootcamp", "personal-training"],
       "features": [
-        { "icon": "🥗", "label": "Nutrition Programming" },
-        { "icon": "📱", "label": "Members Only App" },
-        { "icon": "📅", "label": "Weekend Classes" },
-        { "icon": "⚡", "label": "Easy Scheduling" },
-        { "icon": "🎟️", "label": "Class Reservations" },
-        { "icon": "🎯", "label": "Individualized Programming" }
+        { "icon": "🥗", "label": "Nutrition programming" },
+        { "icon": "📱", "label": "Members only app" },
+        { "icon": "📅", "label": "Weekend classes" },
+        { "icon": "⚡", "label": "Easy scheduling" },
+        { "icon": "🎟️", "label": "Class reservations" },
+        { "icon": "🎯", "label": "Individualized programming" }
       ],
       "communityHeadline": "A community that will keep you going",
       "communityProps": [
-        { "icon": "🏅", "headline": "Expert Coaching", "body": "Certified coaches in every class." },
-        { "icon": "🌱", "headline": "Beginner Friendly", "body": "Start where you are." },
-        { "icon": "🧭", "headline": "Structured Programs", "body": "A plan, not a guess." },
-        { "icon": "❤️", "headline": "Supportive Community", "body": "Train with people who cheer for you." }
+        { "icon": "🏅", "headline": "Expert coaching", "body": "Certified coaches in every class." },
+        { "icon": "🌱", "headline": "Beginner friendly", "body": "Start where you are." },
+        { "icon": "🧭", "headline": "Structured programs", "body": "A plan, not a guess." },
+        { "icon": "❤️", "headline": "Supportive community", "body": "Train with people who cheer for you." }
       ],
       "trustHeadline": "Trusted and loved by hundreds of local residents",
-      "howItWorksHeadline": "Getting Started Is Easy",
+      "howItWorksHeadline": "Getting started is easy",
       "howItWorks": [
-        { "number": 1, "headline": "Schedule a 15-Minute Call", "body": "Tell us your goals." },
-        { "number": 2, "headline": "Start the Right Way", "body": "Movement screening with a coach." },
-        { "number": 3, "headline": "Choose Your Membership", "body": "Pick the plan that fits." }
+        { "number": 1, "headline": "Book your free intro", "body": "Reserve a no-pressure session with a coach." },
+        { "number": 2, "headline": "Meet your coach", "body": "Review your goals and build a personalized plan." },
+        { "number": 3, "headline": "Start training", "body": "Jump into the right program and begin your journey." }
       ],
       "testimonials": [
         { "quote": "I got stronger in 3 months here than 3 years alone.", "name": "Jamie R.", "program": "Group Strength" },
@@ -130,7 +131,7 @@
         "name": "Group Strength",
         "shortDescription": "Coach-led strength and conditioning for every level.",
         "coverImageUrl": "__NO_IMAGE__",
-        "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
+        "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "What is group strength training?", "body": "Coach-led strength and conditioning sessions built around functional movements, professional coaching, structured programming, and a supportive community." },
         "whatMakesUsDifferent": [
           "Coach-led every class — guidance from start to finish",
@@ -157,7 +158,7 @@
         "name": "Cardio Bootcamp",
         "shortDescription": "High-energy circuit training. Zero barbells, all results.",
         "coverImageUrl": "__NO_IMAGE__",
-        "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Free consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
+        "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Why it works", "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss." },
         "whatMakesUsDifferent": ["Beginner-friendly by design", "No barbell complexity", "Coached, not just supervised", "Fun, loud, motivating"],
         "whatToExpect": { "headline": "What you'll do in class", "steps": ["Warm-Up", "Circuit Training", "Cool Down & Stretch"] },
@@ -175,7 +176,7 @@
         "name": "Personal Training",
         "shortDescription": "A 360-degree approach: training, lifestyle, and nutrition.",
         "coverImageUrl": "__NO_IMAGE__",
-        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Free Consultation", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
+        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Life without limitations", "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery — with a baseline assessment and personalized tracking." },
         "whatMakesUsDifferent": ["Baseline health assessment", "Lifestyle and nutrition coaching included", "Personalized tracking", "VIP experience"],
         "whatToExpect": { "headline": "How it works", "steps": ["Assessment", "Personal plan", "Weekly sessions", "Ongoing adjustments"] },
@@ -190,7 +191,7 @@
       }
     ],
     "about": {
-      "hero": { "headline": "Meet Our Team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "__NO_IMAGE__" },
+      "hero": { "headline": "Meet our team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "__NO_IMAGE__" },
       "gymStory": "Your Gym Name is a fitness center in Your City, Your State helping busy adults build strength, improve conditioning, and stay consistent with their health. Members travel from Your City and the surrounding area.",
       "team": [
         { "name": "Alex Morgan", "title": "Owner", "photoUrl": "__NO_IMAGE__" },
@@ -205,8 +206,8 @@
         "headline": "Simple plans, no surprises",
         "plans": [
           { "name": "Drop-in", "price": "$25", "period": "/class", "features": ["Any class", "No commitment"], "cta": { "label": "Book a class", "url": "/schedule" } },
-          { "name": "Monthly Unlimited", "price": "$149", "period": "/month", "features": ["Unlimited classes", "All programs", "App access"], "cta": { "label": "Join Now", "url": "/contact" }, "highlighted": true, "badge": "Most Popular" },
-          { "name": "Personal Training", "price": "Contact us", "features": ["1-on-1 coaching", "Nutrition included"], "cta": { "label": "Free Consultation", "url": "/contact" } }
+          { "name": "Monthly Unlimited", "price": "$149", "period": "/month", "features": ["Unlimited classes", "All programs", "App access"], "cta": { "label": "Join now", "url": "/contact" }, "highlighted": true, "badge": "Most Popular" },
+          { "name": "Personal Training", "price": "Contact us", "features": ["1-on-1 coaching", "Nutrition included"], "cta": { "label": "Free consultation", "url": "/contact" } }
         ]
       },
       "form": { "headline": "Get our full rate sheet", "intro": "Fill out the form below and we'll send complete membership rates and cost information." }

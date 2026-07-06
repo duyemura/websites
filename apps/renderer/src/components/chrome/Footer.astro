@@ -1,6 +1,6 @@
 ---
 import { content } from "../../lib/content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 const { navigation, business, brand } = content;
 const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
 ---

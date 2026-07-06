@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { content } from "../lib/content";
-import { NO_IMAGE } from "@ploy-gyms/shared-types/template-baseline";
+const NO_IMAGE = "__NO_IMAGE__";
 
 export const GET: APIRoute = () => {
   const { business, brand } = content;

@@ -1,0 +1,42 @@
+---
+import { content } from "../../lib/content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { navigation, business, brand } = content;
+const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
+---
+<footer class="bg-primary py-16 text-white">
+  <div class="mx-auto grid max-w-7xl gap-10 px-4 sm:grid-cols-2 lg:grid-cols-5 lg:px-6">
+    <div class="lg:col-span-2">
+      {brand.logoUrl && brand.logoUrl !== NO_IMAGE ? (
+        <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="lazy" />
+      ) : (
+        <span class="font-heading text-xl font-bold uppercase tracking-wider">{business.name}</span>
+      )}
+      <address class="mt-4 not-italic text-sm leading-relaxed text-white/70">
+        {business.address.street}<br />
+        {business.address.city}, {business.geo.stateAbbr} {business.address.zip}<br />
+        <a href={`tel:${business.phone.replace(/[^0-9+]/g, "")}`} class="hover:text-white">{business.phone}</a>
+      </address>
+      {socials.length > 0 && (
+        <ul class="mt-4 flex flex-wrap gap-4 text-sm text-white/70">
+          {socials.map(([name, url]) => (
+            <li>
+              <a href={url} rel="noopener noreferrer" target="_blank" class="uppercase hover:text-white">{name}</a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+    {navigation.footer.map((group) => (
+      <div>
+        <h3 class="font-heading text-sm font-bold uppercase tracking-wide text-white">{group.label}</h3>
+        <ul class="mt-4 space-y-2 text-sm text-white/70">
+          {group.links.map((l) => <li><a href={l.href} class="hover:text-white">{l.label}</a></li>)}
+        </ul>
+      </div>
+    ))}
+  </div>
+  <div class="mx-auto mt-12 max-w-7xl px-4 text-center text-xs text-white/50 lg:px-6">
+    © {new Date().getFullYear()} {business.name}. All rights reserved.
+  </div>
+</footer>

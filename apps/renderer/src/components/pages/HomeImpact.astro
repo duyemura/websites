@@ -1,0 +1,25 @@
+---
+import HeroImpact from "../sections/impact/HeroImpact.astro";
+import ValuePropsImpact from "../sections/impact/ValuePropsImpact.astro";
+import ProgramCardsImpact from "../sections/impact/ProgramCardsImpact.astro";
+import HowItWorksImpact from "../sections/impact/HowItWorksImpact.astro";
+import FeatureGridImpact from "../sections/impact/FeatureGridImpact.astro";
+import CommunityImpact from "../sections/impact/CommunityImpact.astro";
+import TestimonialsImpact from "../sections/impact/TestimonialsImpact.astro";
+import FAQImpact from "../sections/impact/FAQImpact.astro";
+import CTABandImpact from "../sections/impact/CTABandImpact.astro";
+import LocationImpact from "../sections/impact/LocationImpact.astro";
+import { content } from "../../lib/content";
+const home = content.pages.home;
+const { business } = content;
+---
+<HeroImpact hero={home.hero} />
+{home.valueProps?.length && <ValuePropsImpact items={home.valueProps} />}
+{home.featuredPrograms?.length && <ProgramCardsImpact slugs={home.featuredPrograms} headline={home.programsHeadline} />}
+{home.howItWorks?.length && <HowItWorksImpact steps={home.howItWorks} headline={home.howItWorksHeadline} />}
+{home.features?.length && <FeatureGridImpact items={home.features} headline="Everything you need to crush your fitness goals" />}
+{home.communityProps?.length && <CommunityImpact items={home.communityProps} headline={home.communityHeadline} />}
+<LocationImpact />
+{home.testimonials?.length && <TestimonialsImpact items={home.testimonials} />}
+{home.faq?.length && <FAQImpact items={home.faq} />}
+<CTABandImpact headline="Ready to see what we are about?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
