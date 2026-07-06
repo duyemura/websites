@@ -328,18 +328,23 @@ async function discoverPages(
     }
 
     const links = await page.evaluate(() => {
-      const grab = (root: Element | null) =>
-        root
-          ? Array.from(root.querySelectorAll("a[href]")).map((a) => ({
+      // Avoid named arrow functions inside evaluate — esbuild adds __name() polyfills
+      // that don't exist in the browser context. Use inline map calls instead.
+      const navRoot = document.querySelector("header") ?? document.querySelector("nav");
+      const footerRoot = document.querySelector("footer");
+      return {
+        navLinks: navRoot
+          ? Array.from(navRoot.querySelectorAll("a[href]")).map((a) => ({
               label: (a as HTMLElement).innerText.trim(),
               href: a.getAttribute("href") ?? "",
             }))
-          : [];
-      return {
-        navLinks: grab(
-          document.querySelector("header") ?? document.querySelector("nav"),
-        ),
-        footerLinks: grab(document.querySelector("footer")),
+          : [],
+        footerLinks: footerRoot
+          ? Array.from(footerRoot.querySelectorAll("a[href]")).map((a) => ({
+              label: (a as HTMLElement).innerText.trim(),
+              href: a.getAttribute("href") ?? "",
+            }))
+          : [],
         sweepLinks: Array.from(document.querySelectorAll("a[href]")).map(
           (a) => a.getAttribute("href") ?? "",
         ),
