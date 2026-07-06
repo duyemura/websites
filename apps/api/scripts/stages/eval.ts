@@ -70,17 +70,23 @@ function computeSimilarity(a: Buffer, b: Buffer): { score: number; heightDeltaPx
 // ---------- CDN path helpers ----------
 
 /**
- * Convert a page path to the public CDN URL.
- * CloudFront's milo-gym-router function rewrites:
- *   /sites/{siteUuid}/path/  ->  sites/{siteUuid}/production/path/index.html
- * so eval URLs must NOT include the `production/` prefix.
+ * Build the mirror URL for a page. Prefers the subdomain (e.g. ab867633.mygymseo.com)
+ * because absolute asset paths like /_assets/main.css must resolve within the same
+ * domain via KVS routing. Falls back to the CDN path-based URL if no preview domain
+ * is configured. Cache-busted with ?_eval= to bypass CloudFront's 24h HTML cache.
  */
-function mirrorUrl(cdnBase: string, siteUuid: string, pagePath: string, bust: string): string {
-  const base = cdnBase.replace(/\/$/, "");
-  // Keep trailing slash so the router appends index.html for directory URLs.
+function mirrorUrl(
+  cdnBase: string,
+  siteUuid: string,
+  pagePath: string,
+  bust: string,
+  previewDomain?: string,
+): string {
   const normalised = pagePath === "/" ? "/" : pagePath.replace(/\/$/, "");
-  // ?_eval= busts CloudFront's 24h HTML cache — S3 website hosting ignores query strings
-  return `${base}/sites/${siteUuid}${normalised}?_eval=${bust}`;
+  const base = previewDomain
+    ? `https://${siteUuid.slice(0, 8)}.${previewDomain}`
+    : `${cdnBase.replace(/\/$/, "")}/sites/${siteUuid}`;
+  return `${base}${normalised}?_eval=${bust}`;
 }
 
 // ---------- Stage ----------
@@ -132,7 +138,7 @@ export const evalStage: StageRunner = {
       for (const page of pages) {
         ctx.log(`  Scoring ${page.path} …`);
         try {
-          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path, cacheBust);
+          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path, cacheBust, ctx.config.MILO_PREVIEW_DOMAIN);
           const originPageUrl = `${sourceOrigin}${page.path}`;
 
           // Screenshot origin and mirror in parallel (shared browser, separate pages)
