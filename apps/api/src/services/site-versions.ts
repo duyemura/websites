@@ -2,7 +2,7 @@ import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { DB } from "../types/db";
-import { promoteDeploy } from "./mirror/deploy";
+import { publishToProduction } from "./mirror/deploy";
 
 export interface RecordVersionInput {
   siteUuid: string;
@@ -41,8 +41,8 @@ export async function publishSiteVersion(
     .executeTakeFirst();
   if (!row) throw new Error(`Version ${version} not found for site ${siteUuid}`);
 
-  // Repoint current/: copy version prefix in, delete orphans (promoteDeploy does both).
-  await promoteDeploy(s3Client, bucket, siteUuid, row.deployPrefix);
+  // Copy staging → production
+  await publishToProduction(s3Client, bucket, siteUuid);
 
   await db.updateTable("siteVersions")
     .set({ publishedAt: new Date() })
@@ -50,6 +50,30 @@ export async function publishSiteVersion(
     .execute();
 
   return { version: row.version, deployPrefix: row.deployPrefix };
+}
+
+export async function publishLatestStagingToProduction(
+  db: Kysely<DB>,
+  s3Client: S3Client,
+  bucket: string,
+  siteUuid: string,
+): Promise<{ version: number }> {
+  const latest = await db.selectFrom("siteVersions")
+    .select(["uuid", "version"])
+    .where("siteUuid", "=", siteUuid)
+    .orderBy("version", "desc")
+    .executeTakeFirst();
+
+  await publishToProduction(s3Client, bucket, siteUuid);
+
+  if (latest) {
+    await db.updateTable("siteVersions")
+      .set({ publishedAt: new Date() })
+      .where("uuid", "=", latest.uuid)
+      .execute();
+    return { version: latest.version };
+  }
+  return { version: 0 };
 }
 
 export async function listSiteVersions(db: Kysely<DB>, siteUuid: string) {

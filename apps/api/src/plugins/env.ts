@@ -53,6 +53,8 @@ export const ConfigSchema = z.object({
   SES_FROM_EMAIL: z.string().email().optional(),
   /** CloudFront KVS ARN — used to auto-write domain→S3 routing on go-live */
   CLOUDFRONT_KVS_ARN: z.string().optional(),
+  /** Domain for auto-generated preview subdomains, e.g. "mygymseo.com" → {uuid}-preview.mygymseo.com */
+  MILO_PREVIEW_DOMAIN: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

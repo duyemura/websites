@@ -1077,6 +1077,45 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
   );
 
   fastify.post(
+    "/sites/:uuid/publish",
+    {
+      schema: {
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: z.object({ ok: z.literal(true), version: z.number() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const siteUuid = request.params.uuid;
+      const workspaceUuid = request.workspace.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) return reply.code(404).send({ error: "Site not found" });
+
+      const { publishLatestStagingToProduction } = await import("../../services/site-versions.js");
+      const bucket = fastify.config.S3_DEPLOYMENTS_BUCKET ?? fastify.config.S3_ASSETS_BUCKET;
+      const { getS3Client } = await import("../../s3.js");
+      const s3Client = getS3Client({
+        endpoint: fastify.config.S3_ENDPOINT,
+        region: fastify.config.S3_REGION,
+        accessKeyId: fastify.config.S3_ACCESS_KEY,
+        secretAccessKey: fastify.config.S3_SECRET_KEY,
+      });
+
+      const result = await publishLatestStagingToProduction(fastify.db, s3Client, bucket, siteUuid);
+      fastify.log.info({ siteUuid, version: result.version }, "site published to production");
+      return reply.code(200).send({ ok: true, version: result.version });
+    },
+  );
+
+  fastify.post(
     "/sites/:uuid/re-skin",
     {
       schema: {
