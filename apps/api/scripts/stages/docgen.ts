@@ -95,28 +95,40 @@ export const docgenStage: StageRunner = {
     // Updates the business-info doc in DB with labeled fields the content mapper reads.
     ctx.log(`  Extracting business info via LLM...`);
     try {
-      // Build text from site-hierarchy sections (more reliable than rawText for JS-rendered sites)
-      const hierarchyDoc = docs.find(d => d.key === "site-hierarchy");
-      const hierarchyJson = hierarchyDoc?.contentJson as any;
-      const allSections = (hierarchyJson?.pages ?? []).flatMap((p: any) =>
-        (p.sections ?? []).map((s: any) => [
-          s.content?.heading, s.content?.body,
-          ...(s.content?.items ?? []).map((i: any) => `${i.title ?? ""} ${i.description ?? ""}`),
-        ].filter(Boolean).join(" "))
-      );
+      // rawText is stripped from the extract artifact (storage optimization).
+      // Fetch the contact/homepage text live via a quick HTTP request instead.
+      const site = await ctx.db.selectFrom("sites").select("sourceUrl").where("uuid", "=", ctx.siteUuid).executeTakeFirst();
+      const baseUrl = site?.sourceUrl?.replace(/\/$/, "") ?? "";
 
-      // Also pull navLinks from extract artifact for contact info
+      async function fetchPageText(url: string): Promise<string> {
+        try {
+          const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; MiloBot/1.0)" }, signal: AbortSignal.timeout(10000) });
+          if (!res.ok) return "";
+          const html = await res.text();
+          // Strip HTML tags and collapse whitespace
+          return html.replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+            .replace(/\s+/g, " ").trim().slice(0, 6000);
+        } catch { return ""; }
+      }
+
+      const [homeText, contactText] = await Promise.all([
+        fetchPageText(baseUrl + "/"),
+        fetchPageText(baseUrl + "/contact"),
+      ]);
+      const allText = [homeText, contactText].filter(Boolean).join("\n\n---\n\n");
+
+      // Get headings from extract artifact
       const extractArtifact = await loadArtifact<ExtractArtifact>(
         ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "extract" as any,
       );
       const pages = extractArtifact?.payload?.pages ?? [];
       const allHeadings = pages.flatMap((p: any) => (p.content?.headings ?? []).map((h: any) => h.text));
-      const navLinks = pages[0]?.content?.navLinks?.map((l: any) => l.label).join(", ") ?? "";
 
-      const allText = allSections.join("\n");
-      const homePage = pages[0];
-      if (homePage || allText) {
-        const site = await ctx.db.selectFrom("sites").select("sourceUrl").where("uuid", "=", ctx.siteUuid).executeTakeFirst();
+      if (allText) {
+
         const biz = await extractBusinessWithLLM(allText, allHeadings, site?.sourceUrl ?? "", ctx);
         if (biz) {
           ctx.log(`  LLM extracted: ${JSON.stringify(biz)}`);
