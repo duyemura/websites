@@ -150,10 +150,10 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
         await kvsClient.send(new PutKeyCommand({
           KvsARN: kvsArn,
           IfMatch: desc.ETag,
-          Key: `${siteUuid}-preview.${previewDomain}`,
+          Key: `${siteUuid.slice(0, 8)}-preview.${previewDomain}`,
           Value: `sites/${siteUuid}/staging`,
         }));
-        log.info({ siteUuid, previewSubdomain: `${siteUuid}-preview.${previewDomain}` }, "preview subdomain KVS written");
+        log.info({ siteUuid, previewSubdomain: `${siteUuid.slice(0, 8)}-preview.${previewDomain}` }, "preview subdomain KVS written");
       } catch (kvsErr) {
         log.warn({ siteUuid, err: kvsErr }, "preview KVS write failed — subdomain must be set manually");
       }
