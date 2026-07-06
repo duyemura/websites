@@ -21,7 +21,8 @@
     "repl": "pnpm build && fastify start -o -P dist/app.js -- --repl",
     "migrate": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ./node_modules/kysely-ctl/dist/bin.cjs migrate",
     "seed": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ./node_modules/kysely-ctl/dist/bin.cjs seed",
-    "codegen:db": "export $(grep -v '^#' ../../.env | xargs) && kysely-codegen --dialect postgres --out-file src/types/db.ts --camel-case --url=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    "codegen:db": "export $(grep -v '^#' ../../.env | xargs) && kysely-codegen --dialect postgres --out-file src/types/db.ts --camel-case --url=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}",
+    "milo": "tsx scripts/milo.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
