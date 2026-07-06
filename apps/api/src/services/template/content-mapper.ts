@@ -374,6 +374,7 @@ export async function buildGymJson(
   db: Kysely<DB>,
   siteUuid: string,
   config: MapperConfig,
+  workspaceUuid?: string,
 ): Promise<MapperResult> {
   const warnings: string[] = [];
 
@@ -425,6 +426,83 @@ export async function buildGymJson(
   const business = extractBusiness(bizDoc?.content ?? "", ds, warnings);
   const navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
+
+  // ── Phase 2: merge LLM-extracted content from content-extraction artifact ──
+  const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? "";
+  const contentArtifact = await loadArtifact(
+    db,
+    { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
+    "content-extraction" as any,
+  ) as { payload: { pages: Array<{ path: string; pageType: string; data: Record<string, unknown> }> } } | null;
+
+  if (contentArtifact?.payload?.pages?.length) {
+    const byPath = new Map(contentArtifact.payload.pages.map(p => [p.path, p]));
+
+    // Home page
+    const homeEx = byPath.get("/")?.data as any;
+    if (homeEx) {
+      if (homeEx.heroHeadline) pages.home.hero.headline = homeEx.heroHeadline;
+      if (homeEx.heroSubheading) pages.home.hero.subheading = homeEx.heroSubheading;
+      if (homeEx.heroCtaLabel) pages.home.hero.ctaLabel = homeEx.heroCtaLabel;
+      if (homeEx.valueProps?.length) pages.home.valueProps = homeEx.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
+      if (homeEx.testimonials?.length) pages.home.testimonials = homeEx.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: t.program ?? undefined }));
+      if (homeEx.faq?.length) pages.home.faq = homeEx.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
+      if (homeEx.communityHeadline) pages.home.communityHeadline = homeEx.communityHeadline;
+      if (homeEx.trustHeadline) pages.home.trustHeadline = homeEx.trustHeadline;
+    }
+
+    // Program pages
+    for (const program of pages.programs) {
+      const programEx = byPath.get(`/programs/${program.slug}`)?.data as any;
+      if (!programEx) continue;
+      if (programEx.shortDescription) program.shortDescription = programEx.shortDescription;
+      if (programEx.heroHeadline) program.hero.headline = programEx.heroHeadline;
+      if (programEx.heroSubheading) program.hero.subheading = programEx.heroSubheading;
+      if (programEx.whoIsItFor?.length) program.whoIsItFor = programEx.whoIsItFor.map(String);
+      if (programEx.whatMakesUsDifferent?.length) program.whatMakesUsDifferent = programEx.whatMakesUsDifferent.map(String);
+      if (programEx.testimonials?.length) program.testimonials = programEx.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? "") }));
+      if (programEx.faq?.length) program.faq = programEx.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
+    }
+
+    // About page
+    const aboutEx = [...byPath.values()].find(p => p.pageType === "about")?.data as any;
+    if (aboutEx) {
+      if (aboutEx.heroHeadline) pages.about.hero.headline = aboutEx.heroHeadline;
+      if (aboutEx.gymStory) pages.about.gymStory = aboutEx.gymStory;
+      if (aboutEx.team?.length) pages.about.team = aboutEx.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), photoUrl: "", bio: m.bio ?? undefined }));
+    }
+
+    // Contact page — also update business info
+    const contactEx = [...byPath.values()].find(p => p.pageType === "contact")?.data as any;
+    if (contactEx) {
+      if (contactEx.phone && !business.phone) business.phone = contactEx.phone;
+      if (contactEx.email && !business.email) business.email = contactEx.email;
+      if (contactEx.address && !business.address.street) {
+        business.address.street = contactEx.address ?? "";
+        if (contactEx.city) { business.address.city = contactEx.city; business.geo.city = contactEx.city; }
+        if (contactEx.state) { business.address.state = contactEx.state; business.geo.stateAbbr = contactEx.state; }
+        if (contactEx.zip) business.address.zip = contactEx.zip;
+      }
+    }
+
+    // Pricing page
+    const pricingEx = [...byPath.values()].find(p => p.pageType === "pricing")?.data as any;
+    if (pricingEx?.plans?.length) {
+      pages.pricing.grid = {
+        headline: pricingEx.heroHeadline ?? undefined,
+        plans: pricingEx.plans.map((plan: any) => ({
+          name: String(plan.name ?? ""),
+          price: String(plan.price ?? ""),
+          period: plan.period ?? undefined,
+          description: plan.description ?? undefined,
+          features: Array.isArray(plan.features) ? plan.features.map(String) : [],
+          cta: { label: "Get started", url: "/contact" },
+        })),
+      };
+    }
+
+    warnings.push(`content-extraction merged: ${contentArtifact.payload.pages.length} pages enriched`);
+  }
 
   const isImpact = inferImpactTheme(contract, pages.home);
 
