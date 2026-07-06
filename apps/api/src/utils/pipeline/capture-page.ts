@@ -424,28 +424,31 @@ interface TrackedStyle {
 }
 
 async function snapshotTrackedStyles(page: Page): Promise<TrackedStyle[]> {
-  return page.evaluate((props) => {
-    // Track: large visible containers (top-level layout blocks + their direct
-    // children with ids/classes).
-    const candidates = new Set<Element>();
-    for (const el of Array.from(document.querySelectorAll("body *"))) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 200 && rect.height > 80 && (el.id || el.className)) candidates.add(el);
-      if (candidates.size >= 120) break;
+  // String literal avoids esbuild __name polyfill leaking into browser context.
+  const propsJson = JSON.stringify([...TRACKED_STYLE_PROPS]);
+  return page.evaluate(`(function() {
+    var props = ${propsJson};
+    var candidates = [];
+    var els = Array.from(document.querySelectorAll("body *"));
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var rect = el.getBoundingClientRect();
+      if (rect.width > 200 && rect.height > 80 && (el.id || el.className)) {
+        candidates.push(el);
+        if (candidates.length >= 120) break;
+      }
     }
-    const selectorFor = (el: Element): string => {
-      if (el.id) return `#${el.id}`;
-      const cls =
-        typeof el.className === "string" ? el.className.trim().split(/\s+/)[0] : "";
-      return cls ? `${el.tagName.toLowerCase()}.${cls}` : el.tagName.toLowerCase();
-    };
-    return Array.from(candidates).map((el) => {
-      const computed = getComputedStyle(el);
-      const styles: Record<string, string> = {};
-      for (const p of props) styles[p] = computed.getPropertyValue(p);
-      return { selector: selectorFor(el), styles };
+    return candidates.map(function(el) {
+      var sel = el.id ? "#" + el.id
+        : (typeof el.className === "string" && el.className.trim()
+          ? el.tagName.toLowerCase() + "." + el.className.trim().split(/\\s+/)[0]
+          : el.tagName.toLowerCase());
+      var computed = getComputedStyle(el);
+      var styles = {};
+      for (var j = 0; j < props.length; j++) styles[props[j]] = computed.getPropertyValue(props[j]);
+      return { selector: sel, styles: styles };
     });
-  }, TRACKED_STYLE_PROPS as unknown as string[]);
+  })()`) as Promise<TrackedStyle[]>;
 }
 
 function diffStyles(
