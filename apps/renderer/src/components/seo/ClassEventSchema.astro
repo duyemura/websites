@@ -7,15 +7,17 @@ if (!programs?.length) return;
 
 const { business, meta, brand } = content;
 
-// Map schema.org day-of-week names
+const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD" — build-time date
+
+// iCal short format (RFC 5545) — unambiguous for Google
 const DAY_MAP: Record<string, string> = {
-  Monday: "https://schema.org/Monday",
-  Tuesday: "https://schema.org/Tuesday",
-  Wednesday: "https://schema.org/Wednesday",
-  Thursday: "https://schema.org/Thursday",
-  Friday: "https://schema.org/Friday",
-  Saturday: "https://schema.org/Saturday",
-  Sunday: "https://schema.org/Sunday",
+  Monday: "MO",
+  Tuesday: "TU",
+  Wednesday: "WE",
+  Thursday: "TH",
+  Friday: "FR",
+  Saturday: "SA",
+  Sunday: "SU",
 };
 
 const location = {
@@ -47,20 +49,19 @@ const organizer = {
 // Build one event per program × hour-block combination.
 // Each hour block becomes a separate eventSchedule with its own byDay.
 const events = programs.flatMap((program) =>
-  business.hours.map((block) => {
-    const byDay = block.days
-      .map((d) => DAY_MAP[d])
-      .filter(Boolean);
-    if (!byDay.length) return null;
-    return {
+  business.hours.flatMap((block) => {
+    const byDay = block.days.map((d) => DAY_MAP[d]).filter(Boolean);
+    if (!byDay.length) return [];
+    return [{
       "@type": "Event",
       name: `${program.name} at ${business.name}`,
-      description: program.shortDescription || program.name,
+      startDate: today,
+      ...(program.shortDescription && { description: program.shortDescription }),
       eventStatus: "https://schema.org/EventScheduled",
       eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
       location,
       organizer,
-      url: absUrl("/schedule"),
+      url: absUrl(`/programs/${program.slug}`),
       ...(brand.logoUrl && { image: brand.logoUrl }),
       eventSchedule: {
         "@type": "Schedule",
@@ -69,10 +70,11 @@ const events = programs.flatMap((program) =>
         endTime: block.closes,
         repeatFrequency: "P1W",
       },
-    };
-  }).filter(Boolean)
+    }];
+  })
 );
 
+// If no hours blocks are configured, no events can be generated.
 if (!events.length) return;
 
 const schema = {
