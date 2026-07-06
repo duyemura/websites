@@ -24,7 +24,9 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
     ["eval", "./stages/eval.js"],
     ["extract", "./stages/extract.js"],
     ["segment", "./stages/segment.js"],
+    ["contract", "./stages/contract.js"],
     ["docgen", "./stages/docgen.js"],
+    ["content", "./stages/content.js"],
     ["template", "./stages/template.js"],
     ["template-eval", "./stages/template-eval.js"],
     ["publish", "./stages/publish.js"],
@@ -45,7 +47,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   return registry;
 }
 
-const DEFAULT_STAGES_FOR_URL = ["mirror", "extract", "segment", "docgen", "eval"];
+const DEFAULT_STAGES_FOR_URL = ["mirror", "extract", "segment", "contract", "docgen", "eval"];
 
 function parseArgs() {
   const argv = process.argv.slice(2);
