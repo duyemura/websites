@@ -341,7 +341,7 @@ export async function promoteDeploy(
   siteUuid: string,
   deployPrefix: string,
 ): Promise<void> {
-  const currentPrefix = `sites/${siteUuid}/current`;
+  const currentPrefix = `sites/${siteUuid}/staging`;
 
   // Collect the set of relative paths in the new deploy
   const deployRelPaths = new Set<string>();
@@ -385,6 +385,68 @@ export async function promoteDeploy(
           Bucket: bucket,
           CopySource: `${bucket}/${obj.Key}`,
           Key: `${currentPrefix}/${rel}`,
+        }),
+      );
+    }
+    if (!listed.IsTruncated) break;
+    tok = listed.NextContinuationToken;
+  }
+}
+
+/**
+ * Copy staging/ → production/ so the published version goes live.
+ * Same copy+orphan-delete pattern as promoteDeploy.
+ */
+export async function publishToProduction(
+  s3Client: S3Client,
+  bucket: string,
+  siteUuid: string,
+): Promise<void> {
+  const stagingPrefix = `sites/${siteUuid}/staging`;
+  const productionPrefix = `sites/${siteUuid}/production`;
+
+  // Collect all objects in staging
+  const stagingPaths = new Set<string>();
+  for (let tok: string | undefined = undefined; ;) {
+    const listed: ListObjectsV2CommandOutput = await s3Client.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${stagingPrefix}/`, ContinuationToken: tok }),
+    );
+    for (const obj of listed.Contents ?? []) {
+      if (obj.Key) stagingPaths.add(obj.Key.slice(stagingPrefix.length + 1));
+    }
+    if (!listed.IsTruncated) break;
+    tok = listed.NextContinuationToken;
+  }
+
+  // Delete objects in production/ absent from staging (stale cleanup)
+  for (let tok: string | undefined = undefined; ;) {
+    const listed: ListObjectsV2CommandOutput = await s3Client.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${productionPrefix}/`, ContinuationToken: tok }),
+    );
+    for (const obj of listed.Contents ?? []) {
+      if (!obj.Key) continue;
+      const rel = obj.Key.slice(productionPrefix.length + 1);
+      if (!stagingPaths.has(rel)) {
+        await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
+      }
+    }
+    if (!listed.IsTruncated) break;
+    tok = listed.NextContinuationToken;
+  }
+
+  // Copy staging → production
+  for (let tok: string | undefined = undefined; ;) {
+    const listed: ListObjectsV2CommandOutput = await s3Client.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${stagingPrefix}/`, ContinuationToken: tok }),
+    );
+    for (const obj of listed.Contents ?? []) {
+      if (!obj.Key) continue;
+      const rel = obj.Key.slice(stagingPrefix.length + 1);
+      await s3Client.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          CopySource: `${bucket}/${obj.Key}`,
+          Key: `${productionPrefix}/${rel}`,
         }),
       );
     }
