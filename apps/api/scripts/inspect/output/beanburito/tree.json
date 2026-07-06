@@ -1,0 +1,257 @@
+[
+  {
+    "tag": "a",
+    "className": "sr-only",
+    "id": "",
+    "text": "Skip to main content",
+    "children": []
+  },
+  {
+    "tag": "nav",
+    "className": "navbar",
+    "id": "qa-navbar",
+    "text": "",
+    "children": [
+      {
+        "tag": "div",
+        "className": "global-css w-embed",
+        "text": " body { font-size: 1.1111111111111112vw; } @media screen and (max-width: 991px) { body { font-size: 14px; } } ."
+      },
+      {
+        "tag": "div",
+        "className": "collection-list-wrapper w-dyn-list",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "collection-list w-dyn-items",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "collection-item w-dyn-item",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "w-embed",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "nav-links-wrapper",
+        "text": "ProgramsStrength ClassesPersonal TrainingOpen GymNutrition CoachingDrop-InSchedulePricingRequest pricingMembership optio"
+      },
+      {
+        "tag": "div",
+        "className": "main-nav-links",
+        "text": "ProgramsStrength ClassesPersonal TrainingOpen GymNutrition CoachingDrop-InSchedulePricingRequest pricingMembership optio"
+      },
+      {
+        "tag": "div",
+        "className": "nav-dropdown",
+        "text": "ProgramsStrength ClassesPersonal TrainingOpen GymNutrition Coaching"
+      }
+    ]
+  },
+  {
+    "tag": "div",
+    "className": "cookies",
+    "id": "cookie",
+    "text": "By clicking “Accept All Cookies”, you agree to the storing of cookies on your device to enhance site navigation, analyze site usage, and assist in our marketing efforts. View our Privacy Policy for mo",
+    "children": [
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_component",
+        "text": "By clicking “Accept All Cookies”, you agree to the storing of cookies on your device to enhance site navigation, analyze"
+      },
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_container",
+        "text": "By clicking “Accept All Cookies”, you agree to the storing of cookies on your device to enhance site navigation, analyze"
+      },
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_text",
+        "text": "By clicking “Accept All Cookies”, you agree to the storing of cookies on your device to enhance site navigation, analyze"
+      },
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_buttons-wrapper",
+        "text": "PreferencesDenyAccept "
+      },
+      {
+        "tag": "div",
+        "className": "fs-button-span",
+        "text": "Deny"
+      },
+      {
+        "tag": "div",
+        "className": "fs-button-span",
+        "text": "Accept"
+      },
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_close",
+        "text": " "
+      },
+      {
+        "tag": "div",
+        "className": "fs-cc-banner_close-icon w-embed",
+        "text": " "
+      }
+    ]
+  },
+  {
+    "tag": "main",
+    "className": "",
+    "id": "main",
+    "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, walk you through the gym, and build a plan that fits your life. BOOK YOUR FREE ",
+    "children": [
+      {
+        "tag": "section",
+        "className": "hero-section",
+        "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, "
+      },
+      {
+        "tag": "div",
+        "className": "nav-trigger",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "collection-list-wrapper clw-hero homepage w-dyn-list",
+        "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, "
+      },
+      {
+        "tag": "div",
+        "className": "collection-list container c-xlarge home w-dyn-items",
+        "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, "
+      },
+      {
+        "tag": "div",
+        "className": "collection-item w-dyn-item",
+        "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, "
+      },
+      {
+        "tag": "article",
+        "className": "hero-text-wrapper-homepage",
+        "text": "CROSSFIT GYM IN NEW YORK YOUR FIRST SESSION IS ON US Book a free 1-on-1 intro with a coach. We will assess your goals, "
+      },
+      {
+        "tag": "article",
+        "className": "subheading-spacer",
+        "text": "CROSSFIT GYM IN NEW YORK"
+      },
+      {
+        "tag": "div",
+        "className": "gym-type w-embed",
+        "text": "CROSSFIT GYM IN NEW YORK"
+      }
+    ]
+  },
+  {
+    "tag": "footer",
+    "className": "footer",
+    "id": "qa-footer",
+    "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membership Cancellation LEGAL Privacy Policy Terms of Use ADDRESS 495 Broadway b/t Br",
+    "children": [
+      {
+        "tag": "div",
+        "className": "container c-large",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "collection-list-wrapper w-dyn-list",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "collection-list w-dyn-items",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "collection-item w-dyn-item",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "footer-wrapper",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "footer-top",
+        "text": "PROGRAMS Strength Classes Personal Training Open Gym Nutrition Coaching ABOUT About Us Contact Us Membership Pause Membe"
+      },
+      {
+        "tag": "div",
+        "className": "footer-column fc-title",
+        "text": ""
+      },
+      {
+        "tag": "div",
+        "className": "cf-logo-on w-embed w-script",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "tag": "script",
+    "className": "",
+    "id": "",
+    "text": "",
+    "children": []
+  },
+  {
+    "tag": "script",
+    "className": "",
+    "id": "",
+    "text": "",
+    "children": []
+  },
+  {
+    "tag": "script",
+    "className": "",
+    "id": "",
+    "text": "",
+    "children": []
+  },
+  {
+    "tag": "style",
+    "className": "",
+    "id": "",
+    "text": " .block-scroll { overflow: hidden; } #button { display: inline-block; width: 50px; height: 50px; text-align: center; border-radius: 4px; position: fixed; bottom: 30px; right: 90px; ",
+    "children": []
+  },
+  {
+    "tag": "script",
+    "className": "",
+    "id": "",
+    "text": " // GROW CHAT WIDGET setTimeout(function () { console.log(\"Adding Grow Chat Script\"); var el = document.createElement('script'); el.src = \"https://widgets.leadconnectorhq.com/loader.js",
+    "children": []
+  },
+  {
+    "tag": "script",
+    "className": "",
+    "id": "",
+    "text": " $('.ci-membership-benefit').each(function (index) { $(this).attr(\"id\",\"id\" + index); }); $(window).resize(function() { if($(window).width() > 767 && $(window).width() < 991 ) { $('#id1').ins",
+    "children": []
+  },
+  {
+    "tag": "a",
+    "className": "w-webflow-badge",
+    "id": "",
+    "text": "",
+    "children": []
+  },
+  {
+    "tag": "iframe",
+    "className": "",
+    "id": "bugherd_embed_communication_frame",
+    "text": "",
+    "children": []
+  }
+]

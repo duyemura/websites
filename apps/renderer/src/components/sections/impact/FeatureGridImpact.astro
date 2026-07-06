@@ -1,0 +1,18 @@
+---
+import type { Feature } from "../../../types/gym-content";
+const { items, headline } = Astro.props as { items: Feature[]; headline?: string };
+if (!items?.length) return;
+---
+<section class="bg-white py-16 lg:py-24">
+  <div class="mx-auto max-w-7xl px-4 lg:px-6">
+    {headline && <h2 class="mb-12 max-w-2xl font-heading text-3xl font-black uppercase leading-tight text-primary md:text-4xl">{headline}</h2>}
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((f) => (
+        <div class="flex items-center gap-4 bg-accent p-5">
+          <span class="text-2xl text-white" aria-hidden="true">{f.icon}</span>
+          <span class="font-heading text-sm font-bold uppercase tracking-wide text-white">{f.label}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

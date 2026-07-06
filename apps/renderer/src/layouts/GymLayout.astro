@@ -26,6 +26,7 @@ interface Props {
 }
 const { title, description, path, canonicalPath, image } = Astro.props;
 const { meta, business, brand } = content;
+const isImpact = meta.templateTheme === "impact";
 const gtmId = safeTrackingId(meta.googleTagManagerId);
 
 const pageTitle = title ?? meta.defaultTitle;
@@ -80,9 +81,9 @@ const rootCss = [
         ></iframe>
       </noscript>
     )}
-    <Header />
+    {isImpact ? <HeaderImpact /> : <Header />}
     <main id="main-content"><slot /></main>
-    <Footer />
+    {isImpact ? <FooterImpact /> : <Footer />}
     <StickyCTA />
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
     <p class="sr-only">
