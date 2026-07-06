@@ -153,7 +153,6 @@ async function shouldSkip(
   force: boolean,
 ): Promise<boolean> {
   if (force || !runner.produces) return false;
-  if (stageName === "eval" || stageName === "template-eval") return false;
   const artifact = await loadArtifact(
     ctx.db,
     { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },

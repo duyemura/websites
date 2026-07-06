@@ -60,8 +60,10 @@ export const templateEvalStage: StageRunner = {
     const failures: string[] = [];
     const visited = new Set<string>();
     const queue = ["/"];
-    const browser = await chromium.launch();
+
+    let browser;
     try {
+      browser = await chromium.launch();
       const page = await browser.newPage();
 
       while (queue.length > 0) {
@@ -126,7 +128,9 @@ export const templateEvalStage: StageRunner = {
         error: failures.length > 0 ? failures.slice(0, 5).join("; ") : undefined,
       };
     } finally {
-      await browser.close().catch(() => {});
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
       await new Promise<void>((r) => server.close(() => r()));
     }
   },
