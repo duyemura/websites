@@ -3,7 +3,7 @@ import { content } from "../../lib/content";
 import Button from "../ui/Button.astro";
 const { navigation, business, brand } = content;
 ---
-<header class="sticky top-0 z-50 bg-white border-b border-slate-100 shadow-sm">
+<header class="sticky top-0 z-50 bg-primary">
   {navigation.announcement && (
     <div class="bg-accent py-2 text-center text-sm font-semibold text-white">
       {navigation.announcement.url
@@ -22,7 +22,7 @@ const { navigation, business, brand } = content;
       <ul class="hidden items-center gap-6 lg:flex">
         {navigation.header.map((item) => (
           <li class="group relative">
-            <a href={item.href} aria-haspopup={item.children ? "true" : undefined} class="font-heading font-medium text-primary hover:text-accent">{item.label}</a>
+            <a href={item.href} aria-haspopup={item.children ? "true" : undefined} class="font-heading font-medium text-white hover:text-accent">{item.label}</a>
             {item.children && (
               <ul class="invisible absolute left-0 top-full z-20 min-w-48 rounded-lg bg-white py-2 shadow-lg group-hover:visible group-focus-within:visible">
                 {item.children.map((c) => (
@@ -40,13 +40,13 @@ const { navigation, business, brand } = content;
     </div>
   </div>
   <!-- Mobile nav: CSS-only details/summary, keyboard accessible via Enter/Space -->
-  <details class="border-t border-slate-100 lg:hidden">
-    <summary class="cursor-pointer px-4 py-3 font-heading font-medium text-primary" aria-label="Toggle main menu">Menu</summary>
+  <details class="border-t border-white/20 lg:hidden">
+    <summary class="cursor-pointer px-4 py-3 font-heading font-medium text-white" aria-label="Toggle main menu">Menu</summary>
     <nav aria-label="Mobile navigation">
     <ul class="space-y-1 px-4 pb-4">
       {navigation.header.map((item) => (
         <li>
-          <a href={item.href} class="block py-1 text-primary">{item.label}</a>
+          <a href={item.href} class="block py-1 text-white">{item.label}</a>
           {item.children && item.children.map((c) => <a href={c.href} class="block py-1 pl-4 text-sm text-secondary">{c.label}</a>)}
         </li>
       ))}

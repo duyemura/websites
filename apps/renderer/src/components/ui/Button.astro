@@ -3,6 +3,6 @@ const { href, variant = "primary", track, size = "default", ...rest } = Astro.pr
 const sizeClasses = size === "lg" ? "px-8 py-4 text-base" : "px-6 py-3 text-sm";
 const cls = variant === "primary"
   ? `inline-block rounded-lg bg-accent font-heading font-semibold text-white hover:opacity-90 ${sizeClasses}`
-  : `inline-block rounded-lg border-2 border-primary font-heading font-semibold text-primary hover:bg-primary hover:text-white ${sizeClasses}`;
+  : `inline-block rounded-lg border-2 border-white font-heading font-semibold text-white hover:bg-white hover:text-primary ${sizeClasses}`;
 ---
 <a href={href} class={cls} data-track={track}><slot /></a>
