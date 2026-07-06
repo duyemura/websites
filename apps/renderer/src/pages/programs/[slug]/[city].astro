@@ -21,31 +21,32 @@ export function getStaticPaths() {
     ...(business.serviceArea ?? []),
   ];
   return pages.programs.flatMap((program) =>
-    cities.map((city) => ({
-      params: {
-        slug: program.slug,
-        city: city.toLowerCase().replace(/\s+/g, "-"),
-      },
-      props: { program, city },
-    }))
+    cities.map((city) => {
+      const citySlug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      return {
+        params: { slug: program.slug, city: citySlug },
+        props: { program, city, citySlug },
+      };
+    })
   );
 }
 
-const { program, city } = Astro.props;
+const { program, city, citySlug } = Astro.props;
 const { business } = content;
-const path = `/programs/${program.slug}/${city.toLowerCase().replace(/\s+/g, "-")}`;
+const path = `/programs/${program.slug}/${citySlug}`;
 const geoHeadline = `${program.name} in ${city}, ${business.geo.stateAbbr}`;
 const title = `${geoHeadline} | ${business.name}`;
 const description = `${program.name} classes in ${city}, ${business.geo.stateAbbr}. ${program.shortDescription || `${business.name} serves members from ${city} with expert coaching and welcoming community.`}`.slice(0, 157);
 ---
 
-<GymLayout title={title} description={description} path={path} image={program.coverImageUrl}>
+<GymLayout title={title} description={description} path={path} canonicalPath={`/programs/${program.slug}`} image={program.coverImageUrl}>
   <Fragment slot="head">
     <ServiceSchema
       name={`${program.name} in ${city}`}
       path={path}
       description={program.shortDescription}
       image={program.coverImageUrl}
+      areaServedOverride={[{ "@type": "City", name: city }]}
     />
     <BreadcrumbSchema
       crumbs={[

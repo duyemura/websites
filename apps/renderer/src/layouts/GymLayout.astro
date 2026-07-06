@@ -13,10 +13,15 @@ interface Props {
   description?: string;
   /** Path of this page, e.g. "/programs/crossfit-classes" — used for canonical. */
   path: string;
+  /**
+   * Override the canonical URL path. Use when a page should canonicalize to a
+   * different URL than its own (e.g. geo pages → parent program page).
+   */
+  canonicalPath?: string;
   /** OG image override (hero/cover). */
   image?: string;
 }
-const { title, description, path, image } = Astro.props;
+const { title, description, path, canonicalPath, image } = Astro.props;
 const { meta, business, brand } = content;
 const gtmId = safeTrackingId(meta.googleTagManagerId);
 
@@ -52,7 +57,7 @@ const rootCss = [
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href={fontsHref} />
-    <CanonicalMeta path={path} />
+    <CanonicalMeta path={canonicalPath ?? path} />
     <OpenGraph title={pageTitle} description={pageDescription} path={path} image={image} />
     <LocalBusinessSchema />
     <style is:inline set:html={rootCss}></style>

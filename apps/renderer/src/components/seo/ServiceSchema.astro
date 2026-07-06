@@ -1,10 +1,11 @@
 ---
 import { content, absUrl } from "../../lib/content";
-const { name, path, description, image } = Astro.props as {
+const { name, path, description, image, areaServedOverride } = Astro.props as {
   name: string;
   path: string;
   description?: string;
   image?: string;
+  areaServedOverride?: { "@type": string; name: string }[];
 };
 const { business, brand } = content;
 const schema = {
@@ -30,7 +31,7 @@ const schema = {
     image: brand.logoUrl,
   },
   // Deduplicate cities in case primary city also appears in serviceArea
-  areaServed: Array.from(new Set([business.geo.city, ...(business.serviceArea ?? [])]))
+  areaServed: areaServedOverride ?? Array.from(new Set([business.geo.city, ...(business.serviceArea ?? [])]))
     .map((c) => ({ "@type": "City", name: c })),
   url: absUrl(path),
 };

@@ -6,7 +6,7 @@ const programs = slugs.map(programBySlug);
 ---
 <section class="bg-slate-900 py-20">
   <div class="mx-auto max-w-6xl px-6">
-    <h2 class="mb-12 font-heading text-4xl font-black uppercase text-white">{headline || "Our Programs"}</h2>
+    {headline && <h2 class="mb-12 font-heading text-4xl font-black uppercase text-white">{headline}</h2>}
     <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {programs.map((program) => {
         const hasCover = !!program.coverImageUrl && !program.coverImageUrl.includes("placehold.co");
