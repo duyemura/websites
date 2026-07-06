@@ -92,6 +92,8 @@ export interface DocgenStageInput {
   };
   /** Optional context for AI-driven workspace memory extraction. */
   workspaceMemoryCtx?: WorkspaceMemoryContext;
+  /** Skip vision-model interaction classification — set true for template path where interaction data is unused. */
+  skipVision?: boolean;
 }
 
 async function loadStageArtifact<T>(
@@ -568,12 +570,9 @@ export async function runDocgenStage(
     region: config.S3_REGION,
     endpoint: config.S3_ENDPOINT,
   };
-  const enrichedEvidence = await classifyAllInteractions(
-    alignedEvidence,
-    designExtract,
-    config,
-    s3ctx,
-  );
+  const enrichedEvidence = input.skipVision
+    ? alignedEvidence
+    : await classifyAllInteractions(alignedEvidence, designExtract, config, s3ctx);
 
   const searchPresence = buildSearchPresence(contentExtract);
 

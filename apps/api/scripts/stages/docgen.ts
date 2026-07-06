@@ -80,6 +80,7 @@ export const docgenStage: StageRunner = {
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
       mode: "replication",
+      skipVision: true, // interaction classification unused for template path
     });
 
     await saveSiteDocs(ctx.db, ctx.workspaceUuid, docs, ctx.siteUuid);
