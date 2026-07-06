@@ -28,10 +28,7 @@ const schema = {
   areaServed: [business.geo.city, ...(business.serviceArea ?? [])],
   speakable: {
     "@type": "SpeakableSpecification",
-    xpath: [
-      "/html/head/title",
-      "/html/head/meta[@name='description']/@content",
-    ],
+    cssSelector: ["title", "meta[name='description']"],
   },
   ...(business.aggregateRating && {
     aggregateRating: {

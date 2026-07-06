@@ -27,7 +27,7 @@ const title = `${program.name} in ${business.geo.city}, ${business.geo.stateAbbr
   <Fragment slot="head">
     <ServiceSchema name={program.name} path={path} description={program.shortDescription} image={program.coverImageUrl} />
     <BreadcrumbSchema crumbs={[{ name: program.name, path }]} />
-    {program.faq.length > 0 && <FAQSchema items={program.faq} />}
+    {(program.faq?.length ?? 0) > 0 && <FAQSchema items={program.faq} />}
   </Fragment>
 
   <!-- Geo H1 above the hero for local SEO; hero renders its heading as h2 -->
