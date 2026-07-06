@@ -19,6 +19,8 @@ export interface RunMirrorInput {
     S3_ASSETS_BUCKET: string;
     S3_DEPLOYMENTS_BUCKET?: string;
     CDN_BASE_URL: string;
+    MILO_PREVIEW_DOMAIN?: string;
+    CLOUDFRONT_KVS_ARN?: string;
   };
   siteUuid: string;
   workspaceUuid: string;
@@ -134,6 +136,28 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
 
     // Promote to stable serving prefix for CloudFront
     await promoteDeploy(s3Client, bucket, siteUuid, deploy.deployPrefix);
+
+    // Auto-write preview subdomain: {uuid}-preview.{MILO_PREVIEW_DOMAIN} → staging
+    // Non-fatal: KVS failure does not fail the mirror.
+    const previewDomain = config.MILO_PREVIEW_DOMAIN;
+    const kvsArn = config.CLOUDFRONT_KVS_ARN;
+    if (previewDomain && kvsArn) {
+      try {
+        const { CloudFrontKeyValueStoreClient, PutKeyCommand, DescribeKeyValueStoreCommand } =
+          await import("@aws-sdk/client-cloudfront-keyvaluestore");
+        const kvsClient = new CloudFrontKeyValueStoreClient({});
+        const desc = await kvsClient.send(new DescribeKeyValueStoreCommand({ KvsARN: kvsArn }));
+        await kvsClient.send(new PutKeyCommand({
+          KvsARN: kvsArn,
+          IfMatch: desc.ETag,
+          Key: `${siteUuid}-preview.${previewDomain}`,
+          Value: `sites/${siteUuid}/staging`,
+        }));
+        log.info({ siteUuid, previewSubdomain: `${siteUuid}-preview.${previewDomain}` }, "preview subdomain KVS written");
+      } catch (kvsErr) {
+        log.warn({ siteUuid, err: kvsErr }, "preview KVS write failed — subdomain must be set manually");
+      }
+    }
 
     // Record this mirror deploy as version 1 (or next version if re-run)
     const { recordSiteVersion } = await import("../site-versions.js");

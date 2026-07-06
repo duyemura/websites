@@ -80,9 +80,9 @@ export function goLiveSiteProcessor(fastify: FastifyInstance) {
             KvsARN: KVS_ARN,
             IfMatch: desc.ETag,
             Key: site.customDomain,
-            Value: `sites/${siteUuid}/current`,
+            Value: `sites/${siteUuid}/production`,
           }));
-          fastify.log.info({ siteUuid, customDomain: site.customDomain }, "KVS routing written");
+          fastify.log.info({ siteUuid, customDomain: site.customDomain }, "custom domain KVS → production written");
         }
       } catch (kvsErr) {
         fastify.log.warn({ siteUuid, err: kvsErr }, "KVS write failed — domain routing must be set manually");
