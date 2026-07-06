@@ -64,7 +64,7 @@ export async function deployTemplate(input: DeployTemplateInput) {
     const { content: mapped, warnings } = await buildGymJson(db, siteUuid, {
       apiBaseUrl: input.apiBaseUrl ?? "",
       siteUrl: input.siteUrl ?? "",
-    });
+    }, workspaceUuid);
     if (warnings.length > 0) {
       (log.warn ?? log.info)({ siteUuid, warnings }, "content mapper used defaults");
     }
