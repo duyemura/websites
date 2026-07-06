@@ -47,8 +47,8 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   return registry;
 }
 
-// extract/segment/contract are the old replication pipeline — not needed for mirror+template approach
-const DEFAULT_STAGES_FOR_URL = ["mirror", "content", "template"];
+// Default: clone the site, build docs, extract content. Template is the explicit paid upsell.
+const DEFAULT_STAGES_FOR_URL = ["mirror", "docgen", "content"];
 
 function parseArgs() {
   const argv = process.argv.slice(2);
