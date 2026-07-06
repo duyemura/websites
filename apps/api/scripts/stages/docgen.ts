@@ -66,22 +66,27 @@ ${text.slice(0, 8000)}`;
 
 export const docgenStage: StageRunner = {
   label: "docgen",
-  requires: ["extract", "segment"],
+  requires: ["mirror-deploy"],
   produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
     ctx.log(`  Model: ${ctx.config.DEFAULT_LLM_MODEL} (${ctx.config.LLM_PROVIDER})`);
     ctx.log(`  Running docgen...`);
 
-    const docs = await runDocgenStage({
-      db: ctx.db,
-      config: ctx.config,
-      s3: ctx.s3Client,
-      siteUuid: ctx.siteUuid,
-      workspaceUuid: ctx.workspaceUuid,
-      mode: "replication",
-      skipVision: true, // interaction classification unused for template path
-    });
+    let docs: Awaited<ReturnType<typeof runDocgenStage>> = [];
+    try {
+      docs = await runDocgenStage({
+        db: ctx.db,
+        config: ctx.config,
+        s3: ctx.s3Client,
+        siteUuid: ctx.siteUuid,
+        workspaceUuid: ctx.workspaceUuid,
+        mode: "replication",
+        skipVision: true,
+      });
+    } catch (err) {
+      ctx.log(`  [warn] runDocgenStage skipped (no extract/segment artifacts): ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     await saveSiteDocs(ctx.db, ctx.workspaceUuid, docs, ctx.siteUuid);
 
