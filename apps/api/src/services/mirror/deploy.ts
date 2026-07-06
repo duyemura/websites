@@ -124,7 +124,13 @@ export async function deploySnapshot(
   const stale = new Set<string>();
   const warnings: string[] = [];
 
-  for (const page of snapshot.pages) {
+  // Process pages in chunks to avoid OOM on large sites (500+ pages).
+  const CHUNK_SIZE = 50;
+  const pages = snapshot.pages;
+  for (let chunkStart = 0; chunkStart < pages.length; chunkStart += CHUNK_SIZE) {
+    const chunk = pages.slice(chunkStart, chunkStart + CHUNK_SIZE);
+    if (chunkStart > 0) await new Promise<void>((r) => setTimeout(r, 0)); // yield for GC
+    for (const page of chunk) {
     const fileKey = pathToFileKey(page.path);
     const replace = pageReplaces.find((t) => pageGlobMatches(t.pageGlob, page.path));
 
@@ -215,7 +221,8 @@ export async function deploySnapshot(
     } catch (err) {
       warnings.push(`deploy write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
     }
-  }
+    } // end inner page loop
+  } // end chunk loop
 
   // I3: page-replace transforms that matched no page in this snapshot are stale
   for (const pr of pageReplaces) {
