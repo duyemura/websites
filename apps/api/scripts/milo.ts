@@ -28,6 +28,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
     ["template", "./stages/template.js"],
     ["template-eval", "./stages/template-eval.js"],
     ["publish", "./stages/publish.js"],
+    ["restore", "./stages/restore.js"],
   ];
   for (const [name, path] of stageModules) {
     try {
