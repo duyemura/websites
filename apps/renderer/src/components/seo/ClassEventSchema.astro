@@ -7,8 +7,6 @@ if (!programs?.length) return;
 
 const { business, meta, brand } = content;
 
-const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD" — build-time date
-
 // iCal short format (RFC 5545) — unambiguous for Google
 const DAY_MAP: Record<string, string> = {
   Monday: "MO",
@@ -55,13 +53,12 @@ const events = programs.flatMap((program) =>
     return [{
       "@type": "Event",
       name: `${program.name} at ${business.name}`,
-      startDate: today,
       ...(program.shortDescription && { description: program.shortDescription }),
       eventStatus: "https://schema.org/EventScheduled",
       eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
       location,
       organizer,
-      url: absUrl(`/programs/${program.slug}`),
+      url: absUrl(`/programs/${encodeURIComponent(program.slug)}`),
       ...(brand.logoUrl && { image: brand.logoUrl }),
       eventSchedule: {
         "@type": "Schedule",
