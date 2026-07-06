@@ -136,9 +136,9 @@ export const evalStage: StageRunner = {
     const browser = await chromium.launch();
     try {
       for (const page of pages) {
-        ctx.log(`  Scoring ${page.path} …`);
+        const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path, cacheBust, ctx.config.MILO_PREVIEW_DOMAIN);
+        ctx.log(`  Scoring ${page.path} → ${mirrorPageUrl.split("?")[0]} …`);
         try {
-          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path, cacheBust, ctx.config.MILO_PREVIEW_DOMAIN);
           const originPageUrl = `${sourceOrigin}${page.path}`;
 
           // Screenshot origin and mirror in parallel (shared browser, separate pages)
