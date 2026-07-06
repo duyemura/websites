@@ -1,5 +1,6 @@
 // apps/api/scripts/stages/eval.ts
 import { chromium } from "playwright";
+import type { Browser } from "playwright";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
 import type { StageRunner, StageContext, StageResult } from "./types";
@@ -19,11 +20,13 @@ interface PageCapture {
 /**
  * Screenshot a page — waits for domcontentloaded then networkidle,
  * matching the proven pattern from run-mirror.ts's capturePage.
+ *
+ * Accepts a shared Browser instance so callers can open one browser for
+ * the entire eval run instead of launching a new process per page.
  */
-async function screenshotPage(url: string): Promise<PageCapture> {
-  const browser = await chromium.launch();
+async function screenshotPage(browser: Browser, url: string): Promise<PageCapture> {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
     const status = response?.status() ?? 0;
@@ -32,7 +35,7 @@ async function screenshotPage(url: string): Promise<PageCapture> {
     const img = PNG.sync.read(png);
     return { png, heightPx: img.height };
   } finally {
-    await browser.close();
+    await page.close();
   }
 }
 
@@ -122,37 +125,43 @@ export const evalStage: StageRunner = {
     let totalSimilarity = 0;
 
     // ---------- Per-page screenshot + similarity ----------
+    // One browser for all pages — avoids spawning a new process per screenshot.
 
-    for (const page of pages) {
-      ctx.log(`  Scoring ${page.path} …`);
-      try {
-        const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path);
-        const originPageUrl = `${sourceOrigin}${page.path}`;
+    const browser = await chromium.launch();
+    try {
+      for (const page of pages) {
+        ctx.log(`  Scoring ${page.path} …`);
+        try {
+          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path);
+          const originPageUrl = `${sourceOrigin}${page.path}`;
 
-        // Screenshot origin and mirror in parallel
-        const [mirrorCapture, originCapture] = await Promise.all([
-          screenshotPage(mirrorPageUrl),
-          screenshotPage(originPageUrl),
-        ]);
+          // Screenshot origin and mirror in parallel (shared browser, separate pages)
+          const [mirrorCapture, originCapture] = await Promise.all([
+            screenshotPage(browser, mirrorPageUrl),
+            screenshotPage(browser, originPageUrl),
+          ]);
 
-        const { score, heightDeltaPx } = computeSimilarity(mirrorCapture.png, originCapture.png);
-        totalSimilarity += score;
+          const { score, heightDeltaPx } = computeSimilarity(mirrorCapture.png, originCapture.png);
+          totalSimilarity += score;
 
-        if (score >= SIMILARITY_PASS_THRESHOLD) {
-          passCount++;
-          ctx.log(`    ${score}% similarity — PASS${heightDeltaPx !== 0 ? ` (height Δ ${heightDeltaPx}px)` : ""}`);
-        } else {
+          if (score >= SIMILARITY_PASS_THRESHOLD) {
+            passCount++;
+            ctx.log(`    ${score}% similarity — PASS${heightDeltaPx !== 0 ? ` (height Δ ${heightDeltaPx}px)` : ""}`);
+          } else {
+            pageWarnings.push(
+              `${page.path}: similarity ${score}% (below ${SIMILARITY_PASS_THRESHOLD}% threshold, height Δ ${heightDeltaPx}px)`,
+            );
+            ctx.log(`    ${score}% similarity — FAIL (height Δ ${heightDeltaPx}px)`);
+          }
+        } catch (err) {
           pageWarnings.push(
-            `${page.path}: similarity ${score}% (below ${SIMILARITY_PASS_THRESHOLD}% threshold, height Δ ${heightDeltaPx}px)`,
+            `${page.path}: screenshot failed — ${err instanceof Error ? err.message : String(err)}`,
           );
-          ctx.log(`    ${score}% similarity — FAIL (height Δ ${heightDeltaPx}px)`);
+          ctx.log(`    ERROR: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } catch (err) {
-        pageWarnings.push(
-          `${page.path}: screenshot failed — ${err instanceof Error ? err.message : String(err)}`,
-        );
-        ctx.log(`    ERROR: ${err instanceof Error ? err.message : String(err)}`);
       }
+    } finally {
+      await browser.close();
     }
 
     const avgSimilarity = pages.length > 0 ? Math.round(totalSimilarity / pages.length) : 0;
@@ -162,6 +171,11 @@ export const evalStage: StageRunner = {
     let formStatus = "skipped";
     ctx.log("  Form capture smoke test …");
     try {
+      // CDN_BASE_URL points at S3/CloudFront static hosting.  The form endpoint
+      // lives on the API server, reachable only when CloudFront has an /api/*
+      // behaviour rule forwarding to the API origin.  In local dev without
+      // CloudFront wired up, 403/404/502 here is expected — it means the static
+      // stack is working but the API routing layer is not yet configured.
       const formEndpoint = `${cdnBase.replace(/\/$/, "")}/api/forms/${ctx.siteUuid}/eval-smoke-test`;
       const formRes = await fetch(formEndpoint, {
         method: "POST",
@@ -186,9 +200,12 @@ export const evalStage: StageRunner = {
           formStatus = "201 but no row in DB";
           ctx.log("    Form smoke test — WARN: 201 but no row written to leads table");
         }
+      } else if (formRes.status === 403 || formRes.status === 404 || formRes.status === 502) {
+        formStatus = `⚠️  API not reachable (HTTP ${formRes.status}) — CloudFront /api/* not configured`;
+        ctx.log(`    Form smoke test — SKIP (${formStatus})`);
       } else {
-        formStatus = `HTTP ${formRes.status}`;
-        ctx.log(`    Form smoke test — SKIP (HTTP ${formRes.status})`);
+        formStatus = `❌ HTTP ${formRes.status}`;
+        ctx.log(`    Form smoke test — FAIL (HTTP ${formRes.status})`);
       }
     } catch (err) {
       formStatus = `error: ${err instanceof Error ? err.message : String(err)}`;
