@@ -15,7 +15,7 @@ import { CRAWL_TIER_FREE } from "../../types/mirror";
 export const MAX_PAGES = 20;
 
 /** Number of concurrent Playwright contexts (pages crawled in parallel). */
-const CRAWL_CONCURRENCY = 5;
+const CRAWL_CONCURRENCY = 8;
 
 const ASSET_EXT_RE = /\.(pdf|jpe?g|png|gif|webp|svg|zip|mp4|mov|webm|css|js|ico|woff2?)$/i;
 

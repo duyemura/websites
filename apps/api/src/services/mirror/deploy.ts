@@ -16,6 +16,19 @@ import type { MirrorSnapshotArtifact, SiteTransformRecord, TransformType } from 
 import { INTERCEPTOR_SCRIPT } from "../../utils/mirror/interceptor";
 import * as cheerio from "cheerio";
 
+async function bounded<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length || 1) }, async () => {
+    let item: T | undefined;
+    while ((item = queue.shift()) !== undefined) await fn(item);
+  });
+  await Promise.all(workers);
+}
+
 /**
  * Extract a semantic content outline from page HTML.
  * Preserves heading hierarchy and section context so LLMs can map
@@ -192,13 +205,10 @@ export async function deploySnapshot(
   const stale = new Set<string>();
   const warnings: string[] = [];
 
-  // Process pages in chunks to avoid OOM on large sites (500+ pages).
-  const CHUNK_SIZE = 50;
+  const DEPLOY_CONCURRENCY = 12;
   const pages = snapshot.pages;
-  for (let chunkStart = 0; chunkStart < pages.length; chunkStart += CHUNK_SIZE) {
-    const chunk = pages.slice(chunkStart, chunkStart + CHUNK_SIZE);
-    if (chunkStart > 0) await new Promise<void>((r) => setTimeout(r, 0)); // yield for GC
-    for (const page of chunk) {
+
+  await bounded(pages, DEPLOY_CONCURRENCY, async (page) => {
     const fileKey = pathToFileKey(page.path);
     const replace = pageReplaces.find((t) => pageGlobMatches(t.pageGlob, page.path));
 
@@ -214,7 +224,7 @@ export async function deploySnapshot(
       if (typeof ref !== "string" || !ref) {
         warnings.push(`page-replace on ${page.path} has invalid artifactRef — skipped`);
         stale.add(replace.uuid);
-        continue;
+        return;
       }
 
       try {
@@ -222,15 +232,15 @@ export async function deploySnapshot(
           // C1: In preview, inject noindex even into page-replace artifacts — never
           // skip the noindex guarantee just because a page comes from a replacement.
           const raw = await deps.s3Client.send(
-            new GetObjectCommand({ Bucket: deps.bucket, Key: ref }),
+            new GetObjectCommand({ Bucket: deps.bucket, Key: ref as string }),
           );
-          const html = (await raw.Body?.transformToString()) ?? "";
-          if (!html) {
+          const replaceHtml = (await raw.Body?.transformToString()) ?? "";
+          if (!replaceHtml) {
             warnings.push(`page-replace artifact empty for ${page.path} — skipped`);
             stale.add(replace.uuid);
-            continue;
+            return;
           }
-          const result = applyTransforms(html, page.path, [NOINDEX_TRANSFORM]);
+          const result = applyTransforms(replaceHtml, page.path, [NOINDEX_TRANSFORM]);
           await deps.s3Client.send(
             new PutObjectCommand({
               Bucket: deps.bucket,
@@ -253,7 +263,7 @@ export async function deploySnapshot(
         warnings.push(`page-replace failed for ${page.path}: ${err instanceof Error ? err.message : String(err)}`);
         stale.add(replace.uuid);
       }
-      continue;
+      return;
     }
 
     // Normal path: read snapshot HTML, apply transforms, upload (I1: per-page try/catch)
@@ -265,13 +275,13 @@ export async function deploySnapshot(
       html = (await raw.Body?.transformToString()) ?? "";
     } catch (err) {
       warnings.push(`deploy read failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
-      continue;
+      return;
     }
 
     // I2: empty body means the snapshot object is corrupt — skip rather than deploy a blank page
     if (!html) {
       warnings.push(`deploy skipped empty snapshot for ${page.path}`);
-      continue;
+      return;
     }
 
     try {
@@ -308,16 +318,16 @@ export async function deploySnapshot(
     } catch (err) {
       warnings.push(`deploy write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
     }
-    } // end inner page loop
-  } // end chunk loop
+  }); // end bounded page loop
 
   // I3: page-replace transforms that matched no page in this snapshot are stale
   for (const pr of pageReplaces) {
     if (!applied.has(pr.uuid)) stale.add(pr.uuid);
   }
 
-  // Assets: server-side copy from snapshot prefix
+  // Assets: server-side copy from snapshot prefix (parallel)
   try {
+    const assetKeys: string[] = [];
     let token: string | undefined;
     do {
       const listed = await deps.s3Client.send(
@@ -328,18 +338,21 @@ export async function deploySnapshot(
         }),
       );
       for (const obj of listed.Contents ?? []) {
-        if (!obj.Key) continue;
-        const name = obj.Key.slice(`${snapshot.s3Prefix}/assets/`.length);
-        await deps.s3Client.send(
-          new CopyObjectCommand({
-            Bucket: deps.bucket,
-            CopySource: `${deps.bucket}/${obj.Key}`,
-            Key: `${deployPrefix}/_assets/${name}`,
-          }),
-        );
+        if (obj.Key) assetKeys.push(obj.Key);
       }
       token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
     } while (token);
+
+    await bounded(assetKeys, 20, async (key) => {
+      const name = key.slice(`${snapshot.s3Prefix}/assets/`.length);
+      await deps.s3Client.send(
+        new CopyObjectCommand({
+          Bucket: deps.bucket,
+          CopySource: `${deps.bucket}/${key}`,
+          Key: `${deployPrefix}/_assets/${name}`,
+        }),
+      );
+    });
   } catch (err) {
     warnings.push(`asset copy failed: ${err instanceof Error ? err.message : String(err)}`);
   }

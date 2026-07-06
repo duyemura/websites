@@ -1,4 +1,17 @@
 import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+
+async function bounded<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length || 1) }, async () => {
+    let item: T | undefined;
+    while ((item = queue.shift()) !== undefined) await fn(item);
+  });
+  await Promise.all(workers);
+}
 import { rewriteHtml } from "../../utils/mirror/rewrite-html";
 import type {
   MirrorAssetsArtifact,
@@ -43,7 +56,7 @@ export async function buildSnapshot(
   const warnings: string[] = [];
   const pages: { path: string; htmlKey: string }[] = [];
 
-  for (const page of crawl.pages) {
+  await bounded(crawl.pages, 12, async (page) => {
     let html: string;
     try {
       const raw = await deps.s3Client.send(
@@ -51,9 +64,8 @@ export async function buildSnapshot(
       );
       html = (await raw.Body?.transformToString()) ?? "";
     } catch (err) {
-      // A single missing blob should not abort the whole snapshot (C2)
       warnings.push(`snapshot read failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
-      continue;
+      return;
     }
 
     const rewritten = rewriteHtml(html, {
@@ -79,7 +91,7 @@ export async function buildSnapshot(
       );
     } catch (err) {
       warnings.push(`snapshot write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
-      continue;
+      return;
     }
 
     pages.push({ path: page.path, htmlKey });
@@ -90,7 +102,7 @@ export async function buildSnapshot(
         : `${page.path}: dynamic ${region.kind} (${region.evidence})`;
       warnings.push(label);
     }
-  }
+  });
 
   for (const failure of crawl.failures) {
     warnings.push(`crawl failed: ${failure.url} (${failure.reason})`);
