@@ -4,9 +4,6 @@ import type { HeroContent } from "../../types/gym-content";
 const { hero, h1 = true } = Astro.props as { hero: HeroContent; h1?: boolean };
 const Tag = h1 ? "h1" : "h2";
 
-// Validate the background URL before interpolating into CSS to prevent injection
-// (CSS url() context is not escaped by Astro's HTML escaper).
-// Only allow http/https/root-relative paths; encode the rest.
 let safeBgUrl = "";
 if (hero.backgroundImageUrl) {
   try {
@@ -14,18 +11,31 @@ if (hero.backgroundImageUrl) {
     if (u.protocol === "http:" || u.protocol === "https:") {
       safeBgUrl = encodeURI(hero.backgroundImageUrl);
     }
-  } catch {
-    // malformed URL — leave empty, hero renders with solid bg-primary
-  }
+  } catch { /* ignore */ }
 }
-const bg = safeBgUrl
-  ? `background-image:linear-gradient(rgba(15,23,42,.65),rgba(15,23,42,.65)),url('${safeBgUrl}')`
+
+const hasBg = !!safeBgUrl;
+const bgStyle = hasBg
+  ? `background-image:linear-gradient(to right,rgba(0,0,0,.85) 0%,rgba(0,0,0,.6) 60%,rgba(0,0,0,.2) 100%),url('${safeBgUrl}');background-size:cover;background-position:center;`
   : "";
 ---
-<section class="bg-primary bg-cover bg-center py-24 text-center text-white" style={bg}>
-  <div class="mx-auto max-w-3xl px-4">
-    <Tag data-testid="hero-headline" class="font-heading text-4xl font-bold sm:text-5xl">{hero.headline}</Tag>
-    {hero.subheading && <p class="mt-4 text-lg text-slate-200">{hero.subheading}</p>}
-    {hero.ctaLabel && hero.ctaUrl && <div class="mt-8"><Button href={hero.ctaUrl} track="contact">{hero.ctaLabel}</Button></div>}
+<section
+  class:list={["relative flex min-h-[85vh] items-center", hasBg ? "bg-slate-900" : "bg-primary"]}
+  style={bgStyle}
+>
+  <div class="mx-auto w-full max-w-6xl px-6 py-24">
+    <div class="max-w-2xl">
+      {hero.subheading && (
+        <p class="mb-4 text-sm font-semibold uppercase tracking-widest text-accent">{hero.subheading.slice(0, 60)}</p>
+      )}
+      <Tag data-testid="hero-headline" class="font-heading text-5xl font-black uppercase leading-tight text-white sm:text-6xl lg:text-7xl">
+        {hero.headline}
+      </Tag>
+      {hero.ctaLabel && hero.ctaUrl && (
+        <div class="mt-10 flex flex-wrap gap-4">
+          <Button href={hero.ctaUrl} track="contact" size="lg">{hero.ctaLabel}</Button>
+        </div>
+      )}
+    </div>
   </div>
 </section>

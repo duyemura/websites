@@ -2,6 +2,7 @@
 import Container from "../ui/Container.astro";
 import { content } from "../../lib/content";
 const { business } = content;
+if (!business.mapEmbedUrl && !business.address?.street) return;
 const mapsQuery = encodeURIComponent(`${business.name} ${business.address.street} ${business.address.city} ${business.geo.stateAbbr}`);
 const directions = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 const areaCopy = business.serviceArea?.length

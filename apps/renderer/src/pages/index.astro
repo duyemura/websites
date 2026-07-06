@@ -14,14 +14,23 @@ const home = content.pages.home;
 const { business } = content;
 ---
 <GymLayout title={geoTitle("CrossFit, Bootcamp & Personal Training")} description={home.hero.subheading} path="/" image={home.hero.backgroundImageUrl}>
+  <!-- dark -->
   <Hero hero={home.hero} />
-  <ValueProps items={home.valueProps} />
-  <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />
-  <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />
-  <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />
-  <ValueProps items={home.communityProps} headline={home.communityHeadline} />
+  <!-- light -->
+  {home.valueProps?.length && <ValueProps items={home.valueProps} />}
+  <!-- dark -->
+  {home.featuredPrograms?.length && <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />}
+  <!-- dark (primary) -->
+  {home.howItWorks?.length && <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />}
+  <!-- dark (slate-900) -->
+  {home.testimonials?.length && <Testimonials items={home.testimonials} />}
+  <!-- light (slate-50) -->
+  {home.features?.length && <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />}
+  <!-- light -->
+  {home.communityProps?.length && <ValueProps items={home.communityProps} headline={home.communityHeadline} />}
+  <!-- dark (primary) -->
   <CTABand headline={home.trustHeadline} />
-  <Testimonials items={home.testimonials} />
+  <!-- light (slate-50) -->
   <Location />
   <FAQ items={home.faq} />
   <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />

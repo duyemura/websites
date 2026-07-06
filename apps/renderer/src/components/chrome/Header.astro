@@ -3,7 +3,7 @@ import { content } from "../../lib/content";
 import Button from "../ui/Button.astro";
 const { navigation, business, brand } = content;
 ---
-<header class="border-b border-slate-100">
+<header class="sticky top-0 z-50 bg-white border-b border-slate-100 shadow-sm">
   {navigation.announcement && (
     <div class="bg-accent py-2 text-center text-sm font-semibold text-white">
       {navigation.announcement.url
@@ -12,7 +12,12 @@ const { navigation, business, brand } = content;
     </div>
   )}
   <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-    <a href="/"><img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="eager" /></a>
+    <a href="/">
+      {brand.logoUrl
+        ? <img src={brand.logoUrl} alt={brand.logoAlt} width="160" height="48" loading="eager" class="h-10 w-auto" />
+        : <span class="font-heading text-xl font-bold uppercase tracking-wider text-primary">{business.name}</span>
+      }
+    </a>
     <nav aria-label="Main">
       <ul class="hidden items-center gap-6 lg:flex">
         {navigation.header.map((item) => (
