@@ -2,6 +2,14 @@ import type { Kysely } from "kysely";
 import type { DB } from "../../types/db";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../types/site-hierarchy";
+import {
+  DEFAULT_TEMPLATE_TOKENS,
+  DEFAULT_BUSINESS_PLACEHOLDER,
+  DEFAULT_PROGRAMS,
+  DEFAULT_BUSINESS_NAME,
+  DEFAULT_CITY,
+  placeholderImage,
+} from "@ploy-gyms/shared-types/template-baseline";
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
@@ -41,33 +49,35 @@ export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandToken
   const c = ds.global.tokens.colors;
   const f = ds.global.tokens.fonts;
   const logo = ds.brand.logo;
+  const baseline = DEFAULT_TEMPLATE_TOKENS;
   return {
-    primaryColor: fallback(c.primary, "#1a1a1a", warnings, "primaryColor"),
-    secondaryColor: fallback(c.background, "#ffffff", warnings, "secondaryColor"),
-    accentColor: fallback(c.foreground, "#f1f1f1", warnings, "accentColor"),
-    headingFont: fallback(f.heading, "Inter", warnings, "headingFont"),
-    bodyFont: fallback(f.body, "Inter", warnings, "bodyFont"),
+    primaryColor: fallback(c.primary, baseline.colors.primary, warnings, "primaryColor"),
+    secondaryColor: fallback(c.background, baseline.colors.foreground, warnings, "secondaryColor"),
+    accentColor: fallback(c.foreground, baseline.colors.mutedForeground, warnings, "accentColor"),
+    headingFont: fallback(f.heading, baseline.fonts.heading, warnings, "headingFont"),
+    bodyFont: fallback(f.body, baseline.fonts.body, warnings, "bodyFont"),
     logoUrl: logo.type === "image" ? (logo.value || fallback("", "", warnings, "logoUrl")) : "",
-    logoAlt: logo.alt || ds.business.name || "",
+    logoAlt: logo.alt || ds.business.name || DEFAULT_BUSINESS_NAME,
   };
 }
 
 // ── Business ─────────────────────────────────────────────────────────────────
 
 export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: string[]): BusinessInfo {
+  const baseline = DEFAULT_BUSINESS_PLACEHOLDER;
   const name = fallback(
     ds.business.name || ds.siteMetadata.businessName,
-    "", warnings, "business.name"
+    baseline.name, warnings, "business.name"
   );
-  const tagline = ds.business.tagline ?? "";
+  const tagline = ds.business.tagline ?? baseline.tagline;
 
   // Label-based extraction — the markdown has a known structure from renderExtractedBusinessInfo.
   // Look for labeled lines rather than hunting for patterns in free text.
   const labelLine = (label: string): string =>
     markdown.match(new RegExp(`\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
 
-  const phone = labelLine("Phone") || fallback("", "", warnings, "phone");
-  const email = labelLine("Email") || undefined;
+  const phone = labelLine("Phone") || fallback("", baseline.phone, warnings, "phone");
+  const email = labelLine("Email") || baseline.email;
 
   // Address is the whole labeled value — apply regex to this single clean string
   const addrStr = labelLine("Address");
@@ -77,10 +87,10 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
   const looseMatch = !addrMatch
     ? addrStr.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
     : null;
-  const street = addrMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.street");
-  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fallback("", "", warnings, "address.city");
-  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2])?.toUpperCase() ?? fallback("", "", warnings, "address.state");
-  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fallback("", "", warnings, "address.zip");
+  const street = addrMatch?.[1]?.trim() ?? fallback("", baseline.address.street, warnings, "address.street");
+  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fallback("", baseline.address.city, warnings, "address.city");
+  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2])?.toUpperCase() ?? fallback("", baseline.address.state, warnings, "address.state");
+  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fallback("", baseline.address.zip, warnings, "address.zip");
 
   // Social links from labeled lines
   const socialPlatforms = ["facebook", "instagram", "twitter", "tiktok", "youtube"] as const;
@@ -92,18 +102,21 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
 
   const primaryCta = ds.reference.homePagePrimaryCta
     ? { label: ds.reference.homePagePrimaryCta.label, url: ds.reference.homePagePrimaryCta.href }
-    : { label: "Get started", url: "/" };
+    : baseline.primaryCta;
 
   return {
     name,
     tagline,
     address: { street, city, state: stateAbbr, zip },
     phone,
-    email: email || undefined,
+    email,
     hours: [],
     primaryCta,
+    trialCta: baseline.trialCta,
     geo: { city, state: STATE_ABBRS[stateAbbr] ?? stateAbbr, stateAbbr },
-    social: Object.keys(social).length > 0 ? social as BusinessInfo["social"] : undefined,
+    serviceArea: baseline.serviceArea,
+    aggregateRating: baseline.aggregateRating,
+    social: Object.keys(social).length > 0 ? social as BusinessInfo["social"] : baseline.social,
   };
 }
 
@@ -184,6 +197,9 @@ export function extractPages(
 
   const programPages = byClass("program");
   const featuredPrograms = programPages.slice(0, 6).map((p) => p.slug);
+  if (programPages.length === 0) {
+    warnings.push("no program pages found in hierarchy — using default program set");
+  }
 
   const home: HomeContent = {
     hero: homePage ? heroFromPage(homePage) : { headline: business.name },
@@ -200,20 +216,46 @@ export function extractPages(
     faq: [],
   };
 
-  const programs: ProgramContent[] = programPages.map((p) => ({
+  const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
     slug: p.slug,
-    name: p.title,
-    shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160),
-    coverImageUrl: p.heroImageUrl ?? "",
-    hero: heroFromPage(p),
-    whatIsIt: { headline: "", body: "" },
+    name: p.name,
+    shortDescription: "Coach-led training for every fitness level.",
+    coverImageUrl: placeholderImage(p.name, 800, 600),
+    hero: {
+      headline: `Try our ${p.name}`,
+      subheading: "",
+      ctaLabel: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.label,
+      ctaUrl: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.url,
+      backgroundImageUrl: placeholderImage(p.name, 1600, 900),
+    },
+    whatIsIt: { headline: `What is ${p.name.toLowerCase()}?`, body: "" },
     whatMakesUsDifferent: [],
-    whatToExpect: { headline: "", steps: [] },
+    whatToExpect: { headline: "What to expect", steps: [] },
     whoIsItFor: [],
     gettingStarted: [],
     testimonials: [],
     faq: [],
   }));
+
+  const programs: ProgramContent[] = programPages.length > 0
+    ? programPages.map((p) => ({
+        slug: p.slug,
+        name: p.title,
+        shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160),
+        coverImageUrl: p.heroImageUrl || placeholderImage(p.title, 800, 600),
+        hero: {
+          ...heroFromPage(p),
+          backgroundImageUrl: p.heroImageUrl || placeholderImage(p.title, 1600, 900),
+        },
+        whatIsIt: { headline: "", body: "" },
+        whatMakesUsDifferent: [],
+        whatToExpect: { headline: "", steps: [] },
+        whoIsItFor: [],
+        gettingStarted: [],
+        testimonials: [],
+        faq: [],
+      }))
+    : defaultPrograms;
 
   const aboutPage = byClass("about")[0];
   const about: AboutContent = {
@@ -323,7 +365,7 @@ export async function buildGymJson(
     siteId: siteUuid,
     apiBaseUrl: config.apiBaseUrl,
     siteUrl: config.siteUrl,
-    defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : "Gym",
+    defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : `${DEFAULT_BUSINESS_NAME} | ${DEFAULT_CITY} Gym`,
     defaultDescription: business.tagline,
     preview: false,
   };
