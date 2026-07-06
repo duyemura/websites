@@ -27,7 +27,7 @@ async function extractBusinessWithLLM(
   siteUrl: string,
   ctx: StageContext,
 ): Promise<BusinessFields | null> {
-  const prompt = `You are extracting business information from a gym website. Return ONLY valid JSON with these fields (use null if not found):
+  const prompt = `You are extracting business information from a gym website. The phone, address, and hours are often in the footer at the END of the page text. Return ONLY valid JSON with these fields (use null if not found):
 
 {
   "businessName": "the gym's actual brand name",
@@ -42,10 +42,10 @@ async function extractBusinessWithLLM(
   "website": "${siteUrl}"
 }
 
-Page headings: ${headings.slice(0, 10).join(" | ")}
+Page headings: ${headings.slice(0, 20).join(" | ")}
 
-Page text (first 2000 chars):
-${text.slice(0, 2000)}`;
+Page text (look especially at footer/bottom for contact info):
+${text.slice(0, 8000)}`;
 
   try {
     const response = await chatCompletion({
