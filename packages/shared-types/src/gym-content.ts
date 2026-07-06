@@ -23,7 +23,7 @@ export interface SiteMeta {
   facebookPixelId?: string;     // fallback if no GTM
   tiktokPixelId?: string;       // fallback if no GTM
   /** Which renderer template to use. Defaults to "baseline". */
-  templateTheme?: "baseline" | "impact";
+  templateTheme?: "baseline" | "impact" | "beanburito";
 }
 
 export interface BusinessInfo {
@@ -161,7 +161,13 @@ export interface HeroContent {
   backgroundImageUrl?: string;
 }
 export interface ValueProp { icon: string; headline: string; body: string }
-export interface Feature { icon: string; label: string }
+export interface Feature {
+  icon: string;
+  label: string;
+  /** Renderer-only layout hints from the section contract. */
+  position?: { col?: number; row?: number };
+  background?: "accent" | "dark" | "transparent" | "image";
+}
 export interface Step { number: number; headline: string; body: string }
 export interface Testimonial { quote: string; name: string; photoUrl?: string; program?: string }
 export interface FAQItem { question: string; answer: string }

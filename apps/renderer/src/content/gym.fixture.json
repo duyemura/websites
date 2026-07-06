@@ -81,22 +81,22 @@
         "subheading": "Book a free 1-on-1 intro with a coach. We will assess your goals, walk you through the gym, and build a plan that fits your life.",
         "ctaLabel": "Book your free intro",
         "ctaUrl": "/contact",
-        "backgroundImageUrl": "__NO_IMAGE__"
+        "backgroundImageUrl": "/assets/impact/hero-homepage.webp"
       },
       "valueProps": [
         { "icon": "🏋️", "headline": "Reach new heights", "body": "Build strength and endurance with coach-led training designed for every level." },
         { "icon": "📅", "headline": "Easy workout scheduling", "body": "Book classes and appointments in seconds with our simple scheduling tools." },
-        { "icon": "🎯", "headline": "Guidance that crushes goals", "body": "Get a clear plan and accountability from coaches who care about your progress." }
+        { "icon": "🎯", "headline": "Guidance tailored toward your fitness goals", "body": "Whatever your wellness goals are, we'll help you figure out the right fitness plan and stick to it." }
       ],
-      "programsHeadline": "Every body is unique. Find a fitness routine that works for you.",
+      "programsHeadline": "Every body is unique.",
       "featuredPrograms": ["group-strength", "cardio-bootcamp", "personal-training"],
       "features": [
-        { "icon": "🥗", "label": "Nutrition programming" },
-        { "icon": "📱", "label": "Members only app" },
-        { "icon": "📅", "label": "Weekend classes" },
-        { "icon": "⚡", "label": "Easy scheduling" },
-        { "icon": "🎟️", "label": "Class reservations" },
-        { "icon": "🎯", "label": "Individualized programming" }
+        { "icon": "ticket", "label": "Class Reservations" },
+        { "icon": "target", "label": "Fitness Program for Over Age 65" },
+        { "icon": "phone", "label": "Members Only App" },
+        { "icon": "water", "label": "Purified Water Dispenser" },
+        { "icon": "dumbbell", "label": "Personal Training" },
+        { "icon": "calendar", "label": "Weekend Workout Classes" }
       ],
       "communityHeadline": "A community that will keep you going",
       "communityProps": [
@@ -130,7 +130,7 @@
         "slug": "group-strength",
         "name": "Group Strength",
         "shortDescription": "Coach-led strength and conditioning for every level.",
-        "coverImageUrl": "__NO_IMAGE__",
+        "coverImageUrl": "/assets/impact/program-strength.webp",
         "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "What is group strength training?", "body": "Coach-led strength and conditioning sessions built around functional movements, professional coaching, structured programming, and a supportive community." },
         "whatMakesUsDifferent": [
@@ -157,7 +157,7 @@
         "slug": "cardio-bootcamp",
         "name": "Cardio Bootcamp",
         "shortDescription": "High-energy circuit training. Zero barbells, all results.",
-        "coverImageUrl": "__NO_IMAGE__",
+        "coverImageUrl": "/assets/impact/program-fundamentals.webp",
         "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Why it works", "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss." },
         "whatMakesUsDifferent": ["Beginner-friendly by design", "No barbell complexity", "Coached, not just supervised", "Fun, loud, motivating"],
@@ -175,7 +175,7 @@
         "slug": "personal-training",
         "name": "Personal Training",
         "shortDescription": "A 360-degree approach: training, lifestyle, and nutrition.",
-        "coverImageUrl": "__NO_IMAGE__",
+        "coverImageUrl": "/assets/impact/program-nutrition.webp",
         "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
         "whatIsIt": { "headline": "Life without limitations", "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery — with a baseline assessment and personalized tracking." },
         "whatMakesUsDifferent": ["Baseline health assessment", "Lifestyle and nutrition coaching included", "Personalized tracking", "VIP experience"],

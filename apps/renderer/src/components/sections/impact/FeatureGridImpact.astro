@@ -1,18 +1,75 @@
 ---
 import type { Feature } from "../../../types/gym-content";
-const { items, headline } = Astro.props as { items: Feature[]; headline?: string };
+
+type FeatureGridItem = Feature & {
+  position?: { col?: number; row?: number };
+  background?: "accent" | "dark" | "transparent" | "image";
+};
+
+const { items, headline } = Astro.props as { items: FeatureGridItem[]; headline?: string };
 if (!items?.length) return;
+
+const KNOWN_ICONS = new Set([
+  "nutrition",
+  "phone",
+  "calendar",
+  "clock",
+  "ticket",
+  "target",
+  "star",
+  "water",
+  "dumbbell",
+]);
+
+const iconFor = (label: string, explicitIcon?: string) => {
+  if (explicitIcon && KNOWN_ICONS.has(explicitIcon)) return explicitIcon;
+  if (/water|purified/i.test(label)) return "water";
+  if (/nutrition/i.test(label)) return "nutrition";
+  if (/app/i.test(label)) return "phone";
+  if (/weekend|class/i.test(label)) return "calendar";
+  if (/scheduling/i.test(label)) return "clock";
+  if (/reservation/i.test(label)) return "ticket";
+  if (/program|individual/i.test(label)) return "target";
+  if (/training|coach/i.test(label)) return "dumbbell";
+  return "star";
+};
 ---
-<section class="bg-white py-16 lg:py-24">
+<section class="bg-primary py-16 lg:py-24">
   <div class="mx-auto max-w-7xl px-4 lg:px-6">
-    {headline && <h2 class="mb-12 max-w-2xl font-heading text-3xl font-black uppercase leading-tight text-primary md:text-4xl">{headline}</h2>}
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((f) => (
-        <div class="flex items-center gap-4 bg-accent p-5">
-          <span class="text-2xl text-white" aria-hidden="true">{f.icon}</span>
-          <span class="font-heading text-sm font-bold uppercase tracking-wide text-white">{f.label}</span>
-        </div>
-      ))}
+    {headline && <h2 class="mx-auto mb-14 max-w-4xl text-center font-heading text-3xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white md:text-4xl lg:text-5xl">{headline}</h2>}
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3 md:grid-rows-2 md:gap-0">
+      {items.slice(0, 6).map((f, i) => {
+        const fallbackRow = Math.floor(i / 3) + 1;
+        const fallbackCol = (i % 3) + 1;
+        const row = f.position?.row ?? fallbackRow;
+        const col = f.position?.col ?? fallbackCol;
+        const fallbackAccent = (fallbackRow + fallbackCol) % 2 === 1;
+        const isAccent = f.background ? f.background === "accent" : fallbackAccent;
+        const icon = iconFor(f.label, f.icon);
+        return (
+          <div
+            class:list={[
+              "flex min-h-[26rem] flex-col items-center justify-between px-10 pb-10 pt-14 text-center transition-transform duration-300 hover:-translate-y-1",
+              isAccent ? "bg-accent text-white" : "bg-black text-white",
+            ]}
+            style={`grid-column: ${col}; grid-row: ${row};`}
+          >
+            <span aria-hidden="true" class="text-white">
+              {icon === "nutrition" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="8" width="32" height="48" rx="4"/><path d="M24 20h16"/><path d="M24 28h16"/><path d="M24 36h10"/></svg>}
+              {icon === "phone" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="6" width="24" height="52" rx="4"/><path d="M28 54h8"/></svg>}
+              {icon === "calendar" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="48" height="44" rx="4"/><path d="M8 26h48"/><path d="M20 8v8"/><path d="M44 8v8"/></svg>}
+              {icon === "clock" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="24"/><path d="M32 18v14l10 10"/></svg>}
+              {icon === "ticket" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 20h44v24H10z"/><path d="M18 20v24"/><path d="M46 32h4"/></svg>}
+              {icon === "target" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="10"/><path d="M48 16l-4 8"/></svg>}
+              {icon === "dumbbell" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36l8-8"/><path d="M20 28l24 24"/><path d="M44 20l8-8"/><path d="M8 40l8-8"/><path d="M16 32l24 24"/><path d="M40 24l8-8"/><circle cx="52" cy="12" r="4"/><circle cx="12" cy="52" r="4"/></svg>}
+              {icon === "water" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32 10c0 0-16 18-16 30a16 16 0 0 0 32 0C48 28 32 10 32 10z"/><path d="M24 42c0-4 4-8 8-8"/><path d="M28 48c0-2 2-4 4-4"/></svg>}
+              {icon === "star" && <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32 8l8 18 18 2-14 12 4 18-16-10-16 10 4-18-14-12 18-2z"/></svg>}
+            </span>
+            <h3 class="font-heading text-xl font-black uppercase italic leading-[0.95] tracking-[-0.02em] md:text-2xl">{f.label}</h3>
+          </div>
+        );
+      })}
     </div>
   </div>
 </section>

@@ -1,18 +1,55 @@
 ---
 import type { ValueProp } from "../../../types/gym-content";
+import Slant from "../../ui/Slant.astro";
 const { items } = Astro.props as { items: ValueProp[] };
 if (!items?.length) return;
+
+const icons: Record<string, string> = {
+  "Reach new heights": "flag-person",
+  "Easy workout scheduling": "calendar-check",
+  "Guidance that crushes goals": "target-arrow",
+};
 ---
-<section class="bg-white py-16 lg:py-24">
+<section class="relative bg-white py-20 lg:py-28">
   <div class="mx-auto max-w-7xl px-4 lg:px-6">
-    <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="grid gap-14 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
-        <div class="flex flex-col">
-          <span class="mb-4 text-4xl" aria-hidden="true">{item.icon}</span>
-          <h3 class="font-heading text-2xl font-black uppercase tracking-tight text-primary">{item.headline}</h3>
-          <p class="mt-3 text-base leading-relaxed text-secondary">{item.body}</p>
+        <div class="flex flex-col items-center text-center">
+          <span class="mb-6 text-accent" aria-hidden="true">
+            {icons[item.headline] === "flag-person" && (
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 56V8"/>
+                <path d="M16 12h22l-6 10 6 10H16"/>
+                <circle cx="28" cy="44" r="8"/>
+                <path d="M20 44h16"/>
+              </svg>
+            )}
+            {icons[item.headline] === "calendar-check" && (
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="14" width="48" height="44" rx="4"/>
+                <path d="M8 26h48"/>
+                <path d="M20 8v8"/>
+                <path d="M44 8v8"/>
+                <path d="M26 38l4 4 8-10"/>
+              </svg>
+            )}
+            {icons[item.headline] === "target-arrow" && (
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="32" cy="32" r="22"/>
+                <circle cx="32" cy="32" r="14"/>
+                <circle cx="32" cy="32" r="6"/>
+                <path d="M48 16l-2 10-10 2"/>
+              </svg>
+            )}
+            {!icons[item.headline] && <span class="text-5xl">{item.icon}</span>}
+          </span>
+          <h3 class="max-w-[14ch] font-heading text-2xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-primary md:text-3xl">
+            {item.headline}
+          </h3>
+          <p class="mt-4 max-w-sm leading-relaxed text-secondary">{item.body}</p>
         </div>
       ))}
     </div>
   </div>
+  <Slant direction="up" color="var(--color-primary)" height={80} class="absolute bottom-0 left-0 right-0" />
 </section>

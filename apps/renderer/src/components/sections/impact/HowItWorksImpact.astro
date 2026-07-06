@@ -5,11 +5,11 @@ if (!steps?.length) return;
 ---
 <section class="bg-primary py-16 lg:py-24 text-white">
   <div class="mx-auto max-w-7xl px-4 lg:px-6">
-    {headline && <h2 class="mb-12 text-center font-heading text-3xl font-black uppercase leading-tight md:text-4xl">{headline}</h2>}
-    <ol class="grid gap-8 md:grid-cols-3">
+    {headline && <h2 class="mb-16 text-center font-heading text-3xl font-black uppercase leading-[0.95] tracking-[-0.03em] md:text-4xl lg:text-5xl">{headline}</h2>}
+    <ol class="grid gap-10 md:grid-cols-3">
       {steps.map((step) => (
         <li class="text-center">
-          <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center border-2 border-accent font-heading text-3xl font-black text-accent">
+          <div class="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-2 border-accent font-heading text-3xl font-black text-accent">
             {step.number}
           </div>
           <h3 class="font-heading text-lg font-bold uppercase tracking-wide">{step.headline}</h3>

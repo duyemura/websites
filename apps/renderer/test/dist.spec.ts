@@ -34,7 +34,7 @@ describe("SEO layer", () => {
     const $ = loadPage("index.html");
     expect($('meta[property="og:title"]').attr("content")).toBeTruthy();
     expect($('meta[property="og:url"]').attr("content")).toBe(`${gym.meta.siteUrl}/`);
-    expect($('meta[name="twitter:card"]').attr("content")).toBe("summary");
+    expect($('meta[name="twitter:card"]').attr("content")).toBe("summary_large_image");
   });
 
   it("every page carries LocalBusiness+SportsActivityLocation with NAP, geo, hours, rating, sameAs", () => {

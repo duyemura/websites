@@ -83,6 +83,19 @@ async function runStage(
         pages: job.input.pages,
       });
     }
+    case "contract": {
+      const { runContractStage } = await import(
+        "../../services/pipeline/contract-stage.js"
+      );
+      return runContractStage({
+        db: fastify.db,
+        config: fastify.config,
+        s3,
+        siteUuid: job.siteUuid,
+        workspaceUuid: job.workspaceUuid,
+        pages: job.input.pages,
+      });
+    }
     case "docgen": {
       const { runDocgenStage } = await import(
         "../../services/pipeline/docgen-stage.js"
@@ -150,6 +163,7 @@ async function runPipeline(
   const stages: typeof REBUILD_STAGES[number][] = [
     "extract",
     "segment",
+    "contract",
     "docgen",
     "build",
     "verify",

@@ -64,7 +64,7 @@ export interface ContentExtractionArtifact {
 export const contentStage: StageRunner = {
   label: "content",
   requires: ["mirror-deploy"],
-  produces: "content-extraction" as any,
+  produces: "content" as any,
 
   async run(ctx: StageContext): Promise<StageResult> {
     const bucket = ctx.config.S3_DEPLOYMENTS_BUCKET ?? ctx.config.S3_ASSETS_BUCKET;
@@ -147,7 +147,7 @@ export const contentStage: StageRunner = {
     await saveArtifact(
       ctx.db,
       { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-      "content-extraction" as any,
+      "content" as any,
       artifact,
     );
 

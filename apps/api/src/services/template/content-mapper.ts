@@ -432,7 +432,7 @@ export async function buildGymJson(
   const contentArtifact = await loadArtifact(
     db,
     { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
-    "content-extraction" as any,
+    "content" as any,
   ) as { payload: { pages: Array<{ path: string; pageType: string; data: Record<string, unknown> }> } } | null;
 
   if (contentArtifact?.payload?.pages?.length) {

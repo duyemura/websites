@@ -101,7 +101,7 @@ declare module "../bullmq" {
       data:
         | {
             kind: "stage";
-            stage: "extract" | "segment" | "docgen" | "build" | "verify";
+            stage: "extract" | "segment" | "contract" | "docgen" | "build" | "verify";
             siteUuid: string;
             workspaceUuid: string;
             input: {

@@ -51,6 +51,7 @@ const StatusResponseSchema = z.object({
   stages: z.object({
     extract: StageStatusSchema,
     segment: StageStatusSchema,
+    contract: StageStatusSchema,
     docgen: StageStatusSchema,
     build: StageStatusSchema,
     verify: StageStatusSchema,
@@ -238,9 +239,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         workspaceUuid: site.workspaceUuid,
       };
 
-      const [extract, segment, docgen, build, verify] = await Promise.all([
+      const [extract, segment, contract, docgen, build, verify] = await Promise.all([
         loadStageSummary(fastify.db, ctx, "extract"),
         loadStageSummary(fastify.db, ctx, "segment"),
+        loadStageSummary(fastify.db, ctx, "contract"),
         loadStageSummary(fastify.db, ctx, "docgen"),
         loadStageSummary(fastify.db, ctx, "build"),
         loadStageSummary(fastify.db, ctx, "verify"),
@@ -250,8 +252,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         const value = (p as { sourceExtractAt?: unknown }).sourceExtractAt;
         return typeof value === "string" ? value : undefined;
       });
+      const contractStale = isStale(contract, segment);
       // Docgen has no explicit source ref, so fall back to createdAt vs segment.
-      const docgenStale = isStale(docgen, segment);
+      const docgenStale = isStale(docgen, contract);
       const buildStale = isStale(build, docgen);
       const verifyStale = isStale(verify, build);
 
@@ -300,6 +303,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         stages: {
           extract: format(extract, false),
           segment: format(segment, segmentStale),
+          contract: format(contract, contractStale),
           docgen: format(docgen, docgenStale),
           build: format(build, buildStale),
           verify: format(verify, verifyStale),

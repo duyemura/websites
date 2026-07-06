@@ -246,12 +246,46 @@ export const ScoreDeltaSchema = z.object({
   clone: z.number(), original: z.number(), delta: z.number(),
 });
 
+export const SectionDiffItemSchema = z.object({
+  title: z.string(),
+  col: z.number(),
+  row: z.number(),
+  background: z.enum(["accent", "dark", "transparent", "image"]),
+  hasIcon: z.boolean(),
+});
+
+export const SectionDiffFieldSchema = z.object({
+  field: z.string(),
+  source: z.unknown(),
+  rendered: z.unknown(),
+  status: z.enum(["match", "mismatch-low", "mismatch-high"]),
+});
+
+export const SectionDiffReportSchema = z.object({
+  sourceUrl: z.string().optional(),
+  renderedUrl: z.string().optional(),
+  section: z.string(),
+  sourceHeading: z.string(),
+  renderedHeading: z.string(),
+  sourceBox: BBoxSchema,
+  renderedBox: BBoxSchema,
+  diffs: z.array(SectionDiffFieldSchema),
+  sourceItems: z.array(SectionDiffItemSchema),
+  renderedItems: z.array(SectionDiffItemSchema),
+  sourceDebug: z.unknown().optional(),
+  renderedDebug: z.unknown().optional(),
+});
+export type SectionDiffItem = z.infer<typeof SectionDiffItemSchema>;
+export type SectionDiffField = z.infer<typeof SectionDiffFieldSchema>;
+export type SectionDiffReport = z.infer<typeof SectionDiffReportSchema>;
+
 export const VerifyArtifactSchema = z.object({
   pages: z.array(z.object({
     path: z.string(),
     mechanical: z.object({ passed: z.array(CheckSchema), failed: z.array(CheckSchema) }),
     vision: z.object({ score1440: z.number(), score375: z.number(), differences: z.array(z.string()) }),
   })),
+  sectionDiffs: z.array(SectionDiffReportSchema).optional(),
   scores: z.object({
     mechanicalFidelity: z.number(),
     visualFidelity: z.number(),
@@ -272,12 +306,12 @@ export const VerifyArtifactSchema = z.object({
     page: z.string(),
     sectionId: z.string().optional(),
     issue: z.string(),
-    suggestedStage: z.enum(["extract", "segment", "docgen", "build"]),
+    suggestedStage: z.enum(["extract", "segment", "contract", "docgen", "build"]),
   })),
 });
 export type VerifyArtifact = z.infer<typeof VerifyArtifactSchema>;
 
-export const REBUILD_STAGES = ["extract", "segment", "docgen", "build", "verify"] as const;
+export const REBUILD_STAGES = ["extract", "segment", "contract", "docgen", "build", "verify"] as const;
 export type RebuildStage = (typeof REBUILD_STAGES)[number];
 
 export const MIRROR_STAGES = ["mirror-crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;

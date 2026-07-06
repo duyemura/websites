@@ -14,8 +14,10 @@ import {
   VerifyArtifactSchema,
   type Check,
   type ExtractArtifact,
+  type SectionDiffReport,
   type VerifyArtifact,
 } from "../../types/pipeline-artifacts";
+import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import {
   loadArtifact,
@@ -38,6 +40,11 @@ import { runAxeBaseline, runLighthouse } from "../../utils/pipeline/source-basel
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
 import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
+import {
+  extractCardsFromSection,
+  findSectionByHeading,
+  computeSectionDiff,
+} from "../../utils/pipeline/section-diff";
 
 export interface VerifyStageInput {
   db: Kysely<DB>;
@@ -125,10 +132,20 @@ export async function runVerifyStage(
   const allPassed: Check[] = [];
   const allFailed: Check[] = [];
   const actionable: VerifyArtifact["actionable"] = [];
+  const sectionDiffs: SectionDiffReport[] = [];
   const cloneSnapshotAgg: QualitySnapshot = emptySnapshot(scope.length);
   const baselineSnapshot = buildBaselineSnapshot(extract.payload, scope);
 
+  // Load the contract artifact if it exists; section-diff is best-effort.
+  const contract = await loadArtifact<ContractArtifact>(input.db, ctx, "contract");
+  let sourcePage: Page | undefined;
+
   try {
+    if (contract) {
+      sourcePage = await context.newPage();
+      await sourcePage.setViewportSize({ width: 1440, height: 900 });
+    }
+
     for (const pagePath of scope) {
       const extractPage = extract.payload.pages.find((p) => p.path === pagePath);
       if (!extractPage) continue;
@@ -205,6 +222,26 @@ export async function runVerifyStage(
       // 4. Actionable routing for failed critical checks specific to this page.
       routeActionable(mechanical.failed, pagePath, actionable);
 
+      // 5. Section-level contract diff (best-effort).
+      if (contract && sourcePage) {
+        const contractPage = contract.payload.pages.find((p) => p.path === pagePath);
+        if (contractPage) {
+          const sourceUrl = new URL(pagePath, extract.payload.url).toString();
+          try {
+            await sourcePage.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+          } catch {
+            /* If the source page fails to load, skip section-diff for this page. */
+          }
+          for (const section of contractPage.sections) {
+            const report = await runSectionDiff(section, sourcePage, page, sourceUrl, cloneUrl, pagePath, input.config.SECTION_DIFF_THRESHOLD);
+            if (report) {
+              sectionDiffs.push(report);
+              routeSectionDiffActionable(report, pagePath, actionable);
+            }
+          }
+        }
+      }
+
       perPageResults.push({
         path: pagePath,
         mechanical: {
@@ -264,6 +301,7 @@ export async function runVerifyStage(
 
     const artifact: VerifyArtifact = VerifyArtifactSchema.parse({
       pages: perPageResults,
+      sectionDiffs,
       scores: {
         mechanicalFidelity: fidelity.mechanicalFidelity,
         visualFidelity: fidelity.visualFidelity,
@@ -276,6 +314,7 @@ export async function runVerifyStage(
     await saveArtifact(input.db, ctx, "verify", artifact);
     return artifact;
   } finally {
+    await sourcePage?.close().catch(() => {});
     await context.close().catch(() => {});
     await browser.close().catch(() => {});
     await closeServer().catch(() => {});
@@ -580,6 +619,61 @@ function averageCategories(
     seo: Math.round(sum.seo / entries.length),
     accessibility: Math.round(sum.accessibility / entries.length),
   };
+}
+
+async function runSectionDiff(
+  section: SectionContract,
+  sourcePage: Page,
+  renderedPage: Page,
+  sourceUrl: string,
+  renderedUrl: string,
+  pagePath: string,
+  threshold: number,
+): Promise<SectionDiffReport | null> {
+  const heading = section.typography?.headline?.text;
+  if (!heading || heading.length < 2) return null;
+
+  const sourceMatch = await findSectionByHeading(sourcePage, heading);
+  const renderedMatch = await findSectionByHeading(renderedPage, heading);
+  if (!sourceMatch || !renderedMatch) return null;
+
+  const [sourceExtracted, renderedExtracted] = await Promise.all([
+    extractCardsFromSection(sourcePage, sourceMatch.box, { excludeHeadingContains: heading }),
+    extractCardsFromSection(renderedPage, renderedMatch.box, { excludeHeadingContains: heading }),
+  ]);
+
+  const report = computeSectionDiff(
+    sourceMatch.heading,
+    renderedMatch.heading,
+    sourceMatch.box,
+    renderedMatch.box,
+    sourceExtracted,
+    renderedExtracted,
+    threshold,
+  );
+  report.section = section.id;
+  report.sourceUrl = sourceUrl;
+  report.renderedUrl = new URL(pagePath, renderedUrl).toString();
+  return report;
+}
+
+function routeSectionDiffActionable(
+  report: SectionDiffReport,
+  pagePath: string,
+  out: VerifyArtifact["actionable"],
+): void {
+  for (const diff of report.diffs) {
+    if (diff.status !== "mismatch-high") continue;
+    // Structural mismatches belong in the contract stage; it can regenerate the
+    // section doc before the next docgen/build cycle.
+    const stage: VerifyArtifact["actionable"][number]["suggestedStage"] = "contract";
+    out.push({
+      page: pagePath,
+      sectionId: report.section,
+      issue: `${diff.field} mismatch (source=${String(diff.source)}, rendered=${String(diff.rendered)})`,
+      suggestedStage: stage,
+    });
+  }
 }
 
 function routeActionable(

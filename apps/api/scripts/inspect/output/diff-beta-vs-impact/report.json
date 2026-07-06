@@ -1,0 +1,169 @@
+{
+  "section": "feature-grid",
+  "sourceHeading": "Everything You Need To Crush Your Fitness Goals",
+  "renderedHeading": "Everything you need to crush your fitness goals",
+  "sourceBox": {
+    "x": 98,
+    "y": 4105,
+    "width": 1244,
+    "height": 1025
+  },
+  "renderedBox": {
+    "x": 80,
+    "y": 3584,
+    "width": 1280,
+    "height": 984
+  },
+  "diffs": [
+    {
+      "field": "section background color",
+      "source": {
+        "hex": "#000000",
+        "class": "dark"
+      },
+      "rendered": {
+        "hex": "#000000",
+        "class": "dark"
+      },
+      "status": "match"
+    },
+    {
+      "field": "item count",
+      "source": 6,
+      "rendered": 6,
+      "status": "match"
+    },
+    {
+      "field": "grid column count",
+      "source": 3,
+      "rendered": 3,
+      "status": "match"
+    },
+    {
+      "field": "grid row count",
+      "source": 2,
+      "rendered": 2,
+      "status": "match"
+    },
+    {
+      "field": "accent tile count",
+      "source": 3,
+      "rendered": 3,
+      "status": "match"
+    },
+    {
+      "field": "item title match rate",
+      "source": "6 titles",
+      "rendered": "6 titles",
+      "status": "match"
+    },
+    {
+      "field": "icon presence",
+      "source": "6/6",
+      "rendered": "6/6",
+      "status": "match"
+    }
+  ],
+  "sourceItems": [
+    {
+      "title": "Class Reservations",
+      "col": 1,
+      "row": 1,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Fitness Program for Over Age 65",
+      "col": 2,
+      "row": 1,
+      "background": "accent",
+      "hasIcon": true
+    },
+    {
+      "title": "Members Only App",
+      "col": 3,
+      "row": 1,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Purified Water Dispenser",
+      "col": 1,
+      "row": 2,
+      "background": "accent",
+      "hasIcon": true
+    },
+    {
+      "title": "Personal Training",
+      "col": 2,
+      "row": 2,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Weekend Workout Classes",
+      "col": 3,
+      "row": 2,
+      "background": "accent",
+      "hasIcon": true
+    }
+  ],
+  "renderedItems": [
+    {
+      "title": "Class Reservations",
+      "col": 1,
+      "row": 1,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Fitness Program for Over Age 65",
+      "col": 2,
+      "row": 1,
+      "background": "accent",
+      "hasIcon": true
+    },
+    {
+      "title": "Members Only App",
+      "col": 3,
+      "row": 1,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Purified Water Dispenser",
+      "col": 1,
+      "row": 2,
+      "background": "accent",
+      "hasIcon": true
+    },
+    {
+      "title": "Personal Training",
+      "col": 2,
+      "row": 2,
+      "background": "dark",
+      "hasIcon": true
+    },
+    {
+      "title": "Weekend Workout Classes",
+      "col": 3,
+      "row": 2,
+      "background": "accent",
+      "hasIcon": true
+    }
+  ],
+  "sourceDebug": {
+    "headings": 7,
+    "cards": 6,
+    "sectionTag": "SECTION",
+    "sectionClass": "main-section ms-membership-benefits"
+  },
+  "renderedDebug": {
+    "headings": 7,
+    "cards": 6,
+    "sectionTag": "SECTION",
+    "sectionClass": "bg-primary py-16 lg:py-24"
+  },
+  "sourceUrl": "https://beanburito.github.io/free-intro-session-self-book-in-person/",
+  "renderedUrl": "http://localhost:4321/"
+}

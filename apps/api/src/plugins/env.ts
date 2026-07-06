@@ -57,6 +57,9 @@ export const ConfigSchema = z.object({
   CLOUDFRONT_DISTRIBUTION_ID: z.string().optional(),
   /** Domain for auto-generated preview subdomains, e.g. "mygymseo.com" → {uuid}-preview.mygymseo.com */
   MILO_PREVIEW_DOMAIN: z.string().optional(),
+  /** Minimum per-field similarity (0–1) required for a section-diff field to be
+   *  considered a match. Lower = stricter. Default 1.0 (exact structural match). */
+  SECTION_DIFF_THRESHOLD: z.coerce.number().min(0).max(1).default(1),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

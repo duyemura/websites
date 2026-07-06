@@ -1,0 +1,21 @@
+---
+const { direction = "down", color = "white", height = 80, class: className = "" } = Astro.props as {
+  direction?: "down" | "up";
+  color?: string;
+  height?: number;
+  class?: string;
+};
+const fill = color;
+const points = direction === "down"
+  ? "0,0 1440,80 1440,0"      // diagonal top-left → bottom-right (hero → white)
+  : "0,80 1440,80 1440,0";    // diagonal bottom-left → top-right (white → dark)
+---
+<svg
+  viewBox={`0 0 1440 ${height}`}
+  preserveAspectRatio="none"
+  class:list={["w-full block", className]}
+  style={`height: ${height}px;`}
+  aria-hidden="true"
+>
+  <polygon points={points} fill={fill} />
+</svg>
