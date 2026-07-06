@@ -98,12 +98,18 @@ export const docgenStage: StageRunner = {
       const extractArtifact = await loadArtifact<ExtractArtifact>(
         ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "extract" as any,
       );
-      const homePage = extractArtifact?.payload?.pages?.find((p: any) => p.path === "/" || p.isHomePage) ?? extractArtifact?.payload?.pages?.[0];
+      const pages = extractArtifact?.payload?.pages ?? [];
+      // Include homepage + contact/about pages to maximise business info coverage
+      const keyPages = pages.filter((p: any) =>
+        p.isHomePage || p.path === "/" ||
+        /contact|about|location|schedule|rates|pricing/i.test(p.path)
+      ).slice(0, 4);
+      const allText = keyPages.map((p: any) => p.content?.rawText ?? "").join("\n\n---\n\n");
+      const allHeadings = keyPages.flatMap((p: any) => (p.content?.headings ?? []).map((h: any) => h.text));
+      const homePage = keyPages[0];
       if (homePage) {
-        const headings = (homePage.content?.headings ?? []).map((h: any) => h.text);
-        const rawText = homePage.content?.rawText ?? "";
         const site = await ctx.db.selectFrom("sites").select("sourceUrl").where("uuid", "=", ctx.siteUuid).executeTakeFirst();
-        const biz = await extractBusinessWithLLM(rawText, headings, site?.sourceUrl ?? "", ctx);
+        const biz = await extractBusinessWithLLM(allText, allHeadings, site?.sourceUrl ?? "", ctx);
         if (biz) {
           ctx.log(`  LLM extracted: ${JSON.stringify(biz)}`);
           // Build labeled markdown that the content mapper can read
