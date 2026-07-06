@@ -9,6 +9,7 @@ import Header from "../components/chrome/Header.astro";
 import Footer from "../components/chrome/Footer.astro";
 import HeaderImpact from "../components/chrome/HeaderImpact.astro";
 import FooterImpact from "../components/chrome/FooterImpact.astro";
+import CookieBannerImpact from "../components/chrome/CookieBannerImpact.astro";
 import StickyCTA from "../components/chrome/StickyCTA.astro";
 
 interface Props {
@@ -85,6 +86,7 @@ const rootCss = [
     <main id="main-content"><slot /></main>
     {isImpact ? <FooterImpact /> : <Footer />}
     <StickyCTA />
+    {isImpact && <CookieBannerImpact />}
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
     <p class="sr-only">
       {business.name} is a gym located at {business.address.street} in {business.geo.city}, {business.geo.stateAbbr}. {business.tagline}

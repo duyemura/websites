@@ -1,0 +1,55 @@
+---
+import { content } from "../../lib/content";
+const { business } = content;
+const privacyHref = "/legal/privacy-policy";
+---
+<div
+  id="cookie-banner"
+  class="fixed inset-x-0 bottom-0 z-50 hidden border-t border-white/10 bg-black px-4 py-4 text-white shadow-2xl md:py-5"
+  role="dialog"
+  aria-label="Cookie consent"
+>
+  <div class="mx-auto flex max-w-7xl flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+    <p class="text-sm leading-relaxed text-white/80">
+      By clicking “Accept all cookies”, you agree to the storing of cookies on your device to enhance site navigation,
+      analyze site usage, and assist in our marketing efforts.
+      {privacyHref && (
+        <> <a href={privacyHref} class="underline hover:text-white">View our privacy policy</a> for more information.</>
+      )}
+    </p>
+    <div class="flex flex-wrap gap-3">
+      <button
+        type="button"
+        data-cookie="deny"
+        class="border border-white/30 px-5 py-2 font-heading text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white/10"
+      >
+        Deny
+      </button>
+      <button
+        type="button"
+        data-cookie="accept"
+        class="bg-accent px-5 py-2 font-heading text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white hover:text-primary"
+      >
+        Accept all cookies
+      </button>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    var banner = document.getElementById("cookie-banner");
+    if (!banner) return;
+    var consent = localStorage.getItem("cookie-consent");
+    if (consent) return;
+    banner.classList.remove("hidden");
+    banner.querySelector('[data-cookie="accept"]').addEventListener("click", function () {
+      localStorage.setItem("cookie-consent", "accepted");
+      banner.classList.add("hidden");
+    });
+    banner.querySelector('[data-cookie="deny"]').addEventListener("click", function () {
+      localStorage.setItem("cookie-consent", "denied");
+      banner.classList.add("hidden");
+    });
+  })();
+</script>

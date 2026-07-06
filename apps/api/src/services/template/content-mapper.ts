@@ -370,6 +370,7 @@ export async function buildGymJson(
     defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : `${DEFAULT_BUSINESS_NAME} | ${DEFAULT_CITY} Gym`,
     defaultDescription: business.tagline,
     preview: false,
+    templateTheme: "baseline",
   };
 
   return {

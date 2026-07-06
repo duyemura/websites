@@ -1,0 +1,19 @@
+---
+const { headline, ctaLabel, ctaUrl } = Astro.props as { headline: string; ctaLabel?: string; ctaUrl?: string };
+---
+<section class="bg-accent py-16 text-center text-white lg:py-20">
+  <div class="mx-auto max-w-4xl px-4 lg:px-6">
+    <h2 class="font-heading text-3xl font-black uppercase leading-tight md:text-4xl lg:text-5xl">{headline}</h2>
+    {ctaLabel && ctaUrl && (
+      <div class="mt-8">
+        <a
+          href={ctaUrl}
+          data-track="contact"
+          class="inline-block border-2 border-white bg-white px-8 py-4 font-heading text-base font-bold uppercase tracking-wide text-accent transition hover:bg-transparent hover:text-white"
+        >
+          {ctaLabel}
+        </a>
+      </div>
+    )}
+  </div>
+</section>
