@@ -198,7 +198,10 @@ function renderReport(
   const failed = results.filter((r) => r.status === "fail");
   if (failed.length > 0) {
     console.log("\nFailures:");
-    failed.forEach((r) => console.log(`  ❌ ${r.stage}: ${r.error}`));
+    failed.forEach((r) => {
+      const detail = r.error ?? Object.entries(r.metrics).map(([k, v]) => `${v} ${k}`).join(", ");
+      console.log(`  ❌ ${r.stage}: ${detail}`);
+    });
   }
 
   if (!quiet) {

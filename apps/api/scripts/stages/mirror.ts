@@ -57,7 +57,8 @@ export const mirrorStage: StageRunner = {
     });
 
     const cms = detectCms(result.warnings);
-    const deduped = dedupeWarnings(result.warnings);
+    // Return raw warnings — renderReport deduplicates. Double-dedup causes fragment artifacts.
+    const deduped = result.warnings;
 
     // Estimate cost: load assets artifact for actual captured count
     const assetsArtifact = await loadArtifact<MirrorAssetsArtifact>(
