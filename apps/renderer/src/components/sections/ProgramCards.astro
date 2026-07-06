@@ -9,7 +9,7 @@ const programs = slugs.map(programBySlug);
     <h2 class="mb-12 font-heading text-4xl font-black uppercase text-white">{headline || "Our Programs"}</h2>
     <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {programs.map((program) => {
-        const hasCover = !!program.coverImageUrl;
+        const hasCover = !!program.coverImageUrl && !program.coverImageUrl.includes("placehold.co");
         const bgStyle = hasCover
           ? `background-image:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.75)),url('${program.coverImageUrl}');background-size:cover;background-position:center;`
           : "";
@@ -17,7 +17,7 @@ const programs = slugs.map(programBySlug);
           <a
             href={`/programs/${program.slug}`}
             class:list={[
-              "group relative flex min-h-64 flex-col justify-end rounded-lg p-6 transition-transform hover:-translate-y-1",
+              "group relative flex min-h-64 flex-col justify-end p-6 transition-transform hover:-translate-y-1",
               hasCover ? "bg-slate-800" : "bg-gradient-to-br from-primary to-slate-800"
             ]}
             style={bgStyle}
@@ -26,7 +26,7 @@ const programs = slugs.map(programBySlug);
             {program.shortDescription && (
               <p class="mt-1 text-sm text-slate-300 line-clamp-2">{program.shortDescription}</p>
             )}
-            <span class="mt-4 text-xs font-semibold uppercase tracking-wider text-accent group-hover:underline">
+            <span class="mt-4 text-xs font-semibold uppercase tracking-wider text-white group-hover:underline">
               Learn more →
             </span>
           </a>

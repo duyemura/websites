@@ -1,5 +1,4 @@
 ---
-import Button from "../ui/Button.astro";
 import type { HeroContent } from "../../types/gym-content";
 const { hero, h1 = true } = Astro.props as { hero: HeroContent; h1?: boolean };
 const Tag = h1 ? "h1" : "h2";
@@ -8,7 +7,7 @@ let safeBgUrl = "";
 if (hero.backgroundImageUrl) {
   try {
     const u = new URL(hero.backgroundImageUrl, "https://x");
-    if (u.protocol === "http:" || u.protocol === "https:") {
+    if ((u.protocol === "http:" || u.protocol === "https:") && !u.hostname.includes("placehold.co")) {
       safeBgUrl = encodeURI(hero.backgroundImageUrl);
     }
   } catch { /* ignore */ }
@@ -20,20 +19,26 @@ const bgStyle = hasBg
   : "";
 ---
 <section
-  class:list={["relative flex min-h-[85vh] items-center", hasBg ? "bg-slate-900" : "bg-primary"]}
+  class:list={["relative flex min-h-[90vh] items-center", hasBg ? "bg-slate-900" : "bg-primary"]}
   style={bgStyle}
 >
   <div class="mx-auto w-full max-w-6xl px-6 py-24">
     <div class="max-w-2xl">
-      <Tag data-testid="hero-headline" class="font-heading text-5xl font-black uppercase leading-tight text-white sm:text-6xl lg:text-7xl">
+      <Tag data-testid="hero-headline" class="font-heading text-5xl font-black uppercase leading-none text-white sm:text-6xl lg:text-8xl">
         {hero.headline}
       </Tag>
       {hero.subheading && hero.subheading.length < 120 && (
         <p class="mt-4 text-lg text-slate-200 max-w-xl">{hero.subheading}</p>
       )}
       {hero.ctaLabel && hero.ctaUrl && (
-        <div class="mt-10 flex flex-wrap gap-4">
-          <Button href={hero.ctaUrl} track="contact" size="lg">{hero.ctaLabel}</Button>
+        <div class="mt-10">
+          <a
+            href={hero.ctaUrl}
+            data-track="contact"
+            class="inline-block bg-white px-8 py-4 font-heading text-base font-black uppercase tracking-wider text-primary transition hover:bg-slate-100"
+          >
+            {hero.ctaLabel}
+          </a>
         </div>
       )}
     </div>
