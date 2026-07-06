@@ -95,19 +95,27 @@ export const docgenStage: StageRunner = {
     // Updates the business-info doc in DB with labeled fields the content mapper reads.
     ctx.log(`  Extracting business info via LLM...`);
     try {
+      // Build text from site-hierarchy sections (more reliable than rawText for JS-rendered sites)
+      const hierarchyDoc = docs.find(d => d.key === "site-hierarchy");
+      const hierarchyJson = hierarchyDoc?.contentJson as any;
+      const allSections = (hierarchyJson?.pages ?? []).flatMap((p: any) =>
+        (p.sections ?? []).map((s: any) => [
+          s.content?.heading, s.content?.body,
+          ...(s.content?.items ?? []).map((i: any) => `${i.title ?? ""} ${i.description ?? ""}`),
+        ].filter(Boolean).join(" "))
+      );
+
+      // Also pull navLinks from extract artifact for contact info
       const extractArtifact = await loadArtifact<ExtractArtifact>(
         ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "extract" as any,
       );
       const pages = extractArtifact?.payload?.pages ?? [];
-      // Include homepage + contact/about pages to maximise business info coverage
-      const keyPages = pages.filter((p: any) =>
-        p.isHomePage || p.path === "/" ||
-        /contact|about|location|schedule|rates|pricing/i.test(p.path)
-      ).slice(0, 4);
-      const allText = keyPages.map((p: any) => p.content?.rawText ?? "").join("\n\n---\n\n");
-      const allHeadings = keyPages.flatMap((p: any) => (p.content?.headings ?? []).map((h: any) => h.text));
-      const homePage = keyPages[0];
-      if (homePage) {
+      const allHeadings = pages.flatMap((p: any) => (p.content?.headings ?? []).map((h: any) => h.text));
+      const navLinks = pages[0]?.content?.navLinks?.map((l: any) => l.label).join(", ") ?? "";
+
+      const allText = allSections.join("\n");
+      const homePage = pages[0];
+      if (homePage || allText) {
         const site = await ctx.db.selectFrom("sites").select("sourceUrl").where("uuid", "=", ctx.siteUuid).executeTakeFirst();
         const biz = await extractBusinessWithLLM(allText, allHeadings, site?.sourceUrl ?? "", ctx);
         if (biz) {
