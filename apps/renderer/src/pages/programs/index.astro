@@ -1,0 +1,21 @@
+---
+import GymLayout from "../../layouts/GymLayout.astro";
+import ProgramCards from "../../components/sections/ProgramCards.astro";
+import CTABand from "../../components/sections/CTABand.astro";
+import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
+import { content } from "../../lib/content";
+const { business, pages } = content;
+const title = `Programs | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
+const slugs = pages.programs.map((p) => p.slug);
+---
+<GymLayout
+  title={title}
+  description={`Explore programs at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. CrossFit, bootcamp, personal training and more.`}
+  path="/programs"
+>
+  <Fragment slot="head">
+    <BreadcrumbSchema crumbs={[{ name: "Programs", path: "/programs" }]} />
+  </Fragment>
+  <ProgramCards slugs={slugs} headline="Our programs" />
+  <CTABand headline="Not sure which program is right for you?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+</GymLayout>

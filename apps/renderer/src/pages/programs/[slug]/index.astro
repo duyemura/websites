@@ -1,18 +1,18 @@
 ---
-import GymLayout from "../../layouts/GymLayout.astro";
-import Hero from "../../components/sections/Hero.astro";
-import HowItWorks from "../../components/sections/HowItWorks.astro";
-import Testimonials from "../../components/sections/Testimonials.astro";
-import FAQ from "../../components/sections/FAQ.astro";
-import CTABand from "../../components/sections/CTABand.astro";
-import Location from "../../components/sections/Location.astro";
-import RichContent from "../../components/sections/RichContent.astro";
-import ServiceSchema from "../../components/seo/ServiceSchema.astro";
-import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
-import FAQSchema from "../../components/seo/FAQSchema.astro";
-import Container from "../../components/ui/Container.astro";
-import SectionHeading from "../../components/ui/SectionHeading.astro";
-import { content, programGeoHeadline } from "../../lib/content";
+import GymLayout from "../../../layouts/GymLayout.astro";
+import Hero from "../../../components/sections/Hero.astro";
+import HowItWorks from "../../../components/sections/HowItWorks.astro";
+import Testimonials from "../../../components/sections/Testimonials.astro";
+import FAQ from "../../../components/sections/FAQ.astro";
+import CTABand from "../../../components/sections/CTABand.astro";
+import Location from "../../../components/sections/Location.astro";
+import RichContent from "../../../components/sections/RichContent.astro";
+import ServiceSchema from "../../../components/seo/ServiceSchema.astro";
+import BreadcrumbSchema from "../../../components/seo/BreadcrumbSchema.astro";
+import FAQSchema from "../../../components/seo/FAQSchema.astro";
+import Container from "../../../components/ui/Container.astro";
+import SectionHeading from "../../../components/ui/SectionHeading.astro";
+import { content, programGeoHeadline } from "../../../lib/content";
 
 export function getStaticPaths() {
   return content.pages.programs.map((p) => ({ params: { slug: p.slug }, props: { program: p } }));
@@ -26,7 +26,7 @@ const title = `${program.name} in ${business.geo.city}, ${business.geo.stateAbbr
 <GymLayout title={title} description={program.shortDescription} path={path} image={program.coverImageUrl}>
   <Fragment slot="head">
     <ServiceSchema name={program.name} path={path} description={program.shortDescription} image={program.coverImageUrl} />
-    <BreadcrumbSchema crumbs={[{ name: program.name, path }]} />
+    <BreadcrumbSchema crumbs={[{ name: "Programs", path: "/programs" }, { name: program.name, path }]} />
     {(program.faq?.length ?? 0) > 0 && <FAQSchema items={program.faq} />}
   </Fragment>
 

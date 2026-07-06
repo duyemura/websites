@@ -1,0 +1,109 @@
+---
+import GymLayout from "../../../layouts/GymLayout.astro";
+import Hero from "../../../components/sections/Hero.astro";
+import HowItWorks from "../../../components/sections/HowItWorks.astro";
+import Testimonials from "../../../components/sections/Testimonials.astro";
+import FAQ from "../../../components/sections/FAQ.astro";
+import CTABand from "../../../components/sections/CTABand.astro";
+import Location from "../../../components/sections/Location.astro";
+import ServiceSchema from "../../../components/seo/ServiceSchema.astro";
+import BreadcrumbSchema from "../../../components/seo/BreadcrumbSchema.astro";
+import FAQSchema from "../../../components/seo/FAQSchema.astro";
+import Container from "../../../components/ui/Container.astro";
+import SectionHeading from "../../../components/ui/SectionHeading.astro";
+import { content } from "../../../lib/content";
+
+export function getStaticPaths() {
+  const { business, pages } = content;
+  // All cities: primary city + service area
+  const cities = [
+    business.geo.city,
+    ...(business.serviceArea ?? []),
+  ];
+  return pages.programs.flatMap((program) =>
+    cities.map((city) => ({
+      params: {
+        slug: program.slug,
+        city: city.toLowerCase().replace(/\s+/g, "-"),
+      },
+      props: { program, city },
+    }))
+  );
+}
+
+const { program, city } = Astro.props;
+const { business } = content;
+const path = `/programs/${program.slug}/${city.toLowerCase().replace(/\s+/g, "-")}`;
+const geoHeadline = `${program.name} in ${city}, ${business.geo.stateAbbr}`;
+const title = `${geoHeadline} | ${business.name}`;
+const description = `${program.name} classes in ${city}, ${business.geo.stateAbbr}. ${program.shortDescription || `${business.name} serves members from ${city} with expert coaching and welcoming community.`}`.slice(0, 157);
+---
+
+<GymLayout title={title} description={description} path={path} image={program.coverImageUrl}>
+  <Fragment slot="head">
+    <ServiceSchema
+      name={`${program.name} in ${city}`}
+      path={path}
+      description={program.shortDescription}
+      image={program.coverImageUrl}
+    />
+    <BreadcrumbSchema
+      crumbs={[
+        { name: "Programs", path: "/programs" },
+        { name: program.name, path: `/programs/${program.slug}` },
+        { name: city, path },
+      ]}
+    />
+    {(program.faq?.length ?? 0) > 0 && <FAQSchema items={program.faq} />}
+  </Fragment>
+
+  <!-- Geo H1 — city-specific for local SEO -->
+  <Container>
+    <h1 class="pt-10 text-center font-heading text-2xl font-semibold text-secondary">
+      {geoHeadline}
+    </h1>
+  </Container>
+  <Hero hero={program.hero} h1={false} />
+
+  <!-- Geo intro callout -->
+  <section class="bg-white py-10">
+    <Container>
+      <p class="mx-auto max-w-2xl text-center text-lg text-secondary">
+        {business.name} serves members from {city} and the surrounding {business.geo.city} area.
+        {program.shortDescription}
+      </p>
+    </Container>
+  </section>
+
+  {program.whatIsIt?.body && (
+    <section class="py-16">
+      <Container>
+        <SectionHeading title={program.whatIsIt.headline} />
+        <p class="mx-auto max-w-3xl text-center text-lg text-secondary">{program.whatIsIt.body}</p>
+      </Container>
+    </section>
+  )}
+
+  {program.whatMakesUsDifferent?.length > 0 && (
+    <section class="bg-slate-50 py-16">
+      <Container>
+        <SectionHeading title={`What makes our ${program.name} different?`} />
+        <ul class="mx-auto max-w-2xl space-y-3">
+          {program.whatMakesUsDifferent.map((d) => (
+            <li class="flex gap-3"><span class="text-accent">✔</span><span>{d}</span></li>
+          ))}
+        </ul>
+      </Container>
+    </section>
+  )}
+
+  <HowItWorks steps={program.gettingStarted} headline="Getting started" />
+  <Testimonials items={program.testimonials} />
+  <Location />
+  <FAQ items={program.faq} />
+  <CTABand
+    headline={`Ready to start ${program.name} in ${city}?`}
+    ctaLabel={business.primaryCta.label}
+    ctaUrl={business.primaryCta.url}
+  />
+</GymLayout>
