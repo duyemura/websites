@@ -72,14 +72,15 @@ function computeSimilarity(a: Buffer, b: Buffer): { score: number; heightDeltaPx
 /**
  * Convert a page path to the public CDN URL.
  * CloudFront's milo-gym-router function rewrites:
- *   /sites/{siteUuid}/path/  ->  sites/{siteUuid}/current/path/index.html
- * so eval URLs must NOT include the `current/` prefix.
+ *   /sites/{siteUuid}/path/  ->  sites/{siteUuid}/production/path/index.html
+ * so eval URLs must NOT include the `production/` prefix.
  */
-function mirrorUrl(cdnBase: string, siteUuid: string, pagePath: string): string {
+function mirrorUrl(cdnBase: string, siteUuid: string, pagePath: string, bust: string): string {
   const base = cdnBase.replace(/\/$/, "");
   // Keep trailing slash so the router appends index.html for directory URLs.
   const normalised = pagePath === "/" ? "/" : pagePath.replace(/\/$/, "");
-  return `${base}/sites/${siteUuid}${normalised}`;
+  // ?_eval= busts CloudFront's 24h HTML cache — S3 website hosting ignores query strings
+  return `${base}/sites/${siteUuid}${normalised}?_eval=${bust}`;
 }
 
 // ---------- Stage ----------
@@ -121,6 +122,7 @@ export const evalStage: StageRunner = {
     const pageWarnings: string[] = [];
     let passCount = 0;
     let totalSimilarity = 0;
+    const cacheBust = Date.now().toString(36);
 
     // ---------- Per-page screenshot + similarity ----------
     // One browser for all pages — avoids spawning a new process per screenshot.
@@ -130,7 +132,7 @@ export const evalStage: StageRunner = {
       for (const page of pages) {
         ctx.log(`  Scoring ${page.path} …`);
         try {
-          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path);
+          const mirrorPageUrl = mirrorUrl(cdnBase, ctx.siteUuid, page.path, cacheBust);
           const originPageUrl = `${sourceOrigin}${page.path}`;
 
           // Screenshot origin and mirror in parallel (shared browser, separate pages)

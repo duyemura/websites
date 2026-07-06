@@ -4,6 +4,23 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import type { DB } from "../types/db";
 import { publishToProduction } from "./mirror/deploy";
 
+async function invalidateCloudFront(distributionId: string | undefined): Promise<void> {
+  if (!distributionId) return;
+  try {
+    const { CloudFrontClient, CreateInvalidationCommand } = await import("@aws-sdk/client-cloudfront");
+    const cf = new CloudFrontClient({});
+    await cf.send(new CreateInvalidationCommand({
+      DistributionId: distributionId,
+      InvalidationBatch: {
+        CallerReference: `publish-${Date.now()}`,
+        Paths: { Quantity: 1, Items: ["/*"] },
+      },
+    }));
+  } catch {
+    // Non-fatal — cache will expire naturally
+  }
+}
+
 export interface RecordVersionInput {
   siteUuid: string;
   workspaceUuid: string;
@@ -33,6 +50,7 @@ export async function publishSiteVersion(
   bucket: string,
   siteUuid: string,
   version: number,
+  distributionId?: string,
 ): Promise<{ version: number; deployPrefix: string }> {
   const row = await db.selectFrom("siteVersions")
     .select(["uuid", "version", "deployPrefix"])
@@ -43,6 +61,7 @@ export async function publishSiteVersion(
 
   // Copy staging → production
   await publishToProduction(s3Client, bucket, siteUuid);
+  await invalidateCloudFront(distributionId);
 
   await db.updateTable("siteVersions")
     .set({ publishedAt: new Date() })
@@ -57,6 +76,7 @@ export async function publishLatestStagingToProduction(
   s3Client: S3Client,
   bucket: string,
   siteUuid: string,
+  distributionId?: string,
 ): Promise<{ version: number }> {
   const latest = await db.selectFrom("siteVersions")
     .select(["uuid", "version"])
@@ -65,6 +85,7 @@ export async function publishLatestStagingToProduction(
     .executeTakeFirst();
 
   await publishToProduction(s3Client, bucket, siteUuid);
+  await invalidateCloudFront(distributionId);
 
   if (latest) {
     await db.updateTable("siteVersions")

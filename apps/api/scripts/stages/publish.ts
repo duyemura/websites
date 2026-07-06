@@ -17,7 +17,10 @@ export const publishStage: StageRunner = {
     });
 
     ctx.log(`  Copying staging/ → production/ for site ${ctx.siteUuid} …`);
-    const result = await publishLatestStagingToProduction(ctx.db, s3Client, bucket, ctx.siteUuid);
+    const result = await publishLatestStagingToProduction(
+      ctx.db, s3Client, bucket, ctx.siteUuid,
+      ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
+    );
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
     const shortId = ctx.siteUuid.slice(0, 8);

@@ -1109,7 +1109,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         secretAccessKey: fastify.config.S3_SECRET_KEY,
       });
 
-      const result = await publishLatestStagingToProduction(fastify.db, s3Client, bucket, siteUuid);
+      const result = await publishLatestStagingToProduction(
+        fastify.db, s3Client, bucket, siteUuid,
+        fastify.config.CLOUDFRONT_DISTRIBUTION_ID,
+      );
       fastify.log.info({ siteUuid, version: result.version }, "site published to production");
       return reply.code(200).send({ ok: true, version: result.version });
     },
