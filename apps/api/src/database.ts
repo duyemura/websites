@@ -76,6 +76,7 @@ const dbConfig = {
   CLOUDFRONT_KVS_ARN: process.env.CLOUDFRONT_KVS_ARN,
   CLOUDFRONT_DISTRIBUTION_ID: process.env.CLOUDFRONT_DISTRIBUTION_ID,
   MILO_PREVIEW_DOMAIN: process.env.MILO_PREVIEW_DOMAIN,
+  LLM_PROVIDER: process.env.LLM_PROVIDER ?? "ollama",
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   OPENROUTER_BASE_URL:
     process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",

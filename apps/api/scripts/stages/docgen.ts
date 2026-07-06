@@ -12,6 +12,9 @@ export const docgenStage: StageRunner = {
   produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
+    ctx.log(`  Model: ${ctx.config.DEFAULT_LLM_MODEL} (${ctx.config.LLM_PROVIDER})`);
+    ctx.log(`  Running docgen...`);
+
     const docs = await runDocgenStage({
       db: ctx.db,
       config: ctx.config,
@@ -28,7 +31,11 @@ export const docgenStage: StageRunner = {
       docKeys: docs.map((d) => d.key),
     });
 
-    ctx.log(`  Saved ${docs.length} site docs`);
+    ctx.log(`  Saved ${docs.length} docs:`);
+    for (const doc of docs) {
+      const preview = (doc.content ?? "").replace(/\n/g, " ").slice(0, 80);
+      ctx.log(`    [${doc.key}] ${preview}`);
+    }
 
     return {
       stage: "docgen",
