@@ -1,5 +1,4 @@
 // apps/api/scripts/stages/template.ts
-import path from "node:path";
 import { deployTemplate } from "../../src/services/template/deploy-template";
 import { publishSiteVersion } from "../../src/services/site-versions";
 import type { StageRunner, StageContext, StageResult } from "./types";

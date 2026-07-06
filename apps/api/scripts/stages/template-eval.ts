@@ -61,71 +61,73 @@ export const templateEvalStage: StageRunner = {
     const visited = new Set<string>();
     const queue = ["/"];
     const browser = await chromium.launch();
-    const page = await browser.newPage();
+    try {
+      const page = await browser.newPage();
 
-    while (queue.length > 0) {
-      const route = queue.shift()!;
-      if (visited.has(route)) continue;
-      visited.add(route);
+      while (queue.length > 0) {
+        const route = queue.shift()!;
+        if (visited.has(route)) continue;
+        visited.add(route);
 
-      const res = await page.goto(base + route, { waitUntil: "domcontentloaded" });
-      if (!res || res.status() >= 400) {
-        failures.push(`${route}: HTTP ${res?.status()}`);
-        continue;
+        const res = await page.goto(base + route, { waitUntil: "domcontentloaded" });
+        if (!res || res.status() >= 400) {
+          failures.push(`${route}: HTTP ${res?.status()}`);
+          continue;
+        }
+
+        // JSON-LD must parse on every page
+        const ldErrors = await page.evaluate(() => {
+          const errs: string[] = [];
+          document
+            .querySelectorAll('script[type="application/ld+json"]')
+            .forEach((s, i) => {
+              try {
+                JSON.parse(s.textContent ?? "");
+              } catch {
+                errs.push(`ld+json #${i} invalid`);
+              }
+            });
+          if (
+            document.querySelectorAll('script[type="application/ld+json"]').length === 0
+          )
+            errs.push("no JSON-LD");
+          return errs;
+        });
+        for (const e of ldErrors) failures.push(`${route}: ${e}`);
+
+        // Enqueue internal links
+        const links = await page.evaluate(() =>
+          Array.from(document.querySelectorAll("a[href]"))
+            .map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? "")
+            .filter((h) => h.startsWith("/") && !h.startsWith("//")),
+        );
+        for (const l of links) {
+          const clean = l.split("#")[0].split("?")[0];
+          if (clean && !visited.has(clean)) queue.push(clean);
+        }
       }
 
-      // JSON-LD must parse on every page
-      const ldErrors = await page.evaluate(() => {
-        const errs: string[] = [];
-        document
-          .querySelectorAll('script[type="application/ld+json"]')
-          .forEach((s, i) => {
-            try {
-              JSON.parse(s.textContent ?? "");
-            } catch {
-              errs.push(`ld+json #${i} invalid`);
-            }
-          });
-        if (
-          document.querySelectorAll('script[type="application/ld+json"]').length === 0
-        )
-          errs.push("no JSON-LD");
-        return errs;
-      });
-      for (const e of ldErrors) failures.push(`${route}: ${e}`);
-
-      // Enqueue internal links
-      const links = await page.evaluate(() =>
-        Array.from(document.querySelectorAll("a[href]"))
-          .map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? "")
-          .filter((h) => h.startsWith("/") && !h.startsWith("//")),
-      );
-      for (const l of links) {
-        const clean = l.split("#")[0].split("?")[0];
-        if (clean && !visited.has(clean)) queue.push(clean);
+      // Required discovery/SEO files
+      for (const f of ["sitemap.xml", "robots.txt", "llms.txt", "rss.xml"]) {
+        if (!existsSync(path.join(distDir, f))) failures.push(`missing ${f}`);
       }
+
+      ctx.log(`  Crawled ${visited.size} pages, ${failures.length} failures`);
+
+      return {
+        stage: "template-eval",
+        status: failures.length > 0 ? "fail" : "pass",
+        durationMs: Date.now() - start,
+        metrics: {
+          pagesCrawled: visited.size,
+          failures: failures.length,
+        },
+        warnings: [],
+        error: failures.length > 0 ? failures.slice(0, 5).join("; ") : undefined,
+      };
+    } finally {
+      await browser.close().catch(() => {});
+      await new Promise<void>((r) => server.close(() => r()));
     }
-    await browser.close();
-
-    // Required discovery/SEO files
-    for (const f of ["sitemap.xml", "robots.txt", "llms.txt", "rss.xml"]) {
-      if (!existsSync(path.join(distDir, f))) failures.push(`missing ${f}`);
-    }
-
-    server.close();
-
-    ctx.log(`  Crawled ${visited.size} pages, ${failures.length} failures`);
-
-    return {
-      stage: "template-eval",
-      status: failures.length > 0 ? "fail" : "pass",
-      durationMs: Date.now() - start,
-      metrics: {
-        pagesCrawled: visited.size,
-        failures: failures.length,
-      },
-      warnings: [],
-      error: failures.length > 0 ? failures.slice(0, 5).join("; ") : undefined,
-    };
   },
 };

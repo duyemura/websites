@@ -12,10 +12,12 @@ if (argv.includes("--urls")) {
     "Note: --urls is deprecated. Use: pnpm milo --url <single-url> --stages extract,segment,docgen",
   );
 }
-const miloPath = resolve(dirname(fileURLToPath(import.meta.url)), "../milo.js");
+const __dir = dirname(fileURLToPath(import.meta.url));
+const tsxBin = resolve(__dir, "../../node_modules/.bin/tsx");
+const miloPath = resolve(__dir, "../milo.ts");
 const hasStages = argv.includes("--stages");
 const args = hasStages ? argv : [...argv, "--stages", "extract,segment,docgen"];
-const result = spawnSync(process.execPath, [miloPath, ...args], {
+const result = spawnSync(tsxBin, [miloPath, ...args], {
   stdio: "inherit",
   env: process.env,
 });
