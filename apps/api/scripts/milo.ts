@@ -88,6 +88,7 @@ function parseArgs() {
     verbose: has("verbose"),
     quiet: has("quiet"),
     force: has("force"),
+    tier: (get("tier") ?? "free") as "free" | "paid",
   };
 }
 
@@ -276,6 +277,7 @@ async function main() {
       "../../renderer",
     ),
     verbose: args.verbose,
+    tier: args.tier,
     log: (msg) => {
       if (!args.quiet) console.log(msg);
     },

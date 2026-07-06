@@ -1,6 +1,6 @@
 // apps/api/scripts/stages/mirror.ts
 import { runMirrorPipeline } from "../../src/services/mirror/run-mirror";
-import { CRAWL_TIER_PAID } from "../../src/types/mirror";
+import { CRAWL_TIER_PAID, CRAWL_TIER_FREE } from "../../src/types/mirror";
 import { dedupeWarnings, estimateMirrorCosts } from "./types";
 import type { StageRunner, StageContext, StageResult } from "./types";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
@@ -47,7 +47,7 @@ export const mirrorStage: StageRunner = {
       config: ctx.config,
       siteUuid: ctx.siteUuid,
       workspaceUuid: ctx.workspaceUuid,
-      tier: CRAWL_TIER_PAID,
+      tier: ctx.tier === "paid" ? CRAWL_TIER_PAID : CRAWL_TIER_FREE,
       log: {
         info: (_o, m) => {
           if (ctx.verbose) ctx.log(`  [info] ${m}`);

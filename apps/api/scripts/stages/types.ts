@@ -14,6 +14,8 @@ export interface StageContext {
   rendererDir: string;
   verbose: boolean;
   log: (msg: string) => void;
+  /** "free" = 20 structural pages (default), "paid" = unlimited */
+  tier: "free" | "paid";
 }
 
 export interface StageResult {
