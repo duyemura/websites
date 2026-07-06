@@ -15,6 +15,16 @@ export function pathToFileKey(pagePath: string): string {
   return `${trimmed}/index.html`;
 }
 
+/** Stable outline key for any page path — always distinct from the HTML key. */
+export function pathToOutlineKey(pagePath: string): string {
+  const clean = (pagePath.split("?")[0] ?? pagePath).split("#")[0] ?? pagePath;
+  const trimmed = clean.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!trimmed) return "outline.txt";
+  // Strip any file extension so /about.html → about/outline.txt (same as /about)
+  const base = trimmed.replace(/\.[a-z0-9]+$/i, "");
+  return `${base}/outline.txt`;
+}
+
 export interface SnapshotDeps {
   s3Client: S3Client;
   bucket: string;

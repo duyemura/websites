@@ -11,9 +11,77 @@ import type { Kysely } from "kysely";
 import type { DB } from "../../types/db";
 import { applyTransforms, pageGlobMatches } from "../../utils/mirror/apply-transforms";
 import { buildRedirectHtml, generateRobots, generateSitemap } from "../../utils/mirror/site-meta";
-import { pathToFileKey } from "./snapshot";
+import { pathToFileKey, pathToOutlineKey } from "./snapshot";
 import type { MirrorSnapshotArtifact, SiteTransformRecord, TransformType } from "../../types/mirror";
 import { INTERCEPTOR_SCRIPT } from "../../utils/mirror/interceptor";
+import * as cheerio from "cheerio";
+
+/**
+ * Extract a semantic content outline from page HTML.
+ * Preserves heading hierarchy and section context so LLMs can map
+ * content to template slots without raw HTML noise.
+ */
+export function extractContentOutline(html: string): string {
+  const $ = cheerio.load(html);
+
+  // Remove scripts/embeds unconditionally; scope header/footer/nav to top-level
+  // layout elements only — Webflow often puts hero content inside a <header> tag.
+  $("script, style, noscript, iframe, [aria-hidden='true'], [class*='cookie'], [class*='popup']").remove();
+  $("body > header, body > footer, body > nav").remove();
+
+  const SECTION_SELECTORS = [
+    "section",
+    "article",
+    "main > div",
+    "[class*='section']",
+    "[class*='hero']",
+    "[class*='block']",
+  ].join(", ");
+
+  function detectType(cls: string): string {
+    const lower = cls.toLowerCase();
+    for (const t of ["hero", "testimonial", "pricing", "faq", "team", "cta", "feature", "contact", "about", "program"]) {
+      if (lower.includes(t)) return t;
+    }
+    return "section";
+  }
+
+  const sections: string[] = [];
+
+  $(SECTION_SELECTORS).each((_, el) => {
+    const $el = $(el);
+    const cls = $el.attr("class") ?? "";
+    const type = detectType(cls);
+    const items: string[] = [];
+
+    // Headings — preserve tag and first meaningful class
+    $el.find("h1, h2, h3, h4, h5, h6").each((_, child) => {
+      const text = $(child).text().replace(/\s+/g, " ").trim();
+      if (!text || text.length < 3 || text.length > 200) return;
+      const tag = child.tagName.toLowerCase();
+      const childCls = ($(child).attr("class") ?? "").split(/\s+/)
+        .find(c => c.length > 2 && !/^w-|^col-|^row/.test(c)) ?? "";
+      items.push(`  - ${tag}${childCls ? `.${childCls}` : ""}: "${text}"`);
+    });
+
+    // First 3 meaningful paragraphs
+    let pCount = 0;
+    $el.find("p").each((_, child) => {
+      if (pCount >= 3) return;
+      const text = $(child).text().replace(/\s+/g, " ").trim();
+      if (text && text.length > 20 && text.length < 400) {
+        items.push(`  - p: "${text}"`);
+        pCount++;
+      }
+    });
+
+    if (items.length > 0) {
+      sections.push(`- ${type}:\n${items.join("\n")}`);
+    }
+  });
+
+  return sections.join("\n");
+}
 
 export async function loadActiveTransforms(
   db: Kysely<DB>,
@@ -210,14 +278,33 @@ export async function deploySnapshot(
       const result = applyTransforms(html, page.path, transforms);
       for (const u of result.applied) applied.add(u);
       for (const u of result.stale) stale.add(u);
-      await deps.s3Client.send(
-        new PutObjectCommand({
+
+      // Derive outline key from page.path — always distinct from the HTML key
+      // even for paths like /about.html where fileKey has no index.html suffix.
+      const outlineKey = `${deployPrefix}/${pathToOutlineKey(page.path)}`;
+
+      // Extract outline defensively so a cheerio failure never blocks the HTML upload.
+      let outline = "";
+      try { outline = extractContentOutline(result.html); }
+      catch (err) { warnings.push(`outline extraction failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`); }
+
+      const uploads: Promise<unknown>[] = [
+        deps.s3Client.send(new PutObjectCommand({
           Bucket: deps.bucket,
           Key: `${deployPrefix}/${fileKey}`,
           Body: Buffer.from(result.html, "utf8"),
           ContentType: "text/html; charset=utf-8",
-        }),
-      );
+        })),
+      ];
+      if (outline) {
+        uploads.push(deps.s3Client.send(new PutObjectCommand({
+          Bucket: deps.bucket,
+          Key: outlineKey,
+          Body: Buffer.from(outline, "utf8"),
+          ContentType: "text/plain; charset=utf-8",
+        })));
+      }
+      await Promise.all(uploads);
     } catch (err) {
       warnings.push(`deploy write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
     }

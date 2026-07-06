@@ -1,9 +1,8 @@
 // apps/api/scripts/stages/content.ts
-import * as cheerio from "cheerio";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { chatCompletion } from "../../src/ai/llm-client";
 import { saveArtifact, loadArtifact } from "../../src/utils/pipeline/artifact-store";
-import { pathToFileKey } from "../../src/services/mirror/snapshot";
+import { pathToOutlineKey } from "../../src/services/mirror/snapshot";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 const MAX_CONTENT_PAGES = 20;
@@ -21,20 +20,8 @@ function classifyPageType(
   return "other";
 }
 
-function extractBodyText(html: string): string {
-  const $ = cheerio.load(html);
-  $(
-    "script, style, noscript, iframe, nav, header, footer, [aria-hidden='true']",
-  ).remove();
-  $(
-    "[class*='nav'], [class*='header'], [class*='footer'], [class*='cookie'], [class*='popup']",
-  ).remove();
-  const text = $("body").text().replace(/\s+/g, " ").trim();
-  return text.slice(0, 8000);
-}
-
-function buildPrompt(pageType: string, text: string, path: string): string {
-  const base = `Extract structured content from this gym website page. Return ONLY valid JSON. Use null for fields not found.\n\nPage path: ${path}\nPage text:\n${text}\n\n`;
+function buildPrompt(pageType: string, outline: string, path: string): string {
+  const base = `Extract structured content from this gym website page. The outline below shows the semantic content hierarchy (section type, headings, and first few paragraphs per section). Return ONLY valid JSON. Use null for fields not found.\n\nPage path: ${path}\nContent outline:\n${outline}\n\n`;
 
   const schemas: Record<string, string> = {
     home: `Return JSON:\n{"heroHeadline":string|null,"heroSubheading":string|null,"heroCtaLabel":string|null,"valueProps":[{"headline":string,"body":string}],"testimonials":[{"quote":string,"name":string,"program":string|null}],"faq":[{"question":string,"answer":string}],"communityHeadline":string|null,"trustHeadline":string|null}`,
@@ -94,25 +81,25 @@ export const contentStage: StageRunner = {
 
     for (const page of structuralPages) {
       const pageType = classifyPageType(page.path);
-      const s3Key = `sites/${ctx.siteUuid}/current/${pathToFileKey(page.path)}`;
+      const outlineKey = `sites/${ctx.siteUuid}/current/${pathToOutlineKey(page.path)}`;
 
       try {
-        const obj = await ctx.s3Client.send(
-          new GetObjectCommand({ Bucket: bucket, Key: s3Key }),
-        );
-        const html = (await obj.Body?.transformToString()) ?? "";
-        if (!html) {
-          warnings.push(`${page.path}: empty HTML`);
+        let outline = "";
+        try {
+          const outlineObj = await ctx.s3Client.send(
+            new GetObjectCommand({ Bucket: bucket, Key: outlineKey }),
+          );
+          outline = (await outlineObj.Body?.transformToString()) ?? "";
+        } catch {
+          // outline not present for older mirrors — skip page
+        }
+
+        if (!outline || outline.length < 30) {
+          warnings.push(`${page.path}: no outline (re-run clone to generate)`);
           continue;
         }
 
-        const text = extractBodyText(html);
-        if (!text || text.length < 50) {
-          warnings.push(`${page.path}: no text content`);
-          continue;
-        }
-
-        const prompt = buildPrompt(pageType, text, page.path);
+        const prompt = buildPrompt(pageType, outline, page.path);
         const response = await chatCompletion(
           {
             model: ctx.config.DEFAULT_LLM_MODEL,
