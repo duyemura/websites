@@ -16,8 +16,10 @@ import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
-  ScheduleContent, BlogContent, LegalPage, HeroContent,
+  ScheduleContent, BlogContent, LegalPage, HeroContent, Feature,
 } from "@ploy-gyms/shared-types";
+import { loadArtifact } from "../../utils/pipeline/artifact-store";
+import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 
 // ── State abbr lookup ────────────────────────────────────────────────────────
 
@@ -67,16 +69,29 @@ export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandToken
 
 export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: string[]): BusinessInfo {
   const baseline = DEFAULT_BUSINESS_PLACEHOLDER;
-  const name = fallback(
-    ds.business.name || ds.siteMetadata.businessName,
-    baseline.name, warnings, "business.name"
-  );
-  const tagline = ds.business.tagline ?? baseline.tagline;
-
-  // Label-based extraction — the markdown has a known structure from renderExtractedBusinessInfo.
-  // Look for labeled lines rather than hunting for patterns in free text.
+  // Name extraction priority:
+  // 1. design-system structured field
+  // 2. **Business Name**: label in markdown
+  // 3. "Welcome to [Name]" pattern in markdown description
+  // 4. H1 heading in markdown (strip SEO suffix after " | ")
+  // 5. Markdown title line (strip SEO suffix after " | ")
+  // 6. Baseline default
   const labelLine = (label: string): string =>
     markdown.match(new RegExp(`\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
+
+  const nameFromLabel = labelLine("Business Name");
+  const nameFromWelcome = markdown.match(/Welcome to ([^,.\n]+)[,.\n]/)?.[1]?.trim() ?? "";
+  const nameFromH1 = markdown.match(/^-\s*\(h1\)\s*(.+)$/m)?.[1]?.trim().split(" | ")[0] ?? "";
+  const nameFromTitle = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim().split(" | ")[0] ?? "";
+
+  const name = fallback(
+    ds.business?.name || ds.siteMetadata?.businessName ||
+    nameFromLabel || nameFromWelcome || nameFromH1 || nameFromTitle,
+    baseline.name, warnings, "business.name"
+  );
+  const tagline = ds.business?.tagline ?? baseline.tagline;
+
+  // Label-based extraction — looks for labeled lines like **Phone**: (555) 123-4567
 
   const phone = labelLine("Phone") || fallback("", baseline.phone, warnings, "phone");
   const email = labelLine("Email") || baseline.email;
@@ -175,14 +190,18 @@ export function extractNavigation(hierarchy: SiteHierarchy, warnings: string[]):
 
 // ── Pages ────────────────────────────────────────────────────────────────────
 
-function heroFromPage(page: HierarchyPage): HeroContent {
+function heroFromPage(page: HierarchyPage, contractHero?: SectionContract): HeroContent {
   const section = page.sections.find((s) => s.tag === "hero");
   return {
     headline: section?.content.heading || page.title,
     subheading: section?.content.body || undefined,
     ctaLabel: section?.content.cta?.label || undefined,
     ctaUrl: section?.content.cta?.href || undefined,
-    backgroundImageUrl: page.heroImageUrl || undefined,
+    backgroundImageUrl:
+      contractHero?.media?.imageUrls?.[0] ??
+      contractHero?.layout?.background?.imageUrl ??
+      page.heroImageUrl ??
+      undefined,
   };
 }
 
@@ -190,6 +209,7 @@ export function extractPages(
   hierarchy: SiteHierarchy,
   business: Pick<BusinessInfo, "name">,
   warnings: string[],
+  contract: ContractArtifact | null = null,
 ): PageContent {
   const pages = hierarchy.pages;
   const byClass = (cls: ReturnType<typeof classifyPage>) => pages.filter((p) => classifyPage(p) === cls);
@@ -203,12 +223,16 @@ export function extractPages(
     warnings.push("no program pages found in hierarchy — using default program set");
   }
 
+  const contractHomeSections = contract?.pages.find((p) => p.path === (homePage?.path ?? "/"))?.sections ?? [];
+  const contractHero = contractHomeSections.find((s) => s.tag === "hero");
+  const contractFeatureGrid = contractHomeSections.find((s) => s.layout.archetype.startsWith("feature-grid"));
+
   const home: HomeContent = {
-    hero: homePage ? heroFromPage(homePage) : { headline: business.name },
+    hero: homePage ? heroFromPage(homePage, contractHero) : { headline: business.name, backgroundImageUrl: contractHero?.media?.imageUrls?.[0] ?? contractHero?.layout?.background?.imageUrl },
     valueProps: [],
     programsHeadline: "Our Programs",
     featuredPrograms,
-    features: [],
+    features: contractFeatureGrid ? featureGridItems(contractFeatureGrid) : [],
     communityHeadline: "",
     communityProps: [],
     trustHeadline: "",
@@ -292,6 +316,34 @@ export function extractPages(
   return { home, programs, about, pricing, contact, schedule, blog, legal };
 }
 
+// ── Contract-aware mapping helpers ────────────────────────────────────────────
+
+function inferImpactTheme(contract: ContractArtifact | null, _home: HomeContent): boolean {
+  if (!contract) return false;
+  const homeSections = contract.pages.find((p) => p.isHomePage)?.sections ?? [];
+  // The impact theme is built around a bold bento feature grid. Treat any
+  // feature-grid section on the homepage as a signal to use the impact layout;
+  // fall back to sticky program cards if present.
+  return homeSections.some((s) =>
+    s.layout.archetype.startsWith("feature-grid") ||
+    s.layout.archetype === "program-cards-sticky"
+  );
+}
+
+function featureGridItems(section: SectionContract): Feature[] {
+  return section.items.map((item) => {
+    const position = typeof item.position?.row === "string"
+      ? { col: item.position.col, row: Number(item.position.row) }
+      : { col: item.position?.col };
+    return {
+      icon: item.icon ?? "none",
+      label: item.title,
+      position,
+      background: item.background,
+    };
+  });
+}
+
 // ── Doc loader ───────────────────────────────────────────────────────────────
 
 async function loadDoc(db: Kysely<DB>, siteUuid: string, key: string) {
@@ -315,6 +367,7 @@ export interface MapperResult {
 export interface MapperConfig {
   apiBaseUrl: string;
   siteUrl: string;
+  workspaceUuid?: string;
 }
 
 export async function buildGymJson(
@@ -329,6 +382,16 @@ export async function buildGymJson(
     loadDoc(db, siteUuid, "business-info"),
     loadDoc(db, siteUuid, "site-hierarchy"),
   ]);
+
+  let contract: ContractArtifact | null = null;
+  if (config.workspaceUuid) {
+    const artifact = await loadArtifact<ContractArtifact>(
+      db,
+      { siteUuid, workspaceUuid: config.workspaceUuid },
+      "contract",
+    ).catch(() => null);
+    contract = artifact?.payload ?? null;
+  }
 
   if (!dsDoc?.contentJson) warnings.push("design-system doc missing — using all brand defaults");
   if (!bizDoc?.content) warnings.push("business-info doc missing — address/phone/email will be empty");
@@ -361,7 +424,9 @@ export async function buildGymJson(
   const brand = extractBrand(ds, warnings);
   const business = extractBusiness(bizDoc?.content ?? "", ds, warnings);
   const navigation = extractNavigation(hierarchy, warnings);
-  const pages = extractPages(hierarchy, business, warnings);
+  const pages = extractPages(hierarchy, business, warnings, contract);
+
+  const isImpact = inferImpactTheme(contract, pages.home);
 
   const meta: SiteMeta = {
     siteId: siteUuid,
@@ -370,7 +435,7 @@ export async function buildGymJson(
     defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : `${DEFAULT_BUSINESS_NAME} | ${DEFAULT_CITY} Gym`,
     defaultDescription: business.tagline,
     preview: false,
-    templateTheme: "baseline",
+    templateTheme: isImpact ? "impact" : "baseline",
   };
 
   return {
