@@ -26,6 +26,13 @@ const schema = {
     "@type": "OpeningHoursSpecification", dayOfWeek: h.days, opens: h.opens, closes: h.closes,
   })),
   areaServed: [business.geo.city, ...(business.serviceArea ?? [])],
+  speakable: {
+    "@type": "SpeakableSpecification",
+    xpath: [
+      "/html/head/title",
+      "/html/head/meta[@name='description']/@content",
+    ],
+  },
   ...(business.aggregateRating && {
     aggregateRating: {
       "@type": "AggregateRating",

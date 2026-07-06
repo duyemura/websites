@@ -5,6 +5,7 @@ import PricingGrid from "../components/sections/PricingGrid.astro";
 import LeadForm from "../components/forms/LeadForm.astro";
 import CTABand from "../components/sections/CTABand.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
+import OfferSchema from "../components/seo/OfferSchema.astro";
 import Container from "../components/ui/Container.astro";
 import SectionHeading from "../components/ui/SectionHeading.astro";
 import { content } from "../lib/content";
@@ -13,7 +14,10 @@ const { business } = content;
 const title = `Membership Pricing | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 ---
 <GymLayout title={title} description={p.hero.subheading ?? `Membership pricing at ${business.name}`} path="/pricing">
-  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Pricing", path: "/pricing" }]} /></Fragment>
+  <Fragment slot="head">
+    <BreadcrumbSchema crumbs={[{ name: "Pricing", path: "/pricing" }]} />
+    {p.grid?.plans && p.grid.plans.length > 0 && <OfferSchema plans={p.grid.plans} />}
+  </Fragment>
   <Hero hero={p.hero} />
   {p.grid && <PricingGrid grid={p.grid} />}
   {p.form && (

@@ -9,6 +9,7 @@ import Location from "../../components/sections/Location.astro";
 import RichContent from "../../components/sections/RichContent.astro";
 import ServiceSchema from "../../components/seo/ServiceSchema.astro";
 import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
+import FAQSchema from "../../components/seo/FAQSchema.astro";
 import Container from "../../components/ui/Container.astro";
 import SectionHeading from "../../components/ui/SectionHeading.astro";
 import { content, programGeoHeadline } from "../../lib/content";
@@ -26,6 +27,7 @@ const title = `${program.name} in ${business.geo.city}, ${business.geo.stateAbbr
   <Fragment slot="head">
     <ServiceSchema name={program.name} path={path} description={program.shortDescription} image={program.coverImageUrl} />
     <BreadcrumbSchema crumbs={[{ name: program.name, path }]} />
+    {program.faq.length > 0 && <FAQSchema items={program.faq} />}
   </Fragment>
 
   <!-- Geo H1 above the hero for local SEO; hero renders its heading as h2 -->

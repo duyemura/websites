@@ -1,0 +1,31 @@
+---
+import { content, absUrl } from "../../lib/content";
+import type { PricingPlan } from "../../types/gym-content";
+const { plans } = Astro.props as { plans: PricingPlan[] };
+if (!plans?.length) return;
+const { business } = content;
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  name: `${business.name} Membership Plans`,
+  itemListElement: plans.map((plan, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    item: {
+      "@type": "Offer",
+      name: plan.name,
+      description: plan.description ?? plan.name,
+      price: plan.price.replace(/[^0-9.]/g, ""),
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      seller: {
+        "@type": "LocalBusiness",
+        name: business.name,
+        url: absUrl("/"),
+      },
+      url: absUrl("/pricing"),
+    },
+  })),
+};
+---
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />
