@@ -1,3 +1,4 @@
+import "@aws-sdk/signature-v4-crt";
 import { getS3Client, buildS3ObjectUrl } from "../../s3";
 import { saveArtifact, loadArtifact } from "../../utils/pipeline/artifact-store";
 import { crawlSite } from "./crawl";
