@@ -302,6 +302,64 @@ async function runJoin(
   return results;
 }
 
+async function checkJoinPrereqs(siteUuid: string, workspaceUuid: string): Promise<void> {
+  const ctx = { siteUuid, workspaceUuid };
+  const [docgen, content] = await Promise.all([
+    loadArtifact(db, ctx, "docgen" as PipelineStage),
+    loadArtifact(db, ctx, "content" as PipelineStage),
+  ]);
+  if (!docgen || !content) {
+    const missing = [!docgen && "docgen", !content && "content"].filter(Boolean).join(", ");
+    console.error(
+      `\n❌ This command requires a completed join pipeline.\n` +
+      `   Missing artifact(s): ${missing}\n` +
+      `   Run: milo join --url <url>\n`,
+    );
+    process.exit(1);
+  }
+}
+
+async function isTier2(siteUuid: string, workspaceUuid: string): Promise<boolean> {
+  const artifact = await loadArtifact(db, { siteUuid, workspaceUuid }, "generate" as PipelineStage);
+  return artifact !== null;
+}
+
+async function runUpgrade(
+  cmd: Extract<MiloCommand, { cmd: "upgrade" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  await checkJoinPrereqs(siteUuid, workspaceUuid);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid", templateTheme: cmd.theme });
+  if (!cmd.quiet) console.log(`\nMilo upgrade — site: ${siteUuid}`);
+  const totalStart = Date.now();
+  const results = await runPipeline(PIPELINES.upgrade, ctx, registry, cmd);
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
+async function runRebuild(
+  cmd: Extract<MiloCommand, { cmd: "rebuild" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const tier2 = await isTier2(siteUuid, workspaceUuid);
+  if (!tier2) {
+    console.error(
+      `\n❌ milo rebuild requires a Tier 2 (template) site.\n` +
+      `   This site is on the clone plan.\n` +
+      `   Run: milo upgrade --site ${cmd.site}\n`,
+    );
+    process.exit(1);
+  }
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid" });
+  if (!cmd.quiet) console.log(`\nMilo rebuild — site: ${siteUuid}`);
+  const totalStart = Date.now();
+  const results = await runPipeline(PIPELINES.rebuild, ctx, registry, { force: cmd.force, quiet: cmd.quiet });
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
 async function runLegacyStages(
   cmd: Extract<MiloCommand, { cmd: "stages" }>,
   registry: Record<string, StageRunner>,
@@ -327,9 +385,11 @@ async function main() {
 
   let results: StageResult[] = [];
   switch (cmd.cmd) {
-    case "join":   results = await runJoin(cmd, registry); break;
-    case "stages": results = await runLegacyStages(cmd, registry); break;
-    // upgrade, rebuild, page, eval, nav, restore — added in Tasks 4–6
+    case "join":    results = await runJoin(cmd, registry); break;
+    case "stages":  results = await runLegacyStages(cmd, registry); break;
+    case "upgrade": results = await runUpgrade(cmd, registry); break;
+    case "rebuild": results = await runRebuild(cmd, registry); break;
+    // page, eval, nav, restore — added in Tasks 5–6
     default: {
       const c = cmd as MiloCommand;
       console.error(`Handler for "${c.cmd}" not yet implemented. Run again after all tasks complete.`);
