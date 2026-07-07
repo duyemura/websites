@@ -70,3 +70,33 @@ describe("milo parseArgs", () => {
     expect(() => parseArgsFrom(["join"])).toThrow("--url");
   });
 });
+
+describe("parseArgs additional edge cases", () => {
+  test("restore --version rejects zero", () => {
+    expect(() => parseArgsFrom(["restore", "--site", "abc-123", "--version", "0"])).toThrow("positive integer");
+  });
+
+  test("restore --version rejects negative", () => {
+    expect(() => parseArgsFrom(["restore", "--site", "abc-123", "--version", "-1"])).toThrow("positive integer");
+  });
+
+  test("restore --version rejects fractional", () => {
+    expect(() => parseArgsFrom(["restore", "--site", "abc-123", "--version", "1.5"])).toThrow("positive integer");
+  });
+
+  test("eval requires --site", () => {
+    expect(() => parseArgsFrom(["eval"])).toThrow("--site");
+  });
+
+  test("nav requires --site", () => {
+    expect(() => parseArgsFrom(["nav"])).toThrow("--site");
+  });
+
+  test("upgrade missing --site throws", () => {
+    expect(() => parseArgsFrom(["upgrade"])).toThrow("--site");
+  });
+
+  test("rebuild missing --site throws", () => {
+    expect(() => parseArgsFrom(["rebuild"])).toThrow("--site");
+  });
+});
