@@ -1,165 +1,166 @@
 // apps/api/scripts/stages/docgen.ts
+// Build the site docs from the clone's homepage HTML plus the GMB enrichment
+// artifact. No extract/segment required, and no LLM business-info extraction.
+import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import {
-  runDocgenStage,
-} from "../../src/services/pipeline/docgen-stage";
-import { saveSiteDocs } from "../../src/utils/site-docs";
+  generateSiteDocs,
+  saveSiteDocs,
+} from "../../src/utils/site-docs";
 import { saveArtifact, loadArtifact } from "../../src/utils/pipeline/artifact-store";
-import { chatCompletion } from "../../src/ai/llm-client";
+import { buildScrapedWebsiteDataFromCrawl } from "../../src/utils/mirror/crawl-to-scraped";
+import type { MirrorCrawlArtifact } from "../../src/types/mirror";
+import type { EnrichArtifact } from "./enrich";
 import type { StageRunner, StageContext, StageResult } from "./types";
-import type { ExtractArtifact } from "../../src/services/pipeline/extract-stage";
 
-interface BusinessFields {
-  businessName: string | null;
-  tagline: string | null;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  zip: string | null;
-  hours: string | null;
-  website: string | null;
+function formatGmbAddress(listing: GmbListing): string | undefined {
+  if (!listing.address) return undefined;
+  const { streetNumber, streetName, city, state, postalCode } = listing.address;
+  const street = [streetNumber, streetName].filter(Boolean).join(" ");
+  const parts = [street, city, state, postalCode].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : undefined;
 }
 
-async function extractBusinessWithLLM(
-  text: string,
-  headings: string[],
-  siteUrl: string,
-  ctx: StageContext,
-): Promise<BusinessFields | null> {
-  const prompt = `You are extracting business information from a gym website. The phone, address, and hours are often in the footer at the END of the page text. Return ONLY valid JSON with these fields (use null if not found):
-
-{
-  "businessName": "the gym's actual brand name",
-  "tagline": "their tagline or motto if present",
-  "phone": "phone number",
-  "email": "email address",
-  "address": "street address",
-  "city": "city name",
-  "state": "state abbreviation",
-  "zip": "zip code",
-  "hours": "hours summary",
-  "website": "${siteUrl}"
+function formatGmbHours(listing: GmbListing): string | undefined {
+  if (!listing.regularOpeningHours?.length) return undefined;
+  return listing.regularOpeningHours
+    .map((h) => {
+      const label = h.day.charAt(0) + h.day.slice(1).toLowerCase();
+      if (h.isClosed || !h.open) return `${label}: Closed`;
+      return `${label}: ${h.open}–${h.close ?? "—"}`;
+    })
+    .join("\n");
 }
 
-Page headings: ${headings.slice(0, 20).join(" | ")}
+/**
+ * Merge GMB-enriched facts into the cheerio-parsed homepage data. GMB wins for
+ * business identity, contact, location, and hours because it is the
+ * authoritative source.
+ */
+function mergeGmbIntoScraped(
+  scraped: ScrapedWebsiteData,
+  gmb?: GmbListing,
+): ScrapedWebsiteData {
+  if (!gmb) return scraped;
 
-Page text (look especially at footer/bottom for contact info):
-${text.slice(0, 8000)}`;
+  const merged: ScrapedWebsiteData = { ...scraped };
 
-  try {
-    const response = await chatCompletion({
-      model: ctx.config.DEFAULT_LLM_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0,
-    }, ctx.config);
-
-    const raw = response.content ?? "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    return JSON.parse(match[0]) as BusinessFields;
-  } catch (err) {
-    ctx.log(`  [warn] LLM business extraction failed: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
+  if (gmb.name && gmb.name.length > 1) {
+    merged.businessName = gmb.name;
   }
+  if (gmb.editorialSummary) {
+    merged.tagline = gmb.editorialSummary;
+  }
+  if (gmb.primaryType) {
+    merged.industry = gmb.primaryType;
+  }
+
+  if (gmb.phoneNumber) {
+    merged.contact = { ...merged.contact, phone: gmb.phoneNumber };
+  }
+
+  const gmbAddress = formatGmbAddress(gmb);
+  const gmbHours = formatGmbHours(gmb);
+  if (gmbAddress || gmbHours) {
+    const existing = merged.locations[0] ?? {};
+    merged.locations = [
+      {
+        ...existing,
+        name: existing.name ?? gmb.name,
+        address: gmbAddress ?? existing.address,
+        hours: gmbHours ?? existing.hours,
+      },
+      ...merged.locations.slice(1),
+    ];
+  }
+
+  if (merged.testimonials.length === 0 && gmb.reviews?.length > 0) {
+    merged.testimonials = gmb.reviews.map((r) => ({
+      quote: r.text ?? "",
+      author: r.author,
+      role: undefined,
+    }));
+  }
+
+  return merged;
 }
 
 export const docgenStage: StageRunner = {
   label: "docgen",
-  requires: ["mirror-deploy"],
+  requires: ["enrich", "mirror-crawl"],
   produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
-    ctx.log(`  Model: ${ctx.config.DEFAULT_LLM_MODEL} (${ctx.config.LLM_PROVIDER})`);
-    ctx.log(`  Running docgen...`);
+    ctx.log("  Building docs from clone + GMB enrichment");
 
-    let docs: Awaited<ReturnType<typeof runDocgenStage>> = [];
-    try {
-      docs = await runDocgenStage({
-        db: ctx.db,
-        config: ctx.config,
-        s3: ctx.s3Client,
-        siteUuid: ctx.siteUuid,
-        workspaceUuid: ctx.workspaceUuid,
-        mode: "replication",
-        skipVision: true,
-      });
-    } catch (err) {
-      ctx.log(`  [warn] runDocgenStage skipped (no extract/segment artifacts): ${err instanceof Error ? err.message : String(err)}`);
+    const enrichStored = await loadArtifact<EnrichArtifact>(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+      "enrich",
+    );
+    if (!enrichStored) {
+      throw new Error("No enrich artifact found — run the enrich stage first");
     }
+
+    const crawlStored = await loadArtifact<MirrorCrawlArtifact>(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+      "mirror-crawl",
+    );
+    if (!crawlStored) {
+      throw new Error("No mirror-crawl artifact found — run the clone stage first");
+    }
+
+    const gmb = enrichStored.payload.listing;
+    if (gmb) {
+      ctx.log(`  GMB source: ${gmb.name}`);
+    }
+
+    const scrapedFromCrawl = await buildScrapedWebsiteDataFromCrawl(
+      crawlStored.payload,
+      ctx.s3Client,
+      ctx.config,
+    );
+
+    // If the enrich stage produced a more complete ScrapedWebsiteData (it does
+    // when GMB is applied), layer that on top of the cheerio parse so we keep
+    // GMB facts but still have homepage headings/sections.
+    const enrichedBase = enrichStored.payload.data;
+    const merged: ScrapedWebsiteData = {
+      ...scrapedFromCrawl,
+      ...enrichedBase,
+      // Preserve parsed arrays when the enrich data left them empty.
+      headings: scrapedFromCrawl.headings.length > 0 ? scrapedFromCrawl.headings : enrichedBase.headings,
+      paragraphs: scrapedFromCrawl.paragraphs.length > 0 ? scrapedFromCrawl.paragraphs : enrichedBase.paragraphs,
+      navLinks: scrapedFromCrawl.navLinks.length > 0 ? scrapedFromCrawl.navLinks : enrichedBase.navLinks,
+      images: scrapedFromCrawl.images.length > 0 ? scrapedFromCrawl.images : enrichedBase.images,
+      sections: scrapedFromCrawl.sections && scrapedFromCrawl.sections.length > 0
+        ? scrapedFromCrawl.sections
+        : enrichedBase.sections,
+      contact: { ...scrapedFromCrawl.contact, ...enrichedBase.contact },
+      locations: enrichedBase.locations.length > 0 ? enrichedBase.locations : scrapedFromCrawl.locations,
+      testimonials: enrichedBase.testimonials.length > 0 ? enrichedBase.testimonials : scrapedFromCrawl.testimonials,
+      offerings: enrichedBase.offerings.length > 0 ? enrichedBase.offerings : scrapedFromCrawl.offerings,
+    };
+
+    const data = mergeGmbIntoScraped(merged, gmb);
+
+    // Pass undefined config/memoryCtx so generateSiteDocs does not run the LLM
+    // business-info / workspace-memory extraction paths. GMB is the source of
+    // truth for business facts now.
+    const docs = await generateSiteDocs(data, gmb, undefined, undefined, null, "replication");
 
     await saveSiteDocs(ctx.db, ctx.workspaceUuid, docs, ctx.siteUuid);
 
-    await saveArtifact(ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "docgen" as any, {
-      docCount: docs.length,
-      docKeys: docs.map((d) => d.key),
-    });
-
-    // ── LLM business extraction ──────────────────────────────────────────────
-    // Make a single LLM call to extract structured business info from the page.
-    // Updates the business-info doc in DB with labeled fields the content mapper reads.
-    ctx.log(`  Extracting business info via LLM...`);
-    try {
-      // rawText is stripped from the extract artifact (storage optimization).
-      // Fetch the contact/homepage text live via a quick HTTP request instead.
-      const site = await ctx.db.selectFrom("sites").select("sourceUrl").where("uuid", "=", ctx.siteUuid).executeTakeFirst();
-      const baseUrl = site?.sourceUrl?.replace(/\/$/, "") ?? "";
-
-      async function fetchPageText(url: string): Promise<string> {
-        try {
-          const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; MiloBot/1.0)" }, signal: AbortSignal.timeout(10000) });
-          if (!res.ok) return "";
-          const html = await res.text();
-          // Strip HTML tags and collapse whitespace
-          return html.replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-            .replace(/\s+/g, " ").trim().slice(0, 6000);
-        } catch { return ""; }
-      }
-
-      const [homeText, contactText] = await Promise.all([
-        fetchPageText(baseUrl + "/"),
-        fetchPageText(baseUrl + "/contact"),
-      ]);
-      const allText = [homeText, contactText].filter(Boolean).join("\n\n---\n\n");
-
-      // Get headings from extract artifact
-      const extractArtifact = await loadArtifact<ExtractArtifact>(
-        ctx.db, { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid }, "extract" as any,
-      );
-      const pages = extractArtifact?.payload?.pages ?? [];
-      const allHeadings = pages.flatMap((p: any) => (p.content?.headings ?? []).map((h: any) => h.text));
-
-      if (allText) {
-
-        const biz = await extractBusinessWithLLM(allText, allHeadings, site?.sourceUrl ?? "", ctx);
-        if (biz) {
-          ctx.log(`  LLM extracted: ${JSON.stringify(biz)}`);
-          // Build labeled markdown that the content mapper can read
-          const labeled = [
-            biz.businessName ? `**Business Name**: ${biz.businessName}` : null,
-            biz.tagline ? `**Tagline**: ${biz.tagline}` : null,
-            biz.phone ? `**Phone**: ${biz.phone}` : null,
-            biz.email ? `**Email**: ${biz.email}` : null,
-            biz.address ? `**Address**: ${biz.address}${biz.city ? `, ${biz.city}` : ""}${biz.state ? `, ${biz.state}` : ""}${biz.zip ? ` ${biz.zip}` : ""}` : null,
-            biz.hours ? `**Hours**: ${biz.hours}` : null,
-          ].filter(Boolean).join("\n");
-
-          // Update the business-info doc in the DB
-          await ctx.db.updateTable("docs")
-            .set({ content: labeled, updatedAt: new Date() })
-            .where("siteUuid", "=", ctx.siteUuid)
-            .where("key", "=", "business-info")
-            .where("status", "=", "active")
-            .execute();
-          ctx.log(`  Updated business-info doc with LLM data`);
-        }
-      }
-    } catch (err) {
-      ctx.log(`  [warn] Business LLM step failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await saveArtifact(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+      "docgen",
+      {
+        docCount: docs.length,
+        docKeys: docs.map((d) => d.key),
+      },
+    );
 
     ctx.log(`  Saved ${docs.length} docs:`);
     for (const doc of docs) {
