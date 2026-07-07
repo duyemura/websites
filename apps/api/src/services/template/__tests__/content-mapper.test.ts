@@ -284,6 +284,56 @@ describe("extractPages", () => {
     expect(pages.home.featuredPrograms).toEqual(["crossfit", "bootcamp"]);
   });
 
+  test("features default programs on homepage when no program pages exist", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+    ]);
+    const pages = extractPages(h, { name: "KSA" } as any, warnings);
+    expect(pages.home.featuredPrograms.length).toBeGreaterThan(0);
+    expect(pages.programs.length).toBe(pages.home.featuredPrograms.length);
+    expect(pages.home.featuredPrograms).toEqual(pages.programs.map((p) => p.slug));
+    expect(warnings.some((w) => w.includes("default program set"))).toBe(true);
+  });
+
+  test("extracts programsHeadline from contract program-cards-sticky section", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+      { slug: "crossfit", title: "CrossFit", sections: [] },
+    ]);
+    const contract = {
+      siteUuid: "test",
+      sourceSegmentAt: new Date().toISOString(),
+      pages: [{
+        path: "/",
+        slug: "index",
+        isHomePage: true,
+        sections: [{
+          id: "programs",
+          pagePath: "/",
+          tag: "feature-grid",
+          sourceConfidence: 0.9,
+          boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+          layout: {
+            archetype: "program-cards-sticky",
+            background: {},
+            spacing: { top: "0px", bottom: "0px" },
+            separator: "none",
+          },
+          typography: {
+            headline: { text: "Every body is unique. Find something that works for YOU", align: "left" },
+          },
+          interactions: { accordion: false, scrollSnap: false, stickyPanel: true, hoverEffects: false },
+          items: [],
+          media: { imageUrls: [], videoUrls: [] },
+        }],
+      }],
+    } as any;
+    const pages = extractPages(h, { name: "KSA" } as any, warnings, contract);
+    expect(pages.home.programsHeadline).toBe("Every body is unique. Find something that works for YOU");
+  });
+
   test("produces one ProgramContent per program page", () => {
     const warnings: string[] = [];
     const h = makeHierarchy([
