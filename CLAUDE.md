@@ -4,56 +4,75 @@ This file is for workspace-specific Claude Code guidance that does not belong in
 
 ## Product model
 
-Milo (internal name) is a gym website platform with two tiers. **A site is always one or the
-other — never both simultaneously.**
+Milo is a gym website platform with two tiers. **A site is always one or the other — never both simultaneously.** Never use the word "mirror" — it's always "clone."
+
+### What happens at join time (everyone, free)
+
+When a gym joins, we run the full intelligence-gathering pipeline:
+
+```
+enrich  → GMB lookup → authoritative name, address, hours, phone, category
+clone   → Playwright BFS crawl + all assets captured + rehosted on S3+CloudFront
+docgen  → crawl HTML + GMB facts → 9 structured docs written to DB
+```
+
+The gym cancels their old host (Webflow, Squarespace, etc). Their cloned site goes live.
+They get free hosting and light ability to manually edit. **The docs are gathered upfront for
+everyone** — this is what makes the upgrade path instant and the AI features possible later.
 
 ### Tier 1 — Hosted (free)
-Gym joins → we clone their existing site via Playwright, capture every asset, rehost on
-S3 + CloudFront. Gym cancels their old host (Webflow, Squarespace, etc). They get free hosting
-and light ability to manually edit. The clone is the product.
+The cloned site is live. Gym can make light edits. Docs exist in DB for future use.
 
 ### Tier 2 — Managed (paid)
-Gym upgrades to an Astro template. This unlocks:
-- Structured content editing (pages, sections, copy)
-- AI-assisted website management: keyword monitoring, pillar pages, local SEO content, blog
-- GSC integration → content loop (Phase 2)
+Gym upgrades → we use the already-gathered docs to generate an Astro template site:
 
-The mirror clone stays as a rollback artifact but is not live once the template is promoted.
+```
+generate → existing docs → LLM → complete GymSiteContent (gym.json)
+template → gym.json → Astro render → S3 staging
+publish  → swap: clone goes to rollback, template goes live (with 301 redirect map)
+```
 
-**Future:** Show the gym the delta between their current site and what the template would
-produce — so they can preview the upgrade before committing.
+Unlocks: structured editing, AI content loop (keyword monitoring, pillar pages, local SEO,
+blog automation), GSC integration.
 
-## Pipeline shape
+**No re-clone needed on upgrade** — docs were gathered at join time.
+
+### Future — Delta preview
+Before a gym commits to upgrading, show them side-by-side: their current cloned site vs what
+the template would generate. Run `generate + template` against existing docs as a preview-only
+deploy. No re-clone, no extra LLM cost beyond what generate already does.
+
+## Pipeline stages
 
 The `milo` CLI (`apps/api/scripts/milo.ts`) orchestrates stages. Run with:
 `pnpm milo --url <url> [--stages s1,s2,...] [--theme baseline|impact|beanburito]`
 
-### Main pipeline (Tier 2 — full managed site)
-```
-enrich   → GMB lookup → authoritative name, address, hours, phone
-clone    → Playwright BFS crawl + all assets + rewrite URLs + S3 deploy (also serves Tier 1)
-docgen   → enrich artifact + mirror-crawl HTML → 9 structured docs written to DB
-generate → all docs → LLM → complete GymSiteContent (gym.json)
-template → gym.json → Astro render → S3 staging deploy
-publish  → staging → production
-```
+### Join pipeline (runs for every gym at signup)
+`enrich → clone → docgen`
 
-Default stages for a new URL: `enrich,clone,docgen,content` (content is under review for removal).
+### Upgrade pipeline (runs when gym upgrades to Tier 2)
+`generate → template → publish`
 
-### Auxiliary tools (not main pipeline stages)
-- `eval` — pixel-diff between source site and mirror, for QA
+### Full pipeline (dev/testing — runs both in sequence)
+`enrich → clone → docgen → generate → template → publish`
+
+### Auxiliary tools (separate CLI commands, not pipeline stages)
+- `eval` — pixel-diff QA between source site and clone
 - `nav-rebuild` — patch nav in an existing generated site without re-running LLM
 - `restore` — roll back to a prior site version
 - `template-eval` — smoke-test the rendered template
 
-### Vision track (experimental, parallel)
-`extract → segment → contract` — Playwright visual capture + section detection + visual
-contracts. Future replacement for the docgen content extraction path. Not in main pipeline yet.
+### Vision track (experimental)
+`extract → segment → contract` — richer Playwright visual capture + section detection.
+Future replacement for docgen's content extraction. Not in main pipeline yet.
+
+### The `content` stage
+Currently sits between `docgen` and `generate`. Does per-page LLM extraction (hero copy,
+testimonials, FAQ per page). Under review — may be absorbed into `generate` or moved into
+the join pipeline as part of `docgen`. Decision pending simplification design.
 
 ## Image generation API hardening todos
 
-The AI image generation backend in `apps/api` is functional but has a list of remaining API-side hardening items. The detailed list (11 items) lives in `.claude/docs/asset-generation-todos.md`. Integration tests for the route and service layer have been added; everything else on that list is still open.
-
-## Image generation API hardening todos
-
-The AI image generation backend in `apps/api` is functional but has a list of remaining API-side hardening items. The detailed list (11 items) lives in `.claude/docs/asset-generation-todos.md`. Integration tests for the route and service layer have been added; everything else on that list is still open.
+The AI image generation backend in `apps/api` is functional but has a list of remaining
+API-side hardening items. The detailed list (11 items) lives in
+`.claude/docs/asset-generation-todos.md`. Integration tests added; everything else open.
