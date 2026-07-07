@@ -274,18 +274,46 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     .executeTakeFirst();
   const mirrorDeployPrefix: string = mirrorDeployArtifact?.payload?.deployPrefix ?? "";
 
-  // Load nav structure captured during clone (saved as nav-structure.json from homepage HTML)
+  // Load nav structure.
+  // Priority:
+  //   1. sites/{uuid}/config/nav-structure.json — stable, editable by admin/AI (never overwritten by clone)
+  //   2. {deployPrefix}/nav-structure.json     — captured during last clone (seed source)
+  // This means owners can edit the nav at any time without a re-clone.
   let capturedNav: Array<{ label: string; href: string; children?: any[] }> = [];
-  if (mirrorDeployPrefix) {
-    try {
-      const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
-      const obj = await input.s3Client.send(new GetObjectCommand({
-        Bucket: bucket,
-        Key: `${mirrorDeployPrefix}/nav-structure.json`,
-      }));
-      capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
-      log(`  Nav from original site: ${capturedNav.map(i => i.label).join(", ")}`);
-    } catch { /* nav-structure.json not yet present — run clone to capture */ }
+  const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
+  const configNavKey = `sites/${siteUuid}/config/nav-structure.json`;
+
+  let navSource = "none";
+  try {
+    const obj = await input.s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: configNavKey }));
+    capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+    navSource = "config";
+  } catch {
+    // Config nav not yet set — fall back to deploy-prefix capture
+    if (mirrorDeployPrefix) {
+      try {
+        const obj = await input.s3Client.send(new GetObjectCommand({
+          Bucket: bucket,
+          Key: `${mirrorDeployPrefix}/nav-structure.json`,
+        }));
+        capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+        navSource = "deploy-capture";
+        // Seed the stable config path so future edits work without re-clone
+        if (capturedNav.length > 0) {
+          await input.s3Client.send(new (await import("@aws-sdk/client-s3")).PutObjectCommand({
+            Bucket: bucket,
+            Key: configNavKey,
+            Body: Buffer.from(JSON.stringify(capturedNav, null, 2), "utf8"),
+            ContentType: "application/json; charset=utf-8",
+          }));
+          log(`  Nav seeded to config from deploy capture`);
+        }
+      } catch { /* not yet captured — run clone */ }
+    }
+  }
+
+  if (capturedNav.length > 0) {
+    log(`  Nav [${navSource}]: ${capturedNav.map(i => i.label).join(", ")}`);
   }
 
   // Load hero image URL captured during clone (saved as hero-image.txt alongside outline.txt)
