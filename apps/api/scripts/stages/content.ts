@@ -216,6 +216,12 @@ function normalizeBrief(raw: unknown, path: string, pageType: string): PageBrief
   };
 }
 
+/** Merge new briefs into existing. Incoming briefs replace existing at the same path. */
+export function mergeBriefs(existing: PageBrief[], incoming: PageBrief[]): PageBrief[] {
+  const incomingPaths = new Set(incoming.map((b) => b.path));
+  return [...existing.filter((b) => !incomingPaths.has(b.path)), ...incoming];
+}
+
 export interface ContentArtifact {
   siteUuid: string;
   createdAt: string;
@@ -260,13 +266,32 @@ export const contentStage: StageRunner = {
       .filter((p) => !/\/blog\/|\/recipe|\/news\/|\/post\//.test(p.path.toLowerCase()))
       .slice(0, MAX_CONTENT_PAGES);
 
-    ctx.log(`  Processing ${structuralPages.length} pages (${allPages.length - structuralPages.length} UGC skipped)`);
+    // pageFilter: scoped run for milo page (only process specified paths)
+    const pagesToProcess = ctx.pageFilter
+      ? structuralPages.filter((p) => ctx.pageFilter!.includes(p.path))
+      : structuralPages;
+
+    // Load existing briefs when running in filtered mode — we merge, not replace
+    let existingBriefs: PageBrief[] = [];
+    if (ctx.pageFilter) {
+      const existing = (await loadArtifact(
+        ctx.db,
+        { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+        "content" as PipelineStage,
+      )) as { payload?: ContentArtifact } | null;
+      existingBriefs = existing?.payload?.pages ?? [];
+    }
+
+    const skipped = ctx.pageFilter
+      ? `filtered to: ${ctx.pageFilter.join(", ")}`
+      : `${allPages.length - structuralPages.length} UGC skipped`;
+    ctx.log(`  Processing ${pagesToProcess.length} pages (${skipped})`);
 
     const briefs: PageBrief[] = [];
     let successCount = 0;
     const warnings: string[] = [];
 
-    for (const page of structuralPages) {
+    for (const page of pagesToProcess) {
       const pageType = classifyPageType(page.path);
       const sectionsNeeded = PAGE_SECTIONS[pageType] ?? PAGE_SECTIONS.other;
       const outlineKey = `${deployPrefix}/${pathToOutlineKey(page.path)}`;
@@ -308,7 +333,7 @@ export const contentStage: StageRunner = {
     const artifact: ContentArtifact = {
       siteUuid: ctx.siteUuid,
       createdAt: new Date().toISOString(),
-      pages: briefs,
+      pages: ctx.pageFilter ? mergeBriefs(existingBriefs, briefs) : briefs,
     };
 
     await saveArtifact(
@@ -322,7 +347,7 @@ export const contentStage: StageRunner = {
       stage: "content",
       status: warnings.length > successCount ? "warn" : "pass",
       durationMs: 0,
-      metrics: { pages: successCount, skipped: structuralPages.length - successCount },
+      metrics: { pages: successCount, skipped: pagesToProcess.length - successCount },
       warnings,
     };
   },

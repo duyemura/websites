@@ -284,3 +284,54 @@ describe("normalizeBrief", () => {
     expect(brief.pageType).toBe("about");   // from param, not LLM
   });
 });
+
+// ── mergeBriefs ───────────────────────────────────────────────────────────────
+// Import will fail until we export mergeBriefs from content.ts
+import { mergeBriefs } from "../content";
+import type { PageBrief } from "../content";
+
+function makeBrief(path: string, headline: string): PageBrief {
+  return {
+    path,
+    pageType: "other",
+    purpose: "",
+    visitorRole: "conversion",
+    sectionsNeeded: [],
+    contentFound: {
+      hero: { headline, subheading: null, ctaLabel: null },
+      body: "", cta: null, valueProps: [], testimonials: [], faq: [],
+      communityHeadline: null, trustHeadline: null, shortDescription: null,
+      whoIsItFor: [], whatMakesUsDifferent: [], gymStory: null, team: [],
+      phone: null, email: null, address: null, city: null, state: null,
+      zip: null, hours: null, plans: [],
+    },
+    contentMissing: [],
+    generationHint: "",
+  };
+}
+
+describe("mergeBriefs", () => {
+  test("adds a new brief without touching existing ones", () => {
+    const existing = [makeBrief("/", "Home"), makeBrief("/about", "About")];
+    const result = mergeBriefs(existing, [makeBrief("/contact", "Contact")]);
+    expect(result).toHaveLength(3);
+    expect(result.map(b => b.path)).toEqual(expect.arrayContaining(["/", "/about", "/contact"]));
+  });
+
+  test("replaces an existing brief at the same path", () => {
+    const existing = [makeBrief("/about", "Old headline")];
+    const result = mergeBriefs(existing, [makeBrief("/about", "New headline")]);
+    expect(result).toHaveLength(1);
+    expect(result[0].contentFound.hero.headline).toBe("New headline");
+  });
+
+  test("empty incoming returns existing unchanged", () => {
+    const existing = [makeBrief("/", "Home")];
+    expect(mergeBriefs(existing, [])).toEqual(existing);
+  });
+
+  test("empty existing returns incoming", () => {
+    const incoming = [makeBrief("/", "Home")];
+    expect(mergeBriefs([], incoming)).toEqual(incoming);
+  });
+});

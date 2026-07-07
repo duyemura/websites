@@ -18,6 +18,11 @@ export interface StageContext {
   tier: "free" | "paid";
   /** Override the Astro template theme. Defaults to auto-detected baseline/impact. */
   templateTheme?: "baseline" | "impact" | "beanburito";
+  /**
+   * When set, content stage only processes these page paths and merges
+   * the resulting briefs into the existing content artifact. Used by `milo page`.
+   */
+  pageFilter?: string[];
 }
 
 export interface StageResult {
