@@ -143,7 +143,7 @@ function buildNavigation(
   programs: Array<{ slug: string; name: string }>,
   capturedNav: Array<{ label: string; href: string; children?: any[] }> = [],
 ): Navigation {
-  const crawledPaths = new Set(crawlPages.map((p) => p.path.toLowerCase()));
+  void crawlPages; // available via contentBriefs — paths used for label derivation only
   const types = new Set(contentBriefs.map((b) => b.pageType));
 
   // Template routes the Astro renderer knows how to handle
@@ -191,7 +191,10 @@ function buildNavigation(
     // Use the gym's real nav structure — labels, hierarchy, and order preserved
     header = convertNavItems(capturedNav);
   } else {
-    // Fallback: infer from crawl page types when nav-structure.json not yet available
+    // Fallback: infer from crawl page types when nav-structure.json not yet available.
+    // Use page types to find routes, but derive labels from the original path slug
+    // (e.g. /membership-pricing → "Membership", /our-story → "Our Story").
+    // Never assume what the gym calls their pages.
     header = [{ label: "Home", href: "/" }];
     if (programs.length > 0) {
       header.push({
@@ -199,29 +202,35 @@ function buildNavigation(
         children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
       });
     }
-    if (types.has("schedule") || crawledPaths.has("/schedule")) header.push({ label: "Schedule", href: "/schedule" });
-    if (types.has("pricing")) header.push({ label: "Membership", href: "/pricing" });
-    if (types.has("about")) header.push({ label: "About", href: "/about" });
-    header.push({ label: "Contact", href: "/contact" });
+    // For each content page type, find the original path and derive a label from its slug
+    for (const { type, templateHref } of [
+      { type: "schedule", templateHref: "/schedule" },
+      { type: "pricing", templateHref: "/pricing" },
+      { type: "about", templateHref: "/about" },
+      { type: "contact", templateHref: "/contact" },
+    ]) {
+      if (!types.has(type)) continue;
+      const originalPath = contentBriefs.find((b) => b.pageType === type)?.path ?? templateHref;
+      // Derive label: /membership-pricing → "Membership", /our-story → "Our Story"
+      const slug = originalPath.replace(/^\//, "").split("/")[0] ?? type;
+      const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      header.push({ label, href: templateHref });
+    }
   }
 
-  // Footer columns
-  const companyLinks: { label: string; href: string }[] = [
-    { label: "About Us", href: "/about" },
-    { label: "Contact", href: "/contact" },
-  ];
-  if (types.has("pricing")) companyLinks.push({ label: "Pricing", href: "/pricing" });
-  if (crawledPaths.has("/blog")) companyLinks.push({ label: "Blog", href: "/blog" });
-  if (crawledPaths.has("/torrance-local-guide") || crawledPaths.has("/local-guide"))
-    companyLinks.push({ label: "Local Guide", href: "/local-guide" });
-  companyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
+  // Footer — derive from the header nav so labels always match what the gym calls their pages.
+  // Never hardcode page names or paths: "blog" might be "writings", "/about" might be "/our-story".
+  const footerCompanyLinks = header
+    .filter((i) => i.href !== "/")  // skip Home in footer
+    .map((i) => ({ label: i.label, href: i.href }));
+  footerCompanyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
 
   const footer: FooterGroup[] = [
     {
       label: "Programs",
       links: programs.slice(0, 4).map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
     },
-    { label: "Company", links: companyLinks },
+    { label: "Company", links: footerCompanyLinks },
   ];
 
   return { header, footer };
