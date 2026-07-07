@@ -13,10 +13,11 @@
 
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, Navigation, NavItem, FooterGroup } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
+import { buildNavigation } from "./nav-slots.js";
 import { beanburitoSpec, buildSpecPrompt } from "./specs/beanburito.js";
 import { chatCompletion } from "../../ai/llm-client.js";
 
@@ -126,116 +127,6 @@ function buildContextFromArtifact(artifact: any): string {
   return lines.join("\n");
 }
 
-// ── Navigation builder ───────────────────────────────────────────────────────
-
-/**
- * Build site navigation from actual crawled pages + content briefs.
- *
- * Rules:
- * 1. Only link to Astro template routes that exist (/about, /pricing, etc.)
- * 2. Only include a route if the gym's crawl contains that page type
- * 3. Label from the original path slug when it's more descriptive than the type
- *    (e.g. /membership-pricing → "Membership" rather than "Pricing")
- */
-function buildNavigation(
-  crawlPages: Array<{ path: string }>,
-  contentBriefs: Array<{ path: string; pageType: string }>,
-  programs: Array<{ slug: string; name: string }>,
-  capturedNav: Array<{ label: string; href: string; children?: any[] }> = [],
-): Navigation {
-  void crawlPages; // available via contentBriefs — paths used for label derivation only
-  const types = new Set(contentBriefs.map((b) => b.pageType));
-
-  // Template routes the Astro renderer knows how to handle
-  const TEMPLATE_ROUTES: Record<string, string> = {
-    "/about": "/about", "/contact": "/contact", "/pricing": "/pricing",
-    "/schedule": "/schedule", "/blog": "/blog", "/programs": "/programs",
-    "/local-guide": "/local-guide",
-  };
-
-  // Map an original site href to the closest template route (keep label, change href)
-  function mapToTemplateRoute(href: string): string {
-    if (!href || href === "/") return "/";
-    const lower = href.toLowerCase().replace(/\/$/, "");
-    // Exact match
-    if (TEMPLATE_ROUTES[lower]) return TEMPLATE_ROUTES[lower];
-    // Prefix match: /membership-pricing → /pricing, /crossfit → /programs/crossfit
-    if (lower.includes("pricing") || lower.includes("membership")) return "/pricing";
-    if (lower.includes("about")) return "/about";
-    if (lower.includes("contact")) return "/contact";
-    if (lower.includes("schedule") || lower.includes("classes")) return "/schedule";
-    if (lower.includes("blog") || lower.includes("news")) return "/blog";
-    if (lower.includes("guide")) return "/local-guide";
-    if (lower.startsWith("/programs/") || lower.includes("crossfit") || lower.includes("bootcamp") || lower.includes("training")) {
-      const slug = lower.split("/").pop() ?? lower.replace("/", "");
-      return `/programs/${slug}`;
-    }
-    // Keep original href — template will redirect if needed
-    return href;
-  }
-
-  function convertNavItems(items: Array<{ label: string; href: string; children?: any[] }>): NavItem[] {
-    return items
-      .filter((i) => i.label && !/(login|sign in|sign up|account|search|cart)/i.test(i.label))
-      .map((i) => ({
-        label: i.label,
-        href: mapToTemplateRoute(i.href),
-        ...(i.children?.length ? { children: convertNavItems(i.children) } : {}),
-      }));
-  }
-
-  // ── Header nav ───────────────────────────────────────────────────────────
-  let header: NavItem[];
-
-  if (capturedNav.length > 0) {
-    // Use the gym's real nav structure — labels, hierarchy, and order preserved
-    header = convertNavItems(capturedNav);
-  } else {
-    // Fallback: infer from crawl page types when nav-structure.json not yet available.
-    // Use page types to find routes, but derive labels from the original path slug
-    // (e.g. /membership-pricing → "Membership", /our-story → "Our Story").
-    // Never assume what the gym calls their pages.
-    header = [{ label: "Home", href: "/" }];
-    if (programs.length > 0) {
-      header.push({
-        label: "Programs", href: "/programs",
-        children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-      });
-    }
-    // For each content page type, find the original path and derive a label from its slug
-    for (const { type, templateHref } of [
-      { type: "schedule", templateHref: "/schedule" },
-      { type: "pricing", templateHref: "/pricing" },
-      { type: "about", templateHref: "/about" },
-      { type: "contact", templateHref: "/contact" },
-    ]) {
-      if (!types.has(type)) continue;
-      const originalPath = contentBriefs.find((b) => b.pageType === type)?.path ?? templateHref;
-      // Derive label: /membership-pricing → "Membership", /our-story → "Our Story"
-      const slug = originalPath.replace(/^\//, "").split("/")[0] ?? type;
-      const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      header.push({ label, href: templateHref });
-    }
-  }
-
-  // Footer — derive from the header nav so labels always match what the gym calls their pages.
-  // Never hardcode page names or paths: "blog" might be "writings", "/about" might be "/our-story".
-  const footerCompanyLinks = header
-    .filter((i) => i.href !== "/")  // skip Home in footer
-    .map((i) => ({ label: i.label, href: i.href }));
-  footerCompanyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
-
-  const footer: FooterGroup[] = [
-    {
-      label: "Programs",
-      links: programs.slice(0, 4).map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-    },
-    { label: "Company", links: footerCompanyLinks },
-  ];
-
-  return { header, footer };
-}
-
 // ── Main generation ──────────────────────────────────────────────────────────
 
 export async function generateSiteContent(input: GenerateContentInput): Promise<GymSiteContent> {
@@ -254,15 +145,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
 
-  // Load crawl artifact for page list — used to build navigation
-  const crawlArtifact = await (db as any)
-    .selectFrom("pipelineArtifacts")
-    .select("payload")
-    .where("siteUuid", "=", siteUuid)
-    .where("stage", "=", "mirror-crawl")
-    .orderBy("version", "desc")
-    .executeTakeFirst();
-  const crawlPages: Array<{ path: string }> = crawlArtifact?.payload?.pages ?? [];
+  // crawl pages no longer needed here — navigation built from capturedNav + contentBriefs
 
   // Load mirror deploy prefix so we can resolve hero image URLs
   const mirrorDeployArtifact = await (db as any)
@@ -300,7 +183,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
         navSource = "deploy-capture";
         // Seed the stable config path so future edits work without re-clone
         if (capturedNav.length > 0) {
-          await input.s3Client.send(new (await import("@aws-sdk/client-s3")).PutObjectCommand({
+          await input.s3Client.send(new PutObjectCommand({
             Bucket: bucket,
             Key: configNavKey,
             Body: Buffer.from(JSON.stringify(capturedNav, null, 2), "utf8"),
@@ -517,7 +400,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // Build navigation — prefer captured nav from original site (real labels + hierarchy),
   // fall back to inferring from crawl pages when nav-structure.json isn't available yet.
   const contentBriefs: Array<{ path: string; pageType: string }> = contentArtifact?.pages ?? [];
-  const navigation = buildNavigation(crawlPages, contentBriefs, baseContent.pages.programs, capturedNav);
+  const navigation = buildNavigation(capturedNav, baseContent.pages.programs, contentBriefs);
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
 
