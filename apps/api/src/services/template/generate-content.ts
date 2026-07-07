@@ -16,7 +16,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, Navigation, NavItem, FooterGroup } from "@ploy-gyms/shared-types";
 import { beanburitoSpec, buildSpecPrompt } from "./specs/beanburito.js";
 import { chatCompletion } from "../../ai/llm-client.js";
 
@@ -126,6 +126,107 @@ function buildContextFromArtifact(artifact: any): string {
   return lines.join("\n");
 }
 
+// ── Navigation builder ───────────────────────────────────────────────────────
+
+/**
+ * Build site navigation from actual crawled pages + content briefs.
+ *
+ * Rules:
+ * 1. Only link to Astro template routes that exist (/about, /pricing, etc.)
+ * 2. Only include a route if the gym's crawl contains that page type
+ * 3. Label from the original path slug when it's more descriptive than the type
+ *    (e.g. /membership-pricing → "Membership" rather than "Pricing")
+ */
+function buildNavigation(
+  crawlPages: Array<{ path: string }>,
+  contentBriefs: Array<{ path: string; pageType: string }>,
+  programs: Array<{ slug: string; name: string }>,
+  capturedNav: Array<{ label: string; href: string; children?: any[] }> = [],
+): Navigation {
+  const crawledPaths = new Set(crawlPages.map((p) => p.path.toLowerCase()));
+  const types = new Set(contentBriefs.map((b) => b.pageType));
+
+  // Template routes the Astro renderer knows how to handle
+  const TEMPLATE_ROUTES: Record<string, string> = {
+    "/about": "/about", "/contact": "/contact", "/pricing": "/pricing",
+    "/schedule": "/schedule", "/blog": "/blog", "/programs": "/programs",
+    "/local-guide": "/local-guide",
+  };
+
+  // Map an original site href to the closest template route (keep label, change href)
+  function mapToTemplateRoute(href: string): string {
+    if (!href || href === "/") return "/";
+    const lower = href.toLowerCase().replace(/\/$/, "");
+    // Exact match
+    if (TEMPLATE_ROUTES[lower]) return TEMPLATE_ROUTES[lower];
+    // Prefix match: /membership-pricing → /pricing, /crossfit → /programs/crossfit
+    if (lower.includes("pricing") || lower.includes("membership")) return "/pricing";
+    if (lower.includes("about")) return "/about";
+    if (lower.includes("contact")) return "/contact";
+    if (lower.includes("schedule") || lower.includes("classes")) return "/schedule";
+    if (lower.includes("blog") || lower.includes("news")) return "/blog";
+    if (lower.includes("guide")) return "/local-guide";
+    if (lower.startsWith("/programs/") || lower.includes("crossfit") || lower.includes("bootcamp") || lower.includes("training")) {
+      const slug = lower.split("/").pop() ?? lower.replace("/", "");
+      return `/programs/${slug}`;
+    }
+    // Keep original href — template will redirect if needed
+    return href;
+  }
+
+  function convertNavItems(items: Array<{ label: string; href: string; children?: any[] }>): NavItem[] {
+    return items
+      .filter((i) => i.label && !/(login|sign in|sign up|account|search|cart)/i.test(i.label))
+      .map((i) => ({
+        label: i.label,
+        href: mapToTemplateRoute(i.href),
+        ...(i.children?.length ? { children: convertNavItems(i.children) } : {}),
+      }));
+  }
+
+  // ── Header nav ───────────────────────────────────────────────────────────
+  let header: NavItem[];
+
+  if (capturedNav.length > 0) {
+    // Use the gym's real nav structure — labels, hierarchy, and order preserved
+    header = convertNavItems(capturedNav);
+  } else {
+    // Fallback: infer from crawl page types when nav-structure.json not yet available
+    header = [{ label: "Home", href: "/" }];
+    if (programs.length > 0) {
+      header.push({
+        label: "Programs", href: "/programs",
+        children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
+      });
+    }
+    if (types.has("schedule") || crawledPaths.has("/schedule")) header.push({ label: "Schedule", href: "/schedule" });
+    if (types.has("pricing")) header.push({ label: "Membership", href: "/pricing" });
+    if (types.has("about")) header.push({ label: "About", href: "/about" });
+    header.push({ label: "Contact", href: "/contact" });
+  }
+
+  // Footer columns
+  const companyLinks: { label: string; href: string }[] = [
+    { label: "About Us", href: "/about" },
+    { label: "Contact", href: "/contact" },
+  ];
+  if (types.has("pricing")) companyLinks.push({ label: "Pricing", href: "/pricing" });
+  if (crawledPaths.has("/blog")) companyLinks.push({ label: "Blog", href: "/blog" });
+  if (crawledPaths.has("/torrance-local-guide") || crawledPaths.has("/local-guide"))
+    companyLinks.push({ label: "Local Guide", href: "/local-guide" });
+  companyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
+
+  const footer: FooterGroup[] = [
+    {
+      label: "Programs",
+      links: programs.slice(0, 4).map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
+    },
+    { label: "Company", links: companyLinks },
+  ];
+
+  return { header, footer };
+}
+
 // ── Main generation ──────────────────────────────────────────────────────────
 
 export async function generateSiteContent(input: GenerateContentInput): Promise<GymSiteContent> {
@@ -144,6 +245,16 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
 
+  // Load crawl artifact for page list — used to build navigation
+  const crawlArtifact = await (db as any)
+    .selectFrom("pipelineArtifacts")
+    .select("payload")
+    .where("siteUuid", "=", siteUuid)
+    .where("stage", "=", "mirror-crawl")
+    .orderBy("version", "desc")
+    .executeTakeFirst();
+  const crawlPages: Array<{ path: string }> = crawlArtifact?.payload?.pages ?? [];
+
   // Load mirror deploy prefix so we can resolve hero image URLs
   const mirrorDeployArtifact = await (db as any)
     .selectFrom("pipelineArtifacts")
@@ -153,6 +264,20 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     .orderBy("version", "desc")
     .executeTakeFirst();
   const mirrorDeployPrefix: string = mirrorDeployArtifact?.payload?.deployPrefix ?? "";
+
+  // Load nav structure captured during clone (saved as nav-structure.json from homepage HTML)
+  let capturedNav: Array<{ label: string; href: string; children?: any[] }> = [];
+  if (mirrorDeployPrefix) {
+    try {
+      const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
+      const obj = await input.s3Client.send(new GetObjectCommand({
+        Bucket: bucket,
+        Key: `${mirrorDeployPrefix}/nav-structure.json`,
+      }));
+      capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+      log(`  Nav from original site: ${capturedNav.map(i => i.label).join(", ")}`);
+    } catch { /* nav-structure.json not yet present — run clone to capture */ }
+  }
 
   // Load hero image URL captured during clone (saved as hero-image.txt alongside outline.txt)
   let heroImageUrl: string | undefined;
@@ -352,8 +477,16 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   const serviceArea = generated.serviceArea?.filter((c) => c && !c.toLowerCase().includes("city"))
     ?? baseContent.business.serviceArea;
 
+  // Build navigation — prefer captured nav from original site (real labels + hierarchy),
+  // fall back to inferring from crawl pages when nav-structure.json isn't available yet.
+  const contentBriefs: Array<{ path: string; pageType: string }> = contentArtifact?.pages ?? [];
+  const navigation = buildNavigation(crawlPages, contentBriefs, baseContent.pages.programs, capturedNav);
+
+  log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
+
   return {
     ...baseContent,
+    navigation,
     business: {
       ...baseContent.business,
       serviceArea: serviceArea?.length ? serviceArea : baseContent.business.serviceArea,

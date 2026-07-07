@@ -34,6 +34,92 @@ async function bounded<T>(
  * Preserves heading hierarchy and section context so LLMs can map
  * content to template slots without raw HTML noise.
  */
+export interface CapturedNavItem {
+  label: string;
+  href: string;
+  children?: CapturedNavItem[];
+}
+
+/**
+ * Extract the site's navigation structure from homepage HTML.
+ * Captures the gym's own labels and hierarchy exactly as-built.
+ * The generate stage maps hrefs to template routes while keeping labels.
+ */
+export function extractNavStructure(html: string, origin: string): CapturedNavItem[] {
+  const $ = cheerio.load(html);
+
+  // Find the primary nav — prefer elements with nav-ish class/role, skip footer navs
+  const navCandidates = [
+    $("nav[role='navigation']"),
+    $("nav.w-nav"),
+    $("nav").not("footer nav").first(),
+    $("[class*='navbar']").first(),
+    $("[class*='nav-menu']").first(),
+  ];
+  let $nav = navCandidates.find((el) => el.length > 0) ?? $("nav").first();
+  if (!$nav || !$nav.length) return [];
+
+  function normalizeHref(href: string): string {
+    if (!href || href === "#" || href.startsWith("javascript:") || href.startsWith("mailto:") || href.startsWith("tel:")) return "";
+    try {
+      const url = new URL(href, origin);
+      // Only keep same-origin links
+      const sameOrigin = url.origin === new URL(origin).origin || href.startsWith("/");
+      if (!sameOrigin) return "";
+      return url.pathname;
+    } catch {
+      return href.startsWith("/") ? href : "";
+    }
+  }
+
+  function parseItems($container: ReturnType<typeof $>, depth = 0): CapturedNavItem[] {
+    if (depth > 3) return [];
+    const items: CapturedNavItem[] = [];
+    const seen = new Set<string>();
+
+    $container.find("> li, > div > li, > ul > li").each((_, el) => {
+      const $el = $(el);
+      // Skip utility items (login, search, account)
+      const elText = $el.text().trim().toLowerCase();
+      if (/^(login|sign in|sign up|account|search|cart|\d+)$/i.test(elText)) return;
+
+      const $link = $el.children("a").first();
+      const label = $link.text().replace(/\s+/g, " ").trim();
+      if (!label || label.length < 1 || label.length > 50) return;
+
+      const href = normalizeHref($link.attr("href") ?? "");
+      const key = `${label}|${href}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      // Recurse into dropdowns (nested ul or div with links)
+      const $dropdown = $el.find("ul, [class*='dropdown'], [class*='submenu']").first();
+      const children = $dropdown.length ? parseItems($dropdown, depth + 1) : [];
+
+      items.push({ label, href: href || "/", ...(children.length ? { children } : {}) });
+    });
+
+    return items;
+  }
+
+  // Try parsing as a list-based nav first
+  const $ul = $nav.find("ul").first();
+  let items = $ul.length ? parseItems($ul) : [];
+
+  // Fallback: flat link extraction if no list structure
+  if (items.length === 0) {
+    $nav.find("a[href]").each((_, el) => {
+      const label = $(el).text().replace(/\s+/g, " ").trim();
+      const href = normalizeHref($(el).attr("href") ?? "");
+      if (label && href && label.length < 50) {
+        items.push({ label, href });
+      }
+    });
+  }
+
+  return items.slice(0, 12); // cap at 12 top-level items
+}
+
 /**
  * Extract the hero background image URL from page HTML.
  * Returns the `/_assets/...` relative URL of the first prominent image
@@ -372,6 +458,21 @@ export async function deploySnapshot(
           Body: Buffer.from(heroImageUrl, "utf8"),
           ContentType: "text/plain; charset=utf-8",
         })));
+      }
+      // Save nav structure from the homepage — read by generate stage as source of truth
+      if (page.path === "/" || page.path === "") {
+        try {
+          const origin = deps.host ? `https://${deps.host}` : "https://example.com";
+          const navItems = extractNavStructure(result.html, origin);
+          if (navItems.length > 0) {
+            uploads.push(deps.s3Client.send(new PutObjectCommand({
+              Bucket: deps.bucket,
+              Key: `${deployPrefix}/nav-structure.json`,
+              Body: Buffer.from(JSON.stringify(navItems, null, 2), "utf8"),
+              ContentType: "application/json; charset=utf-8",
+            })));
+          }
+        } catch { /* non-fatal */ }
       }
       await Promise.all(uploads);
     } catch (err) {
