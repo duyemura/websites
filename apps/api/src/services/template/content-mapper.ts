@@ -228,19 +228,24 @@ export function extractPages(
   if (!homePage) warnings.push("no home page found in hierarchy — using empty home");
 
   const programPages = byClass("program");
-  const featuredPrograms = programPages.slice(0, 6).map((p) => p.slug);
-  if (programPages.length === 0) {
-    warnings.push("no program pages found in hierarchy — using default program set");
+  const hasProgramPages = programPages.length > 0;
+  const featuredPrograms = hasProgramPages
+    ? programPages.slice(0, 6).map((p) => p.slug)
+    : DEFAULT_PROGRAMS.map((p) => p.slug);
+  if (!hasProgramPages) {
+    warnings.push("no program pages found in hierarchy — using default program set and featuring them on homepage");
   }
 
   const contractHomeSections = contract?.pages.find((p) => p.path === (homePage?.path ?? "/"))?.sections ?? [];
   const contractHero = contractHomeSections.find((s) => s.tag === "hero");
+  const contractPrograms = contractHomeSections.find((s) => s.layout.archetype === "program-cards-sticky");
   const contractFeatureGrid = contractHomeSections.find((s) => s.layout.archetype.startsWith("feature-grid"));
+  const programsHeadline = contractPrograms?.typography?.headline?.text || "Our Programs";
 
   const home: HomeContent = {
     hero: homePage ? heroFromPage(homePage, contractHero, business) : { headline: business.name, ctaLabel: business.primaryCta.label, ctaUrl: business.primaryCta.url, backgroundImageUrl: contractHero?.media?.imageUrls?.[0] ?? contractHero?.layout?.background?.imageUrl },
     valueProps: [],
-    programsHeadline: "Our Programs",
+    programsHeadline,
     featuredPrograms,
     features: contractFeatureGrid ? featureGridItems(contractFeatureGrid) : [],
     communityHeadline: "",
@@ -461,8 +466,10 @@ export async function buildGymJson(
       if (home.valueProps?.length) pages.home.valueProps = home.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline), body: String(v.body) }));
       if (home.testimonials?.length) pages.home.testimonials = home.testimonials.map((t: any) => ({ quote: String(t.quote), name: String(t.name), program: t.program ?? undefined }));
       if (home.faq?.length) pages.home.faq = home.faq.map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
+      if (home.programsHeadline) pages.home.programsHeadline = home.programsHeadline;
       if (home.communityHeadline) pages.home.communityHeadline = home.communityHeadline;
       if (home.trustHeadline) pages.home.trustHeadline = home.trustHeadline;
+      if (home.howItWorksHeadline) pages.home.howItWorksHeadline = home.howItWorksHeadline;
     }
 
     // Program pages

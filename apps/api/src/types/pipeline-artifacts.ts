@@ -317,5 +317,8 @@ export type RebuildStage = (typeof REBUILD_STAGES)[number];
 export const MIRROR_STAGES = ["mirror-crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;
 export type MirrorPipelineStage = (typeof MIRROR_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES] as const;
+export const ENRICHMENT_STAGES = ["enrich"] as const;
+export type EnrichmentStage = (typeof ENRICHMENT_STAGES)[number];
+
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];

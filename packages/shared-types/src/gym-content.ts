@@ -157,6 +157,8 @@ export interface LegalPage { slug: string; title: string; blocks: ContentBlock[]
 // --- Shared ---
 export interface HeroContent {
   headline: string; subheading?: string;
+  /** Optional longer body copy under the headline. */
+  intro?: string;
   ctaLabel?: string; ctaUrl?: string;
   backgroundImageUrl?: string;
 }

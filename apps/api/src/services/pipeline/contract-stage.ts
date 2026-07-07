@@ -109,12 +109,17 @@ async function buildSectionContract(
 ): Promise<SectionContract> {
   const domStyles = section.domStyles?.lg ?? section.domStyles?.md ?? section.domStyles?.base ?? {};
 
-  const archetype = inferArchetype(section, domStyles);
+  let archetype = inferArchetype(section, domStyles);
   const background = await inferBackground(page, section);
   const interactions = await inferInteractions(page, section);
   const items = archetype.startsWith("feature-grid")
     ? await inferFeatureGridItems(page, section)
     : undefined;
+
+  // Feature-grids that link to program pages are the homepage programs section.
+  if (archetype.startsWith("feature-grid") && await sectionHasProgramLinks(page, section)) {
+    archetype = "program-cards-sticky";
+  }
 
   const spacing = {
     top: domStyles.padding ?? "0px",
@@ -270,6 +275,35 @@ async function inferInteractions(
       }
 
       return { accordion, scrollSnap, stickyPanel, hoverEffects };
+    },
+    { bbox: section.boundingBox },
+  );
+}
+
+async function sectionHasProgramLinks(
+  page: Page,
+  section: SegmentSection,
+): Promise<boolean> {
+  return page.evaluate(
+    ({ bbox }: { bbox: import("../../types/pipeline-artifacts").BBox }) => {
+      const scrollX = window.scrollX || window.pageXOffset;
+      const scrollY = window.scrollY || window.pageYOffset;
+      const probeY = bbox.y + Math.min(200, Math.max(50, Math.floor(bbox.height / 3))) - scrollY;
+      let el: Element | null = document.elementFromPoint(
+        bbox.x + bbox.width / 2 - scrollX,
+        probeY,
+      );
+      while (el && el !== document.body && el.tagName.toLowerCase() !== "section") {
+        el = el.parentElement;
+      }
+      if (!el || el === document.body) {
+        el = document.elementFromPoint(bbox.x + bbox.width / 2 - scrollX, probeY);
+      }
+      if (!el) return false;
+
+      const links = Array.from(el.querySelectorAll("a[href]"));
+      return links.some((a) => /\/programs\b|\/program\b|program/i.test(a.getAttribute("href") || "")
+      );
     },
     { bbox: section.boundingBox },
   );

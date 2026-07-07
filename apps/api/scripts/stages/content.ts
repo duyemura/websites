@@ -62,11 +62,12 @@ function classifyPageType(
 ): "home" | "program" | "about" | "contact" | "pricing" | "schedule" | "other" {
   if (path === "/" || path === "") return "home";
   const s = path.toLowerCase();
-  if (/\/programs\/|\/classes\/|\/crossfit|\/bootcamp|\/training/.test(s)) return "program";
-  if (/\/about/.test(s)) return "about";
-  if (/\/contact/.test(s)) return "contact";
+  // Match program-related keywords with or without leading slash (handles /crossfit, /crossfit-classes, /personal-training)
+  if (/\/programs\/|\/classes\/|crossfit|bootcamp|personal-training|strength-training/.test(s)) return "program";
+  if (/\/about|about-us/.test(s)) return "about";
+  if (/\/contact|contact-us/.test(s)) return "contact";
   if (/\/pricing|\/membership|\/rates/.test(s)) return "pricing";
-  if (/\/schedule/.test(s)) return "schedule";
+  if (/\/schedule|class-schedule/.test(s)) return "schedule";
   return "other";
 }
 
