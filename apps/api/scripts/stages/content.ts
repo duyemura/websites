@@ -130,6 +130,8 @@ Return ONLY valid JSON:
 }`;
 }
 
+// Guaranteed shape — every field always present after normalization.
+// Null means "not found", empty array means "none found". Never undefined.
 export interface PageBrief {
   path: string;
   pageType: string;
@@ -137,35 +139,80 @@ export interface PageBrief {
   visitorRole: "awareness" | "consideration" | "conversion" | "retention" | "utility";
   sectionsNeeded: string[];
   contentFound: {
+    // Always present on every page
     hero: { headline: string | null; subheading: string | null; ctaLabel: string | null };
     body: string;
     cta: string | null;
-    // Home
-    valueProps?: Array<{ headline: string; body: string }>;
-    testimonials?: Array<{ quote: string; name: string; program?: string }>;
-    faq?: Array<{ question: string; answer: string }>;
-    communityHeadline?: string | null;
-    trustHeadline?: string | null;
+    // Home + program
+    valueProps: Array<{ headline: string; body: string }>;
+    testimonials: Array<{ quote: string; name: string; program: string | null }>;
+    faq: Array<{ question: string; answer: string }>;
+    communityHeadline: string | null;
+    trustHeadline: string | null;
     // Program
-    shortDescription?: string | null;
-    whoIsItFor?: string[];
-    whatMakesUsDifferent?: string[];
+    shortDescription: string | null;
+    whoIsItFor: string[];
+    whatMakesUsDifferent: string[];
     // About
-    gymStory?: string | null;
-    team?: Array<{ name: string; title: string; bio?: string | null }>;
+    gymStory: string | null;
+    team: Array<{ name: string; title: string; bio: string | null }>;
     // Contact
-    phone?: string | null;
-    email?: string | null;
-    address?: string | null;
-    city?: string | null;
-    state?: string | null;
-    zip?: string | null;
-    hours?: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    hours: string | null;
     // Pricing
-    plans?: Array<{ name: string; price: string; period?: string | null; description?: string | null; features: string[] }>;
+    plans: Array<{ name: string; price: string; period: string | null; description: string | null; features: string[] }>;
   };
   contentMissing: string[];
   generationHint: string;
+}
+
+/** Enforce the guaranteed shape after LLM output — fill every missing field with its typed zero value. */
+function normalizeBrief(raw: unknown, path: string, pageType: string): PageBrief {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const cf = ((r.contentFound ?? {}) as Record<string, unknown>);
+  const hero = ((cf.hero ?? {}) as Record<string, unknown>);
+  return {
+    path,
+    pageType,
+    purpose: String(r.purpose ?? ""),
+    visitorRole: (["awareness","consideration","conversion","retention","utility"].includes(r.visitorRole as string)
+      ? r.visitorRole : "conversion") as PageBrief["visitorRole"],
+    sectionsNeeded: Array.isArray(r.sectionsNeeded) ? r.sectionsNeeded.map(String) : (PAGE_SECTIONS[pageType] ?? PAGE_SECTIONS.other),
+    contentFound: {
+      hero: {
+        headline: String(hero.headline ?? "") || null,
+        subheading: String(hero.subheading ?? "") || null,
+        ctaLabel: String(hero.ctaLabel ?? "") || null,
+      },
+      body: String(cf.body ?? ""),
+      cta: String(cf.cta ?? "") || null,
+      valueProps: Array.isArray(cf.valueProps) ? cf.valueProps.map((v: any) => ({ headline: String(v.headline ?? ""), body: String(v.body ?? "") })) : [],
+      testimonials: Array.isArray(cf.testimonials) ? cf.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: String(t.program ?? "") || null })) : [],
+      faq: Array.isArray(cf.faq) ? cf.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") })) : [],
+      communityHeadline: String(cf.communityHeadline ?? "") || null,
+      trustHeadline: String(cf.trustHeadline ?? "") || null,
+      shortDescription: String(cf.shortDescription ?? "") || null,
+      whoIsItFor: Array.isArray(cf.whoIsItFor) ? cf.whoIsItFor.map(String) : [],
+      whatMakesUsDifferent: Array.isArray(cf.whatMakesUsDifferent) ? cf.whatMakesUsDifferent.map(String) : [],
+      gymStory: String(cf.gymStory ?? "") || null,
+      team: Array.isArray(cf.team) ? cf.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), bio: String(m.bio ?? "") || null })) : [],
+      phone: String(cf.phone ?? "") || null,
+      email: String(cf.email ?? "") || null,
+      address: String(cf.address ?? "") || null,
+      city: String(cf.city ?? "") || null,
+      state: String(cf.state ?? "") || null,
+      zip: String(cf.zip ?? "") || null,
+      hours: String(cf.hours ?? "") || null,
+      plans: Array.isArray(cf.plans) ? cf.plans.map((p: any) => ({ name: String(p.name ?? ""), price: String(p.price ?? ""), period: String(p.period ?? "") || null, description: String(p.description ?? "") || null, features: Array.isArray(p.features) ? p.features.map(String) : [] })) : [],
+    },
+    contentMissing: Array.isArray(r.contentMissing) ? r.contentMissing.map(String) : [],
+    generationHint: String(r.generationHint ?? ""),
+  };
 }
 
 export interface ContentArtifact {
@@ -246,9 +293,7 @@ export const contentStage: StageRunner = {
           continue;
         }
 
-        const brief = JSON.parse(jsonText) as PageBrief;
-        brief.path = page.path;
-        brief.pageType = pageType;
+        const brief = normalizeBrief(JSON.parse(jsonText), page.path, pageType);
         briefs.push(brief);
         successCount++;
 

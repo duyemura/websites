@@ -442,57 +442,47 @@ export async function buildGymJson(
     const cf = (p: { contentFound?: Record<string, unknown>; data?: Record<string, unknown> } | undefined): any =>
       p?.contentFound ?? p?.data ?? null;
 
-    // Home page
+    // Home page — fields always present (guaranteed by normalizeBrief)
     const home = cf(byPath.get("/"));
     if (home) {
-      const hero = home.hero ?? {};
-      if (hero.headline) pages.home.hero.headline = hero.headline;
-      if (hero.subheading) pages.home.hero.subheading = hero.subheading;
-      if (hero.ctaLabel) pages.home.hero.ctaLabel = hero.ctaLabel;
-      // Legacy field names (old format)
-      if (home.heroHeadline) pages.home.hero.headline = home.heroHeadline;
-      if (home.heroSubheading) pages.home.hero.subheading = home.heroSubheading;
-      if (home.heroCtaLabel) pages.home.hero.ctaLabel = home.heroCtaLabel;
-      if (home.valueProps?.length) pages.home.valueProps = home.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
-      if (home.testimonials?.length) pages.home.testimonials = home.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: t.program ?? undefined }));
-      if (home.faq?.length) pages.home.faq = home.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
+      if (home.hero?.headline) pages.home.hero.headline = home.hero.headline;
+      if (home.hero?.subheading) pages.home.hero.subheading = home.hero.subheading;
+      if (home.hero?.ctaLabel) pages.home.hero.ctaLabel = home.hero.ctaLabel;
+      if (home.valueProps?.length) pages.home.valueProps = home.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline), body: String(v.body) }));
+      if (home.testimonials?.length) pages.home.testimonials = home.testimonials.map((t: any) => ({ quote: String(t.quote), name: String(t.name), program: t.program ?? undefined }));
+      if (home.faq?.length) pages.home.faq = home.faq.map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
       if (home.communityHeadline) pages.home.communityHeadline = home.communityHeadline;
       if (home.trustHeadline) pages.home.trustHeadline = home.trustHeadline;
     }
 
     // Program pages
     for (const program of pages.programs) {
-      const raw = byPath.get(`/programs/${program.slug}`);
-      const programEx = cf(raw);
+      const programEx = cf(byPath.get(`/programs/${program.slug}`));
       if (!programEx) continue;
-      const hero = programEx.hero ?? {};
-      if (hero.headline ?? programEx.heroHeadline) program.hero.headline = hero.headline ?? programEx.heroHeadline;
-      if (hero.subheading ?? programEx.heroSubheading) program.hero.subheading = hero.subheading ?? programEx.heroSubheading;
+      if (programEx.hero?.headline) program.hero.headline = programEx.hero.headline;
+      if (programEx.hero?.subheading) program.hero.subheading = programEx.hero.subheading;
       if (programEx.shortDescription) program.shortDescription = programEx.shortDescription;
       if (programEx.whoIsItFor?.length) program.whoIsItFor = programEx.whoIsItFor.map(String);
       if (programEx.whatMakesUsDifferent?.length) program.whatMakesUsDifferent = programEx.whatMakesUsDifferent.map(String);
-      if (programEx.testimonials?.length) program.testimonials = programEx.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? "") }));
-      if (programEx.faq?.length) program.faq = programEx.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
+      if (programEx.testimonials?.length) program.testimonials = programEx.testimonials.map((t: any) => ({ quote: String(t.quote), name: String(t.name) }));
+      if (programEx.faq?.length) program.faq = programEx.faq.map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
     }
 
     // About page
-    const aboutRaw = [...byPath.values()].find(p => p.pageType === "about");
-    const aboutEx = cf(aboutRaw);
+    const aboutEx = cf([...byPath.values()].find(p => p.pageType === "about"));
     if (aboutEx) {
-      const hero = aboutEx.hero ?? {};
-      if (hero.headline ?? aboutEx.heroHeadline) pages.about.hero.headline = hero.headline ?? aboutEx.heroHeadline;
+      if (aboutEx.hero?.headline) pages.about.hero.headline = aboutEx.hero.headline;
       if (aboutEx.gymStory) pages.about.gymStory = aboutEx.gymStory;
-      if (aboutEx.team?.length) pages.about.team = aboutEx.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), photoUrl: "", bio: m.bio ?? undefined }));
+      if (aboutEx.team?.length) pages.about.team = aboutEx.team.map((m: any) => ({ name: String(m.name), title: String(m.title), photoUrl: "", bio: m.bio ?? undefined }));
     }
 
-    // Contact — also patch business info
-    const contactRaw = [...byPath.values()].find(p => p.pageType === "contact");
-    const contactEx = cf(contactRaw);
+    // Contact — also patch business NAP
+    const contactEx = cf([...byPath.values()].find(p => p.pageType === "contact"));
     if (contactEx) {
       if (contactEx.phone && !business.phone) business.phone = contactEx.phone;
       if (contactEx.email && !business.email) business.email = contactEx.email;
       if (contactEx.address && !business.address.street) {
-        business.address.street = contactEx.address ?? "";
+        business.address.street = contactEx.address;
         if (contactEx.city) { business.address.city = contactEx.city; business.geo.city = contactEx.city; }
         if (contactEx.state) { business.address.state = contactEx.state; business.geo.stateAbbr = contactEx.state; }
         if (contactEx.zip) business.address.zip = contactEx.zip;
@@ -500,15 +490,13 @@ export async function buildGymJson(
     }
 
     // Pricing page
-    const pricingRaw = [...byPath.values()].find(p => p.pageType === "pricing");
-    const pricingEx = cf(pricingRaw);
+    const pricingEx = cf([...byPath.values()].find(p => p.pageType === "pricing"));
     if (pricingEx?.plans?.length) {
-      const heroHeadline = pricingEx.hero?.headline ?? pricingEx.heroHeadline;
       pages.pricing.grid = {
-        headline: heroHeadline ?? undefined,
+        headline: pricingEx.hero?.headline ?? undefined,
         plans: pricingEx.plans.map((plan: any) => ({
-          name: String(plan.name ?? ""),
-          price: String(plan.price ?? ""),
+          name: String(plan.name),
+          price: String(plan.price),
           period: plan.period ?? undefined,
           description: plan.description ?? undefined,
           features: Array.isArray(plan.features) ? plan.features.map(String) : [],
