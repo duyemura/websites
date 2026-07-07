@@ -64,7 +64,11 @@ export function parseArgs(): MiloCommand {
     const versionStr = get("version");
     if (!site) throw new Error("milo restore requires --site <uuid>");
     if (!versionStr) throw new Error("milo restore requires --version <n>");
-    return { cmd: "restore", site, version: Number(versionStr), ...bool };
+    const version = Number(versionStr);
+    if (!Number.isInteger(version) || version < 1) {
+      throw new Error(`milo restore --version must be a positive integer, got: "${versionStr}"`);
+    }
+    return { cmd: "restore", site, version, ...bool };
   }
 
   // Legacy --stages escape hatch

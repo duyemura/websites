@@ -438,6 +438,42 @@ async function runPage(
   return results;
 }
 
+async function runTool(
+  stageName: string,
+  cmd: { site: string; verbose: boolean; quiet: boolean },
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const runner = registry[stageName];
+  if (!runner) {
+    console.error(`Stage "${stageName}" not found in registry`);
+    process.exit(1);
+  }
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
+  if (!cmd.quiet) console.log(`\nMilo ${stageName} — site: ${siteUuid}`);
+  const start = Date.now();
+  let result: StageResult;
+  try {
+    result = await runner.run(ctx);
+  } catch (err) {
+    result = {
+      stage: stageName, status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!result.durationMs) result.durationMs = Date.now() - start;
+  renderReport([result], Date.now() - start, cmd.quiet);
+  return [result];
+}
+
+async function runRestore(
+  cmd: Extract<MiloCommand, { cmd: "restore" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  // The restore stage reads --version directly from process.argv.
+  return runTool("restore", cmd, registry);
+}
+
 async function runLegacyStages(
   cmd: Extract<MiloCommand, { cmd: "stages" }>,
   registry: Record<string, StageRunner>,
@@ -468,10 +504,12 @@ async function main() {
     case "upgrade": results = await runUpgrade(cmd, registry); break;
     case "rebuild": results = await runRebuild(cmd, registry); break;
     case "page":    results = await runPage(cmd, registry); break;
-    // eval, nav, restore — added in Task 6
+    case "eval":    results = await runTool("eval", cmd, registry); break;
+    case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
+    case "restore": results = await runRestore(cmd, registry); break;
     default: {
       const c = cmd as MiloCommand;
-      console.error(`Handler for "${c.cmd}" not yet implemented. Run again after all tasks complete.`);
+      console.error(`Handler for "${(c as { cmd: string }).cmd}" not implemented.`);
       process.exit(1);
     }
   }

@@ -46,6 +46,10 @@ describe("milo parseArgs", () => {
     expect((cmd as any).version).toBe(3);
   });
 
+  test("restore --version rejects non-numeric value", () => {
+    expect(() => parseArgsFrom(["restore", "--site", "abc-123", "--version", "abc"])).toThrow("positive integer");
+  });
+
   test("--force and --verbose flags parsed", () => {
     const cmd = parseArgsFrom(["rebuild", "--site", "abc-123", "--force", "--verbose"]);
     expect((cmd as any).force).toBe(true);
