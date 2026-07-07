@@ -205,8 +205,8 @@ function heroFromPage(page: HierarchyPage, contractHero?: SectionContract, busin
   return {
     headline: section?.content.heading || page.title,
     subheading: section?.content.body || undefined,
-    ctaLabel: section?.content.cta?.label || business?.primaryCta.label || undefined,
-    ctaUrl: section?.content.cta?.href || business?.primaryCta.url || undefined,
+    ctaLabel: section?.content.cta?.label || business?.primaryCta?.label || undefined,
+    ctaUrl: section?.content.cta?.href || business?.primaryCta?.url || undefined,
     backgroundImageUrl:
       contractHero?.media?.imageUrls?.[0] ??
       contractHero?.layout?.background?.imageUrl ??

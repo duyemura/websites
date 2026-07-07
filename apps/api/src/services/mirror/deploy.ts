@@ -96,6 +96,8 @@ export function extractNavStructure(html: string, origin: string): CapturedNavIt
       const $dropdown = $el.find("ul, [class*='dropdown'], [class*='submenu']").first();
       const children = $dropdown.length ? parseItems($dropdown, depth + 1) : [];
 
+      // Skip cross-origin links (normalizeHref returns "" for them)
+      if (!href && children.length === 0) return;
       items.push({ label, href: href || "/", ...(children.length ? { children } : {}) });
     });
 

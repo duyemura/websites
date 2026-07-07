@@ -153,6 +153,34 @@ describe("extractBusiness", () => {
     const biz = extractBusiness("", noCtaDS, warnings);
     expect(biz.primaryCta).toEqual(DEFAULT_BUSINESS_PLACEHOLDER.primaryCta);
   });
+
+  test("parses GMB-format address with full state name (- **Address**: street, city, StateName, zip)", () => {
+    // GMB enrichment writes full state name, not abbreviation
+    const gmbMd = `# Torrance Training Lab
+**Description**: Premier gym in Torrance.
+## Location
+- **Address**: 23510 Telo Avenue, Torrance, California, 90505
+## Contact
+- **Phone**: (310) 730-0044`;
+    const warnings: string[] = [];
+    const biz = extractBusiness(gmbMd, DS, warnings);
+    expect(biz.address.street).toBe("23510 Telo Avenue");
+    expect(biz.address.city).toBe("Torrance");
+    expect(biz.address.state).toBe("CA"); // full "California" → abbreviation
+    expect(biz.address.zip).toBe("90505");
+    expect(biz.geo.city).toBe("Torrance");
+    expect(biz.geo.stateAbbr).toBe("CA");
+    expect(biz.phone).toBe("(310) 730-0044");
+  });
+
+  test("parses dash-prefixed labeled fields (- **Phone**: ...)", () => {
+    // Some doc formats prefix labels with "- "
+    const md = `## Contact\n- **Phone**: (555) 867-5309\n- **Email**: hello@gym.com`;
+    const warnings: string[] = [];
+    const biz = extractBusiness(md, DS, warnings);
+    expect(biz.phone).toBe("(555) 867-5309");
+    expect(biz.email).toBe("hello@gym.com");
+  });
 });
 
 describe("classifyPage", () => {
@@ -237,7 +265,8 @@ describe("extractPages", () => {
         }],
       },
     ]);
-    const pages = extractPages(h, { name: "KSA" } as any, warnings);
+    const biz = { name: "KSA", primaryCta: { label: "Join Now", url: "/contact" } } as any;
+    const pages = extractPages(h, biz, warnings);
     expect(pages.home.hero.headline).toBe("Train with Purpose");
     expect(pages.home.hero.subheading).toBe("Join KSA today.");
     expect(pages.home.hero.ctaLabel).toBe("Join Now");
