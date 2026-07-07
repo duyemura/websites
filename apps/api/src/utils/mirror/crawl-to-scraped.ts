@@ -1,0 +1,336 @@
+// apps/api/src/utils/mirror/crawl-to-scraped.ts
+// Build a ScrapedWebsiteData shape from the mirror-crawl homepage HTML so the
+// existing doc generators (workspace-memory, site-memory, brand-guidelines,
+// business-info, site-strategy, site-hierarchy) can run without extract/segment.
+
+import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import * as cheerio from "cheerio";
+import type { MirrorCrawlArtifact } from "../../types/mirror";
+import type { ScrapedImage } from "@ploy-gyms/shared-types";
+import type { ScrapedSection, ScrapedWebsiteData } from "../scrape-docs";
+import type { SectionVisualEvidenceRow } from "../../types/section-visual-evidence";
+
+interface S3Config {
+  S3_ENDPOINT?: string;
+  S3_REGION: string;
+  S3_ACCESS_KEY: string;
+  S3_SECRET_KEY: string;
+  S3_ASSETS_BUCKET: string;
+  S3_DEPLOYMENTS_BUCKET?: string;
+}
+
+const PHONE_RE = /\(?\b\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/;
+const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+
+function bucketFor(config: S3Config): string {
+  return config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
+}
+
+async function fetchHtmlFromS3(
+  s3: S3Client,
+  config: S3Config,
+  htmlKey: string,
+): Promise<string | undefined> {
+  try {
+    const res = await s3.send(new GetObjectCommand({ Bucket: bucketFor(config), Key: htmlKey }));
+    return (await res.Body?.transformToString()) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function inferSectionType(cls: string, heading?: string): string {
+  const lower = `${cls} ${heading ?? ""}`.toLowerCase();
+  if (/\bhero\b/.test(lower)) return "hero";
+  if (/\btestimonial|\breview|\bmember story/.test(lower)) return "testimonial";
+  if (/\bpricing|\bplan|\bmembership|\bpackage/.test(lower)) return "pricing";
+  if (/\bfaq|\bfrequently asked/.test(lower)) return "faq";
+  if (/\bteam|\bcoach|\btrainer|\bstaff/.test(lower)) return "team";
+  if (/\blocation|\bcontact|\bfind us|\bvisit/.test(lower)) return "location";
+  if (/\bcta|\bcall.to.action/.test(lower)) return "cta";
+  if (/\bfeature|\bbenefit|\bservice|\bprogram|\bclass/.test(lower)) return "feature-grid";
+  if (/\bstep|\bprocess|\bhow it works/.test(lower)) return "steps";
+  if (/\bgallery|\bimage|\bmedia/.test(lower)) return "media";
+  if (/\babout|\bstory|\bmision/.test(lower)) return "about";
+  return "section";
+}
+
+function makeVisualEvidence(id: string, pageSlug = "index"): SectionVisualEvidenceRow {
+  return {
+    evidenceId: id,
+    pageSlug,
+    sectionId: id,
+    boundingBox: { x: 0, y: 0, width: 0, height: 0 },
+    computedStyles: [],
+  };
+}
+
+function extractNavLinks($: cheerio.CheerioAPI): { label: string; href: string }[] {
+  const root = $("header nav, header, nav").first();
+  const links = root
+    .find("a[href]")
+    .map((_, el) => {
+      const $el = $(el);
+      const label = $el.text().trim();
+      const href = $el.attr("href") ?? "";
+      return { label, href };
+    })
+    .get();
+  return links.filter((l) => l.label.length > 0 && l.href.length > 0 && !l.href.startsWith("#"));
+}
+
+function extractBusinessName($: cheerio.CheerioAPI, url: string): string {
+  // JSON-LD name
+  for (const script of $('script[type="application/ld+json"]')) {
+    try {
+      const parsed = JSON.parse($(script).text() || "{}") as unknown;
+      const candidates: unknown[] = [];
+      if (Array.isArray(parsed)) candidates.push(...parsed);
+      else candidates.push(parsed);
+      for (const c of candidates) {
+        if (c && typeof c === "object" && "name" in c && typeof c.name === "string" && c.name.length > 1) {
+          return c.name;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return (
+    $('meta[property="og:site_name"]').attr("content")?.trim() ||
+    $("title").text().split(/[|–-]/)[0]?.trim() ||
+    $("h1").first().text().trim() ||
+    url
+  );
+}
+
+function extractDescription($: cheerio.CheerioAPI): string | undefined {
+  return (
+    $('meta[name="description"]').attr("content")?.trim() ||
+    $('meta[property="og:description"]').attr("content")?.trim() ||
+    undefined
+  );
+}
+
+function extractHeadings($: cheerio.CheerioAPI): { level: number; text: string }[] {
+  return $("h1, h2, h3, h4, h5, h6")
+    .map((_, el) => {
+      const tag = el.tagName.toLowerCase();
+      const text = $(el).text().trim();
+      return { level: Number(tag[1]), text };
+    })
+    .get()
+    .filter((h) => h.text.length > 0);
+}
+
+function extractParagraphs($: cheerio.CheerioAPI): string[] {
+  const out: string[] = [];
+  $("p").each((_, el) => {
+    const text = $(el).text().trim();
+    if (text.length > 30 && text.length < 600) out.push(text);
+  });
+  return [...new Set(out)];
+}
+
+function extractButtons($: cheerio.CheerioAPI): string[] {
+  const out: string[] = [];
+  $("a[href], button")
+    .not("nav a, header a, footer a")
+    .each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 0 && text.length <= 60) out.push(text);
+    });
+  return [...new Set(out)];
+}
+
+function extractImages($: cheerio.CheerioAPI): ScrapedImage[] {
+  const out: ScrapedImage[] = [];
+  $("img").each((_, el) => {
+    const src = $(el).attr("src");
+    if (!src) return;
+    out.push({ url: src, alt: $(el).attr("alt") ?? undefined, context: "other" });
+  });
+  return out.slice(0, 30);
+}
+
+function extractContact($: cheerio.CheerioAPI): {
+  phone?: string;
+  email?: string;
+  address?: string;
+  social?: { platform: string; url: string }[];
+} {
+  const text = $("body").text();
+  const phoneMatch = text.match(PHONE_RE);
+  const emailMatch = text.match(EMAIL_RE);
+
+  const socials: { platform: string; url: string }[] = [];
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    if (href.includes("instagram.com")) socials.push({ platform: "Instagram", url: href });
+    else if (href.includes("facebook.com")) socials.push({ platform: "Facebook", url: href });
+    else if (href.includes("twitter.com") || href.includes("x.com")) socials.push({ platform: "X", url: href });
+    else if (href.includes("youtube.com")) socials.push({ platform: "YouTube", url: href });
+  });
+
+  return {
+    phone: phoneMatch?.[0],
+    email: emailMatch?.[0],
+    social: socials.length > 0 ? [...new Map(socials.map((s) => [s.platform, s])).values()] : undefined,
+  };
+}
+
+function extractSections($: cheerio.CheerioAPI): ScrapedSection[] {
+  const selectors = [
+    "body > section",
+    "body > article",
+    "main > section",
+    "main > article",
+    "main > div",
+    "[class*='section']",
+    "[class*='hero']",
+    "[class*='block']",
+  ];
+
+  const seen = new Set<unknown>();
+  const sections: ScrapedSection[] = [];
+
+  $(selectors.join(", ")).each((_, el) => {
+    if (seen.has(el)) return;
+    seen.add(el);
+
+    const $el = $(el);
+    const cls = $el.attr("class") ?? "";
+
+    // Heading: first h1-h3
+    let heading: string | undefined;
+    $el.find("h1, h2, h3")
+      .each((__, h) => {
+        const t = $(h).text().trim();
+        if (!heading && t.length >= 3 && t.length <= 200) heading = t;
+      });
+
+    // Body: first meaningful paragraph
+    let body: string | undefined;
+    $el.find("p").each((__, p) => {
+      const t = $(p).text().trim();
+      if (!body && t.length > 30 && t.length < 400) body = t;
+    });
+
+    // CTA
+    let cta: { label: string; href: string } | undefined;
+    $el.find("a[href], button").each((__, a) => {
+      const $a = $(a);
+      const t = $a.text().trim();
+      const href = $a.attr("href") ?? "#";
+      if (!cta && t.length > 0 && t.length <= 60 && !href.startsWith("tel:") && !href.startsWith("mailto:")) {
+        cta = { label: t, href };
+      }
+    });
+
+    // Images in section
+    const images = $el
+      .find("img")
+      .map((__, img) => {
+        const src = $(img).attr("src");
+        return src ? { url: src, alt: $(img).attr("alt") ?? undefined } : null;
+      })
+      .get()
+      .filter(Boolean) as { url: string; alt?: string }[];
+
+    // Items: child cards with headings
+    const items: { title?: string; description?: string; imageUrl?: string }[] = [];
+    $el.children("div").each((__, child) => {
+      const $child = $(child);
+      const title = $child.find("h3, h4").first().text().trim();
+      const description = $child.find("p").first().text().trim();
+      const childImg = $child.find("img").first().attr("src");
+      if (title && title.length > 0 && title.length <= 120) {
+        items.push({
+          title,
+          description: description.length > 0 && description.length <= 300 ? description : undefined,
+          imageUrl: childImg,
+        });
+      }
+    });
+
+    const type = inferSectionType(cls, heading);
+    const id = `index-section-${sections.length}-${type}`;
+
+    sections.push({
+      id,
+      type,
+      heading,
+      body,
+      cta,
+      images: images.length > 0 ? images : undefined,
+      items: items.length > 0 ? items : undefined,
+      visualEvidence: makeVisualEvidence(id),
+    });
+  });
+
+  return sections;
+}
+
+export async function buildScrapedWebsiteDataFromCrawl(
+  crawl: MirrorCrawlArtifact,
+  s3: S3Client,
+  config: S3Config,
+): Promise<ScrapedWebsiteData> {
+  const homePage = crawl.pages.find((p) => p.path === "/") ?? crawl.pages[0];
+  if (!homePage) {
+    return {
+      url: crawl.sourceUrl,
+      title: crawl.sourceUrl,
+      headings: [],
+      paragraphs: [],
+      buttons: [],
+      navLinks: [],
+      colors: [],
+      fonts: [],
+      fontSizes: [],
+      images: [],
+      layoutRules: [],
+      faqs: [],
+      testimonials: [],
+      locations: [],
+      team: [],
+      offerings: [],
+      contact: {},
+    };
+  }
+
+  const html = (await fetchHtmlFromS3(s3, config, homePage.htmlKey)) ?? "";
+  const $ = cheerio.load(html);
+
+  // Strip script/style so they don't pollute text extraction.
+  $("script, style, noscript, iframe").remove();
+
+  const businessName = extractBusinessName($, crawl.sourceUrl);
+  const description = extractDescription($);
+  const title = $("title").text().trim() || businessName;
+
+  const contact = extractContact($);
+
+  return {
+    url: crawl.sourceUrl,
+    title,
+    businessName,
+    description,
+    headings: extractHeadings($).map((h) => h.text),
+    paragraphs: extractParagraphs($),
+    buttons: extractButtons($),
+    navLinks: extractNavLinks($),
+    colors: [],
+    fonts: [],
+    fontSizes: [],
+    images: extractImages($),
+    layoutRules: [],
+    faqs: [],
+    testimonials: [],
+    locations: [],
+    team: [],
+    offerings: [],
+    contact,
+    sections: extractSections($),
+  };
+}

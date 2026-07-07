@@ -89,6 +89,9 @@ const dbConfig = {
   LONG_CONTEXT_LLM_MODEL:
     process.env.LONG_CONTEXT_LLM_MODEL ?? "qwen3.5:397b-cloud",
   REASONING_LLM_MODEL: process.env.REASONING_LLM_MODEL ?? "qwen3.5:397b-cloud",
+  GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
+  FAL_KEY: process.env.FAL_KEY,
+  FAL_IMAGE_MODEL: process.env.FAL_IMAGE_MODEL ?? "fal-ai/flux/dev/image-to-image",
 } as Config;
 
 // Default singleton used by the kysely-ctl CLI. The app creates its own
