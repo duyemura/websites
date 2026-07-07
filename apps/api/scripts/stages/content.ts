@@ -29,6 +29,34 @@ const PAGE_SECTIONS: Record<string, string[]> = {
   other: ["hero", "content", "cta"],
 };
 
+// Page-type-specific structured fields to extract into contentFound
+const PAGE_TYPE_FIELDS: Record<string, string> = {
+  home: `"valueProps": [{"headline": string, "body": string}],
+  "testimonials": [{"quote": string, "name": string, "program": string | null}],
+  "faq": [{"question": string, "answer": string}],
+  "communityHeadline": string | null,
+  "trustHeadline": string | null`,
+
+  program: `"shortDescription": string | null,
+  "whoIsItFor": [string],
+  "whatMakesUsDifferent": [string],
+  "testimonials": [{"quote": string, "name": string}],
+  "faq": [{"question": string, "answer": string}]`,
+
+  about: `"gymStory": string | null,
+  "team": [{"name": string, "title": string, "bio": string | null}]`,
+
+  contact: `"phone": string | null,
+  "email": string | null,
+  "address": string | null,
+  "city": string | null,
+  "state": string | null,
+  "zip": string | null,
+  "hours": string | null`,
+
+  pricing: `"plans": [{"name": string, "price": string, "period": string | null, "description": string | null, "features": [string]}]`,
+};
+
 function classifyPageType(
   path: string,
 ): "home" | "program" | "about" | "contact" | "pricing" | "schedule" | "other" {
@@ -73,29 +101,32 @@ function buildPrompt(
   businessContext: string,
   sectionsNeeded: string[],
 ): string {
-  return `You are planning an Astro website page for a gym. Your job is to produce a page brief — not just extract content, but understand the purpose of the page and what the Astro template will need to build it.
+  const typeFields = PAGE_TYPE_FIELDS[pageType] ?? "";
+  const contentFoundSchema = `{
+    "hero": {"headline": string | null, "subheading": string | null, "ctaLabel": string | null},
+    "body": "all key content as plain text",
+    "cta": string | null${typeFields ? `,\n    ${typeFields}` : ""}
+  }`;
+
+  return `You are planning an Astro website page for a gym. Produce a page brief the Astro template builder will use to build this page.
 
 Business context:
 ${businessContext}
 
 Page: ${path} (type: ${pageType})
-Sections this page type should have: ${sectionsNeeded.join(", ")}
+Sections this page type needs: ${sectionsNeeded.join(", ")}
 
-Content outline scraped from the original page:
-${outline || "(no content found on this page)"}
+Content outline from the original page:
+${outline || "(no content found — flag all sections as missing)"}
 
-Return ONLY valid JSON in this exact shape:
+Return ONLY valid JSON:
 {
   "purpose": "one sentence — why this page exists and what the visitor is trying to do",
   "visitorRole": "one of: awareness | consideration | conversion | retention | utility",
-  "sectionsNeeded": ["ordered list of sections to build in the Astro template"],
-  "contentFound": {
-    "hero": { "headline": string | null, "subheading": string | null, "ctaLabel": string | null },
-    "body": "any key content found (quotes, descriptions, team names, pricing, hours, etc.) as a flat string",
-    "cta": string | null
-  },
-  "contentMissing": ["list of sections or fields that were not found and need to be generated or filled in"],
-  "generationHint": "1-2 sentences of context to help the template builder generate missing content using business info"
+  "sectionsNeeded": ["ordered list of sections to build"],
+  "contentFound": ${contentFoundSchema},
+  "contentMissing": ["sections or fields not found that need to be generated"],
+  "generationHint": "1-2 sentences to help the template builder fill gaps using business info"
 }`;
 }
 
@@ -109,6 +140,29 @@ export interface PageBrief {
     hero: { headline: string | null; subheading: string | null; ctaLabel: string | null };
     body: string;
     cta: string | null;
+    // Home
+    valueProps?: Array<{ headline: string; body: string }>;
+    testimonials?: Array<{ quote: string; name: string; program?: string }>;
+    faq?: Array<{ question: string; answer: string }>;
+    communityHeadline?: string | null;
+    trustHeadline?: string | null;
+    // Program
+    shortDescription?: string | null;
+    whoIsItFor?: string[];
+    whatMakesUsDifferent?: string[];
+    // About
+    gymStory?: string | null;
+    team?: Array<{ name: string; title: string; bio?: string | null }>;
+    // Contact
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
+    hours?: string | null;
+    // Pricing
+    plans?: Array<{ name: string; price: string; period?: string | null; description?: string | null; features: string[] }>;
   };
   contentMissing: string[];
   generationHint: string;
@@ -138,7 +192,6 @@ export const contentStage: StageRunner = {
     }
     const deployPrefix = deployArtifact.payload.deployPrefix;
 
-    // Load business context — used in every page brief so the LLM can fill gaps
     const businessDoc = await ctx.db
       .selectFrom("docs")
       .select("content")
@@ -177,7 +230,7 @@ export const contentStage: StageRunner = {
         );
         outline = (await outlineObj.Body?.transformToString()) ?? "";
       } catch {
-        // No outline — proceed with empty; LLM will flag all sections as missing
+        // No outline — LLM will flag all sections as missing
       }
 
       try {

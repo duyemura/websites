@@ -427,37 +427,48 @@ export async function buildGymJson(
   const navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
 
-  // ── Phase 2: merge LLM-extracted content from content-extraction artifact ──
+  // ── Phase 2: merge page briefs from content artifact ──────────────────────
   const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? "";
   const contentArtifact = await loadArtifact(
     db,
     { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
     "content" as any,
-  ) as { payload: { pages: Array<{ path: string; pageType: string; data: Record<string, unknown> }> } } | null;
+  ) as { payload: { pages: Array<{ path: string; pageType: string; contentFound?: Record<string, unknown>; data?: Record<string, unknown> }> } } | null;
 
   if (contentArtifact?.payload?.pages?.length) {
     const byPath = new Map(contentArtifact.payload.pages.map(p => [p.path, p]));
 
+    // Resolve per-page content: new brief format uses contentFound, old format used data
+    const cf = (p: { contentFound?: Record<string, unknown>; data?: Record<string, unknown> } | undefined): any =>
+      p?.contentFound ?? p?.data ?? null;
+
     // Home page
-    const homeEx = byPath.get("/")?.data as any;
-    if (homeEx) {
-      if (homeEx.heroHeadline) pages.home.hero.headline = homeEx.heroHeadline;
-      if (homeEx.heroSubheading) pages.home.hero.subheading = homeEx.heroSubheading;
-      if (homeEx.heroCtaLabel) pages.home.hero.ctaLabel = homeEx.heroCtaLabel;
-      if (homeEx.valueProps?.length) pages.home.valueProps = homeEx.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
-      if (homeEx.testimonials?.length) pages.home.testimonials = homeEx.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: t.program ?? undefined }));
-      if (homeEx.faq?.length) pages.home.faq = homeEx.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
-      if (homeEx.communityHeadline) pages.home.communityHeadline = homeEx.communityHeadline;
-      if (homeEx.trustHeadline) pages.home.trustHeadline = homeEx.trustHeadline;
+    const home = cf(byPath.get("/"));
+    if (home) {
+      const hero = home.hero ?? {};
+      if (hero.headline) pages.home.hero.headline = hero.headline;
+      if (hero.subheading) pages.home.hero.subheading = hero.subheading;
+      if (hero.ctaLabel) pages.home.hero.ctaLabel = hero.ctaLabel;
+      // Legacy field names (old format)
+      if (home.heroHeadline) pages.home.hero.headline = home.heroHeadline;
+      if (home.heroSubheading) pages.home.hero.subheading = home.heroSubheading;
+      if (home.heroCtaLabel) pages.home.hero.ctaLabel = home.heroCtaLabel;
+      if (home.valueProps?.length) pages.home.valueProps = home.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
+      if (home.testimonials?.length) pages.home.testimonials = home.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: t.program ?? undefined }));
+      if (home.faq?.length) pages.home.faq = home.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") }));
+      if (home.communityHeadline) pages.home.communityHeadline = home.communityHeadline;
+      if (home.trustHeadline) pages.home.trustHeadline = home.trustHeadline;
     }
 
     // Program pages
     for (const program of pages.programs) {
-      const programEx = byPath.get(`/programs/${program.slug}`)?.data as any;
+      const raw = byPath.get(`/programs/${program.slug}`);
+      const programEx = cf(raw);
       if (!programEx) continue;
+      const hero = programEx.hero ?? {};
+      if (hero.headline ?? programEx.heroHeadline) program.hero.headline = hero.headline ?? programEx.heroHeadline;
+      if (hero.subheading ?? programEx.heroSubheading) program.hero.subheading = hero.subheading ?? programEx.heroSubheading;
       if (programEx.shortDescription) program.shortDescription = programEx.shortDescription;
-      if (programEx.heroHeadline) program.hero.headline = programEx.heroHeadline;
-      if (programEx.heroSubheading) program.hero.subheading = programEx.heroSubheading;
       if (programEx.whoIsItFor?.length) program.whoIsItFor = programEx.whoIsItFor.map(String);
       if (programEx.whatMakesUsDifferent?.length) program.whatMakesUsDifferent = programEx.whatMakesUsDifferent.map(String);
       if (programEx.testimonials?.length) program.testimonials = programEx.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? "") }));
@@ -465,15 +476,18 @@ export async function buildGymJson(
     }
 
     // About page
-    const aboutEx = [...byPath.values()].find(p => p.pageType === "about")?.data as any;
+    const aboutRaw = [...byPath.values()].find(p => p.pageType === "about");
+    const aboutEx = cf(aboutRaw);
     if (aboutEx) {
-      if (aboutEx.heroHeadline) pages.about.hero.headline = aboutEx.heroHeadline;
+      const hero = aboutEx.hero ?? {};
+      if (hero.headline ?? aboutEx.heroHeadline) pages.about.hero.headline = hero.headline ?? aboutEx.heroHeadline;
       if (aboutEx.gymStory) pages.about.gymStory = aboutEx.gymStory;
       if (aboutEx.team?.length) pages.about.team = aboutEx.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), photoUrl: "", bio: m.bio ?? undefined }));
     }
 
-    // Contact page — also update business info
-    const contactEx = [...byPath.values()].find(p => p.pageType === "contact")?.data as any;
+    // Contact — also patch business info
+    const contactRaw = [...byPath.values()].find(p => p.pageType === "contact");
+    const contactEx = cf(contactRaw);
     if (contactEx) {
       if (contactEx.phone && !business.phone) business.phone = contactEx.phone;
       if (contactEx.email && !business.email) business.email = contactEx.email;
@@ -486,10 +500,12 @@ export async function buildGymJson(
     }
 
     // Pricing page
-    const pricingEx = [...byPath.values()].find(p => p.pageType === "pricing")?.data as any;
+    const pricingRaw = [...byPath.values()].find(p => p.pageType === "pricing");
+    const pricingEx = cf(pricingRaw);
     if (pricingEx?.plans?.length) {
+      const heroHeadline = pricingEx.hero?.headline ?? pricingEx.heroHeadline;
       pages.pricing.grid = {
-        headline: pricingEx.heroHeadline ?? undefined,
+        headline: heroHeadline ?? undefined,
         plans: pricingEx.plans.map((plan: any) => ({
           name: String(plan.name ?? ""),
           price: String(plan.price ?? ""),
@@ -501,7 +517,7 @@ export async function buildGymJson(
       };
     }
 
-    warnings.push(`content-extraction merged: ${contentArtifact.payload.pages.length} pages enriched`);
+    warnings.push(`content merged: ${contentArtifact.payload.pages.length} page briefs applied`);
   }
 
   const isImpact = inferImpactTheme(contract, pages.home);
