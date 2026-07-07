@@ -268,7 +268,7 @@ async function runPipeline(
 function buildCtx(
   siteUuid: string,
   workspaceUuid: string,
-  opts: { verbose: boolean; quiet: boolean; tier?: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito" },
+  opts: { verbose: boolean; quiet: boolean; tier?: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; pageFilter?: string[] },
 ): StageContext {
   return {
     db,
@@ -285,6 +285,7 @@ function buildCtx(
     verbose: opts.verbose,
     tier: opts.tier ?? "free",
     templateTheme: opts.templateTheme,
+    pageFilter: opts.pageFilter,
     log: (msg) => { if (!opts.quiet) console.log(msg); },
   };
 }
@@ -360,6 +361,83 @@ async function runRebuild(
   return results;
 }
 
+async function runPage(
+  cmd: Extract<MiloCommand, { cmd: "page" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, {
+    verbose: cmd.verbose,
+    quiet: cmd.quiet,
+    tier: "paid",
+    pageFilter: [cmd.path],
+  });
+
+  if (!cmd.quiet) console.log(`\nMilo page — site: ${siteUuid}, path: ${cmd.path}`);
+  const totalStart = Date.now();
+
+  // Run content stage scoped to this page
+  const contentRunner = registry["content"];
+  if (!contentRunner) {
+    console.error(`Stage "content" not found in registry`);
+    process.exit(1);
+  }
+
+  const contentStart = Date.now();
+  let contentResult: StageResult;
+  try {
+    contentResult = await contentRunner.run(ctx);
+  } catch (err) {
+    contentResult = {
+      stage: "content",
+      status: "fail",
+      durationMs: Date.now() - contentStart,
+      metrics: {},
+      warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!contentResult.durationMs) contentResult.durationMs = Date.now() - contentStart;
+
+  const results: StageResult[] = [contentResult];
+
+  // Guard: verify the requested path was actually found and processed
+  if (contentResult.status !== "fail") {
+    const contentArtifact = await loadArtifact(
+      db,
+      { siteUuid, workspaceUuid },
+      "content" as PipelineStage,
+    ) as { payload?: { pages?: Array<{ path: string }> } } | null;
+    const pathProcessed = contentArtifact?.payload?.pages?.some((p) => p.path === cmd.path) ?? false;
+    if (!pathProcessed) {
+      console.error(
+        `\n❌ No page found at "${cmd.path}" in the site's structural pages.\n` +
+        `   The path may not exist, may be a UGC page (blog/news), or may exceed the 20-page cap.\n`,
+      );
+      renderReport(results, Date.now() - totalStart, cmd.quiet);
+      await db.destroy();
+      process.exit(1);
+    }
+  }
+
+  // If Tier 2 and content succeeded, trigger a rebuild
+  if (contentResult.status !== "fail") {
+    const tier2 = await isTier2(siteUuid, workspaceUuid);
+    if (tier2) {
+      if (!cmd.quiet) console.log(`\n  Tier 2 site — triggering rebuild`);
+      const rebuildCtx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid" });
+      // Force generate+template+publish so the updated page brief flows through to the live site.
+      const rebuildResults = await runPipeline(PIPELINES.rebuild, rebuildCtx, registry, { force: true, quiet: cmd.quiet });
+      results.push(...rebuildResults);
+    } else {
+      if (!cmd.quiet) console.log(`\n  Tier 1 site — page brief saved. HTML generation for new pages is a future feature.`);
+    }
+  }
+
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
 async function runLegacyStages(
   cmd: Extract<MiloCommand, { cmd: "stages" }>,
   registry: Record<string, StageRunner>,
@@ -389,7 +467,8 @@ async function main() {
     case "stages":  results = await runLegacyStages(cmd, registry); break;
     case "upgrade": results = await runUpgrade(cmd, registry); break;
     case "rebuild": results = await runRebuild(cmd, registry); break;
-    // page, eval, nav, restore — added in Tasks 5–6
+    case "page":    results = await runPage(cmd, registry); break;
+    // eval, nav, restore — added in Task 6
     default: {
       const c = cmd as MiloCommand;
       console.error(`Handler for "${c.cmd}" not yet implemented. Run again after all tasks complete.`);
