@@ -1,0 +1,55 @@
+---
+import { content } from "../../lib/content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { navigation, business, brand } = content;
+const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
+const programsGroup = navigation.footer.find((g) => /programs/i.test(g.label));
+const bottomPrograms = programsGroup?.links ?? [];
+---
+<footer class="bg-black py-16 text-white">
+  <div class="mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class="grid gap-12 sm:grid-cols-2 lg:grid-cols-5">
+      <div class="lg:col-span-2">
+        <a href="/" class="block h-12 w-40">
+          {brand.logoUrl !== NO_IMAGE && <img src={brand.logoUrl} alt={brand.logoAlt} class="h-full w-auto object-contain brightness-0 invert" loading="lazy" />}
+        </a>
+        {socials.length > 0 && (
+          <ul class="mt-6 flex flex-wrap gap-4">
+            {socials.map(([name, url]) => (
+              <li>
+                <a href={url} rel="noopener noreferrer" target="_blank" class="text-sm font-semibold uppercase tracking-tight text-white/70 hover:text-white">
+                  {name}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {navigation.footer.map((group) => (
+        <div>
+          <h3 class="font-heading text-sm font-bold uppercase tracking-wide text-white">{group.label}</h3>
+          <ul class="mt-4 space-y-2">
+            {group.links.map((l) => (
+              <li>
+                <a href={l.href} class="text-sm text-white/70 hover:text-white">{l.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    {bottomPrograms.length > 0 && (
+      <div class="mt-12 flex flex-wrap gap-x-6 gap-y-2 border-t border-white/10 pt-8">
+        {bottomPrograms.map((p) => (
+          <a href={p.href} class="text-sm font-semibold uppercase tracking-tight text-white/70 hover:text-white">{p.label}</a>
+        ))}
+      </div>
+    )}
+
+    <div class="mt-10 text-center text-xs text-white/50">
+      ©2022 Copyright {business.name} | Site by PushPress
+    </div>
+  </div>
+</footer>

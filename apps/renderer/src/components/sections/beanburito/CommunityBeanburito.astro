@@ -1,0 +1,40 @@
+---
+import { content } from "../../../lib/content";
+import type { ValueProp } from "../../../types/gym-content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { items, headline, imageUrl } = Astro.props as { items: ValueProp[]; headline?: string; imageUrl?: string };
+if (!items?.length && !headline) return;
+const hasImage = imageUrl && imageUrl !== NO_IMAGE;
+---
+<section class="section-skew section-overlap bg-black py-16 text-white lg:py-24">
+  <div class="section-skew-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class="two-columns-wrapper flex flex-col items-center gap-12 lg:flex-row-reverse lg:items-center lg:gap-24">
+      <div class="flex-1">
+        {headline && (
+          <h2 class="mb-6 font-heading text-4xl font-black uppercase leading-[0.95] tracking-tight text-white md:text-5xl">
+            {headline}
+          </h2>
+        )}
+        <div class="space-y-5 text-lg leading-relaxed text-white/80">
+          <p>
+            There’s no shortage of gyms in {content.business.geo.city}. What makes {content.business.name} different is the people. From the moment you walk in, you’ll feel part of a community that’s supportive, driven, and genuinely invested in each other’s progress.
+          </p>
+          <p>
+            Our coaches bring the experience and structure, but it’s the environment that keeps you consistent. You’ll be surrounded by people who show up, put in the work, and push each other to get better every day.
+          </p>
+          <p>
+            It’s that combination of coaching and community that keeps our members coming back and makes training something you actually look forward to.
+          </p>
+        </div>
+      </div>
+
+      {hasImage && (
+        <div class="flex w-full items-center justify-center lg:w-[22em] lg:flex-shrink-0">
+          <div class="relative h-[25.4375em] w-full overflow-hidden">
+            <img src={imageUrl} alt="Community" class="h-full w-full object-cover" loading="lazy" />
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</section>

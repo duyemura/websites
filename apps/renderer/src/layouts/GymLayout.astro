@@ -9,6 +9,8 @@ import Header from "../components/chrome/Header.astro";
 import Footer from "../components/chrome/Footer.astro";
 import HeaderImpact from "../components/chrome/HeaderImpact.astro";
 import FooterImpact from "../components/chrome/FooterImpact.astro";
+import HeaderBeanburito from "../components/chrome/HeaderBeanburito.astro";
+import FooterBeanburito from "../components/chrome/FooterBeanburito.astro";
 import CookieBannerImpact from "../components/chrome/CookieBannerImpact.astro";
 import StickyCTA from "../components/chrome/StickyCTA.astro";
 
@@ -28,6 +30,7 @@ interface Props {
 const { title, description, path, canonicalPath, image } = Astro.props;
 const { meta, business, brand } = content;
 const isImpact = meta.templateTheme === "impact";
+const isBeanburito = meta.templateTheme === "beanburito";
 const gtmId = safeTrackingId(meta.googleTagManagerId);
 
 const pageTitle = title ?? meta.defaultTitle;
@@ -68,11 +71,12 @@ const rootCss = [
     <style is:inline set:html={rootCss}></style>
     <Tracking />
     {image && image !== NO_IMAGE && <link rel="preload" as="image" href={image} fetchpriority="high" />}
+    {isBeanburito && <link rel="stylesheet" href="/styles/beanburito.css" />}
     <link rel="icon" href={brand.logoUrl !== NO_IMAGE ? brand.logoUrl : "/favicon.ico"} />
     <link rel="manifest" href="/site.webmanifest" />
     <slot name="head" />
   </head>
-  <body class="font-body text-secondary bg-white">
+  <body class:list={["font-body text-secondary", isBeanburito ? "bg-black" : "bg-white", isBeanburito && "theme-beanburito"]}>
     <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-white">Skip to main content</a>
     {gtmId && (
       <noscript>
@@ -82,9 +86,9 @@ const rootCss = [
         ></iframe>
       </noscript>
     )}
-    {isImpact ? <HeaderImpact /> : <Header />}
+    {isBeanburito ? <HeaderBeanburito /> : isImpact ? <HeaderImpact /> : <Header />}
     <main id="main-content"><slot /></main>
-    {isImpact ? <FooterImpact /> : <Footer />}
+    {isBeanburito ? <FooterBeanburito /> : isImpact ? <FooterImpact /> : <Footer />}
     <StickyCTA />
     {isImpact && <CookieBannerImpact />}
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->

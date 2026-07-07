@@ -1,0 +1,60 @@
+---
+import type { HeroContent } from "../../../types/gym-content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { hero } = Astro.props as { hero: HeroContent };
+
+const hasDesktopImage = !!hero.backgroundImageUrl && hero.backgroundImageUrl !== NO_IMAGE;
+const safeBgUrl = hero.backgroundImageUrl ?? "";
+const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.webp") : "";
+---
+<section class="relative min-h-[90vh] w-full overflow-hidden bg-black text-white lg:min-h-[100vh]">
+  {hasDesktopImage && (
+    <>
+      <img
+        src={safeBgUrl}
+        alt=""
+        loading="eager"
+        class="absolute inset-0 hidden h-full w-full object-cover object-center lg:block"
+      />
+      <img
+        src={mobileImageUrl}
+        alt=""
+        loading="eager"
+        class="absolute inset-0 h-full w-full object-cover object-center lg:hidden"
+      />
+      <div class="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-black/40" />
+    </>
+  )}
+
+  <div class="relative z-10 mx-auto flex min-h-[90vh] max-w-[90rem] flex-col justify-center px-6 py-32 lg:min-h-[100vh] lg:px-10">
+    <article class="max-w-2xl">
+      {hero.subheading && (
+        <div class="mb-4">
+          <span class="inline-block font-heading text-sm font-bold uppercase tracking-wide text-white/70">
+            {hero.subheading}
+          </span>
+        </div>
+      )}
+      <h1 class="font-heading text-5xl font-black uppercase leading-[0.92] tracking-[-0.04em] text-white sm:text-6xl md:text-7xl lg:text-[5.5rem]">
+        {hero.headline}
+      </h1>
+      {hero.intro && (
+        <p class="mt-6 max-w-lg text-lg leading-relaxed text-white/80">{hero.intro}</p>
+      )}
+      {hero.ctaLabel && hero.ctaUrl && (
+        <footer class="mt-8">
+          <a
+            href={hero.ctaUrl}
+            data-track="contact"
+            class="group inline-flex items-center gap-4 bg-accent px-7 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-[#0040a5]"
+          >
+            <span>{hero.ctaLabel}</span>
+            <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
+              <path d="M1 1l5 5-5 5" />
+            </svg>
+          </a>
+        </footer>
+      )}
+    </article>
+  </div>
+</section>

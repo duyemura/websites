@@ -1,0 +1,226 @@
+{
+  "meta": {
+    "siteId": "00000000-0000-0000-0000-00000000b3an",
+    "apiBaseUrl": "https://api.example.com",
+    "siteUrl": "https://fixture-beanburito.example.com",
+    "defaultTitle": "Beta Gym | CrossFit Gym in New York",
+    "defaultDescription": "Demo Site 2: Free Intro Session will help you achieve your fitness goals faster! Work with our coaches to discover the fittest you - no matter your current fitness level.",
+    "preview": false,
+    "googleSiteVerification": "fixture-gsc-token",
+    "googleTagManagerId": "GTM-FIXTURE1",
+    "templateTheme": "beanburito"
+  },
+  "business": {
+    "name": "Beta Gym",
+    "tagline": "Beta Gym is a CrossFit gym in New York offering group strength classes, personal training, nutrition coaching, and a supportive community for all fitness levels.",
+    "address": { "street": "495 Broadway b/t Broome St & Spring St", "city": "New York", "state": "New York", "zip": "10012" },
+    "phone": "+1 559-354-3714",
+    "email": "hello@betagym.example.com",
+    "hours": [
+      { "days": ["Monday","Tuesday","Wednesday","Thursday","Friday"], "opens": "05:00", "closes": "21:00" },
+      { "days": ["Saturday","Sunday"], "opens": "07:00", "closes": "12:00" }
+    ],
+    "coordinates": { "lat": 40.722, "lng": -73.998 },
+    "primaryCta": { "label": "Free Intro", "url": "https://api.grow.pushpress.com/widget/booking/f9j1Yg4Lz85KVL5OzEjx" },
+    "trialCta": { "label": "Start your free trial", "url": "/pricing" },
+    "geo": { "city": "New York", "state": "New York", "stateAbbr": "NY" },
+    "serviceArea": ["SoHo", "NoHo", "Tribeca", "West Village", "Lower East Side"],
+    "aggregateRating": { "ratingValue": "4.9", "reviewCount": 127 },
+    "social": {
+      "facebook": "https://facebook.com",
+      "instagram": "https://instagram.com",
+      "twitter": "#",
+      "tiktok": "#",
+      "youtube": "https://youtube.com"
+    },
+    "mapEmbedUrl": "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3023.927969926697!2d-73.998!3d40.722!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDDCsDQzJzE5LjIiTiA3M8KwNTknNTIuOCJX!5e0!3m2!1sen!2sus!4v1"
+  },
+  "brand": {
+    "primaryColor": "#000000",
+    "secondaryColor": "#ffffff",
+    "accentColor": "#0063ff",
+    "headingFont": "Outfit",
+    "bodyFont": "Outfit",
+    "logoUrl": "/assets/beanburito/logo-black.webp",
+    "logoAlt": "Beta Gym"
+  },
+  "navigation": {
+    "announcement": { "text": "Demo Site 2: Free Intro Session Self Book" },
+    "header": [
+      { "label": "Programs", "href": "/programs", "children": [
+        { "label": "Strength Classes", "href": "/programs/strength-classes" },
+        { "label": "Personal Training", "href": "/programs/personal-training" },
+        { "label": "Open Gym", "href": "/programs/open-gym" },
+        { "label": "Nutrition Coaching", "href": "/programs/nutrition" },
+        { "label": "Drop-In", "href": "/programs/drop-in" }
+      ]},
+      { "label": "Schedule", "href": "/schedule" },
+      { "label": "Pricing", "href": "/pricing", "children": [
+        { "label": "Request pricing", "href": "/membership-pricing-request" },
+        { "label": "Membership options", "href": "/membership-options" }
+      ]},
+      { "label": "About us", "href": "/about" },
+      { "label": "Blogs", "href": "/blog" },
+      { "label": "Contact", "href": "/contact" }
+    ],
+    "footer": [
+      { "label": "PROGRAMS", "links": [
+        { "label": "Strength Classes", "href": "/programs/strength-classes" },
+        { "label": "Personal Training", "href": "/programs/personal-training" },
+        { "label": "Open Gym", "href": "/programs/open-gym" },
+        { "label": "Nutrition Coaching", "href": "/programs/nutrition" }
+      ]},
+      { "label": "About", "links": [
+        { "label": "About Us", "href": "/about" },
+        { "label": "Contact Us", "href": "/contact" },
+        { "label": "Membership Pause", "href": "/membership-pause-request" },
+        { "label": "Membership Cancellation", "href": "/membership-cancellation-request" }
+      ]},
+      { "label": "Legal", "links": [
+        { "label": "Privacy Policy", "href": "/legal/privacy-policy" },
+        { "label": "Terms of Use", "href": "/legal/terms-of-use" }
+      ]},
+      { "label": "address", "links": [
+        { "label": "495 Broadway b/t Broome St & Spring St SoHo, New York, NY 10012", "href": "https://www.google.com/maps/search/?api=1&query=495+Broadway+New+York+NY+10012" }
+      ]}
+    ]
+  },
+  "pages": {
+    "home": {
+      "hero": {
+        "headline": "Your First Session Is on Us",
+        "subheading": "CrossFit Gym in New York",
+        "intro": "Book a free 1-on-1 intro with a coach. We will assess your goals, walk you through the gym, and build a plan that fits your life.",
+        "ctaLabel": "Book Your Free Intro",
+        "ctaUrl": "https://api.grow.pushpress.com/widget/booking/f9j1Yg4Lz85KVL5OzEjx",
+        "backgroundImageUrl": "/assets/beanburito/hero-homepage.webp"
+      },
+      "valueProps": [
+        { "icon": "flag-person", "headline": "Reach new heights", "body": "Push yourself to improve with expert coaching and a community that keeps you accountable." },
+        { "icon": "calendar-check", "headline": "Easy workout scheduling", "body": "We make it easy for anyone with a hectic life to find time to workout." },
+        { "icon": "target-arrow", "headline": "Guidance tailored toward your fitness goals", "body": "Whatever your wellness goals are, we'll help you figure out the right fitness plan and stick to it." }
+      ],
+      "programsHeadline": "Every body is unique.",
+      "featuredPrograms": ["fundamentals", "strength-classes", "nutrition-coaching"],
+      "features": [
+        { "icon": "ticket", "label": "Class Reservations" },
+        { "icon": "target", "label": "Fitness Program for Over Age 65" },
+        { "icon": "phone", "label": "Members Only App" },
+        { "icon": "water", "label": "Purified Water Dispenser" },
+        { "icon": "dumbbell", "label": "Personal Training" },
+        { "icon": "calendar", "label": "Weekend Workout Classes" }
+      ],
+      "communityHeadline": "A community that will keep you going",
+      "communityProps": [
+        { "icon": "🏅", "headline": "Expert coaching", "body": "Certified coaches in every class." },
+        { "icon": "🌱", "headline": "Beginner friendly", "body": "Start where you are." },
+        { "icon": "🧭", "headline": "Structured programs", "body": "A plan, not a guess." },
+        { "icon": "❤️", "headline": "Supportive community", "body": "Train with people who cheer for you." }
+      ],
+      "trustHeadline": "What our members say",
+      "howItWorksHeadline": "Getting Started Is Easy",
+      "howItWorks": [
+        { "number": 1, "headline": "Book your free intro", "body": "Pick a time that works for you and book your free 1-on-1 session with a coach." },
+        { "number": 2, "headline": "Meet your coach", "body": "Get a gym tour, complete a fitness assessment, and build a personalized plan." },
+        { "number": 3, "headline": "Start training", "body": "Pick a membership option and start crushing your fitness goals." }
+      ],
+      "testimonials": [
+        { "quote": "The community here is unreal. I’ve made friends and hit goals I never thought possible.", "name": "Jamie R." },
+        { "quote": "Coaches actually care about your progress. Best gym in SoHo.", "name": "Priya S." },
+        { "quote": "I was nervous to start, but the fundamentals program made me feel confident.", "name": "Alex M." }
+      ],
+      "faq": [
+        { "question": "What happens during the free intro?", "answer": "You’ll meet a coach, tour the gym, discuss your goals, and leave with a personalized plan." },
+        { "question": "How long does it take to see results?", "answer": "Most members notice improvements in energy and strength within the first 30 days." },
+        { "question": "Do I get the chance to meet new friends?", "answer": "Absolutely. Group classes and community events make it easy to connect." },
+        { "question": "What sets you apart from other gyms?", "answer": "Coach-led classes, personalized guidance, and a supportive community focused on long-term results." },
+        { "question": "How often do you recommend coming to workout classes?", "answer": "We recommend 3–5 sessions per week depending on your goals and schedule." },
+        { "question": "Do you provide free refreshments there?", "answer": "We have a purified water dispenser and encourage members to bring reusable bottles." },
+        { "question": "Do I have to be fit to join?", "answer": "No. All workouts are scalable and beginner-friendly." },
+        { "question": "What payment methods do you accept?", "answer": "We accept all major credit cards and ACH for memberships." },
+        { "question": "What kind of exercises can I expect during a workout?", "answer": "A mix of strength, conditioning, and functional movements, scaled to your level." },
+        { "question": "Do I have to stop eating my favorite foods to be healthy?", "answer": "No. Our nutrition coaching focuses on sustainable habits, not restriction." }
+      ]
+    },
+    "programs": [
+      {
+        "slug": "fundamentals",
+        "name": "Fundamentals",
+        "shortDescription": "Learn the safety and technique basics, then graduate into regular classes with confidence.",
+        "coverImageUrl": "/assets/beanburito/program-fundamentals.webp",
+        "hero": { "headline": "Fundamentals", "subheading": "Start with the basics.", "ctaLabel": "Start your free trial", "ctaUrl": "/pricing", "backgroundImageUrl": "__NO_IMAGE__" },
+        "whatIsIt": { "headline": "What is Fundamentals?", "body": "A beginner-focused program that teaches safe movement patterns and gym etiquette so you can join group classes with confidence." },
+        "whatMakesUsDifferent": ["Coach-led every session", "Beginner-friendly pace", "Technique-first approach", "Direct path to group classes"],
+        "whatToExpect": { "headline": "What to expect", "steps": ["Movement assessment", "Technique practice", "Graduation to group classes"] },
+        "whoIsItFor": ["New gym members", "People returning after a break", "Anyone who wants a confident start"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Book a free intro", "body": "Meet a coach and discuss your goals." },
+          { "number": 2, "headline": "Complete fundamentals", "body": "Learn the movements at your own pace." },
+          { "number": 3, "headline": "Join group classes", "body": "Transition into regular classes." }
+        ],
+        "testimonials": [],
+        "faq": []
+      },
+      {
+        "slug": "strength-classes",
+        "name": "Try our Strength Classes",
+        "shortDescription": "High-intensity, time-efficient strength and endurance training for every level.",
+        "coverImageUrl": "/assets/beanburito/program-strength.webp",
+        "hero": { "headline": "Try our Strength Classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
+        "whatIsIt": { "headline": "What are strength classes?", "body": "Coach-led strength and conditioning sessions built around functional movements and structured programming." },
+        "whatMakesUsDifferent": ["Coach-led every class", "Scalable for all levels", "Strength + conditioning programmed weekly", "Supportive community"],
+        "whatToExpect": { "headline": "What to expect in a class", "steps": ["Warm-Up & Mobility", "Strength or Skill Work", "Conditioning Circuit", "Cool Down"] },
+        "whoIsItFor": ["Busy adults", "Former athletes", "Complete beginners", "Anyone bored of globo gyms"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Book a free consultation", "body": "15 minutes, no pressure." },
+          { "number": 2, "headline": "Movement screening", "body": "A coach learns how you move." },
+          { "number": 3, "headline": "Join your first class", "body": "We'll be expecting you." }
+        ],
+        "testimonials": [],
+        "faq": []
+      },
+      {
+        "slug": "nutrition-coaching",
+        "name": "Try our Nutrition Coaching",
+        "shortDescription": "Education and accountability to get your nutrition back on track.",
+        "coverImageUrl": "/assets/beanburito/program-nutrition.webp",
+        "hero": { "headline": "Try our Nutrition Coaching", "subheading": "Fuel your results.", "ctaLabel": "Learn more", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
+        "whatIsIt": { "headline": "Why nutrition coaching works", "body": "One-on-one guidance that fits your lifestyle, helps you build sustainable habits, and supports your training goals." },
+        "whatMakesUsDifferent": ["Personalized plans", "Habit-based approach", "Ongoing accountability", "Integrated with your training"],
+        "whatToExpect": { "headline": "How it works", "steps": ["Initial assessment", "Custom plan", "Weekly check-ins", "Adjustments"] },
+        "whoIsItFor": ["Anyone who wants better energy", "Members trying to lose body fat", "People who want a sustainable plan"],
+        "gettingStarted": [
+          { "number": 1, "headline": "Free consultation", "body": "Meet your nutrition coach." },
+          { "number": 2, "headline": "Baseline assessment", "body": "Understand your starting point." },
+          { "number": 3, "headline": "Start your plan", "body": "Build habits that stick." }
+        ],
+        "testimonials": [],
+        "faq": []
+      }
+    ],
+    "about": {
+      "hero": { "headline": "About us", "subheading": "A community-driven gym in the heart of New York.", "backgroundImageUrl": "__NO_IMAGE__" },
+      "gymStory": "Beta Gym is a CrossFit gym in New York helping busy adults build strength, improve conditioning, and stay consistent. Members travel from SoHo, NoHo, Tribeca, and the surrounding neighborhoods.",
+      "team": []
+    },
+    "pricing": {
+      "hero": { "headline": "Membership options", "subheading": "Flexible plans that fit your goals.", "ctaLabel": "Request pricing", "ctaUrl": "/membership-pricing-request", "backgroundImageUrl": "__NO_IMAGE__" },
+      "grid": { "headline": "Membership options", "plans": [] },
+      "form": { "headline": "Request pricing", "intro": "Fill out the form and a coach will reach out with membership options." }
+    },
+    "contact": {
+      "hero": { "headline": "Contact us", "subheading": "Have questions? We are here to help.", "ctaLabel": "Call us", "ctaUrl": "tel:+15593543714", "backgroundImageUrl": "__NO_IMAGE__" },
+      "intro": "Have questions? Reach out and a coach will get back to you."
+    },
+    "schedule": {
+      "hero": { "headline": "Schedule", "subheading": "Book classes and appointments.", "backgroundImageUrl": "__NO_IMAGE__" },
+      "widgetEmbedHtml": "",
+      "note": "Book your next class or free intro through the member app."
+    },
+    "blog": { "heroHeadline": "Blog", "posts": [] },
+    "legal": [
+      { "slug": "privacy-policy", "title": "Privacy Policy", "blocks": [{ "type": "text", "html": "<p>Your privacy is important to us.</p>" }] },
+      { "slug": "terms-of-use", "title": "Terms of Use", "blocks": [{ "type": "text", "html": "<p>Use of this site is subject to these terms.</p>" }] }
+    ]
+  }
+}

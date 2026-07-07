@@ -1,0 +1,49 @@
+/* Beanburito theme: scoped custom rules that are awkward to express in Tailwind.
+   Layout, spacing, and typography use Tailwind utilities; this file handles the
+   original clip-path hero shapes, skewed section accents, and CTA arrow icon. */
+
+.theme-beanburito .hero-img-clip {
+  clip-path: polygon(0 0, 100% 0%, 85% 100%, 0% 100%);
+}
+
+@media (max-width: 767px) {
+  .theme-beanburito .hero-img-clip {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%);
+  }
+}
+
+.theme-beanburito .section-skew {
+  transform: skewY(2deg);
+  position: relative;
+  z-index: 1;
+}
+
+.theme-beanburito .section-skew > .section-skew-inner {
+  transform: skewY(-2deg);
+}
+
+.theme-beanburito .section-skew-reverse {
+  transform: skewY(-2deg);
+  position: relative;
+  z-index: 1;
+}
+
+.theme-beanburito .section-skew-reverse > .section-skew-inner-reverse {
+  transform: skewY(2deg);
+}
+
+.theme-beanburito .section-overlap {
+  margin-top: -1.7em;
+}
+
+/* Cookie-style arrow icon used by the original CTA link. */
+.theme-beanburito .cta-arrow {
+  width: 8px;
+  height: 1em;
+  object-fit: contain;
+}
+
+/* Keep the fixed navbar from overlapping the in-page anchors. */
+.theme-beanburito [id] {
+  scroll-margin-top: 6rem;
+}
