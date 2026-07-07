@@ -13,6 +13,7 @@ import type { StageRunner, StageResult, StageContext } from "./stages/types";
 import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
 import { parseArgs, PIPELINES } from "./milo-args.js";
+import type { MiloCommand } from "./milo-args.js";
 export type { MiloCommand } from "./milo-args.js";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
@@ -205,87 +206,39 @@ function renderReport(
   }
 }
 
-async function main() {
-  const args = parseArgs();
-  const registry = await loadRegistry();
-
-  for (const s of args.stages) {
-    if (!registry[s]) {
-      console.error(
-        `Unknown stage: "${s}". Available: ${Object.keys(registry).join(", ")}`,
-      );
-      process.exit(1);
-    }
-  }
-
-  const { siteUuid, workspaceUuid } = await resolveSite(args.url, args.site);
-  const s3Client = getS3Client({
-    endpoint: config.S3_ENDPOINT,
-    region: config.S3_REGION,
-    accessKeyId: config.S3_ACCESS_KEY,
-    secretAccessKey: config.S3_SECRET_KEY,
-  });
-  const ctx: StageContext = {
-    db,
-    config,
-    s3Client,
-    siteUuid,
-    workspaceUuid,
-    rendererDir: resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../renderer",
-    ),
-    verbose: args.verbose,
-    tier: args.tier,
-    templateTheme: args.templateTheme,
-    log: (msg) => {
-      if (!args.quiet) console.log(msg);
-    },
-  };
-
-  if (!args.quiet) console.log(`\nMilo pipeline — site: ${siteUuid}`);
-
+async function runPipeline(
+  stages: readonly string[],
+  ctx: StageContext,
+  registry: Record<string, StageRunner>,
+  opts: { force: boolean; quiet: boolean },
+): Promise<StageResult[]> {
   const results: StageResult[] = [];
-  const totalStart = Date.now();
 
-  for (const stageName of args.stages) {
+  for (const stageName of stages) {
     const runner = registry[stageName];
+    if (!runner) {
+      results.push({
+        stage: stageName, status: "fail", durationMs: 0, metrics: {}, warnings: [],
+        error: `Stage "${stageName}" not found in registry`,
+      });
+      break;
+    }
+
     ctx.log(`\n▶ ${stageName}`);
 
     const prereqErr = await checkPrerequisites(runner, ctx);
     if (prereqErr) {
-      results.push({
-        stage: stageName,
-        status: "fail",
-        durationMs: 0,
-        metrics: {},
-        warnings: [],
-        error: prereqErr,
-      });
-      for (const rem of args.stages.slice(
-        args.stages.indexOf(stageName) + 1,
-      )) {
-        results.push({
-          stage: rem,
-          status: "skipped",
-          durationMs: 0,
-          metrics: {},
-          warnings: [],
-        });
+      results.push({ stage: stageName, status: "fail", durationMs: 0, metrics: {}, warnings: [], error: prereqErr });
+      for (const rem of [...stages].slice([...stages].indexOf(stageName) + 1)) {
+        results.push({ stage: rem, status: "skipped", durationMs: 0, metrics: {}, warnings: [] });
       }
       break;
     }
 
-    const skip = await shouldSkip(runner, stageName, ctx, args.force);
+    const skip = await shouldSkip(runner, stageName, ctx, opts.force);
     if (skip) {
       ctx.log(`  ⏭  skipped — artifact exists (--force to re-run)`);
-      results.push({
-        stage: stageName,
-        status: "skipped",
-        durationMs: 0,
-        metrics: {},
-        warnings: [],
-      });
+      results.push({ stage: stageName, status: "skipped", durationMs: 0, metrics: {}, warnings: [] });
       continue;
     }
 
@@ -295,11 +248,7 @@ async function main() {
       result = await runner.run(ctx);
     } catch (err) {
       result = {
-        stage: stageName,
-        status: "fail",
-        durationMs: Date.now() - start,
-        metrics: {},
-        warnings: [],
+        stage: stageName, status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
         error: err instanceof Error ? err.message : String(err),
       };
     }
@@ -307,22 +256,87 @@ async function main() {
     results.push(result);
 
     if (result.status === "fail") {
-      for (const rem of args.stages.slice(
-        args.stages.indexOf(stageName) + 1,
-      )) {
-        results.push({
-          stage: rem,
-          status: "skipped",
-          durationMs: 0,
-          metrics: {},
-          warnings: [],
-        });
+      for (const rem of [...stages].slice([...stages].indexOf(stageName) + 1)) {
+        results.push({ stage: rem, status: "skipped", durationMs: 0, metrics: {}, warnings: [] });
       }
       break;
     }
   }
+  return results;
+}
 
-  renderReport(results, Date.now() - totalStart, args.quiet);
+function buildCtx(
+  siteUuid: string,
+  workspaceUuid: string,
+  opts: { verbose: boolean; quiet: boolean; tier?: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito" },
+): StageContext {
+  return {
+    db,
+    config,
+    s3Client: getS3Client({
+      endpoint: config.S3_ENDPOINT,
+      region: config.S3_REGION,
+      accessKeyId: config.S3_ACCESS_KEY,
+      secretAccessKey: config.S3_SECRET_KEY,
+    }),
+    siteUuid,
+    workspaceUuid,
+    rendererDir: resolve(dirname(fileURLToPath(import.meta.url)), "../../renderer"),
+    verbose: opts.verbose,
+    tier: opts.tier ?? "free",
+    templateTheme: opts.templateTheme,
+    log: (msg) => { if (!opts.quiet) console.log(msg); },
+  };
+}
+
+async function runJoin(
+  cmd: Extract<MiloCommand, { cmd: "join" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(cmd.url, undefined);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: cmd.tier, templateTheme: cmd.theme });
+  if (!cmd.quiet) console.log(`\nMilo join — ${cmd.url} (site: ${siteUuid})`);
+  const totalStart = Date.now();
+  const results = await runPipeline(PIPELINES.join, ctx, registry, cmd);
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
+async function runLegacyStages(
+  cmd: Extract<MiloCommand, { cmd: "stages" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  for (const s of cmd.stages) {
+    if (!registry[s]) {
+      console.error(`Unknown stage: "${s}". Available: ${Object.keys(registry).join(", ")}`);
+      process.exit(1);
+    }
+  }
+  const { siteUuid, workspaceUuid } = await resolveSite(cmd.url, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: cmd.tier, templateTheme: cmd.templateTheme });
+  if (!cmd.quiet) console.log(`\nMilo pipeline — site: ${siteUuid}`);
+  const totalStart = Date.now();
+  const results = await runPipeline(cmd.stages, ctx, registry, cmd);
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
+async function main() {
+  const cmd = parseArgs();
+  const registry = await loadRegistry();
+
+  let results: StageResult[] = [];
+  switch (cmd.cmd) {
+    case "join":   results = await runJoin(cmd, registry); break;
+    case "stages": results = await runLegacyStages(cmd, registry); break;
+    // upgrade, rebuild, page, eval, nav, restore — added in Tasks 4–6
+    default: {
+      const c = cmd as MiloCommand;
+      console.error(`Handler for "${c.cmd}" not yet implemented. Run again after all tasks complete.`);
+      process.exit(1);
+    }
+  }
+
   await db.destroy();
   process.exit(results.some((r) => r.status === "fail") ? 1 : 0);
 }
