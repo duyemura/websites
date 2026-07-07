@@ -93,6 +93,30 @@ export function extractContentOutline(html: string): string {
     }
   });
 
+  // Fallback: if no sections matched (unusual HTML structure), extract headings
+  // and paragraphs directly from body so every page produces some outline.
+  if (sections.length === 0) {
+    const items: string[] = [];
+    $("body").find("h1, h2, h3").slice(0, 8).each((_, child) => {
+      const text = $(child).text().replace(/\s+/g, " ").trim();
+      if (text && text.length > 2 && text.length < 200) {
+        items.push(`  - ${child.tagName.toLowerCase()}: "${text}"`);
+      }
+    });
+    let pCount = 0;
+    $("body").find("p").each((_, child) => {
+      if (pCount >= 3) return;
+      const text = $(child).text().replace(/\s+/g, " ").trim();
+      if (text && text.length > 20 && text.length < 400) {
+        items.push(`  - p: "${text}"`);
+        pCount++;
+      }
+    });
+    if (items.length > 0) {
+      sections.push(`- page:\n${items.join("\n")}`);
+    }
+  }
+
   return sections.join("\n");
 }
 
