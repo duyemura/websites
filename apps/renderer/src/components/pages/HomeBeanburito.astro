@@ -1,0 +1,25 @@
+---
+import HeroBeanburito from "../sections/beanburito/HeroBeanburito.astro";
+import BenefitsBeanburito from "../sections/beanburito/BenefitsBeanburito.astro";
+import ProgramsBeanburito from "../sections/beanburito/ProgramsBeanburito.astro";
+import HowItWorksBeanburito from "../sections/beanburito/HowItWorksBeanburito.astro";
+import AmenitiesBeanburito from "../sections/beanburito/AmenitiesBeanburito.astro";
+import CommunityBeanburito from "../sections/beanburito/CommunityBeanburito.astro";
+import LocationBeanburito from "../sections/beanburito/LocationBeanburito.astro";
+import TestimonialsBeanburito from "../sections/beanburito/TestimonialsBeanburito.astro";
+import FAQBeanburito from "../sections/beanburito/FAQBeanburito.astro";
+import CTABandBeanburito from "../sections/beanburito/CTABandBeanburito.astro";
+import { content } from "../../lib/content";
+const home = content.pages.home;
+const { business } = content;
+---
+<HeroBeanburito hero={home.hero} />
+{home.valueProps?.length > 0 && <BenefitsBeanburito items={home.valueProps} />}
+{home.featuredPrograms?.length > 0 && <ProgramsBeanburito slugs={home.featuredPrograms} headline={home.programsHeadline} />}
+{home.howItWorks?.length > 0 && <HowItWorksBeanburito steps={home.howItWorks} headline={home.howItWorksHeadline} />}
+{home.features?.length > 0 && <AmenitiesBeanburito items={home.features} headline="Everything you need to crush your fitness goals" />}
+{home.communityProps?.length > 0 && <CommunityBeanburito items={home.communityProps} headline={home.communityHeadline} imageUrl="/assets/beanburito/community.webp" />}
+<LocationBeanburito />
+{home.testimonials?.length > 0 && <TestimonialsBeanburito items={home.testimonials} headline={home.trustHeadline} />}
+{home.faq?.length > 0 && <FAQBeanburito items={home.faq} />}
+<CTABandBeanburito headline="Ready to see what we are about?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />

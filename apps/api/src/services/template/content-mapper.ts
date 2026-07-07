@@ -98,16 +98,26 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
 
   // Address is the whole labeled value — apply regex to this single clean string
   const addrStr = labelLine("Address");
+  // Pass 1: strict match with 2-letter state abbreviation
   const addrMatch = addrStr.match(
     /^(\d+\s+[\w\s]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail)\.?),?\s*(?:Suite?\s*\d+\s*,\s*)?([\w\s]+?),\s*([A-Z]{2})\s+(\d{5})/i,
   );
+  // Pass 2: loose match with 2-letter abbreviation (no street type required)
   const looseMatch = !addrMatch
     ? addrStr.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
     : null;
-  const street = addrMatch?.[1]?.trim() ?? fallback("", baseline.address.street, warnings, "address.street");
-  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fallback("", baseline.address.city, warnings, "address.city");
-  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2])?.toUpperCase() ?? fallback("", baseline.address.state, warnings, "address.state");
-  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fallback("", baseline.address.zip, warnings, "address.zip");
+  // Pass 3: GMB format — full state name: "street, city, StateName, zip"
+  const stateNameToAbbr = Object.fromEntries(Object.entries(STATE_ABBRS).map(([k, v]) => [v.toLowerCase(), k]));
+  const fullStateMatch = !addrMatch && !looseMatch
+    ? addrStr.match(/^(.+?),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*(\d{5})/i)
+    : null;
+  const fullStateAbbr = fullStateMatch
+    ? (stateNameToAbbr[(fullStateMatch[3] ?? "").toLowerCase()] ?? (fullStateMatch[3] ?? "").slice(0, 2).toUpperCase())
+    : undefined;
+  const street = addrMatch?.[1]?.trim() ?? fullStateMatch?.[1]?.trim() ?? fallback("", baseline.address.street, warnings, "address.street");
+  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fullStateMatch?.[2]?.trim() ?? fallback("", baseline.address.city, warnings, "address.city");
+  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2] ?? fullStateAbbr)?.toUpperCase() ?? fallback("", baseline.address.state, warnings, "address.state");
+  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fullStateMatch?.[4] ?? fallback("", baseline.address.zip, warnings, "address.zip");
 
   // Social links from labeled lines
   const socialPlatforms = ["facebook", "instagram", "twitter", "tiktok", "youtube"] as const;

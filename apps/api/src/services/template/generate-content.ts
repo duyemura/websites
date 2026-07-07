@@ -44,6 +44,7 @@ interface GeneratedHomeSlots {
   features: Array<{ label: string }>;
   communityHeadline: string;
   trustHeadline: string;
+  serviceArea?: string[];
 }
 
 // ── Doc loading ──────────────────────────────────────────────────────────────
@@ -229,8 +230,11 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
     { "label": "string" }
   ],
   "communityHeadline": "string (4-8 words, emotional, about belonging)",
-  "trustHeadline": "string (5-10 words, social proof)"
-}`;
+  "trustHeadline": "string (5-10 words, social proof)",
+  "serviceArea": ["real nearby city 1", "real nearby city 2", "real nearby city 3", "real nearby city 4"]
+}
+
+For serviceArea: list 4 real nearby cities/neighborhoods that people actually drive from to go to this gym. Use your knowledge of the area based on the gym's city.`;
 
   log(`  Calling LLM to generate homepage content (${spec.name} spec)...`);
   const response = await chatCompletion(
@@ -300,8 +304,16 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
     faq,
   };
 
+  // Patch serviceArea into business if LLM provided real nearby cities
+  const serviceArea = generated.serviceArea?.filter((c) => c && !c.toLowerCase().includes("city"))
+    ?? baseContent.business.serviceArea;
+
   return {
     ...baseContent,
+    business: {
+      ...baseContent.business,
+      serviceArea: serviceArea?.length ? serviceArea : baseContent.business.serviceArea,
+    },
     pages: {
       ...baseContent.pages,
       home: generatedHome,
