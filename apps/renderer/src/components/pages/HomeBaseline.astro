@@ -13,12 +13,12 @@ const home = content.pages.home;
 const { business } = content;
 ---
 <Hero hero={home.hero} />
-{home.valueProps?.length && <ValueProps items={home.valueProps} />}
-{home.featuredPrograms?.length && <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />}
-{home.howItWorks?.length && <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />}
-{home.testimonials?.length && <Testimonials items={home.testimonials} />}
-{home.features?.length && <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />}
-{home.communityProps?.length && <ValueProps items={home.communityProps} headline={home.communityHeadline} />}
+{home.valueProps?.length > 0 && <ValueProps items={home.valueProps} />}
+{home.featuredPrograms?.length > 0 && <ProgramCards slugs={home.featuredPrograms} headline={home.programsHeadline} />}
+{home.howItWorks?.length > 0 && <HowItWorks steps={home.howItWorks} headline={home.howItWorksHeadline} />}
+{home.testimonials?.length > 0 && <Testimonials items={home.testimonials} />}
+{home.features?.length > 0 && <FeatureGrid items={home.features} headline="Everything you need to crush your fitness goals" />}
+{home.communityProps?.length > 0 && <ValueProps items={home.communityProps} headline={home.communityHeadline} />}
 <CTABand headline={home.trustHeadline} />
 <Location />
 <FAQ items={home.faq} />

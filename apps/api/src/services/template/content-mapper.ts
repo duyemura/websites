@@ -77,7 +77,7 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
   // 5. Markdown title line (strip SEO suffix after " | ")
   // 6. Baseline default
   const labelLine = (label: string): string =>
-    markdown.match(new RegExp(`\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
+    markdown.match(new RegExp(`(?:-\\s+)?\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
 
   const nameFromLabel = labelLine("Business Name");
   const nameFromWelcome = markdown.match(/Welcome to ([^,.\n]+)[,.\n]/)?.[1]?.trim() ?? "";
@@ -190,13 +190,13 @@ export function extractNavigation(hierarchy: SiteHierarchy, warnings: string[]):
 
 // ── Pages ────────────────────────────────────────────────────────────────────
 
-function heroFromPage(page: HierarchyPage, contractHero?: SectionContract): HeroContent {
+function heroFromPage(page: HierarchyPage, contractHero?: SectionContract, business?: Pick<BusinessInfo, "primaryCta">): HeroContent {
   const section = page.sections.find((s) => s.tag === "hero");
   return {
     headline: section?.content.heading || page.title,
     subheading: section?.content.body || undefined,
-    ctaLabel: section?.content.cta?.label || undefined,
-    ctaUrl: section?.content.cta?.href || undefined,
+    ctaLabel: section?.content.cta?.label || business?.primaryCta.label || undefined,
+    ctaUrl: section?.content.cta?.href || business?.primaryCta.url || undefined,
     backgroundImageUrl:
       contractHero?.media?.imageUrls?.[0] ??
       contractHero?.layout?.background?.imageUrl ??
@@ -207,7 +207,7 @@ function heroFromPage(page: HierarchyPage, contractHero?: SectionContract): Hero
 
 export function extractPages(
   hierarchy: SiteHierarchy,
-  business: Pick<BusinessInfo, "name">,
+  business: Pick<BusinessInfo, "name" | "primaryCta">,
   warnings: string[],
   contract: ContractArtifact | null = null,
 ): PageContent {
@@ -228,7 +228,7 @@ export function extractPages(
   const contractFeatureGrid = contractHomeSections.find((s) => s.layout.archetype.startsWith("feature-grid"));
 
   const home: HomeContent = {
-    hero: homePage ? heroFromPage(homePage, contractHero) : { headline: business.name, backgroundImageUrl: contractHero?.media?.imageUrls?.[0] ?? contractHero?.layout?.background?.imageUrl },
+    hero: homePage ? heroFromPage(homePage, contractHero, business) : { headline: business.name, ctaLabel: business.primaryCta.label, ctaUrl: business.primaryCta.url, backgroundImageUrl: contractHero?.media?.imageUrls?.[0] ?? contractHero?.layout?.background?.imageUrl },
     valueProps: [],
     programsHeadline: "Our Programs",
     featuredPrograms,
