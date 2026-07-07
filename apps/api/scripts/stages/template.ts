@@ -2,6 +2,7 @@
 import { deployTemplate } from "../../src/services/template/deploy-template";
 import { promoteDeploy } from "../../src/services/mirror/deploy";
 import { publishLatestStagingToProduction } from "../../src/services/site-versions";
+import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 export const templateStage: StageRunner = {
@@ -26,6 +27,18 @@ export const templateStage: StageRunner = {
       ? `https://${site.customDomain}`
       : `${ctx.config.CDN_BASE_URL}/sites/${site.uuid}/current`;
 
+    // Use generate artifact (spec-driven LLM content) if available — bypasses content-mapper defaults
+    const generateArtifact = await loadArtifact(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: site.workspaceUuid },
+      "generate" as any,
+    );
+    if (generateArtifact) {
+      ctx.log(`  Using spec-generated content (generate artifact v${(generateArtifact as any).version ?? "?"})`);
+    } else {
+      ctx.log(`  No generate artifact — using content-mapper defaults`);
+    }
+
     ctx.log(`  Deploying template for site ${ctx.siteUuid}...`);
 
     const result = await deployTemplate({
@@ -38,6 +51,7 @@ export const templateStage: StageRunner = {
       siteUrl,
       rendererDir: ctx.rendererDir,
       templateTheme: ctx.templateTheme,
+      content: generateArtifact?.payload ?? undefined,
       log: {
         info: (o, m) => ctx.log(`  [info] ${m}`),
         warn: (o, m) => ctx.log(`  [warn] ${m}`),
