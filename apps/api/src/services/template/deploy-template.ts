@@ -44,6 +44,8 @@ export interface DeployTemplateInput {
   workspaceUuid: string;
   /** The validated GymSiteContent object to build with. If omitted, buildGymJson is called automatically. */
   content?: unknown;
+  /** Override the Astro template theme. Defaults to auto-detected baseline/impact. */
+  templateTheme?: "baseline" | "impact" | "beanburito";
   /** API base URL forwarded to the content mapper (e.g. CDN_BASE_URL). */
   apiBaseUrl?: string;
   /** Public site URL forwarded to the content mapper. */
@@ -69,6 +71,12 @@ export async function deployTemplate(input: DeployTemplateInput) {
       (log.warn ?? log.info)({ siteUuid, warnings }, "content mapper used defaults");
     }
     gymJson = mapped;
+  }
+  if (input.templateTheme && gymJson && typeof gymJson === "object") {
+    (gymJson as Record<string, unknown>).meta = {
+      ...((gymJson as Record<string, unknown>).meta as object),
+      templateTheme: input.templateTheme,
+    };
   }
 
   // 2. Inject content + build

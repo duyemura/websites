@@ -37,6 +37,7 @@ export const templateStage: StageRunner = {
       apiBaseUrl: ctx.config.CDN_BASE_URL,
       siteUrl,
       rendererDir: ctx.rendererDir,
+      templateTheme: ctx.templateTheme,
       log: {
         info: (o, m) => ctx.log(`  [info] ${m}`),
         warn: (o, m) => ctx.log(`  [warn] ${m}`),

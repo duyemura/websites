@@ -16,6 +16,8 @@ export interface StageContext {
   log: (msg: string) => void;
   /** "free" = 20 structural pages (default), "paid" = unlimited */
   tier: "free" | "paid";
+  /** Override the Astro template theme. Defaults to auto-detected baseline/impact. */
+  templateTheme?: "baseline" | "impact" | "beanburito";
 }
 
 export interface StageResult {

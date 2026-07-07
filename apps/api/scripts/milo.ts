@@ -1,25 +1,23 @@
 // apps/api/scripts/milo.ts
-// Must be first — loads apps/api/.env (DB_PORT=5434 etc.) before database module initializes
+// Must be first — loads apps/api/.env (DB_PORT=5434 etc.) before database module initializes,
+// then overlays the workspace root .env so shared secrets like GOOGLE_PLACES_API_KEY are available.
 import "dotenv/config";
-import { configDotenv } from "dotenv";
+import "./load-root-env.js";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-
-configDotenv({
-  path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env"),
-  override: false,
-});
 
 import { db, config } from "../src/database";
 import { getS3Client } from "../src/s3";
 import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageResult, StageContext } from "./stages/types";
 import { dedupeWarnings } from "./stages/types";
+import type { PipelineStage } from "../src/types/pipeline-artifacts";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
   // Lazy: only attempt to load stages that exist
   const registry: Record<string, StageRunner> = {};
   const stageModules: [string, string][] = [
+    ["enrich", "./stages/enrich.js"],
     ["clone", "./stages/clone.js"],
     ["eval", "./stages/eval.js"],
     ["extract", "./stages/extract.js"],
@@ -47,8 +45,8 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   return registry;
 }
 
-// Default: clone the site, build docs, extract content. Template is the explicit paid upsell.
-const DEFAULT_STAGES_FOR_URL = ["clone", "docgen", "content"];
+// Default: resolve GMB facts, clone the site, build docs from clone+GMB, extract content.
+const DEFAULT_STAGES_FOR_URL = ["enrich", "clone", "docgen", "content"];
 
 function parseArgs() {
   const argv = process.argv.slice(2);
@@ -90,6 +88,7 @@ function parseArgs() {
     quiet: has("quiet"),
     force: has("force"),
     tier: (get("tier") ?? "free") as "free" | "paid",
+    templateTheme: get("theme") as "baseline" | "impact" | "beanburito" | undefined,
   };
 }
 
@@ -146,7 +145,7 @@ async function checkPrerequisites(
     const artifact = await loadArtifact(
       ctx.db,
       { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-      req as any,
+      req as PipelineStage,
     );
     if (!artifact)
       return `"${runner.label}" requires artifact "${req}" — run prerequisite stages first`;
@@ -279,6 +278,7 @@ async function main() {
     ),
     verbose: args.verbose,
     tier: args.tier,
+    templateTheme: args.templateTheme,
     log: (msg) => {
       if (!args.quiet) console.log(msg);
     },
