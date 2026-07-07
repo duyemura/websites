@@ -31,6 +31,7 @@ export const generateStage: StageRunner = {
     const content = await generateSiteContent({
       db: ctx.db,
       config: ctx.config,
+      s3Client: ctx.s3Client,
       siteUuid: site.uuid,
       workspaceUuid: site.workspaceUuid,
       apiBaseUrl: ctx.config.CDN_BASE_URL,

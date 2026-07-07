@@ -12,6 +12,8 @@
  */
 
 import type { Kysely } from "kysely";
+import type { S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
@@ -21,6 +23,7 @@ import { chatCompletion } from "../../ai/llm-client.js";
 export interface GenerateContentInput {
   db: Kysely<DB>;
   config: Config;
+  s3Client: S3Client;
   siteUuid: string;
   workspaceUuid: string;
   apiBaseUrl: string;
@@ -141,6 +144,34 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
 
+  // Load mirror deploy prefix so we can resolve hero image URLs
+  const mirrorDeployArtifact = await (db as any)
+    .selectFrom("pipelineArtifacts")
+    .select("payload")
+    .where("siteUuid", "=", siteUuid)
+    .where("stage", "=", "mirror-deploy")
+    .orderBy("version", "desc")
+    .executeTakeFirst();
+  const mirrorDeployPrefix: string = mirrorDeployArtifact?.payload?.deployPrefix ?? "";
+
+  // Load hero image URL captured during clone (saved as hero-image.txt alongside outline.txt)
+  let heroImageUrl: string | undefined;
+  if (mirrorDeployPrefix) {
+    try {
+      const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
+      const obj = await input.s3Client.send(new GetObjectCommand({
+        Bucket: bucket,
+        Key: `${mirrorDeployPrefix}/hero-image.txt`,
+      }));
+      const relativeUrl = (await obj.Body?.transformToString() ?? "").trim();
+      if (relativeUrl.startsWith("/_assets/")) {
+        // Use the immutable mirror deploy prefix — stays valid even after template replaces staging
+        heroImageUrl = relativeUrl; // relative /_assets/ path — template deploy copies assets in
+        log(`  Hero image: ${heroImageUrl}`);
+      }
+    } catch { /* hero-image.txt not yet present — run clone again to capture */ }
+  }
+
   // Get base GymSiteContent from content-mapper (handles brand, business NAP, nav, programs)
   log(`  Building base content from docs...`);
   const { buildGymJson } = await import("./content-mapper.js");
@@ -170,6 +201,13 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   const artifactContext = buildContextFromArtifact(contentArtifact);
 
+  // Trim business-info: remove the Testimonials section (long, LLM-busting)
+  // Testimonials come from the content artifact separately
+  const businessInfoTrimmed = (businessInfo || "")
+    .replace(/^## Testimonials[\s\S]*$/m, "")
+    .trim()
+    .slice(0, 1500);
+
   // Build the LLM prompt
   const specPrompt = buildSpecPrompt(spec);
   const prompt = `You are writing homepage content for a gym website. Use ONLY the gym's real information from the docs below. Be specific — use their actual name, city, programs, and story. Never use placeholder text.
@@ -177,18 +215,18 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 ## GYM DOCS
 
 ### Business Info
-${businessInfo || "(not available)"}
+${businessInfoTrimmed || "(not available)"}
 
 ### Brand & Voice Guidelines
-${brandGuidelines || "(not available)"}
+${(brandGuidelines || "").slice(0, 800)}
 
 ### Marketing Strategy
-${siteStrategy || "(not available)"}
+${(siteStrategy || "").slice(0, 600)}
 
 ### Site Structure (pages and programs they have)
-${siteHierarchy ? siteHierarchy.slice(0, 2000) : "(not available)"}
+${siteHierarchy ? siteHierarchy.slice(0, 1500) : "(not available)"}
 
-${artifactContext || ""}
+${artifactContext ? artifactContext.slice(0, 1500) : ""}
 
 ---
 
@@ -237,22 +275,28 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
 For serviceArea: list 4 real nearby cities/neighborhoods that people actually drive from to go to this gym. Use your knowledge of the area based on the gym's city.`;
 
   log(`  Calling LLM to generate homepage content (${spec.name} spec)...`);
-  const response = await chatCompletion(
-    { model: config.DEFAULT_LLM_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.3 },
-    config,
-  );
 
-  const jsonText = extractJsonObject(response.content ?? "");
-  if (!jsonText) {
-    log(`  [warn] LLM returned no JSON — using base content`);
-    return baseContent;
+  let generated: GeneratedHomeSlots | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const response = await chatCompletion(
+      { model: config.DEFAULT_LLM_MODEL, messages: [{ role: "user", content: prompt }], temperature: attempt === 1 ? 0.3 : 0 },
+      config,
+    );
+    const jsonText = extractJsonObject(response.content ?? "");
+    if (!jsonText) {
+      log(`  [warn] attempt ${attempt}: LLM returned no JSON${attempt < 2 ? " — retrying" : ""}`);
+      continue;
+    }
+    try {
+      generated = JSON.parse(jsonText) as GeneratedHomeSlots;
+      break;
+    } catch {
+      log(`  [warn] attempt ${attempt}: JSON parse failed${attempt < 2 ? " — retrying" : ""}`);
+    }
   }
 
-  let generated: GeneratedHomeSlots;
-  try {
-    generated = JSON.parse(jsonText) as GeneratedHomeSlots;
-  } catch {
-    log(`  [warn] LLM JSON parse failed — using base content`);
+  if (!generated) {
+    log(`  [warn] LLM failed after 2 attempts — using base content`);
     return baseContent;
   }
 
@@ -266,7 +310,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     intro: generated.hero?.intro || baseHero.intro,
     ctaLabel: generated.hero?.ctaLabel || baseHero.ctaLabel || baseContent.business.primaryCta.label,
     ctaUrl: generated.hero?.ctaUrl || baseHero.ctaUrl || baseContent.business.primaryCta.url,
-    backgroundImageUrl: baseHero.backgroundImageUrl,
+    backgroundImageUrl: heroImageUrl || baseHero.backgroundImageUrl,
   };
 
   const generatedValueProps: ValueProp[] = (generated.valueProps ?? [])

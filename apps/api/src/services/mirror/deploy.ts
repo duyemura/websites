@@ -34,6 +34,28 @@ async function bounded<T>(
  * Preserves heading hierarchy and section context so LLMs can map
  * content to template slots without raw HTML noise.
  */
+/**
+ * Extract the hero background image URL from page HTML.
+ * Returns the `/_assets/...` relative URL of the first prominent image
+ * found in the hero section, or undefined if none found.
+ */
+export function extractHeroImageUrl(html: string): string | undefined {
+  const $ = cheerio.load(html);
+
+  // Check og:image meta first — most reliable signal for the hero image
+  const ogImage = $("meta[property='og:image']").attr("content");
+  if (ogImage?.startsWith("/_assets/")) return ogImage;
+
+  // Then look for the first <img> in a hero-ish section
+  const heroSelectors = "[class*='hero'], [class*='banner'], section:first-of-type";
+  const heroImg = $(heroSelectors).find("img[src^='/_assets/']").first().attr("src");
+  if (heroImg) return heroImg;
+
+  // Finally any large img anywhere in the page body (first one, above-fold)
+  const firstImg = $("body").find("img[src^='/_assets/']").first().attr("src");
+  return firstImg ?? undefined;
+}
+
 export function extractContentOutline(html: string): string {
   const $ = cheerio.load(html);
 
@@ -338,6 +360,19 @@ export async function deploySnapshot(
           ContentType: "text/plain; charset=utf-8",
         })));
       }
+      // Save hero image URL so the generate stage can use it as backgroundImageUrl
+      let heroImageUrl = "";
+      try { heroImageUrl = extractHeroImageUrl(result.html) ?? ""; }
+      catch { /* non-fatal */ }
+      if (heroImageUrl) {
+        const heroImageKey = `${deployPrefix}/${pathToOutlineKey(page.path).replace("outline.txt", "hero-image.txt")}`;
+        uploads.push(deps.s3Client.send(new PutObjectCommand({
+          Bucket: deps.bucket,
+          Key: heroImageKey,
+          Body: Buffer.from(heroImageUrl, "utf8"),
+          ContentType: "text/plain; charset=utf-8",
+        })));
+      }
       await Promise.all(uploads);
     } catch (err) {
       warnings.push(`deploy write failed: ${page.path} (${err instanceof Error ? err.message : String(err)})`);
@@ -480,7 +515,10 @@ export async function promoteDeploy(
     tok = listed.NextContinuationToken;
   }
 
-  // C3: Delete objects in current/ absent from the new deploy (stale page cleanup)
+  // C3: Delete stale pages from staging — but NEVER delete assets.
+  // Assets (images, fonts, CSS) pulled from gym sites are permanent; they are
+  // tracked in the DB and must only be removed via an explicit paired operation
+  // that removes both the S3 object and the DB record together.
   for (let tok: string | undefined = undefined; ; ) {
     const listed: ListObjectsV2CommandOutput = await s3Client.send(
       new ListObjectsV2Command({ Bucket: bucket, Prefix: `${currentPrefix}/`, ContinuationToken: tok }),
@@ -488,6 +526,7 @@ export async function promoteDeploy(
     for (const obj of listed.Contents ?? []) {
       if (!obj.Key) continue;
       const rel = obj.Key.slice(currentPrefix.length + 1);
+      if (rel.startsWith("_assets/")) continue; // never delete assets
       if (!deployRelPaths.has(rel)) {
         await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
       }
@@ -542,7 +581,8 @@ export async function publishToProduction(
     tok = listed.NextContinuationToken;
   }
 
-  // Delete objects in production/ absent from staging (stale cleanup)
+  // Delete stale pages in production absent from staging — but NEVER delete assets.
+  // Assets are permanent; paired S3+DB removal must go through an explicit admin operation.
   for (let tok: string | undefined = undefined; ;) {
     const listed: ListObjectsV2CommandOutput = await s3Client.send(
       new ListObjectsV2Command({ Bucket: bucket, Prefix: `${productionPrefix}/`, ContinuationToken: tok }),
@@ -550,6 +590,7 @@ export async function publishToProduction(
     for (const obj of listed.Contents ?? []) {
       if (!obj.Key) continue;
       const rel = obj.Key.slice(productionPrefix.length + 1);
+      if (rel.startsWith("_assets/")) continue; // never delete assets
       if (!stagingPaths.has(rel)) {
         await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
       }
