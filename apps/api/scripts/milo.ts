@@ -12,6 +12,8 @@ import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageResult, StageContext } from "./stages/types";
 import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
+import { parseArgs, PIPELINES } from "./milo-args.js";
+export type { MiloCommand } from "./milo-args.js";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
   // Lazy: only attempt to load stages that exist
@@ -47,52 +49,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   return registry;
 }
 
-// Default: resolve GMB facts, clone the site, build docs from clone+GMB, extract content.
-const DEFAULT_STAGES_FOR_URL = ["enrich", "clone", "docgen", "content"];
 
-function parseArgs() {
-  const argv = process.argv.slice(2);
-  const get = (flag: string) => {
-    const i = argv.indexOf(`--${flag}`);
-    return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--")
-      ? argv[i + 1]
-      : undefined;
-  };
-  const has = (flag: string) => argv.includes(`--${flag}`);
-  const url = get("url");
-  const site = get("site");
-  const stagesStr = get("stages");
-  const stages = stagesStr
-    ? stagesStr.split(",").map((s) => s.trim())
-    : url
-      ? DEFAULT_STAGES_FOR_URL
-      : null;
-  if (!url && !site) {
-    console.error(
-      "Usage: pnpm milo --url <url> [--stages s1,s2] [--verbose] [--quiet] [--force]",
-    );
-    console.error(
-      "       pnpm milo --site <uuid> --stages s1,s2",
-    );
-    process.exit(1);
-  }
-  if (site && !stages) {
-    console.error(
-      "--site requires --stages (no default when targeting an existing site)",
-    );
-    process.exit(1);
-  }
-  return {
-    url,
-    site,
-    stages: stages!,
-    verbose: has("verbose"),
-    quiet: has("quiet"),
-    force: has("force"),
-    tier: (get("tier") ?? "free") as "free" | "paid",
-    templateTheme: get("theme") as "baseline" | "impact" | "beanburito" | undefined,
-  };
-}
 
 async function ensureEvalWorkspace(): Promise<string> {
   const existing = await db
