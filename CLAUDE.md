@@ -42,6 +42,14 @@ Before a gym commits to upgrading, show them side-by-side: their current cloned 
 the template would generate. Run `generate + template` against existing docs as a preview-only
 deploy. No re-clone, no extra LLM cost beyond what generate already does.
 
+### Hard rules — never violate
+- **Clone runs once.** After join, Milo is the system of record. Never re-clone, never re-sync from source.
+- **All changes go through Milo** — manual doc edits, AI assistant, or editor UI. The source site is irrelevant after join.
+- **`site-hierarchy` doc covers page structure** — Tier 2 can add/remove/reorder pages by editing this doc and rebuilding.
+- **Docs are the single source of truth.** Generate reads docs → produces gym.json → template renders it. Any doc change → rebuild → live site reflects it.
+- **Edit path for Tier 1 (clone):** AI edits docs → HTML transforms applied to static clone (works for content: copy, hours, nav, SEO). Cannot add pages (clone is static).
+- **Edit path for Tier 2 (template):** AI edits docs → `generate → template → publish`. Full structural changes possible including new pages via site-hierarchy.
+
 ## Pipeline stages
 
 The `milo` CLI (`apps/api/scripts/milo.ts`) orchestrates stages. Run with:
