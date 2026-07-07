@@ -6,30 +6,18 @@
  *   - classifyPageType: path → page type
  *   - extractJsonObject: extract first valid JSON object from LLM response
  *   - normalizeBrief: guarantee PageBrief shape regardless of LLM output quality
+ *   - mergeBriefs: merge per-page briefs preserving existing paths
  */
 import { describe, test, expect } from "vitest";
-
-// We test the internals by importing from the compiled module.
-// Since vitest uses tsx, TypeScript source is resolved directly.
-// These functions are private (not exported) — test via a thin re-export shim
-// OR test the exported `PageBrief` type + normalization behavior via the
-// exported `contentStage` to validate the contract is upheld.
-//
-// Simpler: extract the logic into small helpers and test those directly.
-// The functions are pure — copy the implementations here for isolated testing.
+import {
+  classifyPageType,
+  extractJsonObject,
+  normalizeBrief,
+  mergeBriefs,
+  type PageBrief,
+} from "../content";
 
 // ── classifyPageType ──────────────────────────────────────────────────────────
-// Copy of the function from content.ts — tests the classification logic.
-function classifyPageType(path: string) {
-  if (path === "/" || path === "") return "home";
-  const s = path.toLowerCase();
-  if (/\/programs\/|\/classes\/|crossfit|bootcamp|personal-training|strength-training/.test(s)) return "program";
-  if (/\/about|about-us/.test(s)) return "about";
-  if (/\/contact|contact-us/.test(s)) return "contact";
-  if (/\/pricing|\/membership|\/rates/.test(s)) return "pricing";
-  if (/\/schedule|class-schedule/.test(s)) return "schedule";
-  return "other";
-}
 
 describe("classifyPageType", () => {
   test("root paths → home", () => {
@@ -83,22 +71,6 @@ describe("classifyPageType", () => {
 
 // ── extractJsonObject ─────────────────────────────────────────────────────────
 // Extracts first valid JSON object from LLM text (handles prose wrapping).
-function extractJsonObject(raw: string): string | undefined {
-  const start = raw.indexOf("{");
-  if (start === -1) return undefined;
-  let depth = 0, inString = false, escape = false;
-  for (let i = start; i < raw.length; i++) {
-    const ch = raw[i];
-    if (inString) {
-      if (escape) { escape = false; }
-      else if (ch === "\\") { escape = true; }
-      else if (ch === '"') { inString = false; }
-    } else if (ch === '"') { inString = true; }
-    else if (ch === "{") { depth++; }
-    else if (ch === "}") { depth--; if (depth === 0) return raw.slice(start, i + 1); }
-  }
-  return undefined;
-}
 
 describe("extractJsonObject", () => {
   test("extracts bare JSON", () => {
@@ -135,7 +107,6 @@ describe("extractJsonObject", () => {
   });
 
   test("returns undefined for unclosed JSON", () => {
-    // Unclosed — depth never reaches 0 at end
     expect(extractJsonObject('{"unclosed": true')).toBeUndefined();
   });
 });
@@ -143,58 +114,6 @@ describe("extractJsonObject", () => {
 // ── normalizeBrief ────────────────────────────────────────────────────────────
 // Guarantees the PageBrief shape is always complete regardless of LLM output.
 // Critical: the template assumes every field exists — undefined crashes builds.
-
-// Copy of normalizeBrief from content.ts
-const PAGE_SECTIONS: Record<string, string[]> = {
-  home: ["hero", "value-props", "programs-preview", "testimonials", "cta"],
-  about: ["hero", "gym-story", "team", "values", "cta"],
-  contact: ["hero", "contact-form", "location-hours", "map"],
-  pricing: ["hero", "plans", "faq", "cta"],
-  other: ["hero", "content", "cta"],
-};
-
-function normalizeBrief(raw: unknown, path: string, pageType: string) {
-  const r = (raw ?? {}) as Record<string, unknown>;
-  const cf = ((r.contentFound ?? {}) as Record<string, unknown>);
-  const hero = ((cf.hero ?? {}) as Record<string, unknown>);
-  return {
-    path,
-    pageType,
-    purpose: String(r.purpose ?? ""),
-    visitorRole: (["awareness","consideration","conversion","retention","utility"].includes(r.visitorRole as string)
-      ? r.visitorRole : "conversion"),
-    sectionsNeeded: Array.isArray(r.sectionsNeeded) ? r.sectionsNeeded.map(String) : (PAGE_SECTIONS[pageType] ?? PAGE_SECTIONS.other),
-    contentFound: {
-      hero: {
-        headline: String(hero.headline ?? "") || null,
-        subheading: String(hero.subheading ?? "") || null,
-        ctaLabel: String(hero.ctaLabel ?? "") || null,
-      },
-      body: String(cf.body ?? ""),
-      cta: String(cf.cta ?? "") || null,
-      valueProps: Array.isArray(cf.valueProps) ? cf.valueProps.map((v: any) => ({ headline: String(v.headline ?? ""), body: String(v.body ?? "") })) : [],
-      testimonials: Array.isArray(cf.testimonials) ? cf.testimonials.map((t: any) => ({ quote: String(t.quote ?? ""), name: String(t.name ?? ""), program: String(t.program ?? "") || null })) : [],
-      faq: Array.isArray(cf.faq) ? cf.faq.map((f: any) => ({ question: String(f.question ?? ""), answer: String(f.answer ?? "") })) : [],
-      communityHeadline: String(cf.communityHeadline ?? "") || null,
-      trustHeadline: String(cf.trustHeadline ?? "") || null,
-      shortDescription: String(cf.shortDescription ?? "") || null,
-      whoIsItFor: Array.isArray(cf.whoIsItFor) ? cf.whoIsItFor.map(String) : [],
-      whatMakesUsDifferent: Array.isArray(cf.whatMakesUsDifferent) ? cf.whatMakesUsDifferent.map(String) : [],
-      gymStory: String(cf.gymStory ?? "") || null,
-      team: Array.isArray(cf.team) ? cf.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), bio: String(m.bio ?? "") || null })) : [],
-      phone: String(cf.phone ?? "") || null,
-      email: String(cf.email ?? "") || null,
-      address: String(cf.address ?? "") || null,
-      city: String(cf.city ?? "") || null,
-      state: String(cf.state ?? "") || null,
-      zip: String(cf.zip ?? "") || null,
-      hours: String(cf.hours ?? "") || null,
-      plans: Array.isArray(cf.plans) ? cf.plans.map((p: any) => ({ name: String(p.name ?? ""), price: String(p.price ?? ""), period: String(p.period ?? "") || null, description: String(p.description ?? "") || null, features: Array.isArray(p.features) ? p.features.map(String) : [] })) : [],
-    },
-    contentMissing: Array.isArray(r.contentMissing) ? r.contentMissing.map(String) : [],
-    generationHint: String(r.generationHint ?? ""),
-  };
-}
 
 describe("normalizeBrief", () => {
   test("null/undefined input produces safe defaults — template never crashes", () => {
@@ -266,9 +185,11 @@ describe("normalizeBrief", () => {
 
   test("sectionsNeeded falls back to page-type defaults when missing", () => {
     const homeBrief = normalizeBrief({}, "/", "home");
-    expect(homeBrief.sectionsNeeded).toEqual(PAGE_SECTIONS.home);
+    expect(homeBrief.sectionsNeeded).toEqual(["hero", "value-props", "programs-preview", "testimonials", "cta"]);
     const aboutBrief = normalizeBrief({}, "/about", "about");
-    expect(aboutBrief.sectionsNeeded).toEqual(PAGE_SECTIONS.about);
+    expect(aboutBrief.sectionsNeeded).toEqual(["hero", "gym-story", "team", "values", "cta"]);
+    const programBrief = normalizeBrief({}, "/crossfit", "program");
+    expect(programBrief.sectionsNeeded).toEqual(["hero", "description", "who-is-it-for", "schedule-or-pricing", "testimonials", "cta"]);
   });
 
   test("plan features always an array even when malformed", () => {
@@ -286,9 +207,6 @@ describe("normalizeBrief", () => {
 });
 
 // ── mergeBriefs ───────────────────────────────────────────────────────────────
-// Import will fail until we export mergeBriefs from content.ts
-import { mergeBriefs } from "../content";
-import type { PageBrief } from "../content";
 
 function makeBrief(path: string, headline: string): PageBrief {
   return {

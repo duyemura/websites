@@ -57,7 +57,7 @@ const PAGE_TYPE_FIELDS: Record<string, string> = {
   pricing: `"plans": [{"name": string, "price": string, "period": string | null, "description": string | null, "features": [string]}]`,
 };
 
-function classifyPageType(
+export function classifyPageType(
   path: string,
 ): "home" | "program" | "about" | "contact" | "pricing" | "schedule" | "other" {
   if (path === "/" || path === "") return "home";
@@ -71,7 +71,7 @@ function classifyPageType(
   return "other";
 }
 
-function extractJsonObject(raw: string): string | undefined {
+export function extractJsonObject(raw: string): string | undefined {
   const start = raw.indexOf("{");
   if (start === -1) return undefined;
   let depth = 0;
@@ -173,7 +173,7 @@ export interface PageBrief {
 }
 
 /** Enforce the guaranteed shape after LLM output — fill every missing field with its typed zero value. */
-function normalizeBrief(raw: unknown, path: string, pageType: string): PageBrief {
+export function normalizeBrief(raw: unknown, path: string, pageType: string): PageBrief {
   const r = (raw ?? {}) as Record<string, unknown>;
   const cf = ((r.contentFound ?? {}) as Record<string, unknown>);
   const hero = ((cf.hero ?? {}) as Record<string, unknown>);
