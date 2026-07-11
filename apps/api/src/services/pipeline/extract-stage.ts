@@ -37,6 +37,7 @@ export interface ExtractStageInput {
   url: string;
   pages?: string[];
   maxPages?: number;
+  tier?: "free" | "paid";
 }
 
 const DEFAULT_MAX_PAGES = 50;
@@ -50,6 +51,16 @@ export async function runExtractStage(
     workspaceUuid: input.workspaceUuid,
   };
 
+  let tier = input.tier ?? "paid";
+  if (!input.tier) {
+    const site = await input.db
+      .selectFrom("sites")
+      .select("tier")
+      .where("uuid", "=", input.siteUuid)
+      .executeTakeFirst();
+    if (site?.tier) tier = site.tier;
+  }
+
   const browser = await chromium.launch({
     args: ["--remote-debugging-port=0"],
   });
@@ -62,6 +73,7 @@ export async function runExtractStage(
     const discovery = await discoverPages(context, input.url);
     const siteMap = buildSiteMap(discovery, {
       maxPages: input.maxPages ?? DEFAULT_MAX_PAGES,
+      tier,
     });
 
     const requested = input.pages;

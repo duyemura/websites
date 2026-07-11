@@ -529,14 +529,23 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
     // ---- logo ----
     var navRect = navEl.getBoundingClientRect();
     var allImgs = Array.from(navEl.querySelectorAll("img"));
+    var WIDGET_DENY = ["bugherd.com", "intercom", "zendesk", "crisp.chat", "crisp.im", "freshchat", "hubspot.com", "hs-scripts.com", "js.hs-scripts.com", "livechatinc.com", "chat-widget", "usemessages.com", "termly.io", "cookiebot.com", "usercentrics.eu", "reviews.io", "trustpilot.com", "feefo.com", "google.com", "gstatic.com", "googletagmanager.com", "doubleclick.net", "recaptcha", "klaviyo.com", "mailchimp.com", "chimpstatic.com"];
+    function isWidgetImg(src) {
+      var s = (src || "").toLowerCase();
+      return WIDGET_DENY.some(function(d) { return s.indexOf(d) !== -1; });
+    }
     var logoImg = null;
     for (var li = 0; li < allImgs.length; li++) {
       var ir = allImgs[li].getBoundingClientRect();
-      if (ir.width > 8 && ir.height > 8 && ir.left < navRect.left + navRect.width * 0.4) {
+      if (ir.width > 24 && ir.height > 24 && ir.left < navRect.left + navRect.width * 0.4 && !isWidgetImg(allImgs[li].src)) {
         logoImg = allImgs[li]; break;
       }
     }
-    if (!logoImg && allImgs.length > 0) logoImg = allImgs[0];
+    if (!logoImg) {
+      for (var li = 0; li < allImgs.length; li++) {
+        if (!isWidgetImg(allImgs[li].src)) { logoImg = allImgs[li]; break; }
+      }
+    }
 
     var logo;
     if (logoImg) {

@@ -404,7 +404,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
 
-  return {
+  const mergedContent: GymSiteContent = {
     ...baseContent,
     navigation,
     business: {
@@ -416,4 +416,11 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       home: generatedHome,
     },
   };
+
+  // LLM-generated or source-captured CTAs may point to pages that won't be rendered.
+  // Sanitize after all merges so every internal CTA is guaranteed valid.
+  const { sanitizeContentCtas } = await import("./content-mapper.js");
+  sanitizeContentCtas(mergedContent.pages, mergedContent.business, []);
+
+  return mergedContent;
 }

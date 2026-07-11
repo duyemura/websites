@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import bull from "../bullmq";
+import type { PageEvalReport } from "../services/eval/page-eval-report.js";
 
 export default fp(
   (fastify, _, done) => {
@@ -14,6 +15,7 @@ export default fp(
     const goLiveSite = bull.build("go_live_site");
     const leadNotify = bull.build("lead_notify");
     const deployTemplate = bull.build("deploy_template");
+    const siteEval = bull.build("site_eval");
 
     fastify.decorate("queues", {
       classifyAssets,
@@ -27,6 +29,7 @@ export default fp(
       goLiveSite,
       leadNotify,
       deployTemplate,
+      siteEval,
     });
 
     done();
@@ -97,6 +100,21 @@ declare module "../bullmq" {
       data: { siteUuid: string; workspaceUuid: string };
       result: { version: number; deployPrefix: string };
     };
+    site_eval: {
+      data: {
+        siteUuid: string;
+        workspaceUuid: string;
+        evalUuid: string;
+        path: string;
+        url?: string;
+        keywords?: string[];
+      };
+      result: {
+        status: "passed" | "failed";
+        report: PageEvalReport;
+        failedReason?: string;
+      };
+    };
     pipeline: {
       data:
         | {
@@ -111,6 +129,7 @@ declare module "../bullmq" {
               contentSiteUuid?: string;
               designSiteUuid?: string;
               mode?: "replication" | "template" | "greenfield";
+              tier?: "free" | "paid";
             };
           }
         | {
@@ -122,6 +141,7 @@ declare module "../bullmq" {
               pages?: string[];
               maxPages?: number;
               mode?: "replication" | "template" | "greenfield";
+              tier?: "free" | "paid";
             };
           };
       result: unknown;
@@ -143,6 +163,7 @@ declare module "fastify" {
       goLiveSite: ReturnType<typeof bull.build<"go_live_site">>;
       leadNotify: ReturnType<typeof bull.build<"lead_notify">>;
       deployTemplate: ReturnType<typeof bull.build<"deploy_template">>;
+      siteEval: ReturnType<typeof bull.build<"site_eval">>;
     };
   }
 }

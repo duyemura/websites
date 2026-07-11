@@ -131,13 +131,29 @@ export async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
 }
 
 export async function generateAstroPage(input: GeneratePageInput): Promise<GeneratePageOutput> {
-  const { config, workspaceUuid, siteUuid, pageSlug, designSystem, page, renderedSections, attemptId } = input;
+  const { config, workspaceUuid, siteUuid, pageSlug, designSystem: rawDesignSystem, page, renderedSections, attemptId } = input;
 
   const sourceDir = path.join(os.tmpdir(), "ploy-gyms-build", siteUuid, attemptId, pageSlug);
   const distDir = path.join(sourceDir, "dist");
 
   await rm(sourceDir, { recursive: true, force: true });
   await mkdir(sourceDir, { recursive: true });
+
+  // Stale design-system docs may be missing siteMetadata.mode. Use the explicit
+  // mode passed by the orchestrator so replication/template/greenfield gating
+  // in Layout.astro stays correct.
+  const designSystem =
+    input.mode && rawDesignSystem.siteMetadata?.mode !== input.mode
+      ? {
+          ...rawDesignSystem,
+          siteMetadata: {
+            ...(rawDesignSystem.siteMetadata ?? {}),
+            mode: input.mode,
+            framework: "astro",
+            generatedAt: new Date().toISOString(),
+          } as DesignSystemV2["siteMetadata"],
+        }
+      : rawDesignSystem;
 
   // Callers must sign private S3 asset URLs before passing rendered sections
   // and the design system in; buildPage already does this.
@@ -255,15 +271,19 @@ async function writeSharedComponents(
   _page: HierarchyPage,
   sharedComponents?: Map<string, string>,
 ): Promise<void> {
-  const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
-  await writeFile(
-    path.join(sourceDir, "src", "components", "shared", "Header.astro"),
-    renderSemanticSection(headerSection),
-  );
-  await writeFile(
-    path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
-    renderSemanticSection(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
-  );
+  // Only write the synthetic global shell for template/greenfield sites.
+  // Replication clones the original header/footer as page sections.
+  if (designSystem.siteMetadata.mode !== "replication") {
+    const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
+    await writeFile(
+      path.join(sourceDir, "src", "components", "shared", "Header.astro"),
+      renderSemanticSection(headerSection),
+    );
+    await writeFile(
+      path.join(sourceDir, "src", "components", "shared", "Footer.astro"),
+      renderSemanticSection(designSystem.global.shell.footer ?? makeDefaultFooter(designSystem)),
+    );
+  }
 
   if (sharedComponents) {
     for (const [id, source] of sharedComponents) {
@@ -505,6 +525,11 @@ function layoutAstro(
   hasLottie = false,
 ): string {
   const businessName = designSystem.business.name ?? "Ploy for gyms";
+  // Replication clones the original page structure, which already includes its
+  // own header/footer sections. Adding the synthetic global shell creates a
+  // duplicate navbar, so we only render the global shell for template/greenfield.
+  const siteMode = designSystem.siteMetadata?.mode;
+  const hasGlobalShell = siteMode !== "replication";
 
   // Build the keyframes block: inject captured animations into global CSS.
   const keyframesBlock = cssAnimations.length > 0
@@ -516,10 +541,15 @@ function layoutAstro(
     ? `\n    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>`
     : "";
 
+  const shellImports = hasGlobalShell
+    ? `import Header from "../components/shared/Header.astro";\nimport Footer from "../components/shared/Footer.astro";\n`
+    : "";
+  const shellBody = hasGlobalShell
+    ? `    <Header />\n    <main class="flex-1">\n      <slot />\n    </main>\n    <Footer />`
+    : `    <slot />`;
+
   return `---
-import Header from "../components/shared/Header.astro";
-import Footer from "../components/shared/Footer.astro";
-import "../styles/tokens.css";
+${shellImports}import "../styles/tokens.css";
 
 export interface Props {
   title?: string;
@@ -539,11 +569,7 @@ const { title = ${JSON.stringify(businessName)}, description } = Astro.props;
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>${lottieScript}
   </head>
   <body class="min-h-screen flex flex-col">
-    <Header />
-    <main class="flex-1">
-      <slot />
-    </main>
-    <Footer />
+${shellBody}
   </body>
 </html>${keyframesBlock}
 `;

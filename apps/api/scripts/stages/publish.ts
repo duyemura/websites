@@ -20,6 +20,8 @@ export const publishStage: StageRunner = {
     const result = await publishLatestStagingToProduction(
       ctx.db, s3Client, bucket, ctx.siteUuid,
       ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
+      ctx.config.CLOUDFRONT_KVS_ARN,
+      ctx.config.MILO_PREVIEW_DOMAIN,
     );
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;

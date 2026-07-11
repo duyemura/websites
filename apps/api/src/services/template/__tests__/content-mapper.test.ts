@@ -6,6 +6,8 @@ import {
   extractNavigation,
   extractPages,
   classifyPage,
+  sanitizeInternalUrl,
+  sanitizeContentCtas,
 } from "../content-mapper";
 import type { DesignSystemV2 } from "../../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../../types/site-hierarchy";
@@ -243,6 +245,98 @@ describe("extractNavigation", () => {
     const h = makeHierarchy([{ slug: "", isHomePage: true, title: "Home" }]);
     const nav = extractNavigation(h, warnings);
     expect(nav.footer.every((g) => g.links.length > 0)).toBe(true);
+  });
+});
+
+describe("sanitizeInternalUrl", () => {
+  const allowed = new Set(["/", "/about", "/contact", "/programs", "/programs/group-strength"]);
+
+  test("preserves external URLs, anchors, mailto, and tel", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("https://example.com", allowed, "/contact", warnings, "test")).toBe("https://example.com");
+    expect(sanitizeInternalUrl("mailto:hi@gym.com", allowed, "/contact", warnings, "test")).toBe("mailto:hi@gym.com");
+    expect(sanitizeInternalUrl("tel:5551234", allowed, "/contact", warnings, "test")).toBe("tel:5551234");
+    expect(sanitizeInternalUrl("#faq", allowed, "/contact", warnings, "test")).toBe("#faq");
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("preserves valid internal paths", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("/about", allowed, "/contact", warnings, "test")).toBe("/about");
+    expect(sanitizeInternalUrl("/programs/group-strength", allowed, "/contact", warnings, "test")).toBe("/programs/group-strength");
+    expect(sanitizeInternalUrl("/programs/", allowed, "/contact", warnings, "test")).toBe("/programs/");
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("replaces invalid internal paths with fallback and warns", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("/programs/get-started", allowed, "/contact", warnings, "hero")).toBe("/contact");
+    expect(sanitizeInternalUrl("/drop-in", allowed, "/contact", warnings, "hero")).toBe("/contact");
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("/programs/get-started");
+  });
+});
+
+describe("sanitizeContentCtas", () => {
+  test("sanitizes stale business.primaryCta.url and all hero CTAs", () => {
+    const warnings: string[] = [];
+    const business = {
+      name: "KSA",
+      tagline: "Train hard.",
+      address: { street: "", city: "Torrance", state: "CA", zip: "90505" },
+      phone: "",
+      email: "",
+      hours: [],
+      primaryCta: { label: "Get Started", url: "/programs/get-started" },
+      geo: { city: "Torrance", state: "California", stateAbbr: "CA" },
+    } as any;
+    const pages = {
+      home: { hero: { headline: "", ctaLabel: "Join", ctaUrl: "/drop-in" }, valueProps: [], programsHeadline: "", featuredPrograms: [], features: [], communityHeadline: "", communityProps: [], trustHeadline: "", howItWorks: [], howItWorksHeadline: "", testimonials: [], faq: [] },
+      programs: [{ slug: "group-strength", name: "Group Strength", shortDescription: "", coverImageUrl: "", hero: { headline: "", ctaUrl: "/programs/get-started" }, whatIsIt: { headline: "", body: "" }, whatMakesUsDifferent: [], whatToExpect: { headline: "", steps: [] }, whoIsItFor: [], gettingStarted: [], testimonials: [], faq: [] }],
+      about: { hero: { headline: "" }, gymStory: "", team: [] },
+      pricing: { hero: { headline: "" } },
+      contact: { hero: { headline: "" } },
+      schedule: { hero: { headline: "" } },
+      blog: { heroHeadline: "", posts: [] },
+      legal: [],
+    } as any;
+
+    sanitizeContentCtas(pages, business, warnings);
+
+    expect(business.primaryCta.url).toBe("/contact");
+    expect(pages.home.hero.ctaUrl).toBe("/contact");
+    expect(pages.programs[0].hero.ctaUrl).toBe("/contact");
+    expect(warnings.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("preserves valid internal program-page CTAs", () => {
+    const warnings: string[] = [];
+    const business = {
+      name: "KSA",
+      tagline: "Train hard.",
+      address: { street: "", city: "Torrance", state: "CA", zip: "90505" },
+      phone: "",
+      email: "",
+      hours: [],
+      primaryCta: { label: "Free tour", url: "/contact" },
+      geo: { city: "Torrance", state: "California", stateAbbr: "CA" },
+    } as any;
+    const pages = {
+      home: { hero: { headline: "", ctaUrl: "/programs/group-strength" }, valueProps: [], programsHeadline: "", featuredPrograms: [], features: [], communityHeadline: "", communityProps: [], trustHeadline: "", howItWorks: [], howItWorksHeadline: "", testimonials: [], faq: [] },
+      programs: [{ slug: "group-strength", name: "Group Strength", shortDescription: "", coverImageUrl: "", hero: { headline: "", ctaUrl: "/contact" }, whatIsIt: { headline: "", body: "" }, whatMakesUsDifferent: [], whatToExpect: { headline: "", steps: [] }, whoIsItFor: [], gettingStarted: [], testimonials: [], faq: [] }],
+      about: { hero: { headline: "" }, gymStory: "", team: [] },
+      pricing: { hero: { headline: "" } },
+      contact: { hero: { headline: "" } },
+      schedule: { hero: { headline: "" } },
+      blog: { heroHeadline: "", posts: [] },
+      legal: [],
+    } as any;
+
+    sanitizeContentCtas(pages, business, warnings);
+
+    expect(warnings).toHaveLength(0);
+    expect(pages.home.hero.ctaUrl).toBe("/programs/group-strength");
+    expect(pages.programs[0].hero.ctaUrl).toBe("/contact");
   });
 });
 

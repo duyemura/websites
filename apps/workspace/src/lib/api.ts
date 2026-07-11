@@ -15,7 +15,7 @@ export function setAuthTokenGetter(
   authTokenGetter = getter;
 }
 
-async function getAuthToken(): Promise<string | null> {
+export async function getAuthToken(): Promise<string | null> {
   if (authTokenGetter) {
     const token = await authTokenGetter();
     if (token) return token;
@@ -67,10 +67,13 @@ export interface Site {
   name: string;
   status: "draft" | "published" | "archived";
   mode?: "replication" | "template" | "greenfield" | null;
+  tier?: "free" | "paid" | null;
   subdomain?: string | null;
   customDomain?: string | null;
   themeUuid?: string | null;
   sourceUrl?: string | null;
+  previewUrl?: string | null;
+  productionUrl?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
   createdAt: string;
@@ -308,10 +311,96 @@ export interface BuildCommandResponse {
   messages?: { role: "assistant" | "user"; content: string }[];
   userMessage?: string;
 }
+
+export interface PipelineStageStatus {
+  version: number;
+  createdAt: string;
+  stale: boolean;
+}
+
+export interface PipelineStatus {
+  stages: {
+    extract: PipelineStageStatus | null;
+    segment: PipelineStageStatus | null;
+    contract: PipelineStageStatus | null;
+    docgen: PipelineStageStatus | null;
+    build: PipelineStageStatus | null;
+    verify: PipelineStageStatus | null;
+  };
+  scores: {
+    mechanicalFidelity: number;
+    visualFidelity: number;
+    masterFidelity: number;
+  } | null;
+}
+
+export interface PipelineArtifact {
+  version: number;
+  createdAt: string;
+  payload: unknown;
+}
+
+export interface PipelineFieldOption {
+  label: string;
+  value: string;
+}
+
+export interface PipelineField {
+  key: string;
+  label: string;
+  type: "text" | "number" | "select" | "multiselect" | "boolean" | "uuid";
+  required: boolean;
+  options?: PipelineFieldOption[];
+  hint?: string;
+  dependsOn?: { key: string; value: string };
+}
+
+export interface PipelineOptions {
+  stages: string[];
+  modes: string[];
+  fields: PipelineField[];
+}
+
+export interface CreateSiteBody {
+  name?: string;
+  slug?: string;
+  sourceUrl?: string;
+  mode?: "replication" | "template" | "greenfield";
+  tier?: "free" | "paid";
+  templateKey?: string;
+}
+
+export interface SiteFile {
+  key: string;
+  size: number;
+  lastModified: string | null;
+  url: string;
+  type: "html" | "css" | "js" | "image" | "video" | "font" | "favicon" | "other";
+}
+
+export interface JobStatus {
+  found: boolean;
+  queue?: string;
+  state?: string;
+  progress?: number;
+  returnvalue?: unknown;
+  failedReason?: string;
+  data?: unknown;
+}
+
+export interface PipelineRunBody {
+  url: string;
+  pages?: string[];
+  mode?: "replication" | "template" | "greenfield";
+  tier?: "free" | "paid";
+  contentSiteUuid?: string;
+  designSiteUuid?: string;
+}
+
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
-  createSite: (body: { name: string; slug: string; templateKey?: string }) =>
+  createSite: (body: CreateSiteBody) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
   scrapeSite: (body: { url: string; name?: string }) =>
     fetchJson<ScrapeSiteResult>("/sites/scrape", {
@@ -349,6 +438,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+
+  getPipelineStatus: (siteUuid: string) =>
+    fetchJson<PipelineStatus>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/status`),
+  getPipelineArtifact: (siteUuid: string, stage: string) =>
+    fetchJson<PipelineArtifact>(
+      `/sites/${encodeURIComponent(siteUuid)}/pipeline/artifacts/${encodeURIComponent(stage)}`,
+    ),
+  getPipelineOptions: (siteUuid: string) =>
+    fetchJson<PipelineOptions>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/options`),
+  getGlobalPipelineOptions: () => fetchJson<PipelineOptions>("/pipeline/options"),
+  runPipeline: (siteUuid: string, body: PipelineRunBody) =>
+    fetchJson<{ jobId: string; queue: string }>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  runPipelineStage: (siteUuid: string, stage: string, body: PipelineRunBody) =>
+    fetchJson<{ jobId: string; stage: string; queue: string }>(
+      `/sites/${encodeURIComponent(siteUuid)}/pipeline/${encodeURIComponent(stage)}`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  getSiteFiles: (siteUuid: string) =>
+    fetchJson<{ files: SiteFile[] }>(`/sites/${encodeURIComponent(siteUuid)}/files`),
+  getJobStatus: (jobId: string, queue?: string) =>
+    fetchJson<JobStatus>(
+      `/jobs/${encodeURIComponent(jobId)}/status${queue ? `?queue=${encodeURIComponent(queue)}` : ""}`,
+    ),
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
   getSiteDocs: (siteUuid: string) =>

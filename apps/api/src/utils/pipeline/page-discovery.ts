@@ -63,7 +63,7 @@ function normalizePath(href: string, baseUrl: string): string | null {
 
 export function buildSiteMap(
   inputs: DiscoveryInputs,
-  opts: { maxPages: number },
+  opts: { maxPages: number; tier?: "free" | "paid" },
 ): SiteMapEntry[] {
   // Rank: nav > footer > sitemap > sweep. First source wins on dedup.
   const ranked: Array<{ path: string; source: SiteMapEntry["source"] }> = [];
@@ -82,6 +82,11 @@ export function buildSiteMap(
   for (const u of inputs.sweepLinks) push(u, "link-sweep");
 
   const collectionPrefixes = detectCollections(ranked.map((r) => r.path));
+
+  const FREE_MAX_PAGES = 20;
+  const tier = opts.tier ?? "paid";
+  const maxPages = tier === "free" ? Math.min(opts.maxPages, FREE_MAX_PAGES) : opts.maxPages;
+  const skipUgc = tier === "free";
 
   let captured = 0;
   const exemplarTaken = new Set<string>();
@@ -102,8 +107,17 @@ export function buildSiteMap(
       }
     }
 
+    if (skipUgc && classification === "collection-exemplar") {
+      return {
+        ...base,
+        classification,
+        status: "skipped" as const,
+        skipReason: "tier-free-ugc",
+      };
+    }
+
     const capturable = classification === "structural" || classification === "collection-exemplar";
-    if (capturable && captured < opts.maxPages) {
+    if (capturable && captured < maxPages) {
       captured += 1;
       return { ...base, classification, status: "captured" as const };
     }

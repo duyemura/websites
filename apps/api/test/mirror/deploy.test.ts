@@ -313,16 +313,16 @@ describe("deploySnapshot", () => {
 // promoteDeploy — stale cleanup
 // ---------------------------------------------------------------------------
 describe("promoteDeploy", () => {
-  it("deletes stale objects from current/ not present in the new deploy", async () => {
+  it("deletes stale objects from staging/ not present in the new deploy", async () => {
     const { promoteDeploy } = await import("../../src/services/mirror/deploy");
     const siteUuid = "promo-site";
     const deployPrefix = `sites/${siteUuid}/deploys/2`;
-    const currentPrefix = `sites/${siteUuid}/current`;
+    const stagingPrefix = `sites/${siteUuid}/staging`;
 
     const s3 = createMockS3({
       [`${deployPrefix}/index.html`]: "<html>new</html>",
-      [`${currentPrefix}/index.html`]: "<html>old</html>",
-      [`${currentPrefix}/old-page/index.html`]: "<html>stale</html>", // not in new deploy
+      [`${stagingPrefix}/index.html`]: "<html>old</html>",
+      [`${stagingPrefix}/old-page/index.html`]: "<html>stale</html>", // not in new deploy
     });
 
     await promoteDeploy(
@@ -333,8 +333,8 @@ describe("promoteDeploy", () => {
     );
 
     // Stale file should be gone
-    expect(s3.storage.has(`${currentPrefix}/old-page/index.html`)).toBe(false);
+    expect(s3.storage.has(`${stagingPrefix}/old-page/index.html`)).toBe(false);
     // New content should be present
-    expect(s3.storage.get(`${currentPrefix}/index.html`)).toBe("<html>new</html>");
+    expect(s3.storage.get(`${stagingPrefix}/index.html`)).toBe("<html>new</html>");
   });
 });

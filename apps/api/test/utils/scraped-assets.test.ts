@@ -7,12 +7,12 @@ import type { DB } from "../../src/types/db";
 import { db } from "../../src/database";
 
 const mockConfig = {
-  S3_ENDPOINT: "http://localhost:9010",
+  S3_ENDPOINT: "",
   S3_REGION: "us-east-1",
-  S3_ACCESS_KEY: "minioadmin",
-  S3_SECRET_KEY: "minioadmin",
-  S3_ASSETS_BUCKET: "ploygyms-test-assets",
-  CDN_BASE_URL: "http://localhost:9010",
+  S3_ACCESS_KEY: process.env.S3_ACCESS_KEY ?? "",
+  S3_SECRET_KEY: process.env.S3_SECRET_KEY ?? "",
+  S3_ASSETS_BUCKET: "pushpress-marketing-dev",
+  CDN_BASE_URL: "https://pushpress-marketing-dev.s3.us-east-1.amazonaws.com",
 } as unknown as Config;
 
 function mockFetch(responses: Record<string, { buffer: Buffer; contentType: string; contentLength?: string }>) {
@@ -64,7 +64,7 @@ describe("downloadScrapedAssets", () => {
   afterEach(async () => {
     await db.deleteFrom("assets").where("workspaceUuid", "=", workspaceUuid).execute();
     await db.deleteFrom("workspaces").where("uuid", "=", workspaceUuid).execute();
-  });
+      });
 
   test("downloads images and creates scraped asset records", async () => {
     const originalUrl = "https://example.com/hero.png";
@@ -98,8 +98,7 @@ describe("downloadScrapedAssets", () => {
       context: "hero",
     });
 
-    vi.restoreAllMocks();
-  });
+      });
 
   test("reuses existing scraped assets for the same original URL", async () => {
     const originalUrl = "https://example.com/logo.png";
@@ -124,8 +123,7 @@ describe("downloadScrapedAssets", () => {
       .execute();
     expect(rows).toHaveLength(1);
 
-    vi.restoreAllMocks();
-  });
+      });
 
   test("skips assets that fail to download", async () => {
     globalThis.fetch = mockFetch({});
@@ -136,8 +134,7 @@ describe("downloadScrapedAssets", () => {
     const map = await downloadScrapedAssets(db as Kysely<DB>, mockConfig, workspaceUuid, siteUuid, images);
 
     expect(map.byOriginalUrl.size).toBe(0);
-    vi.restoreAllMocks();
-  });
+      });
 
   test("skips internal URLs to avoid SSRF", async () => {
     globalThis.fetch = mockFetch({});
@@ -148,8 +145,7 @@ describe("downloadScrapedAssets", () => {
     const map = await downloadScrapedAssets(db as Kysely<DB>, mockConfig, workspaceUuid, siteUuid, images);
 
     expect(map.byOriginalUrl.size).toBe(0);
-    vi.restoreAllMocks();
-  });
+      });
 
   test("skips assets exceeding size limit", async () => {
     const originalUrl = "https://example.com/huge.png";
@@ -167,6 +163,5 @@ describe("downloadScrapedAssets", () => {
     const map = await downloadScrapedAssets(db as Kysely<DB>, mockConfig, workspaceUuid, siteUuid, images);
 
     expect(map.byOriginalUrl.size).toBe(0);
-    vi.restoreAllMocks();
-  });
+      });
 });

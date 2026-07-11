@@ -638,7 +638,7 @@ export async function promoteDeploy(
     tok = listed.NextContinuationToken;
   }
 
-  // Copy all new deploy objects to current/
+  // Copy all new deploy objects to staging/
   for (let tok: string | undefined = undefined; ; ) {
     const listed: ListObjectsV2CommandOutput = await s3Client.send(
       new ListObjectsV2Command({ Bucket: bucket, Prefix: `${deployPrefix}/`, ContinuationToken: tok }),

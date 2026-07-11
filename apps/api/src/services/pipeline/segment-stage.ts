@@ -164,8 +164,12 @@ export async function runSegmentStage(
         const domStyles = await extractSectionDomStyles(page, cand.boundingBox);
         // Prefer: landmark > visionTag > text-classifier result > unknown
         const tag: CanonicalSectionTag =
-          cand.source === "gap-fill" ? "unknown"
-          : (cand.visionTag as CanonicalSectionTag | undefined) ?? tags[i] ?? "unknown";
+          cand.source === "gap-fill"
+            ? "unknown"
+            : (cand.landmarkTag as CanonicalSectionTag | undefined) ??
+              (cand.visionTag as CanonicalSectionTag | undefined) ??
+              tags[i] ??
+              "unknown";
         const source: SegmentSection["source"] =
           cand.source === "gap-fill" ? "visual-boundary" : cand.source;
         sections.push({

@@ -53,6 +53,7 @@ export async function buildSnapshot(
 ): Promise<MirrorSnapshotArtifact> {
   const snapshotPrefix = `sites/${deps.siteUuid}/snapshots/${deps.snapshotVersion}`;
   const assetMap = new Map(assetsArtifact.assets.map((a) => [a.originalUrl, a.localPath]));
+  const knownPaths = new Set(crawl.pages.map((p) => p.path));
   const warnings: string[] = [];
   const pages: { path: string; htmlKey: string }[] = [];
 
@@ -75,6 +76,7 @@ export async function buildSnapshot(
       forms: page.forms.map((f) => ({ formId: f.formId, selector: f.selector })),
       formEndpointBase: `/forms/${deps.siteUuid}`,
       noindex: false,
+      knownPaths,
     });
 
     const fileKey = pathToFileKey(page.path);

@@ -2,6 +2,14 @@
 
 This file is for workspace-specific Claude Code guidance that does not belong in a single app.
 
+> ## ⚠️ AUTONOMY RULE — READ FIRST
+> For **every** task in this repo, Claude Code must work autonomously and keep approval surface minimal:
+> - **Batch** shell/AWS/rtk/read/edit operations into the fewest tool calls possible. Never dribble one command per turn.
+> - **Run long or multi-step work as background tasks** (Bash `run_in_background`, Agent tool) and report back with a concise summary.
+> - **Use the Agent tool** for any task that needs more than 3 sequential operations or touches multiple files — the agent does the work and returns the conclusion.
+> - Only stop to ask the user for: destructive actions, production pushes, real money spend, or genuinely ambiguous requirements.
+> The goal is minutes of work, not days of back-and-forth.
+
 ## Product model
 
 Milo is a gym website platform with two tiers. **A site is always one or the other — never both simultaneously.** Never use the word "mirror" — it's always "clone."

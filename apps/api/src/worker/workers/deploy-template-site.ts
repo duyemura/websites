@@ -38,7 +38,7 @@ function deployTemplateSiteProcessor(fastify: FastifyInstance) {
       apiBaseUrl: config.CDN_BASE_URL,
       siteUrl: site.customDomain
         ? `https://${site.customDomain}`
-        : `${config.CDN_BASE_URL}/sites/${siteUuid}/current`,
+        : `${config.CDN_BASE_URL}/sites/${siteUuid}`,
       rendererDir,
       log: {
         info: (o, m) => fastify.log.info(o, m),
@@ -47,7 +47,12 @@ function deployTemplateSiteProcessor(fastify: FastifyInstance) {
     });
 
     // Auto-publish so the new build goes live immediately
-    await publishSiteVersion(fastify.db, s3Client, bucket, siteUuid, result.version);
+    await publishSiteVersion(
+      fastify.db, s3Client, bucket, siteUuid, result.version,
+      config.CLOUDFRONT_DISTRIBUTION_ID,
+      config.CLOUDFRONT_KVS_ARN,
+      config.MILO_PREVIEW_DOMAIN,
+    );
 
     fastify.log.info({ jobId: job.id, siteUuid, version: result.version }, "deploy-template worker finished");
     return { version: result.version, deployPrefix: result.deployPrefix };

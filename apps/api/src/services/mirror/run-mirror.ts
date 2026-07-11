@@ -50,7 +50,7 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
     buildS3ObjectUrl({ endpoint: config.S3_ENDPOINT, region: config.S3_REGION, bucket, key });
 
   // C2: derive host from CDN_BASE_URL so it reflects the real publicly-accessible
-  // origin, not the internal S3/MinIO endpoint that may be unreachable externally.
+  // origin, not the internal S3 endpoint that may be unreachable externally.
   const host = config.CDN_BASE_URL.replace(/\/$/, "");
 
   const site = await db

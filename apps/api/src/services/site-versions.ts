@@ -21,6 +21,43 @@ async function invalidateCloudFront(distributionId: string | undefined): Promise
   }
 }
 
+async function registerDefaultRouting(
+  siteUuid: string,
+  kvsArn: string | undefined,
+  previewDomain: string | undefined,
+): Promise<void> {
+  if (!kvsArn || !previewDomain) return;
+  try {
+    const { CloudFrontKeyValueStoreClient, PutKeyCommand, DescribeKeyValueStoreCommand } =
+      await import("@aws-sdk/client-cloudfront-keyvaluestore");
+    const kvsClient = new CloudFrontKeyValueStoreClient({});
+    const shortId = siteUuid.slice(0, 8);
+    const prodHost = `${shortId}.${previewDomain}`;
+    const previewHost = `${shortId}-preview.${previewDomain}`;
+
+    const describe = async () =>
+      await kvsClient.send(new DescribeKeyValueStoreCommand({ KvsARN: kvsArn }));
+
+    let desc = await describe();
+    await kvsClient.send(new PutKeyCommand({
+      KvsARN: kvsArn,
+      IfMatch: desc.ETag,
+      Key: prodHost,
+      Value: `sites/${siteUuid}/production`,
+    }));
+
+    desc = await describe();
+    await kvsClient.send(new PutKeyCommand({
+      KvsARN: kvsArn,
+      IfMatch: desc.ETag,
+      Key: previewHost,
+      Value: `sites/${siteUuid}/staging`,
+    }));
+  } catch {
+    // Non-fatal — routing can be configured manually if KVS write fails
+  }
+}
+
 export interface RecordVersionInput {
   siteUuid: string;
   workspaceUuid: string;
@@ -51,6 +88,8 @@ export async function publishSiteVersion(
   siteUuid: string,
   version: number,
   distributionId?: string,
+  kvsArn?: string,
+  previewDomain?: string,
 ): Promise<{ version: number; deployPrefix: string }> {
   const row = await db.selectFrom("siteVersions")
     .select(["uuid", "version", "deployPrefix"])
@@ -61,7 +100,10 @@ export async function publishSiteVersion(
 
   // Copy staging → production
   await publishToProduction(s3Client, bucket, siteUuid);
-  await invalidateCloudFront(distributionId);
+  await Promise.all([
+    invalidateCloudFront(distributionId),
+    registerDefaultRouting(siteUuid, kvsArn, previewDomain),
+  ]);
 
   await db.updateTable("siteVersions")
     .set({ publishedAt: new Date() })
@@ -77,6 +119,8 @@ export async function publishLatestStagingToProduction(
   bucket: string,
   siteUuid: string,
   distributionId?: string,
+  kvsArn?: string,
+  previewDomain?: string,
 ): Promise<{ version: number }> {
   const latest = await db.selectFrom("siteVersions")
     .select(["uuid", "version"])
@@ -85,7 +129,10 @@ export async function publishLatestStagingToProduction(
     .executeTakeFirst();
 
   await publishToProduction(s3Client, bucket, siteUuid);
-  await invalidateCloudFront(distributionId);
+  await Promise.all([
+    invalidateCloudFront(distributionId),
+    registerDefaultRouting(siteUuid, kvsArn, previewDomain),
+  ]);
 
   if (latest) {
     await db.updateTable("siteVersions")

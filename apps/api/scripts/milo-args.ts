@@ -13,8 +13,8 @@ export type MiloCommand =
 
 export const PIPELINES = {
   join:    ["enrich", "clone", "docgen", "content"] as const,
-  upgrade: ["generate", "template", "publish"] as const,
-  rebuild: ["generate", "template", "publish"] as const,
+  upgrade: ["generate", "template", "template-eval", "publish"] as const,
+  rebuild: ["generate", "template", "template-eval", "publish"] as const,
 } as const;
 
 export function parseArgs(): MiloCommand {

@@ -16,7 +16,7 @@ import { loadDesignSystemDoc, saveDesignSystemDoc } from "../utils/design-system
 import { loadSectionVisualEvidenceDoc } from "../utils/section-visual-evidence-io";
 import { resolveReferenceScreenshot } from "../utils/screenshot-assets";
 import { getJobCostUsd } from "../utils/job-budget";
-import { generateAstroPage, signS3AssetUrls } from "./astro-code-generator";
+import { generateAstroPage, signS3AssetUrls, renderNavComponent } from "./astro-code-generator";
 import { runPageQa, type QaIssue } from "./page-qa";
 import { logAiActivity } from "./ai-activity";
 import { jsonb } from "../utils/jsonb";
@@ -25,7 +25,9 @@ import type { SectionVisualEvidence } from "../types/section-visual-evidence";
 import { renderVisualBlock } from "./visual-section-renderer";
 import { renderSemanticSection } from "../utils/section-component-registry";
 import { makeDefaultHeader, makeDefaultFooter } from "./astro-code-generator";
-import { renderSharedComponents } from "./pipeline/build-stage";
+import { renderSharedComponents, isNavSection, findLogoImage, buildExtractedNavFromLinks } from "./pipeline/build-stage";
+import { loadArtifact } from "../utils/pipeline/artifact-store";
+import type { ExtractArtifact, ExtractedNav } from "../types/pipeline-artifacts";
 
 export interface OrchestratorContext {
   db: Kysely<DB>;
@@ -336,6 +338,11 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
 
   const designSystem = await loadDesignSystemV2(db, workspaceUuid, siteUuid);
   const visualEvidence = await loadSectionVisualEvidenceDoc(db, workspaceUuid, siteUuid);
+  const extractArtifact = await loadArtifact<ExtractArtifact>(
+    db, { siteUuid, workspaceUuid }, "extract",
+  );
+  const extractedNav: ExtractedNav | null = extractArtifact?.payload?.extractedNav ?? null;
+  const extractPageByPath = new Map((extractArtifact?.payload?.pages ?? []).map((p) => [p.path, p]));
 
   const page = pageBySlug(hierarchy, pageSlug);
   if (!page) {
@@ -352,6 +359,7 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
   await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, currentHierarchy);
 
   const renderedSections: { section: HierarchySection; source: string }[] = [];
+  const extractPage = signedPage.path ? extractPageByPath.get(signedPage.path) : undefined;
   for (let i = 0; i < signedPage.sections.length; i++) {
     const section = signedPage.sections[i];
     if (!section) continue;
@@ -363,7 +371,18 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     const previousTag = signedPage.sections[i - 1]?.tag;
     const nextTag = signedPage.sections[i + 1]?.tag;
 
-    if (section.tag === "header") {
+    if (section.tag === "header" || isNavSection(signedPage, section, extractPage)) {
+      const nav = section.tag === "header"
+        ? extractedNav
+        : buildExtractedNavFromLinks(
+            extractPage!.content.navLinks ?? [],
+            findLogoImage(section, signedDesignSystem.business.name),
+            signedDesignSystem,
+          );
+      if (nav) {
+        renderedSections.push({ section, source: renderNavComponent(nav) });
+        continue;
+      }
       const headerSection = signedDesignSystem.global.shell.header ?? makeDefaultHeader(signedDesignSystem);
       renderedSections.push({ section, source: renderSemanticSection(headerSection) });
     } else if (section.tag === "footer") {
@@ -395,6 +414,7 @@ export async function buildPage(input: BuildPageInput): Promise<BuildPageOutput>
     signedDesignSystem,
     signedVisualEvidence,
     config,
+    extractPageByPath,
   );
 
   const generated = await generateAstroPage({

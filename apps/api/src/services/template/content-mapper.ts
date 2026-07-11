@@ -47,6 +47,81 @@ function fallback<T>(value: T | undefined | null | "", def: T, warnings: string[
   return value;
 }
 
+// ── CTA URL sanitizer ───────────────────────────────────────────────────────
+
+const TOP_LEVEL_TEMPLATE_PATHS = new Set([
+  "/",
+  "/about",
+  "/contact",
+  "/pricing",
+  "/schedule",
+  "/blog",
+  "/local-guide",
+  "/programs",
+]);
+
+export function sanitizeInternalUrl(
+  href: string | undefined | null,
+  allowedPaths: Set<string>,
+  fallback: string,
+  warnings: string[],
+  context: string,
+): string {
+  if (!href) return fallback;
+  // Preserve external URLs, anchors, mailto, tel.
+  if (/^(https?:|mailto:|tel:|#)/i.test(href)) return href;
+  const normalized = href.toLowerCase().replace(/\/+$/, "") || "/";
+  if (allowedPaths.has(normalized)) return href;
+  warnings.push(`${context} CTA href ${href} points to a page that will not be generated — using ${fallback}`);
+  return fallback;
+}
+
+/**
+ * Ensure every internal CTA URL points to a page the Astro template will actually render.
+ * External URLs, anchors, mailto, and tel links are preserved.
+ */
+export function sanitizeContentCtas(
+  pages: PageContent,
+  business: BusinessInfo,
+  warnings: string[],
+): void {
+  const allowedPaths = new Set([
+    ...TOP_LEVEL_TEMPLATE_PATHS,
+    ...pages.programs.map((p) => `/programs/${p.slug}`),
+    ...pages.legal.map((p) => `/legal/${p.slug}`),
+  ]);
+
+  business.primaryCta.url = sanitizeInternalUrl(
+    business.primaryCta?.url,
+    allowedPaths,
+    "/contact",
+    warnings,
+    "business.primaryCta",
+  );
+
+  const sanitizeHero = (hero: HeroContent | undefined, ctx: string) => {
+    if (!hero) return;
+    hero.ctaUrl = sanitizeInternalUrl(
+      hero.ctaUrl,
+      allowedPaths,
+      business.primaryCta.url,
+      warnings,
+      `${ctx}.hero`,
+    );
+  };
+
+  sanitizeHero(pages.home.hero, "home");
+  for (const p of pages.programs) sanitizeHero(p.hero, `programs.${p.slug}`);
+  sanitizeHero(pages.about.hero, "about");
+  sanitizeHero(pages.pricing.hero, "pricing");
+  sanitizeHero(pages.contact.hero, "contact");
+  sanitizeHero(pages.schedule.hero, "schedule");
+
+  if (pages.localGuide?.hero) {
+    sanitizeHero(pages.localGuide.hero, "localGuide");
+  }
+}
+
 // ── Brand ────────────────────────────────────────────────────────────────────
 
 export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandTokens {
@@ -524,6 +599,9 @@ export async function buildGymJson(
 
     warnings.push(`content merged: ${contentArtifact.payload.pages.length} page briefs applied`);
   }
+
+  // Ensure every internal CTA points to a page that will actually be rendered.
+  sanitizeContentCtas(pages, business, warnings);
 
   const isImpact = inferImpactTheme(contract, pages.home);
 

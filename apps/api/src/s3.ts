@@ -5,6 +5,7 @@ import {
   HeadBucketCommand,
   DeleteObjectCommand,
   PutObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import path from "node:path";
@@ -202,6 +203,48 @@ export async function uploadBufferToS3(config: {
     key,
   });
   return { publicUrl, storageKey: key };
+}
+
+export async function listS3Objects(config: {
+  endpoint?: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  bucket: string;
+  prefix: string;
+}): Promise<{ key: string; size: number; lastModified?: Date }[]> {
+  const s3 = getS3Client({
+    endpoint: config.endpoint,
+    region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    sessionToken: config.sessionToken,
+  });
+
+  const objects: { key: string; size: number; lastModified?: Date }[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const response = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: config.bucket,
+        Prefix: config.prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const item of response.Contents ?? []) {
+      if (item.Key) {
+        objects.push({
+          key: item.Key,
+          size: item.Size ?? 0,
+          lastModified: item.LastModified,
+        });
+      }
+    }
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+
+  return objects;
 }
 
 export async function getSignedDownloadUrl(config: {

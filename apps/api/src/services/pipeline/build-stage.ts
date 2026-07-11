@@ -46,7 +46,7 @@ import {
   makeDefaultFooter,
 } from "../astro-code-generator";
 import { renderSemanticSection } from "../../utils/section-component-registry";
-import type { ExtractedNav, ExtractArtifact } from "../../types/pipeline-artifacts";
+import type { ExtractedNav, ExtractArtifact, ExtractPage, NavLink } from "../../types/pipeline-artifacts";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 
 export type BuildLogCategory =
@@ -82,6 +82,17 @@ export interface BuildStageInput {
    *  because it requires the Astro project to have `node_modules` installed.
    *  Callers that install deps first can set this true. */
   runAstroCheck?: boolean;
+  /** Optional progress callback so the worker can stream SSE events during a
+   *  long-running build. */
+  onProgress?: (payload: { stage: string; message: string; detail?: Record<string, unknown> }) => void;
+  /** Optional callback for each line of subprocess output (pnpm install, astro build, etc.). */
+  onLogLine?: (line: string, stream: "stdout" | "stderr") => void;
+}
+
+export interface BuildLogLine {
+  stream: "stdout" | "stderr";
+  line: string;
+  at: string;
 }
 
 export interface BuildStageResult {
@@ -93,6 +104,47 @@ export interface BuildStageResult {
   /** Public URL of the deployed site root, e.g. https://cdn.../sites/{uuid}/
    *  Null when runAstroBuild was false or deployment was skipped. */
   deployUrl: string | null;
+  /** Raw subprocess output captured during the build stage. */
+  rawLines: BuildLogLine[];
+}
+
+/** Stale design-system docs may be missing siteMetadata. Fall back to the
+ *  canonical sites.mode column so replication/template/greenfield gating keeps
+ *  working for older records. */
+async function loadSiteMode(
+  db: Kysely<DB>,
+  siteUuid: string,
+): Promise<"replication" | "template" | "greenfield" | undefined> {
+  const site = await db
+    .selectFrom("sites")
+    .select("mode")
+    .where("uuid", "=", siteUuid)
+    .executeTakeFirst();
+  const mode = site?.mode;
+  if (
+    mode === "replication" ||
+    mode === "template" ||
+    mode === "greenfield"
+  ) {
+    return mode;
+  }
+  return undefined;
+}
+
+function designSystemWithMode(
+  designSystem: DesignSystemV2,
+  mode: "replication" | "template" | "greenfield",
+): DesignSystemV2 {
+  if (designSystem.siteMetadata?.mode) return designSystem;
+  return {
+    ...designSystem,
+    siteMetadata: {
+      ...(designSystem.siteMetadata ?? {}),
+      framework: "astro",
+      mode,
+      generatedAt: new Date().toISOString(),
+    } as DesignSystemV2["siteMetadata"],
+  };
 }
 
 interface AstroCheckError {
@@ -207,6 +259,28 @@ const CONTENT_TYPES: Record<string, string> = {
  * `sites/{siteUuid}/` with public-read ACL, preserving directory structure.
  * Returns the public URL of the site's index.html.
  */
+async function invalidateCloudFrontCache(
+  distributionId: string | undefined,
+  siteUuid: string,
+): Promise<void> {
+  if (!distributionId) return;
+  try {
+    const { CloudFrontClient, CreateInvalidationCommand } = await import("@aws-sdk/client-cloudfront");
+    const cf = new CloudFrontClient({});
+    await cf.send(
+      new CreateInvalidationCommand({
+        DistributionId: distributionId,
+        InvalidationBatch: {
+          CallerReference: `build-${siteUuid}-${Date.now()}`,
+          Paths: { Quantity: 1, Items: [`/sites/${siteUuid}/*`] },
+        },
+      }),
+    );
+  } catch {
+    // Non-fatal — cache will expire naturally or next build will retry.
+  }
+}
+
 async function deployDistToS3(
   distDir: string,
   s3: S3Client,
@@ -237,6 +311,7 @@ async function deployDistToS3(
             Key: `${prefix}/${relPath}`,
             Body: body,
             ContentType: contentType,
+            CacheControl: "no-store, no-cache, must-revalidate, max-age=0",
             // Public read handled by bucket policy.
           }),
         );
@@ -262,6 +337,24 @@ function applyUrlMap(source: string, urlMap: Map<string, string>): string {
   return result;
 }
 
+/** Rewrite source URL paths in rendered HTML so every internal link points to the
+ *  generated Astro page slug. Only rewrites path-only hrefs (starting with `/`);
+ *  full external URLs are left alone. */
+function applyPathSlugMap(
+  source: string,
+  pageHrefToSlug: Map<string, string>,
+): string {
+  const mapHref = (href: string): string => {
+    const normalized = href.replace(/\/$/, "").toLowerCase() || "/";
+    const slug = pageHrefToSlug.get(normalized);
+    return slug && slug !== "index" ? `/${slug}` : href;
+  };
+  return source.replace(/href=(['"])(\/[^'"]*?)\1/g, (match, quote, path) => {
+    const newPath = mapHref(path);
+    return newPath === path ? match : `href=${quote}${newPath}${quote}`;
+  });
+}
+
 function extForContentType(ct: string): string {
   if (ct.includes("png")) return ".png";
   if (ct.includes("webp")) return ".webp";
@@ -279,6 +372,81 @@ function hashFragment(input: string): string {
   return Math.abs(hash).toString(36);
 }
 
+function buildDefaultSharedProps(
+  section: HierarchySection,
+  evidence: SectionVisualEvidenceRow | undefined,
+): Record<string, unknown> {
+  const dom = evidence?.domStyles;
+  const defaults: Record<string, unknown> = {};
+  if (
+    section.content.heading !== undefined ||
+    dom?.base?.headingText ||
+    dom?.lg?.headingText
+  ) {
+    defaults.heading =
+      section.content.heading ?? dom?.base?.headingText ?? dom?.lg?.headingText;
+  }
+  if (
+    section.content.eyebrow !== undefined ||
+    dom?.base?.eyebrowText ||
+    dom?.lg?.eyebrowText
+  ) {
+    defaults.eyebrow =
+      section.content.eyebrow ?? dom?.base?.eyebrowText ?? dom?.lg?.eyebrowText;
+  }
+  if (section.content.body !== undefined || dom?.base?.bodyText || dom?.lg?.bodyText) {
+    defaults.body = section.content.body ?? dom?.base?.bodyText ?? dom?.lg?.bodyText;
+  }
+  if (section.content.cta || dom?.lg?.ctaLabel || dom?.lg?.ctaHref) {
+    defaults.cta = section.content.cta ?? {
+      label: dom?.lg?.ctaLabel,
+      href: dom?.lg?.ctaHref,
+    };
+  }
+  if (section.content.items !== undefined) {
+    defaults.items = section.content.items;
+  }
+  if (section.content.images !== undefined) {
+    defaults.images = section.content.images;
+  }
+  return defaults;
+}
+
+/** Shared components are often rendered by the LLM as prop-driven components,
+ *  but pages that reuse them may not pass any `sharedProps`. Insert fallback
+ *  defaults from the original section's content / DOM evidence so the
+ *  component is self-contained and Astro build does not throw on undefined
+ *  props. */
+function addSharedComponentPropDefaults(
+  source: string,
+  section: HierarchySection,
+  evidence: SectionVisualEvidenceRow | undefined,
+): string {
+  const defaults = buildDefaultSharedProps(section, evidence);
+  if (Object.keys(defaults).length === 0) return source;
+
+  // Match `const { heading, cta, ... } = Astro.props;` in the frontmatter.
+  const propRegex = /const\s*\{\s*([\s\S]*?)\s*\}\s*=\s*Astro\.props\s*;/;
+  const match = source.match(propRegex);
+  if (!match || !match[1]) return source;
+
+  const propsList = match[1]
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !p.includes("{") && !p.includes(":"));
+
+  const assignments: string[] = [];
+  for (const propName of propsList) {
+    if (!(propName in defaults)) continue;
+    assignments.push(
+      `const ${propName} = Astro.props.${propName} ?? ${JSON.stringify(defaults[propName])};`,
+    );
+  }
+
+  if (assignments.length === 0) return source;
+  return source.replace(propRegex, assignments.join("\n"));
+}
+
 /**
  * Render all shared components once for a hierarchy (or a single page's
  * worth of sections). Returns a map of sharedComponentId → rendered Astro
@@ -294,6 +462,8 @@ export async function renderSharedComponents(
   designSystem: DesignSystemV2,
   evidence: SectionVisualEvidence | null,
   config: Config,
+  extractPageByPath?: Map<string, ExtractPage>,
+  pageHrefToSlug?: Map<string, string>,
 ): Promise<Map<string, string>> {
   const built = new Map<string, string>();
   const tailwind: never[] = [];
@@ -301,18 +471,32 @@ export async function renderSharedComponents(
   // Collect first-member sections for each unique sharedComponentId.
   const byId = new Map<
     string,
-    { section: HierarchySection; propFields?: string[] }
+    { section: HierarchySection; page: HierarchyPage; propFields?: string[] }
   >();
   for (const page of pages) {
     for (const section of page.sections) {
       const id = section.sharedComponentId;
       if (!id || byId.has(id)) continue;
       const propFields = section.sharedProps ? Object.keys(section.sharedProps) : undefined;
-      byId.set(id, { section, propFields });
+      byId.set(id, { section, page, propFields });
     }
   }
 
-  for (const [id, { section, propFields }] of byId) {
+  for (const [id, { section, page, propFields }] of byId) {
+    const extractPage = page.path ? extractPageByPath?.get(page.path) : undefined;
+    // Shared components that are nav-like must be rendered deterministically so
+    // every page gets the exact extracted nav instead of an LLM hallucination.
+    if (isNavSection(page, section, extractPage)) {
+      const nav = buildExtractedNavFromLinks(
+        extractPage!.content.navLinks ?? [],
+        findLogoImage(section, designSystem.business.name),
+        designSystem,
+        pageHrefToSlug,
+      );
+      built.set(id, renderNavComponent(nav));
+      continue;
+    }
+
     const row = getEvidenceForSection(evidence, section);
     const extraInstructions =
       propFields && propFields.length
@@ -326,10 +510,261 @@ export async function renderSharedComponents(
       extraInstructions,
       config,
     });
-    built.set(id, source);
+    built.set(id, addSharedComponentPropDefaults(source, section, row));
   }
 
   return built;
+}
+
+/** Detect whether a section is the page navigation/header. We use structural
+ *  signals: first section on the page, its inner text contains common nav
+ *  labels, and the extract artifact recorded nav links for this page.
+ */
+export function isNavSection(
+  page: HierarchyPage,
+  section: HierarchySection,
+  extractPage: ExtractPage | undefined,
+): boolean {
+  if (!extractPage?.content.navLinks?.length) return false;
+  const isFirst = page.sections[0]?.id === section.id;
+  if (!isFirst) return false;
+
+  const itemText = (section.content.items ?? [])
+    .map((it) => [it.title ?? "", it.description ?? ""].join(" "))
+    .join(" ");
+  const text = [
+    section.content.heading ?? "",
+    section.content.body ?? "",
+    section.content.eyebrow ?? "",
+    itemText,
+    section.content.cta?.label ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  const navLabels = extractPage.content.navLinks.map((l) => l.label.toLowerCase());
+  const matchCount = navLabels.filter((label) => text.includes(label)).length;
+  const logoUrl = findLogoImage(section);
+  const hasLogoImage = logoUrl !== undefined;
+  return matchCount >= 2 || (hasLogoImage && matchCount >= 1);
+}
+
+const WIDGET_LOGO_DENYLIST = [
+  "bugherd.com",
+  "intercom",
+  "zendesk",
+  "crisp.chat",
+  "crisp.im",
+  "freshchat",
+  "hubspot.com",
+  "hs-scripts.com",
+  "js.hs-scripts.com",
+  "livechatinc.com",
+  "chat-widget",
+  "usemessages.com",
+  "termly.io",
+  "cookiebot.com",
+  "usercentrics.eu",
+  "reviews.io",
+  "trustpilot.com",
+  "feefo.com",
+  "google.com",
+  "gstatic.com",
+  "googletagmanager.com",
+  "doubleclick.net",
+  "facebook.com",
+  "fbcdn.net",
+  "recaptcha",
+  "klaviyo.com",
+  "mailchimp.com",
+  "chimpstatic.com",
+];
+
+const WIDGET_LOGO_PATH_DENYLIST = [
+  "bh_logo",
+  "intercom",
+  "zendesk",
+  "crisp",
+  "freshchat",
+  "hubspot",
+  "livechat",
+  "chat-widget",
+  "usemessages",
+  "termly",
+  "cookiebot",
+  "usercentrics",
+  "reviews",
+  "trustpilot",
+  "feefo",
+  "recaptcha",
+  "grecaptcha",
+  "googletagmanager",
+  "gtm",
+  "tracker",
+  "pixel",
+  "widget",
+  "badge",
+  "messenger",
+];
+
+function isWidgetImage(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    WIDGET_LOGO_DENYLIST.some((domain) => lower.includes(domain)) ||
+    WIDGET_LOGO_PATH_DENYLIST.some((fragment) => lower.includes(fragment))
+  );
+}
+
+/** Find the best logo image inside a section's captured images.
+ *  Filters out common widget/chat/analytics images that are sometimes captured
+ *  inside the nav bounding box, then scores by logo cues and business-name matches.
+ */
+export function findLogoImage(
+  section: HierarchySection,
+  businessName?: string,
+): string | undefined {
+  const images = section.content.images ?? [];
+  if (!images.length) return undefined;
+
+  const nameTokens = (businessName ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 2);
+
+  const scored = images
+    .filter((img) => !isWidgetImage(img.url))
+    .map((img) => {
+      const url = img.url ?? "";
+      const lowerUrl = url.toLowerCase();
+      const alt = (img.alt ?? "").toLowerCase();
+      let score = 0;
+      if (lowerUrl.includes("logo")) score += 100;
+      if (lowerUrl.includes("brand")) score += 50;
+      if (lowerUrl.includes("wordmark")) score += 40;
+      if (nameTokens.some((t) => lowerUrl.includes(t) || alt.includes(t))) score += 35;
+      if (alt.includes("logo")) score += 30;
+      if (lowerUrl.match(/\.(png|svg)(\?|$)/)) score += 20;
+      if (lowerUrl.includes("secondary")) score -= 80;
+      if (lowerUrl.includes("icon")) score -= 40;
+      return { url, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  return best && best.score > 0 ? best.url : undefined;
+}
+
+/** Normalize a captured source href against the generated page slug map.
+ *  Falls back to the original href when the path isn't part of the built site
+ *  (e.g. external URLs, anchors, mailto). */
+function normalizeHref(
+  href: string,
+  pageHrefToSlug?: Map<string, string>,
+): string {
+  if (!pageHrefToSlug) return href;
+  const stripped = href.replace(/\/$/, "").toLowerCase() || "/";
+  const normalized = stripped.startsWith("/") ? stripped : `/${stripped}`;
+  const slug = pageHrefToSlug.get(normalized);
+  if (slug && slug !== "index") {
+    return `/${slug}`;
+  }
+  return href;
+}
+
+/** Rewrite an already-built ExtractedNav so every internal href points to the
+ *  generated Astro page slug instead of the original source URL path. */
+function mapExtractedNavHrefs(
+  nav: ExtractedNav,
+  pageHrefToSlug?: Map<string, string>,
+): ExtractedNav {
+  if (!pageHrefToSlug) return nav;
+  const mapLink = (link: NavLink): NavLink => ({
+    ...link,
+    href: normalizeHref(link.href, pageHrefToSlug),
+    children: link.children?.map(mapLink),
+  });
+  return {
+    ...nav,
+    links: nav.links.map(mapLink),
+    cta: nav.cta
+      ? { ...nav.cta, href: normalizeHref(nav.cta.href, pageHrefToSlug) }
+      : undefined,
+  };
+}
+
+/** Build a hierarchical ExtractedNav from the flat navLinks captured by the
+ *  extract stage. We group program/class links under a "Programs" dropdown when
+ *  present, matching the source site's structure.
+ */
+export function buildExtractedNavFromLinks(
+  navLinks: NavLink[],
+  logoUrl: string | undefined,
+  designSystem: DesignSystemV2,
+  pageHrefToSlug?: Map<string, string>,
+): ExtractedNav {
+  const tokens = designSystem.global.tokens;
+  const bg = tokens.colors.background ?? "#ffffff";
+  const fg = tokens.colors.foreground ?? "#000000";
+
+  // Specific program/class names become children under a "Programs" dropdown.
+  // Generic labels like "Programs", "Classes", or "Schedule" stay at the top level.
+  const PROGRAM_HINTS = [
+    "crossfit", "bootcamp", "sweat", "crosstrain", "crosstrain", "kids", "teens",
+    "personal training", "private training", "yoga", "olympic", "weightlifting",
+    "barbell", "endurance", "strength", "conditioning", "hiit", "functional",
+  ];
+
+  // Deduplicate by normalized href, keeping the first label we see. Also
+  // collapse whitespace and trim labels so "Drop In" and "Drop-In" don't
+  // both appear as separate top-level links.
+  const seenHrefs = new Set<string>();
+  const dedupedNavLinks: NavLink[] = [];
+  for (const link of navLinks) {
+    const key = normalizeHref(link.href, pageHrefToSlug);
+    const dedupKey = key.replace(/\/$/, "").toLowerCase() || "/";
+    if (seenHrefs.has(dedupKey)) continue;
+    seenHrefs.add(dedupKey);
+    dedupedNavLinks.push({
+      ...link,
+      href: key,
+      label: link.label.replace(/\s+/g, " ").trim(),
+    });
+  }
+
+  const programChildren: NavLink[] = [];
+  const otherLinks: NavLink[] = [];
+
+  for (const link of dedupedNavLinks) {
+    const lower = link.label.toLowerCase();
+    const isGenericParent = ["programs", "classes", "class schedule", "schedule", "timetable"].includes(lower);
+    if (!isGenericParent && PROGRAM_HINTS.some((h) => lower.includes(h))) {
+      programChildren.push(link);
+    } else {
+      otherLinks.push(link);
+    }
+  }
+
+  const links: NavLink[] = [];
+  // If we found concrete program links, surface a Programs dropdown.
+  if (programChildren.length >= 2) {
+    links.push({ label: "Programs", href: "#", children: programChildren });
+  } else if (programChildren.length === 1) {
+    links.push(programChildren[0]!);
+  }
+  links.push(...otherLinks);
+
+  const logo = logoUrl
+    ? { type: "image" as const, value: logoUrl, alt: designSystem.business.name ?? "" }
+    : designSystem.brand.logo;
+
+  return {
+    position: "top-sticky",
+    background: bg,
+    textColor: fg,
+    logo,
+    links,
+    hasMobileToggle: true,
+    mobileMenuBackground: tokens.colors.muted ?? bg,
+  };
 }
 
 /**
@@ -342,6 +777,8 @@ async function renderPageSections(
   evidence: SectionVisualEvidence | null,
   config: Config,
   extractedNav: ExtractedNav | null,
+  pageHrefToSlug: Map<string, string>,
+  extractPage: ExtractPage | undefined,
   animationNames: string[],
   lottieUrls: string[],
 ): Promise<{ section: HierarchySection; source: string; isFallback: boolean }[]> {
@@ -355,10 +792,22 @@ async function renderPageSections(
       const previousTag = page.sections[i - 1]?.tag;
       const nextTag = page.sections[i + 1]?.tag;
 
-      if (section.tag === "header") {
+      if (section.tag === "header" || isNavSection(page, section, extractPage)) {
         // Deterministic nav renderer: uses extracted DOM data, no LLM.
-        if (extractedNav) {
-          return { section, source: renderNavComponent(extractedNav), isFallback: false };
+        const nav = section.tag === "header" && extractedNav
+          ? mapExtractedNavHrefs(extractedNav, pageHrefToSlug)
+          : buildExtractedNavFromLinks(
+              extractPage!.content.navLinks ?? [],
+              findLogoImage(section, designSystem.business.name),
+              designSystem,
+              pageHrefToSlug,
+            );
+        if (nav) {
+          return {
+            section,
+            source: renderNavComponent(nav),
+            isFallback: false,
+          };
         }
         // Fall back to semantic renderer if no extractedNav available.
         const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
@@ -398,15 +847,63 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** Run a subprocess in the given directory; resolves when done. Throws on non-zero exit. */
-async function runProcess(cmd: string, args: string[], cwd: string): Promise<void> {
+interface RunProcessOptions {
+  stdin?: "ignore" | "pipe";
+  /** Called for every non-empty line emitted by the subprocess. */
+  onLogLine?: (line: string, stream: "stdout" | "stderr") => void;
+}
+
+const ANSI_ESCAPE_RE =
+  /[][[\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*|[a-zA-Z\d]+(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;
+
+function sanitizeLogLine(line: string): string {
+  // Strip ANSI escape codes and trailing carriage returns so logs are safe for
+  // JSON/SSE and render cleanly in the terminal-style UI.
+  return line.replace(ANSI_ESCAPE_RE, "").replace(/\r+$/, "");
+}
+
+/** Run a subprocess in the given directory; resolves when done. Throws on non-zero exit.
+ *  Streams stdout/stderr line-by-line through onLogLine. */
+async function runProcess(cmd: string, args: string[], cwd: string, opts?: RunProcessOptions): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, env: process.env, stdio: "inherit" });
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code ?? "null"} in ${cwd}`));
+    const stdio: ["ignore" | "pipe", "pipe", "pipe"] =
+      opts?.stdin === "ignore" ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"];
+    const child = spawn(cmd, args, { cwd, env: process.env, stdio });
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
+
+    function emitLine(line: string, stream: "stdout" | "stderr") {
+      if (line === "") return;
+      opts?.onLogLine?.(sanitizeLogLine(line), stream);
+    }
+
+    function flushBuffer(buffer: string, stream: "stdout" | "stderr"): string {
+      let remaining = buffer;
+      let idx: number;
+      while ((idx = remaining.indexOf("\n")) !== -1) {
+        emitLine(remaining.slice(0, idx), stream);
+        remaining = remaining.slice(idx + 1);
+      }
+      return remaining;
+    }
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutBuffer = flushBuffer(stdoutBuffer + chunk.toString(), "stdout");
     });
-    child.on("error", reject);
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderrBuffer = flushBuffer(stderrBuffer + chunk.toString(), "stderr");
+    });
+
+    child.on("close", (code) => {
+      emitLine(stdoutBuffer, "stdout");
+      emitLine(stderrBuffer, "stderr");
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code ?? "null"} in ${cwd}\nstdout: ${stdoutBuffer}\nstderr: ${stderrBuffer}`));
+    });
+    child.on("error", (err) => {
+      reject(err);
+    });
   });
 }
 
@@ -455,6 +952,44 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     workspaceUuid: input.workspaceUuid,
   };
 
+  // Capture every subprocess line for live streaming and later replay.
+  const rawLines: BuildLogLine[] = [];
+  const onLogLine = (line: string, stream: "stdout" | "stderr") => {
+    const entry: BuildLogLine = { stream, line, at: new Date().toISOString() };
+    rawLines.push(entry);
+    input.onLogLine?.(line, stream);
+  };
+
+  // Heartbeat so the UI sees motion during every long-running phase — not just
+  // the subprocess calls. Callers update the message as work moves through
+  // loading docs, rendering sections, installing, compiling, and deploying.
+  const HEARTBEAT_INTERVAL_MS = 5000;
+  let heartbeatMessage = "Building site…";
+  let heartbeatElapsedSeconds = 0;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  function setHeartbeatMessage(message: string) {
+    heartbeatMessage = message;
+    heartbeatElapsedSeconds = 0;
+    input.onProgress?.({ stage: "build", message: heartbeatMessage });
+  }
+  function stopHeartbeat() {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  }
+  if (input.onProgress) {
+    heartbeatTimer = setInterval(() => {
+      heartbeatElapsedSeconds += HEARTBEAT_INTERVAL_MS / 1000;
+      input.onProgress?.({
+        stage: "build",
+        message: `${heartbeatMessage} (${Math.round(heartbeatElapsedSeconds)}s)`,
+      });
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  try {
+
   // 1. Load docs.
   const hierarchy = await loadSiteHierarchyDoc(input.db, input.workspaceUuid, input.siteUuid);
   if (!hierarchy) {
@@ -464,7 +999,13 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   if (!designSystemDoc || designSystemDoc.version !== "2") {
     throw new Error(`Design system v2 not found for site ${input.siteUuid}`);
   }
-  const designSystem = designSystemDoc as DesignSystemV2;
+  let designSystem = designSystemDoc as DesignSystemV2;
+  if (!designSystem.siteMetadata?.mode) {
+    const siteMode = await loadSiteMode(input.db, input.siteUuid);
+    if (siteMode) {
+      designSystem = designSystemWithMode(designSystem, siteMode);
+    }
+  }
   const rawEvidence = await loadSectionVisualEvidenceDoc(input.db, input.workspaceUuid, input.siteUuid);
 
   // Convert private S3 screenshot URLs to base64 data URIs so the LLM provider
@@ -555,6 +1096,16 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   const webFontUrls = extractArtifact?.payload?.css?.webFontUrls ?? [];
   const cssAnimations = extractArtifact?.payload?.css?.animations ?? [];
   const extractedNav: ExtractedNav | null = extractArtifact?.payload?.extractedNav ?? null;
+  const extractPages = extractArtifact?.payload?.pages ?? [];
+  const extractPageByPath = new Map(extractPages.map((p) => [p.path, p]));
+  // Build a map from original URL path to generated Astro slug so nav links can
+  // point to the generated pages instead of the source URLs.
+  const pageHrefToSlug = new Map(
+    hierarchy.pages.map((p) => {
+      const key = (p.path ?? "/").replace(/\/$/, "").toLowerCase() || "/";
+      return [key.startsWith("/") ? key : `/${key}`, p.slug];
+    }),
+  );
 
   // Collect all Lottie JSON URLs across all extracted pages (deduplicated).
   const rawLottieUrls = Array.from(new Set(
@@ -582,6 +1133,11 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   const rehostedLottieUrls = Array.from(lottieUrlMap.values());
 
   await writeProjectScaffold(sourceDir, designSystem, { webFontUrls, cssAnimations, hasLottie });
+  input.onProgress?.({
+    stage: "build",
+    message: "Project scaffold ready",
+    detail: { mode: designSystem.siteMetadata.mode },
+  });
 
   // 5. Shared components — render once for all pages in the hierarchy so
   //    downstream page imports always resolve.
@@ -590,6 +1146,8 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     designSystem,
     evidence,
     input.config,
+    extractPageByPath,
+    pageHrefToSlug,
   );
   const sharedComponentsBuilt: string[] = [];
   // Write shared components (plus Header/Footer) into the scaffold via
@@ -603,13 +1161,17 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
       "shared",
       `${sharedComponentFileName(id)}.astro`,
     );
-    await writeFile(filePath, source);
+    const sourceWithUrls = applyUrlMap(source, rehostUrlMap);
+    const sourceWithPaths = applyPathSlugMap(sourceWithUrls, pageHrefToSlug);
+    await writeFile(filePath, sourceWithPaths);
     sharedComponentsBuilt.push(id);
   }
 
   // Also emit the Header / Footer semantic files so page-level imports
   // succeed; these mirror what `writeProjectFiles` does per-page.
   await writeHeaderFooter(sourceDir, designSystem);
+
+  setHeartbeatMessage("Rendering pages…");
 
   // 6. Per-page loop.
   const builtPages: string[] = [];
@@ -619,13 +1181,14 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     const pageT = Date.now();
     console.log(`[build] rendering page "${page.slug}" (${page.sections.length} sections, parallel)`);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "in_progress");
-    const rendered = await renderPageSections(page, designSystem, evidence, input.config, extractedNav, cssAnimations.map((a) => a.name), rehostedLottieUrls);
-    // Apply re-hosted URL substitution: swap original CDN URLs → S3 URLs in the
-    // generated code so the deployed site doesn't depend on the source CDN.
+    const extractPage = page.path ? extractPageByPath.get(page.path) : undefined;
+    const rendered = await renderPageSections(page, designSystem, evidence, input.config, extractedNav, pageHrefToSlug, extractPage, cssAnimations.map((a) => a.name), rehostedLottieUrls);
+    // Apply re-hosted URL substitution and source-path → slug rewriting so every
+    // internal link resolves to a generated Astro page instead of the source site.
     const renderedWithUrls = rendered.map(({ section, source, isFallback }) => ({
       section,
       isFallback,
-      source: applyUrlMap(source, rehostUrlMap),
+      source: applyPathSlugMap(applyUrlMap(source, rehostUrlMap), pageHrefToSlug),
     }));
     const renderMs = Date.now() - pageT;
     const fallbackCount = renderedWithUrls.filter(r => r.isFallback).length;
@@ -641,6 +1204,11 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     await writePageFiles(sourceDir, page, renderedWithUrls);
     currentHierarchy = updatePageStatus(currentHierarchy, page.slug, "built");
     builtPages.push(page.slug);
+    input.onProgress?.({
+      stage: "build",
+      message: `Rendered page /${page.slug === "index" ? "" : page.slug}`,
+      detail: { pageSlug: page.slug, sectionCount: renderedWithUrls.length, fallbackCount },
+    });
   }
   console.log(`[build] ⏱ all pages rendered in ${((Date.now()-t0)/1000).toFixed(1)}s`);
 
@@ -673,9 +1241,16 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   //    and skips real validation, but with a stale node_modules from a prior run
   //    it would hang waiting on the TypeScript language server.
   if (input.runAstroBuild) {
+    setHeartbeatMessage("Installing dependencies…");
     const tInstall = Date.now();
     console.log(`[build] running pnpm install in ${sourceDir}`);
-    await runProcess("pnpm", ["install"], sourceDir);
+    // Force non-interactive mode and answer yes to any prompts by feeding stdin
+    // from /dev/null. This prevents pnpm from hanging on TTY prompts when the
+    // temp build dir is reused or the store has stale symlinks.
+    await runProcess("pnpm", ["install", "--reporter=append-only", "--config.interactive=false"], sourceDir, {
+      stdin: "ignore",
+      onLogLine,
+    });
     console.log(`[build] ⏱ pnpm install: ${((Date.now()-tInstall)/1000).toFixed(1)}s`);
   }
 
@@ -792,9 +1367,13 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   // Opt-in: tests skip this because they use synthetic scaffolds without real lockfiles.
   let deployUrl: string | null = null;
   if (input.runAstroBuild) {
+    setHeartbeatMessage("Compiling Astro site…");
     const tBuild = Date.now();
     console.log(`[build] running astro build in ${sourceDir}`);
-    await runProcess("pnpm", ["exec", "astro", "build"], sourceDir);
+    await runProcess("pnpm", ["exec", "astro", "build"], sourceDir, {
+      stdin: "ignore",
+      onLogLine,
+    });
     // Make asset paths relative and inline CSS so the site is self-contained
     // when served from an S3 subdirectory (no root-relative /_astro/ paths).
     const distDir = path.join(sourceDir, "dist");
@@ -802,15 +1381,26 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     await inlineCssIntoHtml(distDir);
     console.log(`[build] ⏱ astro build: ${((Date.now()-tBuild)/1000).toFixed(1)}s`);
     console.log(`[build] astro build complete`);
+    input.onProgress?.({ stage: "build", message: "Astro build complete" });
 
     // 7d. Deploy dist/ to S3 so the site is publicly accessible.
     try {
+      setHeartbeatMessage("Deploying to S3…");
       const tDeploy = Date.now();
       deployUrl = await deployDistToS3(distDir, input.s3, input.config, input.siteUuid);
       console.log(`[build] ⏱ S3 deploy: ${((Date.now()-tDeploy)/1000).toFixed(1)}s`);
       console.log(`[build] deployed → ${deployUrl}`);
+      setHeartbeatMessage("Site deployed");
+
+      // CloudFront caches the previous build; invalidate the site path so the
+      // preview URL shows the fresh output immediately.
+      await invalidateCloudFrontCache(input.config.CLOUDFRONT_DISTRIBUTION_ID, input.siteUuid);
     } catch (err) {
       console.warn(`[build] S3 deploy failed (non-fatal): ${(err as Error).message}`);
+      input.onProgress?.({
+        stage: "build",
+        message: `S3 deploy failed: ${(err as Error).message}`,
+      });
     }
   }
 
@@ -824,20 +1414,29 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
     buildLog,
     fallbacks,
     deployUrl,
+    rawLines,
   };
   await saveArtifact(input.db, ctx, "build", artifactPayload);
 
-  return {
-    builtPages,
-    sharedComponentsBuilt,
-    buildLog,
-    fallbacks,
-    sourceDir,
-    deployUrl,
-  };
+    return {
+      builtPages,
+      sharedComponentsBuilt,
+      buildLog,
+      fallbacks,
+      sourceDir,
+      deployUrl,
+      rawLines,
+    };
+  } finally {
+    stopHeartbeat();
+  }
 }
 
 async function writeHeaderFooter(sourceDir: string, designSystem: DesignSystemV2): Promise<void> {
+  // Skip the synthetic global shell in replication mode; the original header/footer
+  // are already rendered as page sections.
+  if (designSystem.siteMetadata.mode === "replication") return;
+
   const headerSection = designSystem.global.shell.header ?? makeDefaultHeader(designSystem);
   await writeFile(
     path.join(sourceDir, "src", "components", "shared", "Header.astro"),
