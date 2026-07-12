@@ -18,7 +18,7 @@ import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
 import { buildNavigation } from "./nav-slots.js";
-import { beanburitoSpec, buildSpecPrompt } from "./specs/beanburito.js";
+import { beanburitoSpec, buildSpecPrompt } from "@ploy-gyms/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
 
 export interface GenerateContentInput {
@@ -64,15 +64,27 @@ async function loadDoc(db: Kysely<DB>, siteUuid: string, key: string): Promise<s
   return row?.content ?? "";
 }
 
-async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<any | null> {
-  const row = await (db as any)
+interface ContentArtifactPage {
+  path: string;
+  pageType: string;
+  purpose?: string;
+  contentFound?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}
+interface ContentArtifact {
+  pages?: ContentArtifactPage[];
+}
+
+async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<ContentArtifact | null> {
+  const row = await db
     .selectFrom("pipelineArtifacts")
     .select("payload")
     .where("siteUuid", "=", siteUuid)
     .where("stage", "=", "content")
     .orderBy("version", "desc")
     .executeTakeFirst();
-  return row?.payload ?? null;
+  const payload = row?.payload as ContentArtifact | undefined;
+  return payload ?? null;
 }
 
 // ── Context builder ──────────────────────────────────────────────────────────
@@ -94,34 +106,37 @@ function extractJsonObject(raw: string): string | undefined {
   return undefined;
 }
 
-function buildContextFromArtifact(artifact: any): string {
+function buildContextFromArtifact(artifact: ContentArtifact | null): string {
   if (!artifact?.pages?.length) return "";
   const lines: string[] = ["CONTENT FOUND ON THEIR WEBSITE:"];
 
-  for (const page of artifact.pages as any[]) {
-    const cf = page.contentFound ?? page.data ?? {};
-    const hero = cf.hero ?? {};
+  for (const page of artifact.pages) {
+    const cf = (page.contentFound ?? page.data ?? {}) as Record<string, unknown>;
+    const hero = (cf.hero ?? {}) as Record<string, unknown>;
     lines.push(`\nPage: ${page.path} (${page.pageType})`);
     if (page.purpose) lines.push(`  Purpose: ${page.purpose}`);
     if (hero.headline) lines.push(`  Hero headline: "${hero.headline}"`);
     if (hero.subheading) lines.push(`  Hero subheading: "${hero.subheading}"`);
-    if (cf.body && cf.body.length > 20) lines.push(`  Body text: ${cf.body.slice(0, 600)}`);
-    if (cf.testimonials?.length) {
-      lines.push(`  Testimonials (${cf.testimonials.length} found):`);
-      for (const t of cf.testimonials.slice(0, 5)) {
+    if (cf.body && String(cf.body).length > 20) lines.push(`  Body text: ${String(cf.body).slice(0, 600)}`);
+    const testimonials = Array.isArray(cf.testimonials) ? cf.testimonials as Array<Record<string, unknown>> : [];
+    if (testimonials.length > 0) {
+      lines.push(`  Testimonials (${testimonials.length} found):`);
+      for (const t of testimonials.slice(0, 5)) {
         lines.push(`    - "${t.quote}" — ${t.name}${t.program ? ` (${t.program})` : ""}`);
       }
     }
-    if (cf.faq?.length) {
-      lines.push(`  FAQ (${cf.faq.length} found):`);
-      for (const f of cf.faq.slice(0, 7)) {
+    const faq = Array.isArray(cf.faq) ? cf.faq as Array<Record<string, unknown>> : [];
+    if (faq.length > 0) {
+      lines.push(`  FAQ (${faq.length} found):`);
+      for (const f of faq.slice(0, 7)) {
         lines.push(`    Q: ${f.question}`);
         lines.push(`    A: ${f.answer}`);
       }
     }
-    if (cf.valueProps?.length) {
+    const valueProps = Array.isArray(cf.valueProps) ? cf.valueProps as Array<Record<string, unknown>> : [];
+    if (valueProps.length > 0) {
       lines.push(`  Value props found:`);
-      for (const v of cf.valueProps) lines.push(`    - ${v.headline}: ${v.body}`);
+      for (const v of valueProps) lines.push(`    - ${v.headline}: ${v.body}`);
     }
   }
   return lines.join("\n");
@@ -148,28 +163,30 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   // crawl pages no longer needed here — navigation built from capturedNav + contentBriefs
 
   // Load mirror deploy prefix so we can resolve hero image URLs
-  const mirrorDeployArtifact = await (db as any)
+  const mirrorDeployArtifact = await db
     .selectFrom("pipelineArtifacts")
     .select("payload")
     .where("siteUuid", "=", siteUuid)
     .where("stage", "=", "mirror-deploy")
     .orderBy("version", "desc")
     .executeTakeFirst();
-  const mirrorDeployPrefix: string = mirrorDeployArtifact?.payload?.deployPrefix ?? "";
+  const mirrorPayload = mirrorDeployArtifact?.payload as { deployPrefix?: string } | undefined;
+  const mirrorDeployPrefix: string = mirrorPayload?.deployPrefix ?? "";
 
   // Load nav structure.
   // Priority:
   //   1. sites/{uuid}/config/nav-structure.json — stable, editable by admin/AI (never overwritten by clone)
   //   2. {deployPrefix}/nav-structure.json     — captured during last clone (seed source)
   // This means owners can edit the nav at any time without a re-clone.
-  let capturedNav: Array<{ label: string; href: string; children?: any[] }> = [];
+  interface NavNode { label: string; href: string; children?: NavNode[]; }
+  let capturedNav: NavNode[] = [];
   const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
   const configNavKey = `sites/${siteUuid}/config/nav-structure.json`;
 
   let navSource = "none";
   try {
     const obj = await input.s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: configNavKey }));
-    capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+    capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]") as NavNode[];
     navSource = "config";
   } catch {
     // Config nav not yet set — fall back to deploy-prefix capture
@@ -179,7 +196,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
           Bucket: bucket,
           Key: `${mirrorDeployPrefix}/nav-structure.json`,
         }));
-        capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+        capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]") as NavNode[];
         navSource = "deploy-capture";
         // Seed the stable config path so future edits work without re-clone
         if (capturedNav.length > 0) {
@@ -235,14 +252,16 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   }
 
   // Extract testimonials and FAQ from content artifact (real content, not generated)
-  const homePage = contentArtifact?.pages?.find((p: any) => p.path === "/");
-  const homeCf = homePage?.contentFound ?? homePage?.data ?? {};
-  const existingTestimonials: Testimonial[] = (homeCf.testimonials ?? [])
-    .filter((t: any) => t.quote && t.name)
-    .map((t: any) => ({ quote: String(t.quote), name: String(t.name), program: t.program ?? undefined }));
-  const existingFaq: FAQItem[] = (homeCf.faq ?? [])
-    .filter((f: any) => f.question && f.answer)
-    .map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
+  const homePage = contentArtifact?.pages?.find((p) => p.path === "/");
+  const homeCf = (homePage?.contentFound ?? homePage?.data ?? {}) as Record<string, unknown>;
+  const homeTestimonials = Array.isArray(homeCf.testimonials) ? homeCf.testimonials as Array<Record<string, unknown>> : [];
+  const homeFaq = Array.isArray(homeCf.faq) ? homeCf.faq as Array<Record<string, unknown>> : [];
+  const existingTestimonials: Testimonial[] = homeTestimonials
+    .filter((t) => t.quote && t.name)
+    .map((t) => ({ quote: String(t.quote), name: String(t.name), program: t.program ? String(t.program) : undefined }));
+  const existingFaq: FAQItem[] = homeFaq
+    .filter((f) => f.question && f.answer)
+    .map((f) => ({ question: String(f.question), answer: String(f.answer) }));
 
   const artifactContext = buildContextFromArtifact(contentArtifact);
 

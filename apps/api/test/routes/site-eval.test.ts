@@ -124,6 +124,81 @@ describe("POST /sites/:uuid/eval", () => {
     }
   });
 
+  test("POST /evals/:uuid/fix enqueues an eval-fix job", async () => {
+    const app = await build();
+    try {
+      await app.inject({
+        method: "POST",
+        url: "/api/workspaces",
+        headers: authHeaders(),
+        payload: { name: "Eval Gym Fix", slug: "eval-gym-fix" },
+      });
+
+      const site = await app.inject({
+        method: "POST",
+        url: "/api/sites",
+        headers: { ...authHeaders(), "x-workspace-slug": "eval-gym-fix" },
+        payload: { name: "Eval Site Fix", slug: "eval-site-fix" },
+      });
+      const siteUuid = site.json().uuid;
+      const workspaceUuid = site.json().workspaceUuid;
+
+      const report = finalizeReport(
+        [{
+          name: "seo",
+          score: 62,
+          grade: "D",
+          status: "failed",
+          issues: [{ severity: "major", category: "seo", message: "Missing meta description", fix: "Add meta description" }],
+        }],
+        { url: "https://example.com/", path: "/", title: "Home", h1: "Welcome", wordCount: 120, loadTimeMs: 600 },
+      );
+
+      const insert = await app.db
+        .insertInto("siteEvals")
+        .values({
+          siteUuid,
+          workspaceUuid,
+          status: "failed",
+          report: JSON.stringify(report),
+          pages: JSON.stringify([{ path: "/", score: report.overall.score }]),
+          formStatus: `${report.overall.score}/100 ${report.overall.grade}`,
+          completedAt: new Date().toISOString(),
+        })
+        .returning("uuid")
+        .executeTakeFirstOrThrow();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/evals/${insert.uuid}/fix`,
+        headers: { ...authHeaders(), "x-workspace-slug": "eval-gym-fix" },
+      });
+
+      expect(res.statusCode).toBe(202);
+      const body = res.json();
+      expect(body.evalFixJobId).toBeDefined();
+      expect(body.evalUuid).toBe(insert.uuid);
+      expect(body.pageSlug).toBe("index");
+      expect(body.status).toBe("queued");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("POST /evals/:uuid/fix returns 404 for missing eval", async () => {
+    const app = await build();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/evals/00000000-0000-0000-0000-000000000000/fix",
+        headers: authHeaders(),
+      });
+      expect(res.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("GET /evals/:uuid/report.md returns a markdown report when a report exists", async () => {
     const app = await build();
     try {

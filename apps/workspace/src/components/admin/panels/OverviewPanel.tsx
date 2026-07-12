@@ -3,9 +3,47 @@ import { api, type PipelineStageStatus } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 
 interface OverviewPanelProps {
   siteUuid: string;
+}
+
+function normalizeUrl(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function UrlRow({ label, url }: { label: string; url: string | null | undefined }) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) {
+    return (
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-muted-foreground w-[120px] shrink-0">{label}</span>
+        <span className="text-muted-foreground">—</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-muted-foreground w-[120px] shrink-0">{label}</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-auto justify-start p-0 text-xs font-normal hover:text-primary"
+        asChild
+      >
+        <a href={normalized} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 break-all">
+          {normalized}
+          <ExternalLink className="h-3 w-3 shrink-0" />
+        </a>
+      </Button>
+    </div>
+  );
 }
 
 export function OverviewPanel({ siteUuid }: OverviewPanelProps) {
@@ -78,6 +116,18 @@ export function OverviewPanel({ siteUuid }: OverviewPanelProps) {
               <dt className="text-muted-foreground">Source URL</dt>
               <dd className="break-all">{site.sourceUrl ?? "—"}</dd>
             </dl>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Site URLs</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <UrlRow label="Preview URL" url={site.previewUrl} />
+            <UrlRow label="Production URL" url={site.productionUrl} />
+            <UrlRow label="Custom domain" url={site.customDomain} />
+            <UrlRow label="Subdomain" url={site.subdomain} />
           </CardContent>
         </Card>
 

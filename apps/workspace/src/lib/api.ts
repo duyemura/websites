@@ -202,28 +202,6 @@ export interface ScrapeSiteResult {
   screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
 }
 
-export interface GenerateSiteResult {
-  aiJobUuid: string;
-  attemptId: string;
-  status: string;
-}
-
-export interface ApprovePageResult {
-  approved: string;
-  remainingPagesEnqueued: string[];
-}
-
-export interface Deployment {
-  uuid: string;
-  buildId: string;
-  status: "building" | "failed" | "pending" | "success";
-  previewUrl: string | null;
-  artifactUrl: string | null;
-  metadata?: unknown | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface AiActivityResponse {
   activities: {
     uuid: string;
@@ -251,66 +229,12 @@ export interface AiActivityResponse {
   summary: { totalCostUsd: number; totalTokens: number; count: number };
 }
 
-export interface GenerateSiteOptions {
-  mode?: "replication" | "template" | "greenfield";
-  accuracy?: "fast" | "balanced" | "accurate";
-  maxQaIterations?: number;
-  maxBudgetUsd?: number;
-  fidelityThreshold?: number;
-}
-
 export type CreateAssetBody = Omit<
   Asset,
   "uuid" | "workspaceUuid" | "createdAt" | "signedUrl" | "mimeType"
 > & {
   mimeType?: string;
 };
-
-export interface BuildStatus {
-  site: Site;
-  aiJob: {
-    uuid: string;
-    type: string;
-    status: string;
-    state: unknown;
-    steps: unknown;
-    createdAt: string;
-    updatedAt: string;
-  } | null;
-  deployment: {
-    uuid: string;
-    buildId: string;
-    status: string;
-    previewUrl: string | null;
-    artifactUrl: string | null;
-    metadata: unknown;
-    createdAt: string;
-    updatedAt: string;
-  } | null;
-  blueprint: {
-    build_plan: {
-      next_page: string;
-      page_status: Record<string, string>;
-      build_order: string[];
-    };
-  } | null;
-  aiActivity: {
-    uuid: string;
-    actionType: string;
-    outcome: string;
-    summary: string;
-    createdAt: string;
-    metadata: unknown;
-  }[];
-}
-
-export interface BuildCommandResponse {
-  reply: string;
-  action: string | null;
-  enqueued: boolean;
-  messages?: { role: "assistant" | "user"; content: string }[];
-  userMessage?: string;
-}
 
 export interface PipelineStageStatus {
   version: number;
@@ -407,22 +331,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  generateSite: (siteUuid: string, options: GenerateSiteOptions = {}) =>
-    fetchJson<GenerateSiteResult>(
-      `/sites/${encodeURIComponent(siteUuid)}/generate`,
-      { method: "POST", body: JSON.stringify(options) },
-    ),
-  approvePage: (siteUuid: string, slug: string) =>
-    fetchJson<ApprovePageResult>(
-      `/sites/${encodeURIComponent(siteUuid)}/pages/${encodeURIComponent(slug)}/approve`,
-      { method: "POST" },
-    ),
-  listDeployments: (siteUuid: string) =>
-    fetchJson<Deployment[]>(
-      `/sites/${encodeURIComponent(siteUuid)}/deployments`,
-    ),
-  previewUrl: (siteUuid: string, attemptId: string) =>
-    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}`,
   getSiteAiActivity: (siteUuid: string, options?: { actionType?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (options?.actionType) params.set("actionType", options.actionType);
@@ -431,13 +339,6 @@ export const api = {
       `/sites/${encodeURIComponent(siteUuid)}/ai-activity?${params.toString()}`,
     );
   },
-  getBuildStatus: (siteUuid: string) =>
-    fetchJson<BuildStatus>(`/sites/${encodeURIComponent(siteUuid)}/build-status`),
-  sendBuildCommand: (siteUuid: string, message: string) =>
-    fetchJson<BuildCommandResponse>(`/sites/${encodeURIComponent(siteUuid)}/build-commands`, {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    }),
 
   getPipelineStatus: (siteUuid: string) =>
     fetchJson<PipelineStatus>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/status`),

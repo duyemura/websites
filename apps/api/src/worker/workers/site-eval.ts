@@ -1,4 +1,3 @@
-import fp from "fastify-plugin";
 import type { FastifyInstance } from "fastify";
 import type { Job } from "bullmq";
 import { getS3Client } from "../../s3";
@@ -77,6 +76,21 @@ export function siteEvalProcessor(fastify: FastifyInstance) {
         "site-eval worker finished",
       );
 
+      if (report.overall.status !== "passed" && job.data.autoFix && path) {
+        const pageSlug = path === "/" ? "index" : path.replace(/^\//, "").replace(/\//g, "-");
+        await fastify.queues.evalFix.queue.add("eval_fix", {
+          workspaceUuid,
+          siteUuid,
+          evalUuid,
+          pageSlug,
+          remainingAttempts: 1,
+        });
+        fastify.log.info(
+          { jobId: job.id, siteUuid, evalUuid, pageSlug },
+          "site-eval auto-enqueued eval_fix",
+        );
+      }
+
       return {
         status: report.overall.status === "passed" ? "passed" : "failed",
         report,
@@ -123,10 +137,3 @@ export function siteEvalProcessor(fastify: FastifyInstance) {
   };
 }
 
-export default fp(
-  (fastify, _, done) => {
-    fastify.queues.siteEval.worker.run(siteEvalProcessor(fastify));
-    done();
-  },
-  { name: "site-eval-worker", dependencies: ["queues"] },
-);

@@ -7,7 +7,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import type { GymSiteContent } from "@ploy-gyms/shared-types";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import { loadArtifact } from "../../utils/pipeline/artifact-store";
+import { buildGymJson } from "../template/content-mapper.js";
 import {
   checkAccessibility,
   checkSeo,
@@ -66,16 +66,17 @@ async function loadSite(db: Kysely<DB>, siteUuid: string, workspaceUuid: string)
 
 async function loadGymJson(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<GymSiteContent | undefined> {
   try {
-    const artifact = await loadArtifact(
+    const { content } = await buildGymJson(
       db,
-      { siteUuid, workspaceUuid },
-      "generate" as unknown as Parameters<typeof loadArtifact>[2],
+      siteUuid,
+      { apiBaseUrl: "", siteUrl: "", workspaceUuid },
+      workspaceUuid,
     );
-    if (artifact?.payload) return artifact.payload as GymSiteContent;
+    return content;
   } catch {
-    // ignore
+    // Content may be unavailable for Tier 1 clone-only sites; evaluator can still run without it.
+    return undefined;
   }
-  return undefined;
 }
 
 function normalizePath(path: string): string {
@@ -148,6 +149,7 @@ export async function evaluatePage(input: PageEvalInput): Promise<PageEvalReport
       db: input.db,
       siteUuid: input.siteUuid,
       workspaceUuid: input.workspaceUuid,
+      siteMode: site.mode ?? undefined,
       log,
     };
 

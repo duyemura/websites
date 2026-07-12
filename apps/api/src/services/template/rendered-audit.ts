@@ -102,8 +102,19 @@ function extractTextAndJsonLd(html: string): { text: string; jsonLd: unknown[] }
   return { text, jsonLd };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function containsCaseInsensitive(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase());
+}
+
+function containsPlaceholder(haystack: string, placeholder: string): boolean {
+  // Use word boundaries so short placeholders like "YS" do not match the
+  // middle of real words (e.g., "gyms" or "workouts").
+  const re = new RegExp(`\\b${escapeRegExp(placeholder)}\\b`, "i");
+  return re.test(haystack);
 }
 
 function localBusinessObjects(ld: unknown[]): unknown[] {
@@ -183,7 +194,7 @@ function checkNoPlaceholders(ctx: PageCheckContext): AuditFailure[] {
   const failures: AuditFailure[] = [];
   for (const placeholder of DEFAULT_PLACEHOLDER_STRINGS) {
     if (!placeholder || placeholder.length < 2) continue;
-    if (containsCaseInsensitive(ctx.text, placeholder)) {
+    if (containsPlaceholder(ctx.text, placeholder)) {
       failures.push({
         page: ctx.route,
         check: "placeholder-leak",

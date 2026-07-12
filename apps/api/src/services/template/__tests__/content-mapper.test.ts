@@ -447,4 +447,46 @@ describe("extractPages", () => {
     expect(pages.programs[0].hero.headline).toBe("CrossFit in Torrance");
     expect(pages.programs[0].coverImageUrl).toBe("https://cdn.example.com/cf.jpg");
   });
+
+  test("uses hierarchy hero when distinct about/pricing/contact/schedule pages exist", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+      {
+        slug: "about",
+        title: "Our Story",
+        sections: [{
+          id: "s1", tag: "hero", intent: "hero", evidenceId: "e1",
+          content: { heading: "Built in Torrance" },
+        }],
+      },
+      {
+        slug: "pricing",
+        title: "Memberships",
+        sections: [{
+          id: "s2", tag: "hero", intent: "hero", evidenceId: "e2",
+          content: { heading: "Simple rates" },
+        }],
+      },
+    ]);
+    const biz = { name: "KSA", primaryCta: { label: "Join", url: "/contact" }, geo: { city: "Torrance", state: "California", stateAbbr: "CA" } };
+    const pages = extractPages(h, biz as any, warnings);
+    expect(pages.about.hero.headline).toBe("Built in Torrance");
+    expect(pages.pricing.hero.headline).toBe("Simple rates");
+  });
+
+  test("falls back to contextual hero copy when hierarchy lacks distinct pages", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+    ]);
+    const biz = { name: "KSA", primaryCta: { label: "Join", url: "/contact" }, geo: { city: "Torrance", state: "California", stateAbbr: "CA" } };
+    const pages = extractPages(h, biz as any, warnings);
+    expect(pages.about.hero.headline).toBe("About KSA in Torrance, CA");
+    expect(pages.pricing.hero.headline).toBe("Memberships and rates in Torrance, CA");
+    expect(pages.contact.hero.headline).toBe("Visit us in Torrance, CA");
+    expect(pages.schedule.hero.headline).toBe("Class schedule in Torrance, CA");
+    expect(pages.localGuide?.hero.headline).toBe("Your fitness guide to Torrance, CA");
+    expect(pages.about.hero.backgroundImageUrl).toBe("__NO_IMAGE__");
+  });
 });

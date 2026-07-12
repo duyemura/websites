@@ -3,49 +3,45 @@
   "version": "0.0.1",
   "private": true,
   "description": "Shared Zod contracts for Ploy for gyms",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./site": {
-      "require": "./dist/site.js",
       "types": "./dist/site.d.ts",
       "default": "./dist/site.js"
     },
     "./page": {
-      "require": "./dist/page.js",
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"
     },
     "./theme": {
-      "require": "./dist/theme.js",
       "types": "./dist/theme.d.ts",
       "default": "./dist/theme.js"
     },
     "./docs": {
-      "require": "./dist/docs.js",
       "types": "./dist/docs.d.ts",
       "default": "./dist/docs.js"
     },
     "./template-baseline": {
-      "require": "./dist/template-baseline.js",
       "types": "./dist/template-baseline.d.ts",
       "default": "./dist/template-baseline.js"
     }
   },
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --no-file-parallelism"
   },
   "dependencies": {
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "typescript": "~5.7.2"
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.8"
   }
 }

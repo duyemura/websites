@@ -5,24 +5,32 @@ import CTABand from "../components/sections/CTABand.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import ClassEventSchema from "../components/seo/ClassEventSchema.astro";
 import Container from "../components/ui/Container.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
 const s = content.pages.schedule;
 const { business, pages } = content;
 const title = `Class Schedule | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const programNames = pages.programs.slice(0, 2).map(p => p.name).join(", ");
 const scheduleDesc = `View the class schedule at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. ${programNames ? `${programNames} and more — ` : ""}find a class that works for you.`;
+const theme = content.meta.templateTheme ?? "baseline";
 ---
 <GymLayout title={title} description={scheduleDesc} path="/schedule">
   <Fragment slot="head">
     <BreadcrumbSchema crumbs={[{ name: "Schedule", path: "/schedule" }]} />
     <ClassEventSchema programs={content.pages.programs} />
   </Fragment>
-  <Hero hero={s.hero} />
-  <section class="py-16">
-    <Container>
-      {s.widgetEmbedHtml && <div set:html={s.widgetEmbedHtml} />}
-      {s.note && <p class="mt-6 text-center text-secondary">{s.note}</p>}
-    </Container>
-  </section>
-  <CTABand headline="First time?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+  {theme === "beanburito" ? (
+    <PageRenderer pageKey="schedule" />
+  ) : (
+    <>
+      <Hero hero={s.hero} />
+      <section class="py-16">
+        <Container>
+          {s.widgetEmbedHtml && <div set:html={s.widgetEmbedHtml} />}
+          {s.note && <p class="mt-6 text-center text-secondary">{s.note}</p>}
+        </Container>
+      </section>
+      <CTABand headline="First time?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+    </>
+  )}
 </GymLayout>

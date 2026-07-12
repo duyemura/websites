@@ -4,7 +4,6 @@ import type { Job } from "bullmq";
 import path from "node:path";
 import { getS3Client } from "../../s3";
 import { deployTemplate } from "../../services/template/deploy-template";
-import { publishSiteVersion } from "../../services/site-versions";
 import type { QueueConfig } from "../../bullmq";
 
 function deployTemplateSiteProcessor(fastify: FastifyInstance) {
@@ -46,15 +45,7 @@ function deployTemplateSiteProcessor(fastify: FastifyInstance) {
       },
     });
 
-    // Auto-publish so the new build goes live immediately
-    await publishSiteVersion(
-      fastify.db, s3Client, bucket, siteUuid, result.version,
-      config.CLOUDFRONT_DISTRIBUTION_ID,
-      config.CLOUDFRONT_KVS_ARN,
-      config.MILO_PREVIEW_DOMAIN,
-    );
-
-    fastify.log.info({ jobId: job.id, siteUuid, version: result.version }, "deploy-template worker finished");
+    fastify.log.info({ jobId: job.id, siteUuid, version: result.version, deployPrefix: result.deployPrefix }, "deploy-template worker finished");
     return { version: result.version, deployPrefix: result.deployPrefix };
   };
 }

@@ -88,6 +88,41 @@ describe("parseArgs additional edge cases", () => {
     expect(() => parseArgsFrom(["eval"])).toThrow("--site");
   });
 
+  test("eval parses path, url, keywords, and auto-fix", () => {
+    const cmd = parseArgsFrom([
+      "eval",
+      "--site",
+      "abc-123",
+      "--path",
+      "/about",
+      "--url",
+      "https://example.com/about",
+      "--keywords",
+      "gym,torrance",
+      "--auto-fix",
+    ]);
+    expect(cmd.cmd).toBe("eval");
+    expect((cmd as any).site).toBe("abc-123");
+    expect((cmd as any).path).toBe("/about");
+    expect((cmd as any).url).toBe("https://example.com/about");
+    expect((cmd as any).keywords).toEqual(["gym", "torrance"]);
+    expect((cmd as any).autoFix).toBe(true);
+  });
+
+  test("eval-fix requires --site and either --eval-uuid or --path", () => {
+    expect(() => parseArgsFrom(["eval-fix"])).toThrow("--site");
+    expect(() => parseArgsFrom(["eval-fix", "--site", "abc-123"])).toThrow("--eval-uuid");
+  });
+
+  test("eval-fix parses eval-uuid and path", () => {
+    const byUuid = parseArgsFrom(["eval-fix", "--site", "abc-123", "--eval-uuid", "550e8400-e29b-41d4-a716-446655440000"]);
+    expect(byUuid.cmd).toBe("eval-fix");
+    expect((byUuid as any).evalUuid).toBe("550e8400-e29b-41d4-a716-446655440000");
+
+    const byPath = parseArgsFrom(["eval-fix", "--site", "abc-123", "--path", "/contact"]);
+    expect((byPath as any).path).toBe("/contact");
+  });
+
   test("nav requires --site", () => {
     expect(() => parseArgsFrom(["nav"])).toThrow("--site");
   });

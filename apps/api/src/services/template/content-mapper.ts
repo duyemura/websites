@@ -16,10 +16,11 @@ import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
-  ScheduleContent, BlogContent, LegalPage, HeroContent, Feature,
+  ScheduleContent, BlogContent, LocalGuideContent, LegalPage, HeroContent, Feature,
 } from "@ploy-gyms/shared-types";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
+import type { EnrichArtifact } from "../../types/enrich-artifact";
 
 // ── State abbr lookup ────────────────────────────────────────────────────────
 
@@ -45,6 +46,89 @@ function fallback<T>(value: T | undefined | null | "", def: T, warnings: string[
     return def;
   }
   return value;
+}
+
+function stripSeoSuffix(name: string | undefined | null): string | undefined {
+  if (!name) return undefined;
+  return name.split(" | ")[0]?.trim();
+}
+
+function parseAddressFromString(addrStr: string): { street: string; city: string; stateAbbr: string; zip: string } | null {
+  if (!addrStr) return null;
+  // Remove trailing country like "United States"
+  const cleaned = addrStr.replace(/,?\s*United States$/i, "").trim();
+
+  // Strict: "123 Main St, City, ST 12345" or "123 Main St City, ST 12345"
+  const strictMatch = cleaned.match(
+    /^(\d+\s[\w\s.]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail|Ave|St)\.{0,1}),?\s*(?:Suite?\s*\d+\s*,?\s*)?([A-Za-z\s]+),\s*([A-Za-z\s]+),?\s*(\d{5}(-\d{4})?)$/i,
+  );
+  if (strictMatch) {
+    return {
+      street: strictMatch[1]!.trim(),
+      city: strictMatch[2]!.trim(),
+      stateAbbr: abbrFromState(strictMatch[3]!.trim()),
+      zip: strictMatch[4]!.trim(),
+    };
+  }
+
+  // "123 Main St, Torrance, California 90505" (full state name, no comma before zip)
+  const fullStateMatch = cleaned.match(
+    /^(\d+\s[\w\s.]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail|Ave|St)\.{0,1}),?\s*(?:Suite?\s*\d+\s*,?\s*)?([A-Za-z\s]+?),\s*([A-Za-z\s]+)\s+(\d{5}(-\d{4})?)$/i,
+  );
+  if (fullStateMatch) {
+    return {
+      street: fullStateMatch[1]!.trim(),
+      city: fullStateMatch[2]!.trim(),
+      stateAbbr: abbrFromState(fullStateMatch[3]!.trim()),
+      zip: fullStateMatch[4]!.trim(),
+    };
+  }
+
+  // Loose: "City, ST 12345" (no street)
+  const looseMatch = cleaned.match(/([A-Za-z\s]+),\s*([A-Za-z\s]+)\s+(\d{5}(-\d{4})?)$/i);
+  if (looseMatch) {
+    return {
+      street: "",
+      city: looseMatch[1]!.trim(),
+      stateAbbr: abbrFromState(looseMatch[2]!.trim()),
+      zip: looseMatch[3]!.trim(),
+    };
+  }
+
+  return null;
+}
+
+function abbrFromState(state: string): string {
+  const trimmed = state.trim();
+  const upper = trimmed.toUpperCase();
+  if (STATE_ABBRS[upper]) return upper; // already abbreviation
+  const lower = trimmed.toLowerCase();
+  for (const [abbr, full] of Object.entries(STATE_ABBRS)) {
+    if (full.toLowerCase() === lower) return abbr;
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+function hoursFromString(hoursStr: string): BusinessInfo["hours"] {
+  if (!hoursStr) return [];
+  const lines = hoursStr.split("\n");
+  const out: BusinessInfo["hours"] = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*([\w-]+):\s*(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\s*$/i);
+    if (!m) continue;
+    const days = m[1]!.split("-").map((d) => d.trim());
+    out.push({ days, opens: m[2]!, closes: m[3]! });
+  }
+  return out;
+}
+
+function formatGmbHours(listingHours: { day: string; open?: string; close?: string; isOpen24Hours?: boolean; isClosed?: boolean }[] | undefined): BusinessInfo["hours"] {
+  if (!listingHours) return [];
+  return listingHours.map((h) => ({
+    days: [h.day],
+    opens: h.isOpen24Hours ? "00:00" : (h.open ?? ""),
+    closes: h.isOpen24Hours ? "23:59" : (h.close ?? ""),
+  }));
 }
 
 // ── CTA URL sanitizer ───────────────────────────────────────────────────────
@@ -142,61 +226,103 @@ export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandToken
 
 // ── Business ─────────────────────────────────────────────────────────────────
 
-export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: string[]): BusinessInfo {
+export function extractBusiness(
+  markdown: string,
+  ds: DesignSystemV2,
+  warnings: string[],
+  enrich: EnrichArtifact | null = null,
+): BusinessInfo {
   const baseline = DEFAULT_BUSINESS_PLACEHOLDER;
-  // Name extraction priority:
-  // 1. design-system structured field
-  // 2. **Business Name**: label in markdown
-  // 3. "Welcome to [Name]" pattern in markdown description
-  // 4. H1 heading in markdown (strip SEO suffix after " | ")
-  // 5. Markdown title line (strip SEO suffix after " | ")
-  // 6. Baseline default
+
+  // ── Enrich artifact helpers ──────────────────────────────────────────────────
+  const listing = enrich?.listing;
+  const data = enrich?.data;
+
+  const enrichName = stripSeoSuffix(listing?.name ?? data?.businessName);
+  const enrichPhone = listing?.phoneNumber ?? data?.contact?.phone;
+  const enrichEmail = data?.contact?.email;
+
+  const enrichFullAddress =
+    listing?.address?.fullAddress ??
+    (listing?.address
+      ? [
+          [listing.address.streetNumber, listing.address.streetName].filter(Boolean).join(" "),
+          listing.address.city,
+          listing.address.state,
+          listing.address.postalCode,
+        ].filter(Boolean).join(", ")
+      : undefined) ??
+    data?.locations?.[0]?.address;
+  const enrichAddress = enrichFullAddress ? parseAddressFromString(enrichFullAddress) : null;
+
+  const enrichHours = listing?.regularOpeningHours?.length
+    ? formatGmbHours(listing.regularOpeningHours)
+    : data?.locations?.[0]?.hours
+      ? hoursFromString(data.locations[0].hours)
+      : [];
+
+  const enrichTagline =
+    listing?.editorialSummary ?? data?.tagline ?? data?.description;
+
+  const enrichSocial: Partial<BusinessInfo["social"]> = {};
+  for (const { platform, url } of data?.contact?.social ?? []) {
+    if (platform && url && (platform === "facebook" || platform === "instagram" || platform === "twitter" || platform === "tiktok" || platform === "youtube")) {
+      enrichSocial[platform] = url;
+    }
+  }
+
+  const enrichRating = listing?.rating
+    ? { ratingValue: String(listing.rating), reviewCount: listing.userRatingCount ?? 0 }
+    : baseline.aggregateRating;
+
+  // ── Markdown fallback extraction ───────────────────────────────────────────
   const labelLine = (label: string): string =>
     markdown.match(new RegExp(`(?:-\\s+)?\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
 
   const nameFromLabel = labelLine("Business Name");
   const nameFromWelcome = markdown.match(/Welcome to ([^,.\n]+)[,.\n]/)?.[1]?.trim() ?? "";
-  const nameFromH1 = markdown.match(/^-\s*\(h1\)\s*(.+)$/m)?.[1]?.trim().split(" | ")[0] ?? "";
-  const nameFromTitle = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim().split(" | ")[0] ?? "";
+  const nameFromH1 = stripSeoSuffix(markdown.match(/^-\s*\(h1\)\s*(.+)$/m)?.[1]?.trim());
+  const nameFromTitle = stripSeoSuffix(markdown.match(/^#\s+(.+)$/m)?.[1]?.trim());
 
   const name = fallback(
-    ds.business?.name || ds.siteMetadata?.businessName ||
-    nameFromLabel || nameFromWelcome || nameFromH1 || nameFromTitle,
-    baseline.name, warnings, "business.name"
+    enrichName ||
+    ds.business?.name ||
+    ds.siteMetadata?.businessName ||
+    nameFromLabel ||
+    nameFromWelcome ||
+    nameFromH1 ||
+    nameFromTitle,
+    baseline.name,
+    warnings,
+    "business.name",
   );
-  const tagline = ds.business?.tagline ?? baseline.tagline;
 
-  // Label-based extraction — looks for labeled lines like **Phone**: (555) 123-4567
-
-  const phone = labelLine("Phone") || fallback("", baseline.phone, warnings, "phone");
-  const email = labelLine("Email") || baseline.email;
-
-  // Address is the whole labeled value — apply regex to this single clean string
-  const addrStr = labelLine("Address");
-  // Pass 1: strict match with 2-letter state abbreviation
-  const addrMatch = addrStr.match(
-    /^(\d+\s+[\w\s]+?(?:St(?:reet)?|Ave(?:nue)?|Blvd|Boulevard|Dr(?:ive)?|Rd|Road|Way|Ln|Lane|Court|Ct|Pl(?:ace)?|Circle|Cir|Pkwy|Parkway|Hwy|Highway|Terr(?:ace)?|Trl|Trail)\.?),?\s*(?:Suite?\s*\d+\s*,\s*)?([\w\s]+?),\s*([A-Z]{2})\s+(\d{5})/i,
+  const tagline = fallback(
+    ds.business?.tagline ?? enrichTagline,
+    baseline.tagline,
+    warnings,
+    "business.tagline",
   );
-  // Pass 2: loose match with 2-letter abbreviation (no street type required)
-  const looseMatch = !addrMatch
-    ? addrStr.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/i)
-    : null;
-  // Pass 3: GMB format — full state name: "street, city, StateName, zip"
-  const stateNameToAbbr = Object.fromEntries(Object.entries(STATE_ABBRS).map(([k, v]) => [v.toLowerCase(), k]));
-  const fullStateMatch = !addrMatch && !looseMatch
-    ? addrStr.match(/^(.+?),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*(\d{5})/i)
-    : null;
-  const fullStateAbbr = fullStateMatch
-    ? (stateNameToAbbr[(fullStateMatch[3] ?? "").toLowerCase()] ?? (fullStateMatch[3] ?? "").slice(0, 2).toUpperCase())
-    : undefined;
-  const street = addrMatch?.[1]?.trim() ?? fullStateMatch?.[1]?.trim() ?? fallback("", baseline.address.street, warnings, "address.street");
-  const city = addrMatch?.[2]?.trim() ?? looseMatch?.[1]?.trim() ?? fullStateMatch?.[2]?.trim() ?? fallback("", baseline.address.city, warnings, "address.city");
-  const stateAbbr = (addrMatch?.[3] ?? looseMatch?.[2] ?? fullStateAbbr)?.toUpperCase() ?? fallback("", baseline.address.state, warnings, "address.state");
-  const zip = addrMatch?.[4] ?? looseMatch?.[3] ?? fullStateMatch?.[4] ?? fallback("", baseline.address.zip, warnings, "address.zip");
 
-  // Social links from labeled lines
+  // Phone / email
+  const phone = fallback(enrichPhone || labelLine("Phone"), baseline.phone, warnings, "phone");
+  const email = enrichEmail || labelLine("Email") || baseline.email;
+
+  // Address: prefer enrich artifact, then markdown label, then baseline
+  let address = enrichAddress;
+  if (!address?.city && !address?.stateAbbr) {
+    const addrStr = labelLine("Address");
+    address = parseAddressFromString(addrStr);
+  }
+
+  const street = fallback(address?.street, baseline.address.street, warnings, "address.street");
+  const city = fallback(address?.city, baseline.address.city, warnings, "address.city");
+  const stateAbbr = fallback(address?.stateAbbr, baseline.address.state, warnings, "address.state");
+  const zip = fallback(address?.zip, baseline.address.zip, warnings, "address.zip");
+
+  // Social links from labeled lines, merged with enrich
   const socialPlatforms = ["facebook", "instagram", "twitter", "tiktok", "youtube"] as const;
-  const social: Partial<Record<typeof socialPlatforms[number], string>> = {};
+  const social: Partial<Record<typeof socialPlatforms[number], string>> = { ...enrichSocial };
   for (const platform of socialPlatforms) {
     const url = labelLine(platform);
     if (url) social[platform] = url;
@@ -206,25 +332,27 @@ export function extractBusiness(markdown: string, ds: DesignSystemV2, warnings: 
     ? { label: ds.reference.homePagePrimaryCta.label, url: ds.reference.homePagePrimaryCta.href }
     : baseline.primaryCta;
 
+  const hours = enrichHours.length > 0 ? enrichHours : [];
+
   return {
     name,
     tagline,
     address: { street, city, state: stateAbbr, zip },
     phone,
     email,
-    hours: [],
+    hours,
     primaryCta,
     trialCta: baseline.trialCta,
     geo: { city, state: STATE_ABBRS[stateAbbr] ?? stateAbbr, stateAbbr },
     serviceArea: baseline.serviceArea,
-    aggregateRating: baseline.aggregateRating,
-    social: Object.keys(social).length > 0 ? social as BusinessInfo["social"] : baseline.social,
+    aggregateRating: enrichRating,
+    social: Object.keys(social).length > 0 ? (social as BusinessInfo["social"]) : baseline.social,
   };
 }
 
 // ── Page classification ───────────────────────────────────────────────────────
 
-export function classifyPage(page: HierarchyPage): "home" | "about" | "contact" | "pricing" | "schedule" | "blog" | "legal" | "program" {
+export function classifyPage(page: HierarchyPage): "home" | "about" | "contact" | "pricing" | "schedule" | "localGuide" | "blog" | "legal" | "program" {
   if (page.isHomePage) return "home";
   const s = page.slug.toLowerCase();
   if (/about/.test(s)) return "about";
@@ -292,7 +420,7 @@ function heroFromPage(page: HierarchyPage, contractHero?: SectionContract, busin
 
 export function extractPages(
   hierarchy: SiteHierarchy,
-  business: Pick<BusinessInfo, "name" | "primaryCta">,
+  business: Pick<BusinessInfo, "name" | "primaryCta" | "geo">,
   warnings: string[],
   contract: ContractArtifact | null = null,
 ): PageContent {
@@ -373,26 +501,61 @@ export function extractPages(
       }))
     : defaultPrograms;
 
-  const aboutPage = byClass("about")[0];
+  // Helper for contextual page hero fallbacks when site-hierarchy lacks a distinct page.
+  const pageHeroFallback = (pageKey: "about" | "pricing" | "contact" | "schedule" | "localGuide") => {
+    const page = byClass(pageKey)[0];
+    if (page) {
+      const fromHierarchy = heroFromPage(page);
+      if (fromHierarchy.headline) return fromHierarchy;
+    }
+    const city = business.geo?.city ?? "";
+    const stateAbbr = business.geo?.stateAbbr ?? "";
+    const location = city ? (stateAbbr ? `${city}, ${stateAbbr}` : city) : "";
+    const base: HeroContent = {
+      headline: business.name || DEFAULT_BUSINESS_NAME,
+      backgroundImageUrl: NO_IMAGE,
+    };
+    switch (pageKey) {
+      case "about":
+        base.headline = location ? `About ${business.name} in ${location}` : `About ${business.name}`;
+        break;
+      case "pricing":
+        base.headline = location ? `Memberships and rates in ${location}` : "Memberships and rates";
+        break;
+      case "contact":
+        base.headline = location ? `Visit us in ${location}` : "Get in touch";
+        break;
+      case "schedule":
+        base.headline = location ? `Class schedule in ${location}` : "Class schedule";
+        break;
+      case "localGuide":
+        base.headline = location ? `Your fitness guide to ${location}` : "Local fitness guide";
+        break;
+    }
+    return base;
+  };
+
   const about: AboutContent = {
-    hero: aboutPage ? heroFromPage(aboutPage) : { headline: "About Us", backgroundImageUrl: NO_IMAGE },
+    hero: pageHeroFallback("about"),
     gymStory: "",
     team: [],
   };
 
-  const pricingPage = byClass("pricing")[0];
   const pricing: PricingContent = {
-    hero: pricingPage ? heroFromPage(pricingPage) : { headline: "Pricing" },
+    hero: pageHeroFallback("pricing"),
   };
 
-  const contactPage = byClass("contact")[0];
   const contact: ContactContent = {
-    hero: contactPage ? heroFromPage(contactPage) : { headline: "Contact" },
+    hero: pageHeroFallback("contact"),
   };
 
-  const schedulePage = byClass("schedule")[0];
   const schedule: ScheduleContent = {
-    hero: schedulePage ? heroFromPage(schedulePage) : { headline: "Schedule" },
+    hero: pageHeroFallback("schedule"),
+  };
+
+  const localGuide: LocalGuideContent = {
+    hero: pageHeroFallback("localGuide"),
+    sections: [],
   };
 
   const blog: BlogContent = { heroHeadline: "Our Blog", posts: [] };
@@ -403,21 +566,33 @@ export function extractPages(
     blocks: [],
   }));
 
-  return { home, programs, about, pricing, contact, schedule, blog, legal };
+  return { home, programs, about, pricing, contact, schedule, blog, localGuide, legal };
 }
 
 // ── Contract-aware mapping helpers ────────────────────────────────────────────
 
-function inferImpactTheme(contract: ContractArtifact | null, _home: HomeContent): boolean {
-  if (!contract) return false;
+function inferTemplateTheme(contract: ContractArtifact | null, _home: HomeContent): SiteMeta["templateTheme"] {
+  if (!contract) return "baseline";
   const homeSections = contract.pages.find((p) => p.isHomePage)?.sections ?? [];
-  // The impact theme is built around a bold bento feature grid. Treat any
-  // feature-grid section on the homepage as a signal to use the impact layout;
-  // fall back to sticky program cards if present.
-  return homeSections.some((s) =>
+
+  // Beanburito signal: dark, bold, community-focused template. Detect a sticky
+  // headline panel paired with a dark program-card layout.
+  const hasBeanburitoSignal = homeSections.some((s) =>
+    s.layout.archetype === "program-cards-sticky" &&
+    s.layout.background.color?.toLowerCase() === "#000000" ||
+    s.layout.background.color?.toLowerCase() === "black"
+  );
+  if (hasBeanburitoSignal) return "beanburito";
+
+  // Impact signal: bold bento feature grid or sticky program cards without the
+  // dark/community styling.
+  const hasImpactSignal = homeSections.some((s) =>
     s.layout.archetype.startsWith("feature-grid") ||
     s.layout.archetype === "program-cards-sticky"
   );
+  if (hasImpactSignal) return "impact";
+
+  return "baseline";
 }
 
 function featureGridItems(section: SectionContract): Feature[] {
@@ -474,14 +649,25 @@ export async function buildGymJson(
     loadDoc(db, siteUuid, "site-hierarchy"),
   ]);
 
+  const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? "";
+
   let contract: ContractArtifact | null = null;
-  if (config.workspaceUuid) {
+  if (resolvedWorkspaceUuid) {
     const artifact = await loadArtifact<ContractArtifact>(
       db,
-      { siteUuid, workspaceUuid: config.workspaceUuid },
+      { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
       "contract",
     ).catch(() => null);
     contract = artifact?.payload ?? null;
+  }
+
+  const enrichArtifact = await loadArtifact<EnrichArtifact>(
+    db,
+    { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
+    "enrich",
+  ).catch(() => null);
+  if (!enrichArtifact?.payload) {
+    warnings.push("enrich artifact missing — business NAP may fall back to placeholders");
   }
 
   if (!dsDoc?.contentJson) warnings.push("design-system doc missing — using all brand defaults");
@@ -513,87 +699,130 @@ export async function buildGymJson(
   }) as SiteHierarchy;
 
   const brand = extractBrand(ds, warnings);
-  const business = extractBusiness(bizDoc?.content ?? "", ds, warnings);
+  const business = extractBusiness(bizDoc?.content ?? "", ds, warnings, enrichArtifact?.payload ?? null);
   const navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
 
   // ── Phase 2: merge page briefs from content artifact ──────────────────────
-  const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? "";
-  const contentArtifact = await loadArtifact(
+  type ContentBrief = { contentFound?: Record<string, unknown>; data?: Record<string, unknown> };
+  type ContentArtifactPayload = { pages: Array<ContentBrief & { path: string; pageType: string }> };
+
+  const contentArtifact = await loadArtifact<ContentArtifactPayload>(
     db,
     { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
-    "content" as any,
-  ) as { payload: { pages: Array<{ path: string; pageType: string; contentFound?: Record<string, unknown>; data?: Record<string, unknown> }> } } | null;
+    "content",
+  );
 
   if (contentArtifact?.payload?.pages?.length) {
     const byPath = new Map(contentArtifact.payload.pages.map(p => [p.path, p]));
 
     // Resolve per-page content: new brief format uses contentFound, old format used data
-    const cf = (p: { contentFound?: Record<string, unknown>; data?: Record<string, unknown> } | undefined): any =>
+    const cf = (p: ContentBrief | undefined): Record<string, unknown> | null =>
       p?.contentFound ?? p?.data ?? null;
 
     // Home page — fields always present (guaranteed by normalizeBrief)
     const home = cf(byPath.get("/"));
     if (home) {
-      if (home.hero?.headline) pages.home.hero.headline = home.hero.headline;
-      if (home.hero?.subheading) pages.home.hero.subheading = home.hero.subheading;
-      if (home.hero?.ctaLabel) pages.home.hero.ctaLabel = home.hero.ctaLabel;
-      if (home.valueProps?.length) pages.home.valueProps = home.valueProps.map((v: any) => ({ icon: "", headline: String(v.headline), body: String(v.body) }));
-      if (home.testimonials?.length) pages.home.testimonials = home.testimonials.map((t: any) => ({ quote: String(t.quote), name: String(t.name), program: t.program ?? undefined }));
-      if (home.faq?.length) pages.home.faq = home.faq.map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
-      if (home.programsHeadline) pages.home.programsHeadline = home.programsHeadline;
-      if (home.communityHeadline) pages.home.communityHeadline = home.communityHeadline;
-      if (home.trustHeadline) pages.home.trustHeadline = home.trustHeadline;
-      if (home.howItWorksHeadline) pages.home.howItWorksHeadline = home.howItWorksHeadline;
+      const homeHero = home.hero as Record<string, unknown> | undefined;
+      if (homeHero?.headline) pages.home.hero.headline = String(homeHero.headline);
+      if (homeHero?.subheading) pages.home.hero.subheading = String(homeHero.subheading);
+      if (homeHero?.ctaLabel) pages.home.hero.ctaLabel = String(homeHero.ctaLabel);
+      if (Array.isArray(home.valueProps) && home.valueProps.length > 0) {
+        pages.home.valueProps = home.valueProps.map((v: unknown) => {
+          const item = v as Record<string, unknown>;
+          return { icon: "", headline: String(item.headline ?? ""), body: String(item.body ?? "") };
+        });
+      }
+      if (Array.isArray(home.testimonials) && home.testimonials.length > 0) {
+        pages.home.testimonials = home.testimonials.map((t: unknown) => {
+          const item = t as Record<string, unknown>;
+          return { quote: String(item.quote ?? ""), name: String(item.name ?? ""), program: item.program ? String(item.program) : undefined };
+        });
+      }
+      if (Array.isArray(home.faq) && home.faq.length > 0) {
+        pages.home.faq = home.faq.map((f: unknown) => {
+          const item = f as Record<string, unknown>;
+          return { question: String(item.question ?? ""), answer: String(item.answer ?? "") };
+        });
+      }
+      if (home.programsHeadline) pages.home.programsHeadline = String(home.programsHeadline);
+      if (home.communityHeadline) pages.home.communityHeadline = String(home.communityHeadline);
+      if (home.trustHeadline) pages.home.trustHeadline = String(home.trustHeadline);
+      if (home.howItWorksHeadline) pages.home.howItWorksHeadline = String(home.howItWorksHeadline);
     }
 
     // Program pages
     for (const program of pages.programs) {
       const programEx = cf(byPath.get(`/programs/${program.slug}`));
       if (!programEx) continue;
-      if (programEx.hero?.headline) program.hero.headline = programEx.hero.headline;
-      if (programEx.hero?.subheading) program.hero.subheading = programEx.hero.subheading;
-      if (programEx.shortDescription) program.shortDescription = programEx.shortDescription;
-      if (programEx.whoIsItFor?.length) program.whoIsItFor = programEx.whoIsItFor.map(String);
-      if (programEx.whatMakesUsDifferent?.length) program.whatMakesUsDifferent = programEx.whatMakesUsDifferent.map(String);
-      if (programEx.testimonials?.length) program.testimonials = programEx.testimonials.map((t: any) => ({ quote: String(t.quote), name: String(t.name) }));
-      if (programEx.faq?.length) program.faq = programEx.faq.map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
+      const programHero = programEx.hero as Record<string, unknown> | undefined;
+      if (programHero?.headline) program.hero.headline = String(programHero.headline);
+      if (programHero?.subheading) program.hero.subheading = String(programHero.subheading);
+      if (programEx.shortDescription) program.shortDescription = String(programEx.shortDescription);
+      if (Array.isArray(programEx.whoIsItFor) && programEx.whoIsItFor.length > 0) {
+        program.whoIsItFor = programEx.whoIsItFor.map(String);
+      }
+      if (Array.isArray(programEx.whatMakesUsDifferent) && programEx.whatMakesUsDifferent.length > 0) {
+        program.whatMakesUsDifferent = programEx.whatMakesUsDifferent.map(String);
+      }
+      if (Array.isArray(programEx.testimonials) && programEx.testimonials.length > 0) {
+        program.testimonials = programEx.testimonials.map((t: unknown) => {
+          const item = t as Record<string, unknown>;
+          return { quote: String(item.quote ?? ""), name: String(item.name ?? "") };
+        });
+      }
+      if (Array.isArray(programEx.faq) && programEx.faq.length > 0) {
+        program.faq = programEx.faq.map((f: unknown) => {
+          const item = f as Record<string, unknown>;
+          return { question: String(item.question ?? ""), answer: String(item.answer ?? "") };
+        });
+      }
     }
 
     // About page
     const aboutEx = cf([...byPath.values()].find(p => p.pageType === "about"));
     if (aboutEx) {
-      if (aboutEx.hero?.headline) pages.about.hero.headline = aboutEx.hero.headline;
-      if (aboutEx.gymStory) pages.about.gymStory = aboutEx.gymStory;
-      if (aboutEx.team?.length) pages.about.team = aboutEx.team.map((m: any) => ({ name: String(m.name), title: String(m.title), photoUrl: "", bio: m.bio ?? undefined }));
+      const aboutHero = aboutEx.hero as Record<string, unknown> | undefined;
+      if (aboutHero?.headline) pages.about.hero.headline = String(aboutHero.headline);
+      if (aboutEx.gymStory) pages.about.gymStory = String(aboutEx.gymStory);
+      if (Array.isArray(aboutEx.team) && aboutEx.team.length > 0) {
+        pages.about.team = aboutEx.team.map((m: unknown) => {
+          const item = m as Record<string, unknown>;
+          return { name: String(item.name ?? ""), title: String(item.title ?? ""), photoUrl: "", bio: item.bio ? String(item.bio) : undefined };
+        });
+      }
     }
 
     // Contact — also patch business NAP
     const contactEx = cf([...byPath.values()].find(p => p.pageType === "contact"));
     if (contactEx) {
-      if (contactEx.phone && !business.phone) business.phone = contactEx.phone;
-      if (contactEx.email && !business.email) business.email = contactEx.email;
+      if (contactEx.phone && !business.phone) business.phone = String(contactEx.phone);
+      if (contactEx.email && !business.email) business.email = String(contactEx.email);
       if (contactEx.address && !business.address.street) {
-        business.address.street = contactEx.address;
-        if (contactEx.city) { business.address.city = contactEx.city; business.geo.city = contactEx.city; }
-        if (contactEx.state) { business.address.state = contactEx.state; business.geo.stateAbbr = contactEx.state; }
-        if (contactEx.zip) business.address.zip = contactEx.zip;
+        business.address.street = String(contactEx.address);
+        if (contactEx.city) { business.address.city = String(contactEx.city); business.geo.city = String(contactEx.city); }
+        if (contactEx.state) { business.address.state = String(contactEx.state); business.geo.stateAbbr = String(contactEx.state); }
+        if (contactEx.zip) business.address.zip = String(contactEx.zip);
       }
     }
 
     // Pricing page
     const pricingEx = cf([...byPath.values()].find(p => p.pageType === "pricing"));
-    if (pricingEx?.plans?.length) {
+    if (pricingEx && Array.isArray(pricingEx.plans) && pricingEx.plans.length > 0) {
+      const pricingHero = pricingEx.hero as Record<string, unknown> | undefined;
       pages.pricing.grid = {
-        headline: pricingEx.hero?.headline ?? undefined,
-        plans: pricingEx.plans.map((plan: any) => ({
-          name: String(plan.name),
-          price: String(plan.price),
-          period: plan.period ?? undefined,
-          description: plan.description ?? undefined,
-          features: Array.isArray(plan.features) ? plan.features.map(String) : [],
-          cta: { label: "Get started", url: "/contact" },
-        })),
+        headline: pricingHero?.headline ? String(pricingHero.headline) : undefined,
+        plans: pricingEx.plans.map((plan: unknown) => {
+          const item = plan as Record<string, unknown>;
+          return {
+            name: String(item.name ?? ""),
+            price: String(item.price ?? ""),
+            period: item.period ? String(item.period) : undefined,
+            description: item.description ? String(item.description) : undefined,
+            features: Array.isArray(item.features) ? item.features.map(String) : [],
+            cta: { label: "Get started", url: "/contact" },
+          };
+        }),
       };
     }
 
@@ -603,7 +832,12 @@ export async function buildGymJson(
   // Ensure every internal CTA points to a page that will actually be rendered.
   sanitizeContentCtas(pages, business, warnings);
 
-  const isImpact = inferImpactTheme(contract, pages.home);
+  // Theme selection order of precedence:
+  // 1. Explicit site theme stored on the site row (set by admin/AI).
+  // 2. Contract-driven beanburito signal (bold sticky headline + dark contrast).
+  // 3. Contract-driven impact signal (bento feature grid).
+  // 4. Default baseline.
+  const inferredTemplateTheme = inferTemplateTheme(contract, pages.home);
 
   const meta: SiteMeta = {
     siteId: siteUuid,
@@ -612,7 +846,7 @@ export async function buildGymJson(
     defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : `${DEFAULT_BUSINESS_NAME} | ${DEFAULT_CITY} Gym`,
     defaultDescription: business.tagline,
     preview: false,
-    templateTheme: isImpact ? "impact" : "baseline",
+    templateTheme: inferredTemplateTheme,
   };
 
   return {

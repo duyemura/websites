@@ -9,6 +9,8 @@ export interface PageEvalIssue {
   fix?: string;
   /** DOM selector related to the issue, when applicable. */
   selector?: string;
+  /** Hierarchy section id this issue belongs to, when known. */
+  sectionId?: string;
 }
 
 export type PageEvalCategoryName =
@@ -44,6 +46,8 @@ export interface PageEvalActionItem {
   message: string;
   fix: string;
   selector?: string;
+  /** Hierarchy section id this action targets, when known. */
+  sectionId?: string;
 }
 
 export interface PageEvalReport {

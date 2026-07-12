@@ -5,19 +5,27 @@ import Location from "../components/sections/Location.astro";
 import LeadForm from "../components/forms/LeadForm.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import Container from "../components/ui/Container.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
 const c = content.pages.contact;
 const { business } = content;
 const title = `Contact ${business.name} | Gym in ${business.geo.city}, ${business.geo.stateAbbr}`;
+const theme = content.meta.templateTheme ?? "baseline";
 ---
 <GymLayout title={title} description={`Contact ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. Call ${business.phone} or fill out the form to get started.`} path="/contact">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Contact", path: "/contact" }]} /></Fragment>
-  <Hero hero={c.hero} />
-  <section class="py-16">
-    <Container>
-      {c.intro && <p class="mb-8 text-center text-secondary">{c.intro}</p>}
-      <LeadForm formId="contact" submitLabel="Send message" />
-    </Container>
-  </section>
-  <Location />
+  {theme === "beanburito" ? (
+    <PageRenderer pageKey="contact" />
+  ) : (
+    <>
+      <Hero hero={c.hero} />
+      <section class="py-16">
+        <Container>
+          {c.intro && <p class="mb-8 text-center text-secondary">{c.intro}</p>}
+          <LeadForm formId="contact" submitLabel="Send message" />
+        </Container>
+      </section>
+      <Location />
+    </>
+  )}
 </GymLayout>

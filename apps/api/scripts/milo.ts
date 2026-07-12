@@ -14,6 +14,8 @@ import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
 import { parseArgs, PIPELINES } from "./milo-args.js";
 import type { MiloCommand } from "./milo-args.js";
+import { perPageEvalStage } from "./stages/per-page-eval.js";
+import { evalFixStage } from "./stages/eval-fix.js";
 export type { MiloCommand } from "./milo-args.js";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
@@ -23,9 +25,7 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
     ["enrich", "./stages/enrich.js"],
     ["clone", "./stages/clone.js"],
     ["eval", "./stages/eval.js"],
-    ["extract", "./stages/extract.js"],
-    ["segment", "./stages/segment.js"],
-    ["contract", "./stages/contract.js"],
+    ["eval-fix", "./stages/eval-fix.js"],
     ["docgen", "./stages/docgen.js"],
     ["content", "./stages/content.js"],
     ["generate", "./stages/generate.js"],
@@ -334,7 +334,20 @@ async function runUpgrade(
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid", templateTheme: cmd.theme });
   if (!cmd.quiet) console.log(`\nMilo upgrade — site: ${siteUuid}`);
   const totalStart = Date.now();
-  const results = await runPipeline(PIPELINES.upgrade, ctx, registry, cmd);
+  const results = await runPipeline(PIPELINES.upgrade, ctx, registry, { ...cmd, force: true });
+
+  if (cmd.autoFix && results.some((r) => r.stage === "eval" && r.status === "fail")) {
+    if (!cmd.quiet) console.log("\nAuto-fix enabled — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      site: cmd.site,
+      path: "/",
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    });
+    results.push(...fixResults);
+  }
+
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
@@ -357,6 +370,19 @@ async function runRebuild(
   if (!cmd.quiet) console.log(`\nMilo rebuild — site: ${siteUuid}`);
   const totalStart = Date.now();
   const results = await runPipeline(PIPELINES.rebuild, ctx, registry, { force: cmd.force, quiet: cmd.quiet });
+
+  if (cmd.autoFix && results.some((r) => r.stage === "eval" && r.status === "fail")) {
+    if (!cmd.quiet) console.log("\nAuto-fix enabled — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      site: cmd.site,
+      path: "/",
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    });
+    results.push(...fixResults);
+  }
+
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
@@ -466,6 +492,73 @@ async function runTool(
   return [result];
 }
 
+async function runEval(
+  cmd: Extract<MiloCommand, { cmd: "eval" }>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
+
+  const runner = perPageEvalStage({ path: cmd.path, url: cmd.url, keywords: cmd.keywords });
+  if (!cmd.quiet) console.log(`\nMilo eval — site: ${siteUuid}, path: ${cmd.path ?? "/"}`);
+  const start = Date.now();
+  let result: StageResult;
+  try {
+    result = await runner.run(ctx);
+  } catch (err) {
+    result = {
+      stage: "eval", status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!result.durationMs) result.durationMs = Date.now() - start;
+  renderReport([result], Date.now() - start, cmd.quiet);
+
+  if (cmd.autoFix && result.status !== "pass") {
+    if (!cmd.quiet) console.log("\nAuto-fix enabled — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      site: cmd.site,
+      path: cmd.path,
+      url: cmd.url,
+      keywords: cmd.keywords,
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    });
+    return [result, ...fixResults];
+  }
+  return [result];
+}
+
+async function runEvalFix(
+  cmd: Extract<MiloCommand, { cmd: "eval-fix" }>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
+  const runner = evalFixStage({
+    evalUuid: cmd.evalUuid,
+    path: cmd.path,
+    url: cmd.url,
+    keywords: cmd.keywords,
+  });
+  if (!cmd.quiet) {
+    const source = cmd.evalUuid ? `eval ${cmd.evalUuid}` : `path ${cmd.path ?? "/"}`;
+    console.log(`\nMilo eval-fix — site: ${siteUuid}, ${source}`);
+  }
+  const start = Date.now();
+  let result: StageResult;
+  try {
+    result = await runner.run(ctx);
+  } catch (err) {
+    result = {
+      stage: "eval-fix", status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!result.durationMs) result.durationMs = Date.now() - start;
+  renderReport([result], Date.now() - start, cmd.quiet);
+  return [result];
+}
+
 async function runRestore(
   cmd: Extract<MiloCommand, { cmd: "restore" }>,
   registry: Record<string, StageRunner>,
@@ -504,7 +597,8 @@ async function main() {
     case "upgrade": results = await runUpgrade(cmd, registry); break;
     case "rebuild": results = await runRebuild(cmd, registry); break;
     case "page":    results = await runPage(cmd, registry); break;
-    case "eval":    results = await runTool("eval", cmd, registry); break;
+    case "eval":    results = await runEval(cmd); break;
+    case "eval-fix": results = await runEvalFix(cmd); break;
     case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
     case "restore": results = await runRestore(cmd, registry); break;
     default: {
@@ -515,7 +609,10 @@ async function main() {
   }
 
   await db.destroy();
-  process.exit(results.some((r) => r.status === "fail") ? 1 : 0);
+  // Eval is a post-publish QA report; its failures should not block the upgrade
+  // command from completing, since publish has already happened.
+  const gatingFailures = results.filter((r) => r.status === "fail" && r.stage !== "eval");
+  process.exit(gatingFailures.length > 0 ? 1 : 0);
 }
 
 main().catch((err) => {

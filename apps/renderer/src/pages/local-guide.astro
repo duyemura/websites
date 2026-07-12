@@ -4,6 +4,7 @@ import Hero from "../components/sections/Hero.astro";
 import RichContent from "../components/sections/RichContent.astro";
 import CTABand from "../components/sections/CTABand.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
 const guide = content.pages.localGuide;
 const { business } = content;
@@ -11,10 +12,17 @@ const { business } = content;
 // If no local guide content is in the payload, rewrite to 404 rather than
 // emitting a blank HTML document (which confuses crawlers and hurts SEO).
 if (!guide) return Astro.rewrite("/404");
+const theme = content.meta.templateTheme ?? "baseline";
 ---
 <GymLayout title={`${business.geo.city} Local Guide | ${business.name}`} description={guide.hero.subheading ?? `The ${business.geo.city} local guide by ${business.name}.`} path="/local-guide">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Local Guide", path: "/local-guide" }]} /></Fragment>
-  <Hero hero={guide.hero} />
-  <RichContent sections={guide.sections} />
-  <CTABand headline={`New to ${business.geo.city}? Come train with us.`} ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+  {theme === "beanburito" ? (
+    <PageRenderer pageKey="localGuide" />
+  ) : (
+    <>
+      <Hero hero={guide.hero} />
+      <RichContent sections={guide.sections} />
+      <CTABand headline={`New to ${business.geo.city}? Come train with us.`} ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+    </>
+  )}
 </GymLayout>

@@ -176,6 +176,20 @@ describe("rendered-audit", () => {
     expect(linkFailure?.fixable).toBe(true);
   });
 
+  it("does not flag the 'YS' placeholder inside real words like 'gyms' or 'workouts'", () => {
+    const content = makeContent();
+    const html = pageHtml(content.business, "<p>We welcome people from nearby gyms and workouts of all levels.</p>");
+    const { failures } = auditPage("/", html, content.business, buildAllowedPaths(content));
+    expect(failures.filter((f) => f.check === "placeholder-leak")).toEqual([]);
+  });
+
+  it("still flags a standalone 'YS' placeholder", () => {
+    const content = makeContent();
+    const html = pageHtml(content.business, "<p>Join us in Your City, YS.</p>");
+    const { failures } = auditPage("/", html, content.business, buildAllowedPaths(content));
+    expect(failures.some((f) => f.check === "placeholder-leak" && f.message.includes('"YS"'))).toBe(true);
+  });
+
   it("self-heals stale nav and CTA links", () => {
     const content = makeContent();
     content.navigation.header.push({ label: "Old program", href: "/programs/old-slug" });

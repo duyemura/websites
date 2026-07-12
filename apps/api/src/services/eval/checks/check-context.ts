@@ -25,6 +25,8 @@ export interface CheckContext {
   siteUuid: string;
   /** Workspace UUID. */
   workspaceUuid: string;
+  /** Site rendering mode. */
+  siteMode?: "replication" | "template" | "greenfield";
   /** Logger. */
   log: (msg: string) => void;
 }

@@ -12,6 +12,7 @@ import {
 } from "../../template/rendered-audit.js";
 import { callLlmAndLog } from "../../../ai/llm-with-logging.js";
 import type { Config } from "../../../plugins/env";
+import { checkTemplateFidelity, checkStructureFidelity } from "./fidelity.js";
 
 const MAX_LLM_TEXT = 6000;
 
@@ -148,11 +149,16 @@ export async function checkContent(ctx: CheckContext, config: Config): Promise<P
     for (const w of audit.warnings) {
       issues.push({ severity: "minor", category: "content", message: w });
     }
+
+    // Template + structure fidelity checks.
+    const fidelityIssues = await checkTemplateFidelity(ctx);
+    const structureIssues = await checkStructureFidelity(ctx);
+    issues.push(...fidelityIssues, ...structureIssues);
   } else {
     issues.push({
       severity: "info",
       category: "content",
-      message: "No gym.json content available — business-info and placeholder checks skipped",
+      message: "No gym.json content available — business-info, placeholder, and fidelity checks skipped",
     });
   }
 

@@ -73,6 +73,8 @@ const EnqueueBodySchema = z.object({
   path: z.string().min(1).default("/"),
   url: z.string().url().optional(),
   keywords: z.array(z.string()).optional(),
+  /** When true, automatically heal and rebuild the page if the eval fails. */
+  autoFix: z.boolean().optional(),
 });
 
 const EnqueueResponseSchema = z.object({
@@ -127,9 +129,10 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .returning("uuid")
         .executeTakeFirstOrThrow()).uuid;
 
+      const { autoFix } = request.body;
       const job = await fastify.queues.siteEval.queue.add(
         "site_eval",
-        { siteUuid, workspaceUuid, url, evalUuid, path, keywords },
+        { siteUuid, workspaceUuid, url, evalUuid, path, keywords, autoFix },
         { jobId: `eval-${siteUuid}-${path.replace(/\//g, "-")}-${Date.now()}` },
       );
 
@@ -282,6 +285,64 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       }
 
       return reply.type("text/markdown; charset=utf-8").send(renderMarkdownReport(report));
+    },
+  );
+
+  fastify.post(
+    "/evals/:evalUuid/fix",
+    {
+      schema: {
+        operationId: "enqueueEvalFix",
+        tags: ["Evals"],
+        summary: "Heal the evaluated page and enqueue a rebuild",
+        params: EvalParams,
+        response: {
+          202: z.object({
+            evalFixJobId: z.string(),
+            evalUuid: z.string(),
+            pageSlug: z.string(),
+            status: z.literal("queued"),
+          }),
+          400: ErrorSchema,
+          404: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { evalUuid } = request.params;
+      const workspaceUuid = request.workspace.uuid;
+
+      const row = await fastify.db
+        .selectFrom("siteEvals")
+        .select(["siteUuid", "report", "pages"])
+        .where("uuid", "=", evalUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+
+      if (!row) return reply.code(404).send({ error: "Eval not found" });
+
+      const report = row.report
+        ? (typeof row.report === "string" ? (JSON.parse(row.report) as PageEvalReport) : (row.report as unknown as PageEvalReport))
+        : null;
+      if (!report) {
+        return reply.code(400).send({ error: "No report available to build a fix plan" });
+      }
+
+      const path = report.metadata.path;
+      const pageSlug = path === "/" ? "index" : path.replace(/^\//, "").replace(/\//g, "-");
+
+      const job = await fastify.queues.evalFix.queue.add(
+        "eval_fix",
+        { siteUuid: row.siteUuid, workspaceUuid, evalUuid, pageSlug, remainingAttempts: 1 },
+        { jobId: `eval-fix-${row.siteUuid}-${pageSlug}-${Date.now()}` },
+      );
+
+      return reply.code(202).send({
+        evalFixJobId: job.id ?? "",
+        evalUuid,
+        pageSlug,
+        status: "queued",
+      });
     },
   );
 
