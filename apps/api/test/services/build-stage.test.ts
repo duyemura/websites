@@ -18,6 +18,9 @@ import type { DesignSystemV2 } from "../../src/types/design-system-v2";
 import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
 import type { S3Client } from "@aws-sdk/client-s3";
 
+// Tiny 1x1 transparent PNG as a data URI so screenshot conversion doesn't hit the network.
+const TEST_SCREENSHOT = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 // The build stage's only LLM call site is `renderVisualBlock` — mock it to
 // return a minimal, valid Astro component so the test doesn't hit a network.
 vi.mock("../../src/ai/llm-client", async () => {
@@ -218,7 +221,7 @@ function makeEvidence(rows: string[]): SectionVisualEvidence {
       sectionId: id.replace(/^ev-/, ""),
       boundingBox: { x: 0, y: 0, width: 100, height: 100 },
       computedStyles: [],
-      screenshotUrl: `https://example.com/${id}.png`,
+      screenshotUrl: TEST_SCREENSHOT,
     })),
   };
 }

@@ -1,5 +1,7 @@
 import type { Kysely } from "kysely";
+import type { Redis, Cluster } from "ioredis";
 import { jsonb } from "../utils/jsonb";
+import { publishEvent } from "./events";
 import type { DB, AiActivityAction, AiActivityOutcome } from "../types/db";
 
 export interface LogAiActivityInput {
@@ -27,6 +29,7 @@ export interface LogAiActivityInput {
 export async function logAiActivity(
   db: Kysely<DB>,
   input: LogAiActivityInput,
+  redis?: Redis | Cluster,
 ): Promise<string> {
   const row = await db
     .insertInto("aiActivity")
@@ -53,6 +56,33 @@ export async function logAiActivity(
     })
     .returning("uuid")
     .executeTakeFirstOrThrow();
+
+  if (redis) {
+    void publishEvent(redis, {
+      type: "ai.activity.created",
+      workspaceUuid: input.workspaceUuid,
+      siteUuid: input.siteUuid ?? null,
+      jobId: input.aiJobUuid ?? null,
+      timestamp: new Date().toISOString(),
+      payload: {
+        uuid: row.uuid,
+        actionType: input.actionType,
+        model: input.model ?? null,
+        provider: input.provider ?? null,
+        promptTemplateKeys: input.promptTemplateKeys ?? null,
+        inputDocKeys: input.inputDocKeys ?? null,
+        inputTokens: input.inputTokens ?? null,
+        outputTokens: input.outputTokens ?? null,
+        costUsd: input.costUsd ?? null,
+        latencyMs: input.latencyMs ?? null,
+        outcome: input.outcome,
+        summary: input.summary,
+        errorMessage: input.errorMessage ?? null,
+      },
+    }).catch(() => {
+      // Event publishing is best-effort; never block the logging path.
+    });
+  }
 
   return row.uuid;
 }

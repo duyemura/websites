@@ -2,7 +2,10 @@
 import { content } from "../../lib/content";
 const NO_IMAGE = "__NO_IMAGE__";
 const { business, meta, brand } = content;
-const sameAs = Object.values(business.social ?? {}).filter(Boolean);
+// Only include real social profiles; never leak placeholder URLs into schema.
+const sameAs = Object.values(business.social ?? {})
+  .filter((url): url is string => Boolean(url) && !/example\.com|yourgym|placeholder|\.test\//i.test(url));
+const email = business.email && !/example\.com/i.test(business.email) ? business.email : undefined;
 const schema = {
   "@context": "https://schema.org",
   "@type": ["LocalBusiness", "SportsActivityLocation"],
@@ -10,7 +13,7 @@ const schema = {
   description: business.tagline,
   ...(brand.logoUrl && brand.logoUrl !== NO_IMAGE && { image: brand.logoUrl }),
   url: meta.siteUrl,
-  ...(business.email && { email: business.email }),
+  ...(email && { email }),
   telephone: business.phone,
   address: {
     "@type": "PostalAddress",

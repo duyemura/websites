@@ -10,16 +10,7 @@ import {
 import type { ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { saveArtifact } from "../../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageContext, StageResult } from "./types";
-
-export interface EnrichArtifact {
-  enrichedAt: string;
-  sourceUrl: string;
-  applied: boolean;
-  /** Authoritative GMB listing, when a strong match was found. */
-  listing?: GmbListing;
-  /** Scraper-shaped data after GMB enrichment (useful for doc generators). */
-  data: ScrapedWebsiteData;
-}
+import type { EnrichArtifact } from "../../src/types/enrich-artifact";
 
 async function fetchHomePageSeed(url: string): Promise<{
   title: string;

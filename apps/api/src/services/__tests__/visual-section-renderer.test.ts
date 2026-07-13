@@ -162,7 +162,7 @@ describe("visual-section-renderer", () => {
     expect(source).not.toContain("```");
   });
 
-  test("includes tailwind instructions and mobile crop when provided", async () => {
+  test("includes mobile screenshot and interaction captures when provided", async () => {
     const captured: { messages: unknown; prompt: string } = { messages: null, prompt: "" };
     vi.spyOn(llmClient, "chatCompletion").mockImplementationOnce(async (opts) => {
       captured.messages = opts.messages;
@@ -199,12 +199,9 @@ describe("visual-section-renderer", () => {
       section,
       evidence,
       designSystem,
-      tailwindInstructions: [{ selector: ".features", instruction: "use `flex-col md:flex-row`" }],
       config: makeConfig(),
     });
 
-    expect(captured.prompt).toContain("Responsive behavior");
-    expect(captured.prompt).toContain("use `flex-col md:flex-row`");
     expect(captured.prompt).toContain("Interactive components");
     expect(captured.prompt).toContain("dropdown");
     const msgs = captured.messages as { content: unknown[] }[];

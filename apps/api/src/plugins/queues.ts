@@ -1,32 +1,30 @@
 import fp from "fastify-plugin";
 import bull from "../bullmq";
-
+import type { PageEvalReport } from "../services/eval/page-eval-report.js";
 export default fp(
   (fastify, _, done) => {
     const classifyAssets = bull.build("classify_assets");
     const unclassifiedAssets = bull.build("unclassified_assets");
-    const generatePage = bull.build("generate_page");
     const generateAssets = bull.build("generate_assets");
-    const sitePublish = bull.build("site_publish");
-    const playbookRun = bull.build("playbook_run");
     const pipeline = bull.build("pipeline");
     const mirrorSite = bull.build("mirror_site");
     const goLiveSite = bull.build("go_live_site");
     const leadNotify = bull.build("lead_notify");
     const deployTemplate = bull.build("deploy_template");
+    const siteEval = bull.build("site_eval");
+    const evalFix = bull.build("eval_fix");
 
     fastify.decorate("queues", {
       classifyAssets,
       unclassifiedAssets,
-      generatePage,
       generateAssets,
-      sitePublish,
-      playbookRun,
       pipeline,
       mirrorSite,
       goLiveSite,
       leadNotify,
       deployTemplate,
+      siteEval,
+      evalFix,
     });
 
     done();
@@ -57,28 +55,8 @@ declare module "../bullmq" {
       };
       result: unknown;
     };
-    generate_page: {
-      data: {
-        workspaceUuid: string;
-        siteUuid: string;
-        pageSlug: string;
-        aiJobUuid: string;
-        attemptId: string;
-        mode?: "replication" | "template" | "greenfield";
-        referenceScreenshotUrl?: string | null;
-      };
-      result: unknown;
-    };
     generate_assets: {
       data: { workspaceUuid: string; siteUuid?: string | null; assetGenerationUuid: string; userUuid: string; assetJobUuid?: string };
-      result: unknown;
-    };
-    site_publish: {
-      data: { siteUuid: string; deploymentUuid: string };
-      result: unknown;
-    };
-    playbook_run: {
-      data: { workspaceUuid: string; playbookUuid: string; aiJobUuid?: string };
       result: unknown;
     };
     mirror_site: {
@@ -97,6 +75,45 @@ declare module "../bullmq" {
       data: { siteUuid: string; workspaceUuid: string };
       result: { version: number; deployPrefix: string };
     };
+    site_eval: {
+      data: {
+        siteUuid: string;
+        workspaceUuid: string;
+        evalUuid: string;
+        path: string;
+        url?: string;
+        keywords?: string[];
+        /** When true, enqueue eval_fix to heal and rebuild the page on failure. */
+        autoFix?: boolean;
+      };
+      result: {
+        status: "passed" | "failed";
+        report: PageEvalReport;
+        failedReason?: string;
+      };
+    };
+    eval_fix: {
+      data: {
+        siteUuid: string;
+        workspaceUuid: string;
+        evalUuid: string;
+        pageSlug: string;
+        /** Number of heal/rebuild iterations remaining. Keep low to avoid runaway loops. */
+        remainingAttempts?: number;
+      };
+      result: {
+        fixed: boolean;
+        pageSlug: string;
+        appliedHeals: number;
+        sectionInstructions: number;
+        published: boolean;
+        templateVersion?: number;
+        publishedVersion?: number;
+        reEvalStatus: "passed" | "failed";
+        reEvalScore?: number;
+        reEvalGrade?: string;
+      };
+    };
     pipeline: {
       data:
         | {
@@ -111,6 +128,7 @@ declare module "../bullmq" {
               contentSiteUuid?: string;
               designSiteUuid?: string;
               mode?: "replication" | "template" | "greenfield";
+              tier?: "free" | "paid";
             };
           }
         | {
@@ -122,6 +140,7 @@ declare module "../bullmq" {
               pages?: string[];
               maxPages?: number;
               mode?: "replication" | "template" | "greenfield";
+              tier?: "free" | "paid";
             };
           };
       result: unknown;
@@ -134,15 +153,14 @@ declare module "fastify" {
     queues: {
       classifyAssets: ReturnType<typeof bull.build<"classify_assets">>;
       unclassifiedAssets: ReturnType<typeof bull.build<"unclassified_assets">>;
-      generatePage: ReturnType<typeof bull.build<"generate_page">>;
       generateAssets: ReturnType<typeof bull.build<"generate_assets">>;
-      sitePublish: ReturnType<typeof bull.build<"site_publish">>;
-      playbookRun: ReturnType<typeof bull.build<"playbook_run">>;
       pipeline: ReturnType<typeof bull.build<"pipeline">>;
       mirrorSite: ReturnType<typeof bull.build<"mirror_site">>;
       goLiveSite: ReturnType<typeof bull.build<"go_live_site">>;
       leadNotify: ReturnType<typeof bull.build<"lead_notify">>;
       deployTemplate: ReturnType<typeof bull.build<"deploy_template">>;
+      siteEval: ReturnType<typeof bull.build<"site_eval">>;
+      evalFix: ReturnType<typeof bull.build<"eval_fix">>;
     };
   }
 }

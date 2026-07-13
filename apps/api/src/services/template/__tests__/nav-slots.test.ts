@@ -179,12 +179,20 @@ describe("buildNavigation", () => {
     expect(footerLabels).toContain("Contact");
   });
 
-  test("footer always includes Privacy Policy", () => {
-    const nav = buildNavigation([], programs);
+  test("footer includes Privacy Policy when a legal page exists", () => {
+    const briefs = [{ path: "/privacy-policy", pageType: "legal" as const }];
+    const nav = buildNavigation([], programs, briefs);
     const companyGroup = nav.footer.find((g) => g.label === "Company");
     const privacyLink = companyGroup?.links.find((l) => l.label === "Privacy Policy");
     expect(privacyLink).toBeDefined();
     expect(privacyLink?.href).toBe("/legal/privacy-policy");
+  });
+
+  test("footer omits Privacy Policy when no legal page exists", () => {
+    const nav = buildNavigation([], programs);
+    const companyGroup = nav.footer.find((g) => g.label === "Company");
+    const privacyLink = companyGroup?.links.find((l) => l.label === "Privacy Policy");
+    expect(privacyLink).toBeUndefined();
   });
 
   test("footer Programs group lists all program pages", () => {
@@ -297,5 +305,81 @@ describe("buildNavigation", () => {
     expect(hyrox?.children).toHaveLength(2);
     expect(hyrox?.children?.[0].label).toBe("Hyrox Jump Start");
     expect(hyrox?.children?.[1].label).toBe("Hyrox Prep");
+  });
+
+  test("deduplicates captured nav items with equivalent hrefs", () => {
+    const capturedNav: CapturedNavItem[] = [
+      { label: "Drop-In", href: "/drop-in" },
+      { label: "Drop In", href: "/drop-in" },
+      { label: "About Us", href: "/about" },
+      { label: "About", href: "/about/" },
+      { label: "Contact", href: "/contact" },
+    ];
+    const nav = buildNavigation(capturedNav, programs);
+    const labels = nav.header.map((i) => i.label);
+    expect(labels).toEqual(["Drop-In", "About Us", "Contact"]);
+  });
+
+  test("groups flat program pages under a single Programs dropdown", () => {
+    const capturedNav: CapturedNavItem[] = [
+      { label: "Group Strength", href: "/programs/group-strength" },
+      { label: "Cardio Bootcamp", href: "/programs/cardio-bootcamp" },
+      { label: "Personal Training", href: "/programs/personal-training" },
+      { label: "Schedule", href: "/schedule" },
+      { label: "Rates", href: "/pricing" },
+      { label: "About Us", href: "/about" },
+    ];
+    const nav = buildNavigation(capturedNav, programs);
+    const topLabels = nav.header.map((i) => i.label);
+    expect(topLabels).toEqual(["Programs", "Schedule", "Rates", "About Us"]);
+
+    const programsItem = nav.header.find((i) => i.label === "Programs");
+    expect(programsItem?.children).toHaveLength(3);
+    const childLabels = programsItem?.children?.map((c) => c.label);
+    expect(childLabels).toEqual([
+      "Group Strength",
+      "Cardio Bootcamp",
+      "Personal Training",
+    ]);
+  });
+
+  test("drops captured program links that have no generated program page", () => {
+    const capturedNav: CapturedNavItem[] = [
+      { label: "Get Started", href: "/programs/get-started" },
+      { label: "Drop-In", href: "/programs/drop-in" },
+      { label: "CrossTrain Classes", href: "/programs/crosstrain-classes" },
+      { label: "Schedule", href: "/schedule" },
+      { label: "Rates", href: "/pricing" },
+    ];
+    const nav = buildNavigation(capturedNav, programs);
+    const topLabels = nav.header.map((i) => i.label);
+    expect(topLabels).toEqual(["Programs", "Schedule", "Rates"]);
+
+    const programsItem = nav.header.find((i) => i.label === "Programs");
+    expect(programsItem?.children).toHaveLength(3);
+    expect(programsItem?.children?.map((c) => c.href)).toEqual([
+      "/programs/group-strength",
+      "/programs/cardio-bootcamp",
+      "/programs/personal-training",
+    ]);
+  });
+
+  test("does not regroup program pages when owner already created a Programs parent", () => {
+    const capturedNav: CapturedNavItem[] = [
+      {
+        label: "Programs",
+        href: "/programs",
+        children: [
+          { label: "Group Strength", href: "/programs/group-strength" },
+          { label: "Cardio Bootcamp", href: "/programs/cardio-bootcamp" },
+        ],
+      },
+      { label: "Schedule", href: "/schedule" },
+      { label: "Rates", href: "/pricing" },
+    ];
+    const nav = buildNavigation(capturedNav, programs);
+    const topLabels = nav.header.map((i) => i.label);
+    expect(topLabels).toEqual(["Programs", "Schedule", "Rates"]);
+    expect(nav.header[0].children).toHaveLength(2);
   });
 });

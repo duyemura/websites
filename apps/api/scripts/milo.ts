@@ -14,6 +14,8 @@ import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
 import { parseArgs, PIPELINES } from "./milo-args.js";
 import type { MiloCommand } from "./milo-args.js";
+import { perPageEvalStage } from "./stages/per-page-eval.js";
+import { evalFixStage } from "./stages/eval-fix.js";
 export type { MiloCommand } from "./milo-args.js";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
@@ -21,11 +23,9 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
   const registry: Record<string, StageRunner> = {};
   const stageModules: [string, string][] = [
     ["enrich", "./stages/enrich.js"],
-    ["clone", "./stages/clone.js"],
+    ["crawl", "./stages/crawl.js"],
     ["eval", "./stages/eval.js"],
-    ["extract", "./stages/extract.js"],
-    ["segment", "./stages/segment.js"],
-    ["contract", "./stages/contract.js"],
+    ["eval-fix", "./stages/eval-fix.js"],
     ["docgen", "./stages/docgen.js"],
     ["content", "./stages/content.js"],
     ["generate", "./stages/generate.js"],
@@ -67,31 +67,45 @@ async function ensureEvalWorkspace(): Promise<string> {
   return created.uuid;
 }
 
-async function resolveSite(
-  url: string | undefined,
-  siteUuid: string | undefined,
+async function resolveSiteByUuid(siteUuid: string): Promise<{ siteUuid: string; workspaceUuid: string }> {
+  const site = await db
+    .selectFrom("sites")
+    .select(["uuid", "workspaceUuid"])
+    .where("uuid", "=", siteUuid)
+    .executeTakeFirstOrThrow();
+  return { siteUuid: site.uuid, workspaceUuid: site.workspaceUuid };
+}
+
+async function createNewSite(
+  url: string,
+  force: boolean,
 ): Promise<{ siteUuid: string; workspaceUuid: string }> {
-  if (siteUuid) {
-    const site = await db
-      .selectFrom("sites")
-      .select(["uuid", "workspaceUuid"])
-      .where("uuid", "=", siteUuid)
-      .executeTakeFirstOrThrow();
-    return { siteUuid: site.uuid, workspaceUuid: site.workspaceUuid };
-  }
   const workspaceUuid = await ensureEvalWorkspace();
   const existing = await db
     .selectFrom("sites")
-    .select("uuid")
-    .where("sourceUrl", "=", url!)
+    .select(["uuid", "name"])
+    .where("sourceUrl", "=", url)
     .where("workspaceUuid", "=", workspaceUuid)
     .executeTakeFirst();
-  if (existing) return { siteUuid: existing.uuid, workspaceUuid };
-  const host = new URL(url!).hostname.replace(/^www\./, "");
+  if (existing) {
+    if (!force) {
+      console.error(
+        `\n❌ A site already exists for ${url}\n` +
+        `   Site: ${existing.uuid}\n` +
+        `   Use --force to re-run from scratch, or use:\n` +
+        `     milo upgrade --site ${existing.uuid}\n` +
+        `     milo rebuild --site ${existing.uuid}\n`,
+      );
+      process.exit(1);
+    }
+    // With --force, reuse the existing site record so we overwrite its artifacts.
+    return { siteUuid: existing.uuid, workspaceUuid };
+  }
+  const host = new URL(url).hostname.replace(/^www\./, "");
   const slug = `eval-${host.replace(/\./g, "-").slice(0, 40)}-${Date.now()}`;
   const created = await db
     .insertInto("sites")
-    .values({ name: host, slug, sourceUrl: url!, workspaceUuid })
+    .values({ name: host, slug, sourceUrl: url, workspaceUuid })
     .returning("uuid")
     .executeTakeFirstOrThrow();
   return { siteUuid: created.uuid, workspaceUuid };
@@ -290,31 +304,39 @@ function buildCtx(
   };
 }
 
-async function runJoin(
-  cmd: Extract<MiloCommand, { cmd: "join" }>,
+async function runNew(
+  cmd: Extract<MiloCommand, { cmd: "new" }>,
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
-  const { siteUuid, workspaceUuid } = await resolveSite(cmd.url, undefined);
+  const { siteUuid, workspaceUuid } = await createNewSite(cmd.url, cmd.force);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: cmd.tier, templateTheme: cmd.theme });
-  if (!cmd.quiet) console.log(`\nMilo join — ${cmd.url} (site: ${siteUuid})`);
+  if (!cmd.quiet) console.log(`\nMilo new — ${cmd.url} (site: ${siteUuid})`);
   const totalStart = Date.now();
-  const results = await runPipeline(PIPELINES.join, ctx, registry, cmd);
+  const results = await runPipeline(PIPELINES.new, ctx, registry, cmd);
+
+  if (cmd.tier === "paid" && results.some((r) => r.stage === "eval" && r.status === "fail")) {
+    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      path: "/",
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    }, siteUuid, workspaceUuid);
+    results.push(...fixResults);
+  }
+
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
 
 async function checkJoinPrereqs(siteUuid: string, workspaceUuid: string): Promise<void> {
   const ctx = { siteUuid, workspaceUuid };
-  const [docgen, content] = await Promise.all([
-    loadArtifact(db, ctx, "docgen" as PipelineStage),
-    loadArtifact(db, ctx, "content" as PipelineStage),
-  ]);
-  if (!docgen || !content) {
-    const missing = [!docgen && "docgen", !content && "content"].filter(Boolean).join(", ");
+  const docgen = await loadArtifact(db, ctx, "docgen" as PipelineStage);
+  if (!docgen) {
     console.error(
-      `\n❌ This command requires a completed join pipeline.\n` +
-      `   Missing artifact(s): ${missing}\n` +
-      `   Run: milo join --url <url>\n`,
+      `\n❌ This command requires a completed new-site pipeline.\n` +
+      `   Missing artifact: docgen\n` +
+      `   Run: milo new --url <url>\n`,
     );
     process.exit(1);
   }
@@ -329,12 +351,24 @@ async function runUpgrade(
   cmd: Extract<MiloCommand, { cmd: "upgrade" }>,
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
-  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   await checkJoinPrereqs(siteUuid, workspaceUuid);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid", templateTheme: cmd.theme });
   if (!cmd.quiet) console.log(`\nMilo upgrade — site: ${siteUuid}`);
   const totalStart = Date.now();
-  const results = await runPipeline(PIPELINES.upgrade, ctx, registry, cmd);
+  const results = await runPipeline(PIPELINES.upgrade, ctx, registry, { ...cmd, force: true });
+
+  if (results.some((r) => r.stage === "eval" && r.status === "fail")) {
+    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      path: "/",
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    }, siteUuid, workspaceUuid);
+    results.push(...fixResults);
+  }
+
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
@@ -343,7 +377,7 @@ async function runRebuild(
   cmd: Extract<MiloCommand, { cmd: "rebuild" }>,
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
-  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   const tier2 = await isTier2(siteUuid, workspaceUuid);
   if (!tier2) {
     console.error(
@@ -353,10 +387,22 @@ async function runRebuild(
     );
     process.exit(1);
   }
-  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid" });
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid", templateTheme: cmd.theme });
   if (!cmd.quiet) console.log(`\nMilo rebuild — site: ${siteUuid}`);
   const totalStart = Date.now();
   const results = await runPipeline(PIPELINES.rebuild, ctx, registry, { force: cmd.force, quiet: cmd.quiet });
+
+  if (results.some((r) => r.stage === "eval" && r.status === "fail")) {
+    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      path: "/",
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    }, siteUuid, workspaceUuid);
+    results.push(...fixResults);
+  }
+
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
@@ -365,7 +411,7 @@ async function runPage(
   cmd: Extract<MiloCommand, { cmd: "page" }>,
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
-  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   const ctx = buildCtx(siteUuid, workspaceUuid, {
     verbose: cmd.verbose,
     quiet: cmd.quiet,
@@ -448,7 +494,7 @@ async function runTool(
     console.error(`Stage "${stageName}" not found in registry`);
     process.exit(1);
   }
-  const { siteUuid, workspaceUuid } = await resolveSite(undefined, cmd.site);
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
   if (!cmd.quiet) console.log(`\nMilo ${stageName} — site: ${siteUuid}`);
   const start = Date.now();
@@ -458,6 +504,82 @@ async function runTool(
   } catch (err) {
     result = {
       stage: stageName, status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!result.durationMs) result.durationMs = Date.now() - start;
+  renderReport([result], Date.now() - start, cmd.quiet);
+  return [result];
+}
+
+async function runEval(
+  cmd: Extract<MiloCommand, { cmd: "eval" }>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
+
+  const runner = perPageEvalStage({ path: cmd.path, url: cmd.url, keywords: cmd.keywords });
+  if (!cmd.quiet) console.log(`\nMilo eval — site: ${siteUuid}, path: ${cmd.path ?? "/"}`);
+  const start = Date.now();
+  let result: StageResult;
+  try {
+    result = await runner.run(ctx);
+  } catch (err) {
+    result = {
+      stage: "eval", status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!result.durationMs) result.durationMs = Date.now() - start;
+  renderReport([result], Date.now() - start, cmd.quiet);
+
+  if (result.status !== "pass") {
+    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    const fixResults = await runEvalFix({
+      cmd: "eval-fix",
+      path: cmd.path,
+      url: cmd.url,
+      keywords: cmd.keywords,
+      verbose: cmd.verbose,
+      quiet: cmd.quiet,
+    }, siteUuid, workspaceUuid);
+    return [result, ...fixResults];
+  }
+  return [result];
+}
+
+async function runEvalFix(
+  cmd: Extract<MiloCommand, { cmd: "eval-fix" }>,
+  explicitSiteUuid?: string,
+  explicitWorkspaceUuid?: string,
+): Promise<StageResult[]> {
+  if (!explicitSiteUuid && !cmd.site) {
+    throw new Error("runEvalFix requires either explicitSiteUuid or cmd.site");
+  }
+  const { siteUuid, workspaceUuid } =
+    explicitSiteUuid && explicitWorkspaceUuid
+      ? { siteUuid: explicitSiteUuid, workspaceUuid: explicitWorkspaceUuid }
+      : await resolveSite(undefined, cmd.site);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid" });
+  const runner = evalFixStage({
+    evalUuid: cmd.evalUuid,
+    path: cmd.path,
+    url: cmd.url,
+    keywords: cmd.keywords,
+    scoreThreshold: cmd.scoreThreshold,
+    maxLoops: cmd.maxLoops,
+  });
+  if (!cmd.quiet) {
+    const source = cmd.evalUuid ? `eval ${cmd.evalUuid}` : `path ${cmd.path ?? "/"}`;
+    console.log(`\nMilo eval-fix — site: ${siteUuid}, ${source}`);
+  }
+  const start = Date.now();
+  let result: StageResult;
+  try {
+    result = await runner.run(ctx);
+  } catch (err) {
+    result = {
+      stage: "eval-fix", status: "fail", durationMs: Date.now() - start, metrics: {}, warnings: [],
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -484,7 +606,7 @@ async function runLegacyStages(
       process.exit(1);
     }
   }
-  const { siteUuid, workspaceUuid } = await resolveSite(cmd.url, cmd.site);
+  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: cmd.tier, templateTheme: cmd.templateTheme });
   if (!cmd.quiet) console.log(`\nMilo pipeline — site: ${siteUuid}`);
   const totalStart = Date.now();
@@ -493,18 +615,27 @@ async function runLegacyStages(
   return results;
 }
 
+async function runPublish(
+  cmd: Extract<MiloCommand, { cmd: "publish" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  return runTool("publish", cmd, registry);
+}
+
 async function main() {
   const cmd = parseArgs();
   const registry = await loadRegistry();
 
   let results: StageResult[] = [];
   switch (cmd.cmd) {
-    case "join":    results = await runJoin(cmd, registry); break;
+    case "new":     results = await runNew(cmd, registry); break;
     case "stages":  results = await runLegacyStages(cmd, registry); break;
     case "upgrade": results = await runUpgrade(cmd, registry); break;
     case "rebuild": results = await runRebuild(cmd, registry); break;
+    case "publish": results = await runPublish(cmd, registry); break;
     case "page":    results = await runPage(cmd, registry); break;
-    case "eval":    results = await runTool("eval", cmd, registry); break;
+    case "eval":    results = await runEval(cmd); break;
+    case "eval-fix": results = await runEvalFix(cmd); break;
     case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
     case "restore": results = await runRestore(cmd, registry); break;
     default: {
@@ -515,7 +646,12 @@ async function main() {
   }
 
   await db.destroy();
-  process.exit(results.some((r) => r.status === "fail") ? 1 : 0);
+  // Eval and eval-fix are post-publish QA/corrective stages. Their failures
+  // should not block the upgrade/rebuild command from completing, since the
+  // publish has already happened and the live site carries the clean build.
+  const qaStages = new Set(["eval", "eval-fix"]);
+  const gatingFailures = results.filter((r) => r.status === "fail" && !qaStages.has(r.stage));
+  process.exit(gatingFailures.length > 0 ? 1 : 0);
 }
 
 main().catch((err) => {

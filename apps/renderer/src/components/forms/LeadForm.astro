@@ -16,23 +16,23 @@ const action = `${meta.apiBaseUrl}/api/forms/${meta.siteId}/${formId}`;
     <label class="block">
       <span class="font-heading text-sm font-semibold text-primary">Name</span>
       <input required type="text" name="name" maxlength="100" autocomplete="name"
-             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+             class="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900" />
     </label>
     <label class="block">
       <span class="font-heading text-sm font-semibold text-primary">Email</span>
       <input required type="email" name="email" maxlength="200" autocomplete="email" inputmode="email"
-             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+             class="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900" />
     </label>
     <label class="block">
       <span class="font-heading text-sm font-semibold text-primary">Phone</span>
       <input type="tel" name="phone" maxlength="30" autocomplete="tel" inputmode="tel"
-             class="mt-1 w-full rounded-lg border border-slate-300 p-3" />
+             class="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900" />
     </label>
     {includeMessage && (
       <label class="block">
         <span class="font-heading text-sm font-semibold text-primary">Message</span>
         <textarea name="message" rows="4" maxlength="2000"
-                  class="mt-1 w-full rounded-lg border border-slate-300 p-3"></textarea>
+                  class="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900"></textarea>
       </label>
     )}
     <button type="submit" class="w-full rounded-lg bg-accent px-6 py-3 font-heading font-semibold text-white">{submitLabel}</button>

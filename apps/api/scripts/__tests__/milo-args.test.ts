@@ -9,15 +9,15 @@ function parseArgsFrom(argv: string[]): MiloCommand {
 }
 
 describe("milo parseArgs", () => {
-  test("join routes correctly", () => {
-    const cmd = parseArgsFrom(["join", "--url", "https://example.com"]);
-    expect(cmd.cmd).toBe("join");
+  test("new routes correctly", () => {
+    const cmd = parseArgsFrom(["new", "--url", "https://example.com"]);
+    expect(cmd.cmd).toBe("new");
     expect((cmd as any).url).toBe("https://example.com");
     expect((cmd as any).tier).toBe("free");
   });
 
-  test("join with tier flag", () => {
-    const cmd = parseArgsFrom(["join", "--url", "https://example.com", "--tier", "paid"]);
+  test("new with tier flag", () => {
+    const cmd = parseArgsFrom(["new", "--url", "https://example.com", "--tier", "paid"]);
     expect((cmd as any).tier).toBe("paid");
   });
 
@@ -57,17 +57,17 @@ describe("milo parseArgs", () => {
   });
 
   test("legacy --stages still works", () => {
-    const cmd = parseArgsFrom(["--url", "https://example.com", "--stages", "enrich,clone"]);
+    const cmd = parseArgsFrom(["--url", "https://example.com", "--stages", "enrich,crawl"]);
     expect(cmd.cmd).toBe("stages");
-    expect((cmd as any).stages).toEqual(["enrich", "clone"]);
+    expect((cmd as any).stages).toEqual(["enrich", "crawl"]);
   });
 
   test("unknown command throws", () => {
     expect(() => parseArgsFrom(["foo"])).toThrow("Unknown command");
   });
 
-  test("join missing --url throws", () => {
-    expect(() => parseArgsFrom(["join"])).toThrow("--url");
+  test("new missing --url throws", () => {
+    expect(() => parseArgsFrom(["new"])).toThrow("--url");
   });
 });
 
@@ -86,6 +86,39 @@ describe("parseArgs additional edge cases", () => {
 
   test("eval requires --site", () => {
     expect(() => parseArgsFrom(["eval"])).toThrow("--site");
+  });
+
+  test("eval parses path, url, and keywords", () => {
+    const cmd = parseArgsFrom([
+      "eval",
+      "--site",
+      "abc-123",
+      "--path",
+      "/about",
+      "--url",
+      "https://example.com/about",
+      "--keywords",
+      "gym,torrance",
+    ]);
+    expect(cmd.cmd).toBe("eval");
+    expect((cmd as any).site).toBe("abc-123");
+    expect((cmd as any).path).toBe("/about");
+    expect((cmd as any).url).toBe("https://example.com/about");
+    expect((cmd as any).keywords).toEqual(["gym", "torrance"]);
+  });
+
+  test("eval-fix requires --site and either --eval-uuid or --path", () => {
+    expect(() => parseArgsFrom(["eval-fix"])).toThrow("--site");
+    expect(() => parseArgsFrom(["eval-fix", "--site", "abc-123"])).toThrow("--eval-uuid");
+  });
+
+  test("eval-fix parses eval-uuid and path", () => {
+    const byUuid = parseArgsFrom(["eval-fix", "--site", "abc-123", "--eval-uuid", "550e8400-e29b-41d4-a716-446655440000"]);
+    expect(byUuid.cmd).toBe("eval-fix");
+    expect((byUuid as any).evalUuid).toBe("550e8400-e29b-41d4-a716-446655440000");
+
+    const byPath = parseArgsFrom(["eval-fix", "--site", "abc-123", "--path", "/contact"]);
+    expect((byPath as any).path).toBe("/contact");
   });
 
   test("nav requires --site", () => {

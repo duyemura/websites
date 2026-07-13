@@ -230,7 +230,7 @@ export interface ContentArtifact {
 
 export const contentStage: StageRunner = {
   label: "content",
-  requires: ["mirror-deploy", "mirror-crawl"],
+  requires: ["mirror-deploy", "crawl"],
   produces: "content" as PipelineStage,
 
   async run(ctx: StageContext): Promise<StageResult> {
@@ -242,7 +242,7 @@ export const contentStage: StageRunner = {
       "mirror-deploy",
     );
     if (!deployArtifact) {
-      throw new Error("No mirror-deploy artifact found — run the clone stage first");
+      throw new Error("No mirror-deploy artifact found — run the crawl stage first");
     }
     const deployPrefix = deployArtifact.payload.deployPrefix;
 
@@ -258,7 +258,7 @@ export const contentStage: StageRunner = {
     const crawlArtifact = (await loadArtifact(
       ctx.db,
       { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-      "mirror-crawl" as PipelineStage,
+      "crawl" as PipelineStage,
     )) as unknown as { payload?: { pages?: Array<{ path: string }> } };
 
     const allPages: Array<{ path: string }> = crawlArtifact?.payload?.pages ?? [];

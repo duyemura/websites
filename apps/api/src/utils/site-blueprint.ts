@@ -12,6 +12,12 @@ const CSS_ARTIFACT_PATTERN = /^\s*[*.#[@:\w-]+\s*\{/;
 const MAX_NAV_LABEL_LENGTH = 30;
 const MAX_NAV_LINKS = 6;
 
+/** Minimum saturation (0-1) we consider a "brand" color rather than a neutral. */
+const MIN_BRAND_SATURATION = 0.25;
+
+/** Luminance above which we treat a color as light; below it is dark. */
+const DARK_LUMINANCE_THRESHOLD = 0.4;
+
 function isCleanNavLink(link: { label: string; href: string }): boolean {
   const label = link.label.trim();
   if (!label || label.length > MAX_NAV_LABEL_LENGTH) return false;
@@ -114,6 +120,51 @@ function adjustHex(hex: string, amount: number): string {
   const g = clamp(parseInt(full.slice(2, 4), 16) + amount);
   const b = clamp(parseInt(full.slice(4, 6), 16) + amount);
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+export function parseRgb(hex: string): { r: number; g: number; b: number } | undefined {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  if (full.length !== 6) return undefined;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return undefined;
+  return { r, g, b };
+}
+
+export function hexSaturation(hex: string): number {
+  const rgb = parseRgb(hex);
+  if (!rgb) return 0;
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const l = (max + min) / 2;
+  return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+}
+
+export function isDarkNeutral(hex: string): boolean {
+  const rgb = parseRgb(hex);
+  if (!rgb) return false;
+  const lum = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  return lum < DARK_LUMINANCE_THRESHOLD && hexSaturation(hex) < MIN_BRAND_SATURATION;
+}
+
+export function findMostSaturatedColor(colors: { hex?: string }[]): string | undefined {
+  let best: string | undefined;
+  let bestSat = 0;
+  for (const c of colors) {
+    if (!c.hex) continue;
+    const sat = hexSaturation(c.hex);
+    if (sat > bestSat) {
+      bestSat = sat;
+      best = c.hex;
+    }
+  }
+  return best;
 }
 
 function contrastingForeground(hex: string): string {
@@ -326,9 +377,12 @@ function buildDesignTokens(data: ScrapedWebsiteData): ThemeTokens {
     data.designTokens?.find((t) => t.category === "radius")?.value ??
     NEUTRAL_TOKENS.radius;
 
-  // Use the website's own accent or text color as the primary CTA color. If it
-  // would disappear against the page background, fall back to a neutral.
-  let primary = accent ?? text;
+  // Use the website's own accent as the primary CTA color. If no accent was
+  // scraped, prefer the most saturated color in the palette — that is usually the
+  // brand color. Only fall back to the body text color when it is itself a
+  // saturated brand color; otherwise use a neutral so CTAs don't disappear on dark
+  // templates that inherited a light site's dark text.
+  let primary = accent ?? findMostSaturatedColor(data.colors) ?? (text && !isDarkNeutral(text) ? text : undefined);
   if (!primary || primary.toUpperCase() === bg?.toUpperCase()) {
     primary = FALLBACK_PRIMARY;
   }

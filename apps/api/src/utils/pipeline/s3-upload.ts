@@ -23,6 +23,7 @@ export async function uploadPipelineImage(
       Key: key,
       Body: body,
       ContentType: contentType,
+      CacheControl: "no-store, no-cache, must-revalidate, max-age=0",
       // Public read is handled by the bucket policy — no per-object ACL needed.
     }),
   );

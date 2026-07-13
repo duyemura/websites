@@ -8,6 +8,8 @@ import {
 } from "../../utils/pipeline/artifact-store";
 
 const StageEnum = z.enum(REBUILD_STAGES);
+const ModeEnum = z.enum(["replication", "template", "greenfield"]);
+const TierEnum = z.enum(["free", "paid"]);
 
 const StagePayloadSchema = z
   .object({
@@ -17,6 +19,7 @@ const StagePayloadSchema = z
     contentSiteUuid: z.string().uuid().optional(),
     designSiteUuid: z.string().uuid().optional(),
     mode: z.enum(["replication", "template", "greenfield"]).optional(),
+    tier: TierEnum.optional(),
   })
   .strict()
   .default({});
@@ -27,6 +30,7 @@ const PipelineRunBodySchema = z
     pages: z.array(z.string()).optional(),
     maxPages: z.number().int().positive().max(100).optional(),
     mode: z.enum(["replication", "template", "greenfield"]).optional(),
+    tier: TierEnum.optional(),
   })
   .strict();
 
@@ -63,6 +67,28 @@ const StatusResponseSchema = z.object({
       masterFidelity: z.number(),
     })
     .nullable(),
+});
+
+const ArtifactResponseSchema = z.object({
+  version: z.number().int(),
+  createdAt: z.string(),
+  payload: z.unknown(),
+});
+
+const PipelineFieldSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(["text", "number", "select", "multiselect", "boolean", "uuid"]),
+  required: z.boolean(),
+  options: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+  hint: z.string().optional(),
+  dependsOn: z.object({ key: z.string(), value: z.string() }).optional(),
+});
+
+const PipelineOptionsResponseSchema = z.object({
+  stages: z.array(z.string()),
+  modes: z.array(z.string()),
+  fields: z.array(PipelineFieldSchema),
 });
 
 interface StageSummary {
@@ -148,7 +174,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         }),
         body: StagePayloadSchema.optional(),
         response: {
-          202: StageEnqueueResponseSchema,
+          202: StageEnqueueResponseSchema.extend({ queue: z.literal("pipeline") }),
           400: z.object({ error: z.string() }),
           404: z.object({ error: z.string() }),
         },
@@ -168,6 +194,12 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       const body = (request.body ?? {}) as z.infer<typeof StagePayloadSchema>;
 
+      const siteRow = await fastify.db
+        .selectFrom("sites")
+        .select("tier")
+        .where("uuid", "=", site.siteUuid)
+        .executeTakeFirst();
+
       const job = await fastify.queues.pipeline.queue.add(
         "pipeline",
         {
@@ -175,11 +207,14 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           stage,
           siteUuid: site.siteUuid,
           workspaceUuid: site.workspaceUuid,
-          input: body,
+          input: {
+            ...body,
+            tier: body.tier ?? siteRow?.tier ?? "paid",
+          },
         },
       );
 
-      return reply.code(202).send({ jobId: job.id ?? "", stage });
+      return reply.code(202).send({ jobId: job.id ?? "", stage, queue: "pipeline" });
     },
   );
 
@@ -193,7 +228,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         params: z.object({ uuid: z.string().uuid() }),
         body: PipelineRunBodySchema,
         response: {
-          202: RunEnqueueResponseSchema,
+          202: RunEnqueueResponseSchema.extend({ queue: z.literal("pipeline") }),
           404: z.object({ error: z.string() }),
         },
       },
@@ -202,17 +237,26 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       const site = await requireSite(request, reply);
       if (!site) return;
 
+      const siteRow = await fastify.db
+        .selectFrom("sites")
+        .select("tier")
+        .where("uuid", "=", site.siteUuid)
+        .executeTakeFirst();
+
       const job = await fastify.queues.pipeline.queue.add(
         "pipeline",
         {
           kind: "run",
           siteUuid: site.siteUuid,
           workspaceUuid: site.workspaceUuid,
-          input: request.body,
+          input: {
+            ...request.body,
+            tier: request.body.tier ?? siteRow?.tier ?? "paid",
+          },
         },
       );
 
-      return reply.code(202).send({ jobId: job.id ?? "" });
+      return reply.code(202).send({ jobId: job.id ?? "", queue: "pipeline" });
     },
   );
 
@@ -248,6 +292,26 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         loadStageSummary(fastify.db, ctx, "verify"),
       ]);
 
+      // New Milo pipeline (enrich → docgen → content → generate → template → publish)
+      // does not store a "build" artifact. Derive build availability from the latest
+      // deployed site version so the preview UI still works.
+      const latestVersion = await fastify.db
+        .selectFrom("siteVersions")
+        .select(["version", "kind", "deployPrefix", "publishedAt", "createdAt"])
+        .where("siteUuid", "=", site.siteUuid)
+        .orderBy("version", "desc")
+        .limit(1)
+        .executeTakeFirst();
+
+      const effectiveBuild: StageSummary | null = build ??
+        (latestVersion
+          ? {
+              version: latestVersion.version,
+              createdAt: latestVersion.publishedAt ?? latestVersion.createdAt,
+              payload: { kind: latestVersion.kind, deployPrefix: latestVersion.deployPrefix },
+            }
+          : null);
+
       const segmentStale = isStale(segment, extract, (p) => {
         const value = (p as { sourceExtractAt?: unknown }).sourceExtractAt;
         return typeof value === "string" ? value : undefined;
@@ -255,8 +319,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       const contractStale = isStale(contract, segment);
       // Docgen has no explicit source ref, so fall back to createdAt vs segment.
       const docgenStale = isStale(docgen, contract);
-      const buildStale = isStale(build, docgen);
-      const verifyStale = isStale(verify, build);
+      const buildStale = isStale(effectiveBuild, docgen);
+      const verifyStale = isStale(verify, effectiveBuild);
 
       const format = (
         s: StageSummary | null,
@@ -305,11 +369,160 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           segment: format(segment, segmentStale),
           contract: format(contract, contractStale),
           docgen: format(docgen, docgenStale),
-          build: format(build, buildStale),
+          build: format(effectiveBuild, buildStale),
           verify: format(verify, verifyStale),
         },
         scores,
       });
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/pipeline/artifacts/:stage",
+    {
+      schema: {
+        operationId: "getPipelineArtifact",
+        tags: ["Pipeline"],
+        summary: "Get the latest artifact payload for a pipeline stage",
+        params: z.object({
+          uuid: z.string().uuid(),
+          stage: z.string(),
+        }),
+        response: {
+          200: ArtifactResponseSchema,
+          400: z.object({ error: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedStage = StageEnum.safeParse(request.params.stage);
+      if (!parsedStage.success) {
+        return reply.code(400).send({
+          error: `Unknown stage "${request.params.stage}". Expected one of: ${REBUILD_STAGES.join(", ")}.`,
+        });
+      }
+      const stage = parsedStage.data;
+
+      const site = await requireSite(request, reply);
+      if (!site) return;
+
+      const ctx: ArtifactContext = {
+        siteUuid: site.siteUuid,
+        workspaceUuid: site.workspaceUuid,
+      };
+      const stored = await loadArtifact(fastify.db, ctx, stage);
+      if (!stored) {
+        return reply.code(404).send({ error: "Artifact not found" });
+      }
+      return reply.code(200).send({
+        version: stored.version,
+        createdAt: stored.createdAt.toISOString(),
+        payload: stored.payload,
+      });
+    },
+  );
+
+  function buildPipelineOptionsResponse() {
+    const modeOptions = ModeEnum.options.map((value) => ({
+      label: value,
+      value,
+    }));
+    const tierOptions = TierEnum.options.map((value) => ({
+      label: value === "free" ? "Free (20 pages, no UGC)" : "Paid (full site)",
+      value,
+    }));
+    const fields = [
+      {
+        key: "url",
+        label: "Source URL",
+        type: "text" as const,
+        required: true,
+        hint: "URL to extract from",
+      },
+      {
+        key: "tier",
+        label: "Tier",
+        type: "select" as const,
+        required: false,
+        options: tierOptions,
+        hint: "Free caps at 20 pages and skips blogs/events/etc. Paid has no limits.",
+      },
+      {
+        key: "pages",
+        label: "Pages",
+        type: "multiselect" as const,
+        required: false,
+        hint: "Leave empty to run all discovered pages",
+      },
+      {
+        key: "mode",
+        label: "Mode",
+        type: "select" as const,
+        required: false,
+        options: modeOptions,
+        hint: "Pipeline generation mode",
+      },
+      {
+        key: "contentSiteUuid",
+        label: "Content source site",
+        type: "uuid" as const,
+        required: false,
+        dependsOn: { key: "mode", value: "template" },
+        hint: "Site to pull content from in template mode",
+      },
+      {
+        key: "designSiteUuid",
+        label: "Design source site",
+        type: "uuid" as const,
+        required: false,
+        dependsOn: { key: "mode", value: "template" },
+        hint: "Site to pull design from in template mode",
+      },
+    ];
+    return {
+      stages: [...REBUILD_STAGES],
+      modes: ModeEnum.options,
+      fields,
+    };
+  }
+
+  fastify.get(
+    "/pipeline/options",
+    {
+      schema: {
+        operationId: "getGlobalPipelineOptions",
+        tags: ["Pipeline"],
+        summary: "List configurable pipeline options for the new-site run screen",
+        response: {
+          200: PipelineOptionsResponseSchema,
+        },
+      },
+    },
+    async (_request, reply) => {
+      return reply.code(200).send(buildPipelineOptionsResponse());
+    },
+  );
+
+  fastify.get(
+    "/sites/:uuid/pipeline/options",
+    {
+      schema: {
+        operationId: "getPipelineOptions",
+        tags: ["Pipeline"],
+        summary: "List configurable pipeline options for the run screen",
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: PipelineOptionsResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const site = await requireSite(request, reply);
+      if (!site) return;
+
+      return reply.code(200).send(buildPipelineOptionsResponse());
     },
   );
 

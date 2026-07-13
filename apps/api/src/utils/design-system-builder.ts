@@ -12,6 +12,8 @@ import {
   extractHeaderSection,
   extractFooterSection,
   extractLogo,
+  findMostSaturatedColor,
+  hexSaturation,
 } from "./site-blueprint";
 import type {
   ExtractArtifact,
@@ -139,6 +141,25 @@ export function buildDesignSystemFromExtract(
     if (!m) return undefined;
     return `#${[m[1] ?? "0", m[2] ?? "0", m[3] ?? "0"].map(n => parseInt(n).toString(16).padStart(2, "0")).join("")}`;
   };
+
+  // If the extract stage did not identify a primary accent (e.g. no button/CTA
+  // passed the saturation threshold), mine the captured section backgrounds for
+  // the most saturated non-neutral color. This prevents dark body text from
+  // becoming the brand primary on light-themed source sites.
+  const inferredPrimaryAccent = ((): string | undefined => {
+    if (ct?.primaryAccent) return rgbToHex(ct.primaryAccent) ?? ct.primaryAccent;
+    const candidates = (ct?.sectionBackgrounds ?? [])
+      .map((s) => rgbToHex(s.background))
+      .filter((hex): hex is string => !!hex);
+    return findMostSaturatedColor(candidates.map((hex) => ({ hex })));
+  })();
+
+  // Reject the inferred accent if it is too dark/neutral — likely a body
+  // background rather than a brand pop. In that case leave the accent unset so
+  // deriveThemeTokens can fall back to a safer neutral.
+  const primaryAccent = inferredPrimaryAccent && hexSaturation(inferredPrimaryAccent) >= 0.15
+    ? inferredPrimaryAccent
+    : undefined;
   const firstFont = (family: string): string =>
     family.split(",")[0]?.trim().replace(/['"]/g, "") ?? family;
 
@@ -168,7 +189,7 @@ export function buildDesignSystemFromExtract(
     colors: ct ? ([
       { token: "bg-primary", role: "background" as const, hex: rgbToHex(ct.bodyBackground) ?? "#ffffff" },
       { token: "text-primary", role: "text" as const, hex: rgbToHex(ct.bodyColor) ?? "#000000" },
-      ...(ct.primaryAccent ? [{ token: "accent-primary", role: "accent" as const, hex: rgbToHex(ct.primaryAccent) ?? ct.primaryAccent }] : []),
+      ...(primaryAccent ? [{ token: "accent-primary", role: "accent" as const, hex: primaryAccent }] : []),
     ]) : [],
     fonts: (resolvedHeadingFont || resolvedBodyFont) ? [
       ...(resolvedHeadingFont ? [{ role: "heading" as const, family: resolvedHeadingFont }] : []),

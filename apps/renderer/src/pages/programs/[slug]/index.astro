@@ -1,11 +1,11 @@
 ---
 import GymLayout from "../../../layouts/GymLayout.astro";
-import Hero from "../../../components/sections/Hero.astro";
-import HowItWorks from "../../../components/sections/HowItWorks.astro";
-import Testimonials from "../../../components/sections/Testimonials.astro";
-import FAQ from "../../../components/sections/FAQ.astro";
-import CTABand from "../../../components/sections/CTABand.astro";
-import Location from "../../../components/sections/Location.astro";
+import Hero from "../../../components/sections/beanburito/Hero.astro";
+import HowItWorks from "../../../components/sections/beanburito/HowItWorks.astro";
+import Testimonials from "../../../components/sections/beanburito/Testimonials.astro";
+import FAQ from "../../../components/sections/beanburito/FAQ.astro";
+import CTABand from "../../../components/sections/beanburito/CTABand.astro";
+import Location from "../../../components/sections/beanburito/Location.astro";
 import RichContent from "../../../components/sections/RichContent.astro";
 import ServiceSchema from "../../../components/seo/ServiceSchema.astro";
 import BreadcrumbSchema from "../../../components/seo/BreadcrumbSchema.astro";
@@ -31,49 +31,49 @@ const title = `${program.name} in ${business.geo.city}, ${business.geo.stateAbbr
   </Fragment>
 
   <!-- Geo H1 above the hero for local SEO; hero renders its heading as h2 -->
-  <Container><h1 class="pt-10 text-center font-heading text-2xl font-semibold text-secondary">{headline}</h1></Container>
+  <Container><h1 class="pt-10 text-center font-heading text-2xl font-semibold text-white">{headline}</h1></Container>
   <Hero hero={program.hero} h1={false} />
 
-  <section class="py-16">
-    <Container>
+  <section class="section-skew bg-white py-16 text-black">
+    <div class="section-inner mx-auto max-w-3xl px-6 text-center lg:px-10">
       <SectionHeading title={program.whatIsIt.headline} />
-      <p class="mx-auto max-w-3xl text-center text-lg text-secondary">{program.whatIsIt.body}</p>
-    </Container>
+      <p class="text-lg text-secondary">{program.whatIsIt.body}</p>
+    </div>
   </section>
 
-  <section class="bg-slate-50 py-16">
-    <Container>
+  <section class="section-skew bg-black py-16 text-white">
+    <div class="section-inner mx-auto max-w-2xl px-6 lg:px-10">
       <SectionHeading title={`What makes our ${program.name} different?`} />
-      <ul class="mx-auto max-w-2xl space-y-3">
+      <ul class="space-y-3">
         {program.whatMakesUsDifferent.map((d) => (
           <li class="flex gap-3"><span class="text-accent">✔</span><span>{d}</span></li>
         ))}
       </ul>
-    </Container>
+    </div>
   </section>
 
-  <section class="py-16">
-    <Container>
+  <section class="section-skew bg-white py-16 text-black">
+    <div class="section-inner mx-auto max-w-3xl px-6 text-center lg:px-10">
       <SectionHeading title={program.whatToExpect.headline} />
-      <ol class="mx-auto flex max-w-3xl flex-wrap justify-center gap-4">
+      <ol class="flex max-w-3xl flex-wrap justify-center gap-4">
         {program.whatToExpect.steps.map((s, i) => (
-          <li class="rounded-full bg-primary px-5 py-2 font-heading text-white">{i + 1}. {s}</li>
+          <li class="rounded-full bg-accent px-5 py-2 font-heading text-white">{i + 1}. {s}</li>
         ))}
       </ol>
-    </Container>
+    </div>
   </section>
 
-  <section class="bg-slate-50 py-16">
-    <Container>
+  <section class="section-skew bg-black py-16 text-white">
+    <div class="section-inner mx-auto max-w-2xl px-6 lg:px-10">
       <SectionHeading title={`Who is ${program.name} for?`} />
-      <ul class="mx-auto max-w-2xl list-disc space-y-2 pl-6 text-secondary">
+      <ul class="list-disc space-y-2 pl-6 text-white/80">
         {program.whoIsItFor.map((w) => <li>{w}</li>)}
       </ul>
-    </Container>
+    </div>
   </section>
 
   <HowItWorks steps={program.gettingStarted} headline="Getting started" />
-  <Testimonials items={program.testimonials} />
+  <Testimonials items={program.testimonials} headline={`Trusted by our ${program.name} members`} />
   {program.richContent && <RichContent sections={program.richContent} />}
   <Location />
   <FAQ items={program.faq} />

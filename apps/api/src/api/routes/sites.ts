@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client, buildS3ObjectUrl, getSignedDownloadUrl } from "../../s3";
+import { getS3Client, buildS3ObjectUrl, listS3Objects } from "../../s3";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { generateSiteDocs, generateSiteDocsFromTemplate, saveSiteDocs } from "../../utils/site-docs";
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
@@ -20,22 +20,15 @@ import {
   getRecentAiActivity,
   getAiActivityCostSummary,
 } from "../../services/ai-activity";
-import {
-  startSiteBuild,
-  approvePage,
-  reSkinSite,
-} from "../../services/site-generation-orchestrator";
-import { DesignSystemV2Schema } from "../../types/design-system-v2";
 import { downloadScrapedAssets } from "../../utils/scraped-assets";
 import type { AiActivityAction, AiActivityOutcome } from "../../types/db";
-import { loadBlueprintDoc } from "../../utils/blueprint-io";
 import { loadSiteHierarchyDoc } from "../../utils/site-hierarchy-io";
 import { loadSectionVisualEvidenceDoc } from "../../utils/section-visual-evidence-io";
 import { loadDesignSystemDoc } from "../../utils/design-system-io";
 import { jsonb } from "../../utils/jsonb";
-import { resolveBuildCommand } from "../../services/build-assistant/registry";
 
 const SiteModeSchema = z.enum(["replication", "template", "greenfield"]);
+const SiteTierSchema = z.enum(["free", "paid"]);
 
 const SiteSchema = z.object({
   uuid: z.string(),
@@ -48,15 +41,40 @@ const SiteSchema = z.object({
   defaultMetaDescription: z.string().nullable().optional(),
   sourceUrl: z.string().nullable().optional(),
   mode: SiteModeSchema.optional(),
+  tier: SiteTierSchema.optional(),
+  previewUrl: z.string().nullable().optional(),
+  productionUrl: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
-const CreateSiteSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1),
-  templateKey: z.string().optional(),
-});
+const CreateSiteSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    slug: z.string().min(1).optional(),
+    sourceUrl: z.string().url().optional(),
+    mode: SiteModeSchema.optional(),
+    tier: SiteTierSchema.optional(),
+    templateKey: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.sourceUrl) {
+      if (!data.name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "name is required when sourceUrl is not provided",
+          path: ["name"],
+        });
+      }
+      if (!data.slug) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "slug is required when sourceUrl is not provided",
+          path: ["slug"],
+        });
+      }
+    }
+  });
 
 const ScrapeSiteSchema = z.object({
   url: HttpUrlSchema,
@@ -90,72 +108,33 @@ const ScrapeSiteResponseSchema = z.object({
     .optional(),
 });
 
-const SiteBlueprintSchema = z.object({
-  site_metadata: z.object({
-    framework: z.string(),
-    mode: z.string(),
-    target_url: z.string(),
-    business_name: z.string().optional(),
-    generated_at: z.string(),
-  }),
-  design_tokens: z.any(),
-  global_shell: z.any(),
-  pages: z.array(z.any()),
-  build_plan: z.object({
-    next_page: z.string(),
-    page_status: z.record(z.string()),
-    build_order: z.array(z.string()),
-  }),
-});
-
-const BuildStatusResponseSchema = z.object({
-  site: SiteSchema,
-  aiJob: z
-    .object({
-      uuid: z.string(),
-      type: z.string(),
-      status: z.string(),
-      state: z.any().nullable(),
-      steps: z.any().nullable(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    })
-    .nullable(),
-  deployment: z
-    .object({
-      uuid: z.string(),
-      buildId: z.string(),
-      status: z.string(),
-      previewUrl: z.string().nullable().optional(),
-      artifactUrl: z.string().nullable().optional(),
-      metadata: z.any().nullable().optional(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    })
-    .nullable(),
-  blueprint: SiteBlueprintSchema.nullable(),
-  aiActivity: z.array(z.any()),
-});
-
-const BuildCommandResponseSchema = z.object({
-  reply: z.string(),
-  action: z.string().nullable(),
-  enqueued: z.boolean(),
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(["assistant", "user"]),
-        content: z.string(),
-      }),
-    )
-    .optional(),
-  userMessage: z.string().optional(),
-});
-
 const HierarchyReviewResponseSchema = z.object({
   hierarchy: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
   visualEvidence: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
   designSystem: z.any().openapi({ type: "object", additionalProperties: true }).nullable(),
+});
+
+const SiteFileTypeSchema = z.enum([
+  "html",
+  "css",
+  "js",
+  "image",
+  "video",
+  "font",
+  "favicon",
+  "other",
+]);
+
+const SiteFileSchema = z.object({
+  key: z.string(),
+  size: z.number(),
+  lastModified: z.string().nullable().optional(),
+  url: z.string(),
+  type: SiteFileTypeSchema,
+});
+
+const SiteFilesResponseSchema = z.object({
+  files: z.array(SiteFileSchema),
 });
 
 function normalizeUrl(url: string): string {
@@ -177,6 +156,15 @@ function deriveSiteSlug(url: string): string {
   } catch {
     return "site";
   }
+}
+
+function sitePreviewUrls(siteUuid: string, previewDomain: string | undefined): { previewUrl: string | null; productionUrl: string | null } {
+  if (!previewDomain) return { previewUrl: null, productionUrl: null };
+  const shortId = siteUuid.slice(0, 8);
+  return {
+    previewUrl: `https://${shortId}-preview.${previewDomain}/`,
+    productionUrl: `https://${shortId}.${previewDomain}/`,
+  };
 }
 
 function deriveSiteName(url: string, fallback?: string): string {
@@ -208,6 +196,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       return sites.map((site) => ({
         ...site,
+        ...sitePreviewUrls(site.uuid, fastify.config.MILO_PREVIEW_DOMAIN),
         createdAt: site.createdAt.toISOString(),
         updatedAt: site.updatedAt.toISOString(),
       }));
@@ -225,20 +214,33 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         body: CreateSiteSchema,
         response: {
           201: SiteSchema,
+          400: z.object({ error: z.string() }),
           409: z.object({ error: z.string() }),
           500: z.object({ error: z.string() }),
         },
       },
     },
     async (request, reply) => {
-      const { name, slug, templateKey } = request.body;
+      const { name, slug, sourceUrl, mode, tier, templateKey } = request.body;
       const workspaceUuid = request.workspace.uuid;
+
+      let siteName = name;
+      let siteSlug = slug;
+      if (sourceUrl) {
+        if (!siteName) siteName = deriveSiteName(sourceUrl);
+        if (!siteSlug) siteSlug = deriveSiteSlug(sourceUrl);
+        siteSlug = await makeUniqueSlug(fastify.db, workspaceUuid, siteSlug);
+      }
+
+      if (!siteName || !siteSlug) {
+        return reply.code(400).send({ error: "Site name and slug are required" });
+      }
 
       const existing = await fastify.db
         .selectFrom("sites")
         .select("uuid")
         .where("workspaceUuid", "=", workspaceUuid)
-        .where("slug", "=", slug)
+        .where("slug", "=", siteSlug)
         .executeTakeFirst();
 
       if (existing) {
@@ -290,7 +292,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
               .insertInto("themes")
               .values({
                 workspaceUuid,
-                name: `${name} theme`,
+                name: `${siteName} theme`,
                 source: "system_preset",
                 templateKey,
                 tokens: templateShell.theme as never,
@@ -306,15 +308,20 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         }
       }
 
+      const siteMode =
+        mode ?? (templateRecord ? "template" : sourceUrl ? "replication" : null);
+
       const site = await fastify.db
         .insertInto("sites")
         .values({
           workspaceUuid,
-          name,
-          slug,
+          name: siteName,
+          slug: siteSlug,
           status: "draft",
           themeUuid,
-          ...(templateRecord ? { mode: "template" as const } : {}),
+          ...(siteMode ? { mode: siteMode } : {}),
+          ...(tier ? { tier } : {}),
+          ...(sourceUrl ? { sourceUrl } : {}),
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -332,12 +339,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         .execute();
 
       if (templateRecord && templateShell) {
-        const templateDocs = generateSiteDocsFromTemplate(name, templateRecord, templateShell);
+        const templateDocs = generateSiteDocsFromTemplate(siteName, templateRecord, templateShell);
         await saveSiteDocs(fastify.db, workspaceUuid, templateDocs, site.uuid);
       }
 
       return reply.code(201).send({
         ...site,
+        ...sitePreviewUrls(site.uuid, fastify.config.MILO_PREVIEW_DOMAIN),
         createdAt: site.createdAt.toISOString(),
         updatedAt: site.updatedAt.toISOString(),
       });
@@ -366,6 +374,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       return {
         ...site,
+        ...sitePreviewUrls(site.uuid, fastify.config.MILO_PREVIEW_DOMAIN),
         createdAt: site.createdAt.toISOString(),
         updatedAt: site.updatedAt.toISOString(),
       };
@@ -430,136 +439,6 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       ]);
 
       return { hierarchy, visualEvidence, designSystem };
-    },
-  );
-
-  fastify.get(
-    "/sites/:uuid/build-status",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid() }),
-        response: {
-          200: BuildStatusResponseSchema,
-          404: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .selectAll()
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      const aiJob = await fastify.db
-        .selectFrom("aiJobs")
-        .selectAll()
-        .where("siteUuid", "=", siteUuid)
-        .orderBy("createdAt", "desc")
-        .executeTakeFirst();
-
-      const deployment = await fastify.db
-        .selectFrom("deployments")
-        .selectAll()
-        .where("siteUuid", "=", siteUuid)
-        .orderBy("createdAt", "desc")
-        .executeTakeFirst();
-
-      const blueprint = await loadBlueprintDoc(fastify.db, workspaceUuid, siteUuid);
-
-      const aiActivity = await getRecentAiActivity(fastify.db, {
-        workspaceUuid,
-        siteUuid,
-        limit: 20,
-      });
-
-      return {
-        site: {
-          ...site,
-          createdAt: site.createdAt.toISOString(),
-          updatedAt: site.updatedAt.toISOString(),
-        },
-        aiJob: aiJob
-          ? {
-              ...aiJob,
-              createdAt: aiJob.createdAt.toISOString(),
-              updatedAt: aiJob.updatedAt.toISOString(),
-            }
-          : null,
-        deployment: deployment
-          ? {
-              ...deployment,
-              createdAt: deployment.createdAt.toISOString(),
-              updatedAt: deployment.updatedAt.toISOString(),
-            }
-          : null,
-        blueprint,
-        aiActivity: aiActivity.map((a) => ({
-          ...a,
-          createdAt: a.createdAt.toISOString(),
-        })),
-      };
-    },
-  );
-
-  fastify.post(
-    "/sites/:uuid/build-commands",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid() }),
-        body: z.object({ message: z.string().min(1) }),
-        response: {
-          200: BuildCommandResponseSchema,
-          404: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .selectAll()
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      const deployment = await fastify.db
-        .selectFrom("deployments")
-        .selectAll()
-        .where("siteUuid", "=", siteUuid)
-        .orderBy("createdAt", "desc")
-        .executeTakeFirst();
-
-      const blueprint = await loadBlueprintDoc(fastify.db, workspaceUuid, siteUuid);
-
-      const ctx = {
-        db: fastify.db,
-        queues: fastify.queues,
-        config: fastify.config,
-        workspaceUuid,
-        siteUuid,
-        userUuid: request.user.uuid,
-        site,
-        deployment: deployment ?? null,
-        blueprint,
-      };
-
-      const action = await resolveBuildCommand(request.body.message, ctx);
-      return action.execute(request.body.message, ctx);
     },
   );
 
@@ -898,6 +777,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         return reply.code(201).send({
           site: {
             ...site,
+            ...sitePreviewUrls(site.uuid, fastify.config.MILO_PREVIEW_DOMAIN),
             createdAt: site.createdAt.toISOString(),
             updatedAt: site.updatedAt.toISOString(),
           },
@@ -911,100 +791,6 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         });
       } finally {
         await browser?.close();
-      }
-    },
-  );
-
-  fastify.post(
-    "/sites/:uuid/generate",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid() }),
-        body: z.object({
-          accuracy: z.enum(["fast", "balanced", "accurate"]).optional(),
-          maxQaIterations: z.number().int().min(1).optional(),
-          maxBudgetUsd: z.number().min(0).optional(),
-          fidelityThreshold: z.number().min(0).max(1).optional(),
-          mode: SiteModeSchema.optional(),
-        }),
-        response: {
-          200: z.object({ aiJobUuid: z.string(), attemptId: z.string(), status: z.string() }),
-          404: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .select("uuid")
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      const result = await startSiteBuild({
-        db: fastify.db,
-        queues: fastify.queues,
-        config: fastify.config,
-        workspaceUuid,
-        siteUuid,
-        requestedMode: request.body.mode,
-        accuracy: request.body.accuracy,
-        maxQaIterations: request.body.maxQaIterations,
-        maxBudgetUsd: request.body.maxBudgetUsd,
-        fidelityThreshold: request.body.fidelityThreshold,
-        userUuid: request.user.uuid,
-      });
-
-      return result;
-    },
-  );
-
-  fastify.post(
-    "/sites/:uuid/pages/:slug/approve",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid(), slug: z.string().min(1) }),
-        response: {
-          200: z.object({ approved: z.string(), remainingPagesEnqueued: z.array(z.string()) }),
-          404: z.object({ error: z.string() }),
-          409: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-      const pageSlug = request.params.slug;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .select("uuid")
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      try {
-        const result = await approvePage({
-          db: fastify.db,
-          queues: fastify.queues,
-          workspaceUuid,
-          siteUuid,
-          pageSlug,
-          userUuid: request.user.uuid,
-        });
-        return result;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Approval failed";
-        return reply.code(409).send({ error: message });
       }
     },
   );
@@ -1118,146 +904,6 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
-  fastify.post(
-    "/sites/:uuid/re-skin",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid() }),
-        body: z.object({ designSystem: DesignSystemV2Schema }),
-        response: {
-          202: z.object({ success: z.boolean(), enqueued: z.array(z.string()) }),
-          404: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .select("uuid")
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      const result = await reSkinSite({
-        db: fastify.db,
-        queues: fastify.queues,
-        config: fastify.config,
-        workspaceUuid,
-        siteUuid,
-        userUuid: request.user.uuid,
-        designSystem: request.body.designSystem,
-      });
-
-      return reply.status(202).send({ success: true, enqueued: result.enqueued });
-    },
-  );
-
-  async function previewRedirect(
-    request: import("fastify").FastifyRequest<{
-      Params: { uuid: string; attemptId: string };
-    }>,
-    reply: import("fastify").FastifyReply,
-  ) {
-    const deployment = await fastify.db
-      .selectFrom("deployments")
-      .select(["previewUrl", "metadata"])
-      .where("siteUuid", "=", request.params.uuid)
-      .where("buildId", "=", request.params.attemptId)
-      .orderBy("createdAt", "desc")
-      .executeTakeFirst();
-
-    if (!deployment?.previewUrl) {
-      return reply.code(404).send({ error: "Preview not found" });
-    }
-
-    const s3Meta = (deployment.metadata as { s3?: { bucket: string; previewKey: string } } | null)?.s3;
-    if (s3Meta?.bucket && s3Meta?.previewKey) {
-      const signedUrl = await getSignedDownloadUrl({
-        endpoint: fastify.config.S3_ENDPOINT,
-        region: fastify.config.S3_REGION,
-        accessKeyId: fastify.config.S3_ACCESS_KEY,
-        secretAccessKey: fastify.config.S3_SECRET_KEY,
-        sessionToken: fastify.config.S3_SESSION_TOKEN,
-        bucket: s3Meta.bucket,
-        key: s3Meta.previewKey,
-        expiresIn: 300,
-      });
-      return reply.redirect(signedUrl);
-    }
-
-    return reply.redirect(deployment.previewUrl);
-  }
-
-  const previewRouteConfig = {
-    schema: {
-      params: z.object({ uuid: z.string().uuid(), attemptId: z.string() }),
-      response: {
-        302: z.any(),
-        404: z.object({ error: z.string() }),
-      },
-    },
-  };
-
-  fastify.get("/sites/:uuid/preview/:attemptId", previewRouteConfig, previewRedirect);
-  fastify.get("/sites/:uuid/preview/:attemptId/*", previewRouteConfig, previewRedirect);
-
-  fastify.get(
-    "/sites/:uuid/deployments",
-    {
-      schema: {
-        params: z.object({ uuid: z.string().uuid() }),
-        response: {
-          200: z.array(
-            z.object({
-              uuid: z.string(),
-              buildId: z.string(),
-              status: z.enum(["building", "failed", "pending", "success"]),
-              previewUrl: z.string().nullable().optional(),
-              artifactUrl: z.string().nullable().optional(),
-              metadata: z.any().nullable().optional(),
-              createdAt: z.string(),
-              updatedAt: z.string(),
-            }),
-          ),
-          404: z.object({ error: z.string() }),
-        },
-      },
-    },
-    async (request, reply) => {
-      const workspaceUuid = request.workspace.uuid;
-      const siteUuid = request.params.uuid;
-
-      const site = await fastify.db
-        .selectFrom("sites")
-        .select("uuid")
-        .where("uuid", "=", siteUuid)
-        .where("workspaceUuid", "=", workspaceUuid)
-        .executeTakeFirst();
-      if (!site) {
-        return reply.code(404).send({ error: "Site not found" });
-      }
-
-      const deployments = await fastify.db
-        .selectFrom("deployments")
-        .selectAll()
-        .where("siteUuid", "=", siteUuid)
-        .orderBy("createdAt", "desc")
-        .execute();
-
-      return deployments.map((d) => ({
-        ...d,
-        createdAt: d.createdAt.toISOString(),
-        updatedAt: d.updatedAt.toISOString(),
-      }));
-    },
-  );
-
   fastify.get(
     "/sites/:uuid/ai-activity",
     {
@@ -1353,7 +999,104 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
     },
   );
 
+  fastify.get(
+    "/sites/:uuid/files",
+    {
+      schema: {
+        operationId: "getSiteFiles",
+        tags: ["Sites"],
+        summary: "List deployed and mirrored S3 files for a site",
+        params: z.object({ uuid: z.string().uuid() }),
+        response: {
+          200: SiteFilesResponseSchema,
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceUuid = request.workspace.uuid;
+      const siteUuid = request.params.uuid;
+
+      const site = await fastify.db
+        .selectFrom("sites")
+        .select("uuid")
+        .where("uuid", "=", siteUuid)
+        .where("workspaceUuid", "=", workspaceUuid)
+        .executeTakeFirst();
+      if (!site) {
+        return reply.code(404).send({ error: "Site not found" });
+      }
+
+      const s3Config = {
+        endpoint: fastify.config.S3_ENDPOINT,
+        region: fastify.config.S3_REGION,
+        accessKeyId: fastify.config.S3_ACCESS_KEY,
+        secretAccessKey: fastify.config.S3_SECRET_KEY,
+        sessionToken: fastify.config.S3_SESSION_TOKEN,
+        bucket: fastify.config.S3_ASSETS_BUCKET,
+      };
+
+      const prefixes = [
+        `sites/${siteUuid}/`,
+        `workspaces/${workspaceUuid}/sites/${siteUuid}/`,
+      ];
+
+      const objects = (
+        await Promise.all(prefixes.map((prefix) => listS3Objects({ ...s3Config, prefix })))
+      ).flat();
+
+      const files = objects.map((object) => ({
+        key: object.key,
+        size: object.size,
+        lastModified: object.lastModified?.toISOString() ?? null,
+        url: buildS3ObjectUrl({
+          endpoint: s3Config.endpoint,
+          region: s3Config.region,
+          bucket: s3Config.bucket,
+          key: object.key,
+        }),
+        type: classifySiteFileType(object.key),
+      }));
+
+      return reply.code(200).send({ files });
+    },
+  );
+
   done();
 };
+
+async function makeUniqueSlug(
+  db: import("kysely").Kysely<import("../../types/db").DB>,
+  workspaceUuid: string,
+  baseSlug: string,
+): Promise<string> {
+  let uniqueSlug = baseSlug;
+  let suffix = 1;
+  while (
+    await db
+      .selectFrom("sites")
+      .select("uuid")
+      .where("workspaceUuid", "=", workspaceUuid)
+      .where("slug", "=", uniqueSlug)
+      .executeTakeFirst()
+  ) {
+    suffix++;
+    uniqueSlug = `${baseSlug}-${suffix}`;
+  }
+  return uniqueSlug;
+}
+
+function classifySiteFileType(key: string): z.infer<typeof SiteFileTypeSchema> {
+  const lower = key.toLowerCase();
+  const ext = lower.split(".").pop() ?? "";
+  if (lower.endsWith(".html") || lower.endsWith("/index")) return "html";
+  if (lower.endsWith(".css")) return "css";
+  if (lower.endsWith(".js") || lower.endsWith(".mjs") || lower.endsWith(".cjs")) return "js";
+  if (["png", "jpg", "jpeg", "webp", "gif", "svg", "avif", "bmp"].includes(ext)) return "image";
+  if (["mp4", "webm", "mov", "avi", "mkv"].includes(ext)) return "video";
+  if (["woff", "woff2", "ttf", "otf", "eot"].includes(ext)) return "font";
+  if (lower.includes("favicon") || ext === "ico") return "favicon";
+  return "other";
+}
 
 export default app;

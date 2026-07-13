@@ -9,6 +9,12 @@ export interface RewriteContext {
   /** e.g. "/forms/{siteUuid}" — formId appended */
   formEndpointBase: string;
   noindex: boolean;
+  /**
+   * Paths actually crawled (e.g. "/about", "/schedule"). Absolute links whose
+   * pathname is in this set are relativized regardless of origin — handles gyms
+   * whose HTML bakes in absolute nav hrefs to a CDN domain that differs from origin.
+   */
+  knownPaths?: Set<string>;
 }
 
 function toAbsolute(url: string, ctx: RewriteContext): string | null {
@@ -69,7 +75,9 @@ export function rewriteHtml(html: string, ctx: RewriteContext): string {
     const abs = toAbsolute(href, ctx);
     if (!abs) return;
     const url = new URL(abs);
-    if (url.origin === ctx.origin) {
+    const sameOrigin = url.origin === ctx.origin;
+    const knownPath = ctx.knownPaths?.has(url.pathname);
+    if (sameOrigin || knownPath) {
       $(el).attr("href", url.pathname + url.search + url.hash);
     }
   });

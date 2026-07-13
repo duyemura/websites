@@ -5,6 +5,7 @@ import { getLlmPricing, calculateLlmCost, estimateLlmCostFromTotal } from "../se
 import { chatCompletion, sanitizeRawResponse, type ChatMessage, type ChatResponse } from "./llm-client";
 import { modelForAgent, modelForTask, type LlmTask } from "./model-picker";
 import type { Config } from "../plugins/env";
+import { connection } from "../redis";
 
 export interface LlmCallContext {
   db: Kysely<DB>;
@@ -103,29 +104,33 @@ export async function callLlmAndLog(
       }
     }
 
-    await logAiActivity(ctx.db, {
-      workspaceUuid: ctx.workspaceUuid,
-      userUuid: ctx.userUuid,
-      siteUuid: ctx.siteUuid ?? null,
-      aiJobUuid: ctx.aiJobUuid ?? null,
-      actionType: params.actionType,
-      model,
-      provider,
-      promptTemplateKeys: params.promptTemplateKeys,
-      inputDocKeys: params.inputDocKeys,
-      inputTokens: promptTokens,
-      outputTokens: completionTokens,
-      costUsd,
-      latencyMs,
-      outcome,
-      summary,
-      errorMessage,
-      metadata: {
-        agent: params.agent,
-        totalTokens,
-        responseMetadata: sanitizeRawResponse(response.raw ?? undefined),
+    await logAiActivity(
+      ctx.db,
+      {
+        workspaceUuid: ctx.workspaceUuid,
+        userUuid: ctx.userUuid,
+        siteUuid: ctx.siteUuid ?? null,
+        aiJobUuid: ctx.aiJobUuid ?? null,
+        actionType: params.actionType,
+        model,
+        provider,
+        promptTemplateKeys: params.promptTemplateKeys,
+        inputDocKeys: params.inputDocKeys,
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
+        costUsd,
+        latencyMs,
+        outcome,
+        summary,
+        errorMessage,
+        metadata: {
+          agent: params.agent,
+          totalTokens,
+          responseMetadata: sanitizeRawResponse(response.raw ?? undefined),
+        },
       },
-    });
+      connection(),
+    );
   } catch {
     // Swallow logging errors.
   }

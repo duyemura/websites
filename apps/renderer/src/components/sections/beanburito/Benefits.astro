@@ -1,0 +1,19 @@
+---
+import type { ValueProp } from "../../../types/gym-content";
+import IconCardGrid from "../IconCardGrid.astro";
+
+const { items, sectionId = "benefits" } = Astro.props as {
+  items: ValueProp[];
+  sectionId?: string;
+};
+if (!items?.length) return;
+---
+
+<IconCardGrid
+  items={items}
+  variant="valueProps"
+  sectionId={sectionId}
+  sectionTag="feature-grid"
+  headline="Why train with us"
+  headlineHidden
+/>

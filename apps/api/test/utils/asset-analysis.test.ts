@@ -110,7 +110,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/jpeg",
-        url: "http://localhost:9010/test.jpg",
+        url: "https://s3.test/test.jpg",
         storageKey,
         metadata: { filename: "test.jpg" },
       })
@@ -153,7 +153,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/jpeg",
-        url: "http://localhost:9010/test.jpg",
+        url: "https://s3.test/test.jpg",
         storageKey,
         metadata: {},
       })
@@ -192,7 +192,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "screenshot",
         mimeType: "image/png",
-        url: "http://localhost:9010/screenshot.png",
+        url: "https://s3.test/screenshot.png",
         storageKey: `workspaces/${workspaceUuid}/assets/screenshot.png`,
         metadata: {},
       })
@@ -220,7 +220,7 @@ describe("analyzeAsset", () => {
         type: "font",
         source: "upload",
         mimeType: "font/woff2",
-        url: "http://localhost:9010/font.woff2",
+        url: "https://s3.test/font.woff2",
         storageKey: `workspaces/${workspaceUuid}/assets/font.woff2`,
         metadata: {},
       })
@@ -250,7 +250,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/jpeg",
-        url: "http://localhost:9010/missing.jpg",
+        url: "https://s3.test/missing.jpg",
         storageKey: `workspaces/${workspaceUuid}/assets/missing.jpg`,
         metadata: {},
       })
@@ -293,7 +293,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/jpeg",
-        url: "http://localhost:9010/test.jpg",
+        url: "https://s3.test/test.jpg",
         storageKey,
         metadata: {},
       })
@@ -335,7 +335,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/jpeg",
-        url: "http://localhost:9010/test.jpg",
+        url: "https://s3.test/test.jpg",
         storageKey,
         metadata: {},
       })
@@ -393,7 +393,7 @@ describe("analyzeAsset", () => {
         type: "image",
         source: "upload",
         mimeType: "image/svg+xml",
-        url: "http://localhost:9010/logo.svg",
+        url: "https://s3.test/logo.svg",
         storageKey,
         metadata: {},
       })

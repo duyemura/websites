@@ -53,6 +53,8 @@ export type SiteMode = "greenfield" | "replication" | "template";
 
 export type SiteStatus = "archived" | "draft" | "published";
 
+export type SiteTier = "free" | "paid";
+
 export type ThemeSource = "ai_generated" | "replicated" | "system_preset" | "user_selected";
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
@@ -252,6 +254,25 @@ export interface Playbooks {
   workspaceUuid: string | null;
 }
 
+export interface SiteEvals {
+  avgSimilarity: number | null;
+  completedAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+  failedReason: string | null;
+  formStatus: string | null;
+  jobId: string | null;
+  pageCount: number | null;
+  pages: Generated<Json>;
+  passCount: number | null;
+  report: Generated<Json | null>;
+  siteUuid: string;
+  status: string;
+  updatedAt: Generated<Timestamp>;
+  uuid: Generated<string>;
+  warnings: Generated<Json>;
+  workspaceUuid: string;
+}
+
 export interface Sites {
   cloudfrontDomain: string | null;
   createdAt: Generated<Timestamp>;
@@ -272,6 +293,7 @@ export interface Sites {
   status: Generated<SiteStatus>;
   subdomain: string | null;
   themeUuid: string | null;
+  tier: Generated<SiteTier>;
   updatedAt: Generated<Timestamp>;
   uuid: Generated<string>;
   workspaceUuid: string;
@@ -403,6 +425,7 @@ export interface DB {
   pages: Pages;
   pipelineArtifacts: PipelineArtifacts;
   playbooks: Playbooks;
+  siteEvals: SiteEvals;
   sites: Sites;
   siteTransforms: SiteTransforms;
   siteVersions: SiteVersions;

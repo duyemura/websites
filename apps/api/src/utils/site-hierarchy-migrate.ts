@@ -128,6 +128,7 @@ export function migrateBlueprintToHierarchy(blueprint: SiteBlueprint): {
 
   const headerSection = blueprint.global_shell.header;
   const footerSection = blueprint.global_shell.footer;
+  const navLinks = blueprint.global_shell.navLinks;
   const homePage = blueprint.pages.find((p) => p.isHomePage);
   const heroSection = homePage?.sections.find((s) => inferTagFromLegacyType(s.type) === "hero");
 
@@ -145,6 +146,7 @@ export function migrateBlueprintToHierarchy(blueprint: SiteBlueprint): {
       shell: {
         header: headerSection,
         footer: footerSection,
+        navLinks,
       },
       rules: {
         spacing: "Default section vertical padding derived from source; hero uses larger vertical spacing.",

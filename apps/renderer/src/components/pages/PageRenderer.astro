@@ -1,0 +1,78 @@
+---
+// apps/renderer/src/components/pages/PageRenderer.astro
+// Template-agnostic page body renderer.
+//
+// Consumes a TemplateSpec from @ploy-gyms/shared-types and renders the
+// declared component sequence for a given pageKey. Components are imported
+// statically so Astro can compile them; the resolver only determines which
+// ones to render and what props to pass.
+
+import { content } from "../../lib/content";
+import { beanburitoSpec, type TemplateSpec } from "@ploy-gyms/shared-types";
+import { resolvePageComponents, type AstroComponent } from "../../lib/template-resolver";
+
+import Hero from "../sections/beanburito/Hero.astro";
+import Programs from "../sections/beanburito/Programs.astro";
+import Location from "../sections/beanburito/Location.astro";
+import Benefits from "../sections/beanburito/Benefits.astro";
+import IconCardGrid from "../sections/IconCardGrid.astro";
+import CTABand from "../sections/beanburito/CTABand.astro";
+import HowItWorks from "../sections/beanburito/HowItWorks.astro";
+import Amenities from "../sections/beanburito/Amenities.astro";
+import Community from "../sections/beanburito/Community.astro";
+import Testimonials from "../sections/beanburito/Testimonials.astro";
+import FAQ from "../sections/beanburito/FAQ.astro";
+import IframeBand from "../sections/beanburito/IframeBand.astro";
+
+const BEANBURITO_COMPONENT_MAP: Record<string, AstroComponent> = {
+  hero: Hero as unknown as AstroComponent,
+  programs: Programs as unknown as AstroComponent,
+  location: Location as unknown as AstroComponent,
+  benefits: Benefits as unknown as AstroComponent,
+  iconCardGrid: IconCardGrid as unknown as AstroComponent,
+  ctaBand: CTABand as unknown as AstroComponent,
+  valueProps: Benefits as unknown as AstroComponent,
+  howItWorks: HowItWorks as unknown as AstroComponent,
+  amenities: Amenities as unknown as AstroComponent,
+  community: Community as unknown as AstroComponent,
+  testimonials: Testimonials as unknown as AstroComponent,
+  faq: FAQ as unknown as AstroComponent,
+  iframeBand: IframeBand as unknown as AstroComponent,
+};
+
+const THEME_SPECS: Record<string, TemplateSpec> = {
+  beanburito: beanburitoSpec,
+};
+
+const THEME_COMPONENT_MAP: Record<string, Record<string, AstroComponent>> = {
+  beanburito: BEANBURITO_COMPONENT_MAP,
+};
+
+interface Props {
+  /** Registry page key (e.g. "home", "about", "contact"). */
+  pageKey: string;
+  /** Override the template theme from gym.json. */
+  templateTheme?: string;
+}
+
+const { pageKey, templateTheme } = Astro.props;
+const theme = templateTheme ?? content.meta.templateTheme ?? "baseline";
+const spec = THEME_SPECS[theme];
+if (!spec) {
+  throw new Error(`PageRenderer: unsupported template theme "${theme}"`);
+}
+
+const componentMap = THEME_COMPONENT_MAP[theme];
+if (!componentMap) {
+  throw new Error(`PageRenderer: no component map registered for theme "${theme}"`);
+}
+
+const components = resolvePageComponents(spec, pageKey, content, componentMap);
+if (components.length === 0) {
+  throw new Error(`PageRenderer: no components resolved for pageKey "${pageKey}" in theme "${theme}"`);
+}
+---
+
+{components.map(({ component: Component, props }) => (
+  <Component {...props} />
+))}

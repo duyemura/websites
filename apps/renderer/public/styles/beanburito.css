@@ -1,7 +1,59 @@
-/* Beanburito theme: scoped custom rules that are awkward to express in Tailwind.
-   Layout, spacing, and typography use Tailwind utilities; this file handles the
-   original clip-path hero shapes, skewed section accents, and CTA arrow icon. */
+/* Beanburito theme: scoped custom rules that match the original Webflow template.
+   The reference uses a bold blue accent (#0063ff), straight section bands for most
+   of the page, and only skews the white "three-items" bands (benefits + how-it-works)
+   to create diagonal seams against the black bands. */
 
+.theme-beanburito {
+  /* Beanburito is a layout/template. Brand colors/fonts come from the gym's docs.
+     The reference uses one bold brand color for CTAs, step numbers, and accent
+     tiles, so we map the template accent to the brand accent. If the accent is
+     missing, fall back to the classic beanburito blue. */
+  --color-accent: var(--brand-accent, #0063ff);
+
+  /* Vertical rhythm: original template used 7.5em padding top/bottom. */
+  --bb-section-pad: 6rem;
+  /* Skew angle: subtle, consistent across every band. Positive angle slants
+     top-left up and bottom-right down (matches reference's skewY(2deg)). */
+  --bb-skew-angle: 2deg;
+  /* Overlap required so adjacent skewed sections meet flush at the edges.
+     Approx tan(2deg) * half viewport width. Scales up on wider screens. */
+  --bb-skew-overlap: 36px;
+}
+
+@media (min-width: 768px) {
+  .theme-beanburito {
+    --bb-section-pad: 7.5rem;
+    --bb-skew-overlap: 48px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .theme-beanburito {
+    --bb-skew-overlap: 60px;
+  }
+}
+
+/* ── Skewed band system ─────────────────────────────────────────────────────
+   Only the white three-items bands (benefits/valueProps and howItWorks) are
+   skewed in the original. We apply .section-skew to those sections only. */
+.theme-beanburito .section-skew {
+  transform: skewY(var(--bb-skew-angle));
+  margin-top: calc(-1 * var(--bb-skew-overlap));
+  padding-top: calc(var(--bb-section-pad) + var(--bb-skew-overlap));
+  padding-bottom: calc(var(--bb-section-pad) + var(--bb-skew-overlap));
+}
+
+/* First band in main has nothing above it to overlap with. */
+.theme-beanburito main > .section-skew:first-child {
+  margin-top: 0;
+}
+
+/* Counter-skew the content wrapper so headings, cards, and text remain straight. */
+.theme-beanburito .section-skew > .section-inner {
+  transform: skewY(calc(-1 * var(--bb-skew-angle)));
+}
+
+/* ── Hero image clip (retained for the angled right-edge photo treatment) ───── */
 .theme-beanburito .hero-img-clip {
   clip-path: polygon(0 0, 100% 0%, 85% 100%, 0% 100%);
 }
@@ -12,28 +64,289 @@
   }
 }
 
-.theme-beanburito .section-skew {
-  transform: skewY(2deg);
+/* ── Skewed CTAs ─────────────────────────────────────────────────────────────
+   The original template's main CTAs are parallelograms created with skewX. */
+.theme-beanburito .cta-skew {
+  transform: skewX(-8deg);
+}
+.theme-beanburito .cta-skew > * {
+  transform: skewX(8deg);
+}
+.theme-beanburito .cta-skew svg,
+.theme-beanburito .cta-skew img {
+  transform: skewX(8deg);
+}
+
+/* ── Programs grid ───────────────────────────────────────────────────────────
+   Original template uses a single column of full-width program cards with a
+   large image on the left and details on the right. */
+.theme-beanburito .programs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.theme-beanburito .program-card {
   position: relative;
-  z-index: 1;
+  display: grid;
+  min-height: 22rem;
+  overflow: hidden;
+  background-color: #111;
 }
 
-.theme-beanburito .section-skew > .section-skew-inner {
-  transform: skewY(-2deg);
+@media (min-width: 1024px) {
+  .theme-beanburito .program-card {
+    grid-template-columns: 55% 45%;
+    min-height: 28rem;
+  }
 }
 
-.theme-beanburito .section-skew-reverse {
-  transform: skewY(-2deg);
+.theme-beanburito .program-card-media {
   position: relative;
-  z-index: 1;
+  min-height: 14rem;
+  overflow: hidden;
 }
 
-.theme-beanburito .section-skew-reverse > .section-skew-inner-reverse {
-  transform: skewY(2deg);
+@media (min-width: 1024px) {
+  .theme-beanburito .program-card-media {
+    min-height: auto;
+  }
 }
 
-.theme-beanburito .section-overlap {
-  margin-top: -1.7em;
+.theme-beanburito .program-card-media img {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  transition: transform 500ms ease;
+}
+
+.theme-beanburito .program-card:hover .program-card-media img {
+  transform: scale(1.05);
+}
+
+.theme-beanburito .program-card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2rem;
+}
+
+@media (min-width: 1024px) {
+  .theme-beanburito .program-card-body {
+    padding: 3rem 3.5rem;
+  }
+}
+
+/* ── Icon Card Grid primitive ────────────────────────────────────────────────
+   Generic icon-card section used across many page archetypes (benefits,
+   amenities, services, features). Theme variants handle layout, color, and
+   typography so the same component can render value-props, membership benefits,
+   or any other icon-card list. */
+
+/* Value-props variant: white skewed band, centered cards, body copy. */
+.theme-beanburito .icon-card-grid--value-props {
+  transform: skewY(var(--bb-skew-angle));
+  margin-top: calc(-1 * var(--bb-skew-overlap));
+  padding-top: calc(var(--bb-section-pad) + var(--bb-skew-overlap));
+  padding-bottom: calc(var(--bb-section-pad) + var(--bb-skew-overlap));
+  background-color: white;
+  color: black;
+}
+
+.theme-beanburito .icon-card-grid--value-props > .icon-card-grid__inner {
+  transform: skewY(calc(-1 * var(--bb-skew-angle)));
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card-grid__items {
+  display: grid;
+  gap: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .theme-beanburito .icon-card-grid--value-props .icon-card-grid__items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .theme-beanburito .icon-card-grid--value-props .icon-card-grid__items {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4rem;
+  }
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card {
+  display: flex;
+  min-height: 18rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card__icon {
+  margin-bottom: 1.75rem;
+  color: var(--color-accent);
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card__icon svg {
+  width: 80px;
+  height: 80px;
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  color: black;
+}
+
+@media (min-width: 768px) {
+  .theme-beanburito .icon-card-grid--value-props .icon-card__title {
+    font-size: 1.875rem;
+  }
+}
+
+.theme-beanburito .icon-card-grid--value-props .icon-card__body {
+  margin-top: 1rem;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 24rem;
+  font-size: 1rem;
+  line-height: 1.625;
+  color: rgb(0 0 0 / 0.7);
+}
+
+/* Amenities / membership-benefits variant.
+   Reference: https://beanburito.github.io/free-intro-session-self-book-in-person/
+   3-column desktop grid with no gaps, staggered vertical offsets, solid black
+   cards, 72px left-aligned white icons, italic headings, fixed card height,
+   horizontal scroll on mobile, and a decorative arrow strip. */
+.theme-beanburito .icon-card-grid--amenities {
+  position: relative;
+  padding-top: var(--bb-section-pad);
+  padding-bottom: var(--bb-section-pad);
+  overflow: hidden;
+  background-color: black;
+  color: white;
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card-grid__headline {
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 4rem;
+  max-width: 48rem;
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: 2.25rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: white;
+}
+
+@media (min-width: 768px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__headline {
+    font-size: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__headline {
+    font-size: 3.75rem;
+  }
+}
+
+/* Decorative arrow strip on the left edge. */
+.theme-beanburito .icon-card-grid--amenities .icon-card-grid__arrows {
+  position: absolute;
+  left: 0;
+  top: var(--bb-section-pad);
+  width: 68px;
+  height: 320px;
+  pointer-events: none;
+}
+
+@media (max-width: 1023px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__arrows {
+    display: none;
+  }
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card-grid__items {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+@media (min-width: 768px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__items {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Horizontal scroll on mobile to match the reference mobile behaviour. */
+@media (max-width: 767px) {
+  .theme-beanburito .icon-card-grid--amenities .icon-card-grid__items {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 1rem;
+  }
+
+  .theme-beanburito .icon-card-grid--amenities .icon-card {
+    flex: 0 0 85%;
+    scroll-snap-align: start;
+  }
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card {
+  display: flex;
+  min-height: 22em;
+  flex-direction: column;
+  border: 2px solid transparent;
+  background-color: #111;
+  padding: 2.5em 2em 3em;
+}
+
+/* Checkerboard accent tiles, matching the reference membership-benefits grid. */
+.theme-beanburito .icon-card-grid--amenities .icon-card:nth-child(even) {
+  background-color: var(--color-accent);
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card__icon {
+  display: block;
+  width: 72px;
+  height: 72px;
+  color: white;
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.theme-beanburito .icon-card-grid--amenities .icon-card__title {
+  margin-top: auto;
+  font-family: var(--font-heading);
+  font-size: 2em;
+  font-style: italic;
+  font-weight: 900;
+  line-height: 1.2;
+  color: white;
 }
 
 /* Cookie-style arrow icon used by the original CTA link. */
@@ -41,6 +354,71 @@
   width: 8px;
   height: 1em;
   object-fit: contain;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────
+   Keep the header dark and legible over the hero; switch to a light bar
+   once the user scrolls. */
+.theme-beanburito .site-header {
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.theme-beanburito .site-header:not(.is-scrolled) {
+  background-color: rgb(0 0 0 / 0.9);
+}
+.theme-beanburito .site-header.is-scrolled {
+  background-color: white;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Logo: on transparent header (dark hero behind) we force white. On scrolled
+   header we keep the natural logo color. This works for dark-on-transparent
+   logos; a true light/dark logo pair is the long-term fix. */
+.theme-beanburito .site-header:not(.is-scrolled) .header-logo {
+  filter: brightness(0) invert(1);
+}
+
+/* Nav text: white on dark hero, black on scrolled light header. */
+.theme-beanburito .site-header:not(.is-scrolled) .header-nav-link {
+  color: white;
+}
+.theme-beanburito .site-header.is-scrolled .header-nav-link {
+  color: black;
+}
+
+/* Header CTA: accent button on transparent dark header, switches to black button
+   once the header becomes a solid light bar. */
+.theme-beanburito .header-cta {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: white;
+}
+.theme-beanburito .site-header.is-scrolled .header-cta {
+  border-color: black;
+  background-color: black;
+  color: white;
+}
+.theme-beanburito .site-header.is-scrolled .header-cta:hover {
+  background-color: transparent;
+  color: black;
+}
+
+/* Fallback text logo color. */
+.theme-beanburito .site-header:not(.is-scrolled) .header-logo-text {
+  color: white;
+}
+.theme-beanburito .site-header.is-scrolled .header-logo-text {
+  color: black;
+}
+
+/* Mobile menu overlay: solid panel that works on either header state. */
+.theme-beanburito .mobile-menu {
+  background-color: white;
+  color: black;
+}
+
+/* ── FAQ chevron rotation ──────────────────────────────────────────────────── */
+.theme-beanburito details[open] > summary .faq-chevron {
+  transform: rotate(180deg);
 }
 
 /* Keep the fixed navbar from overlapping the in-page anchors. */

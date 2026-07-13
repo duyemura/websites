@@ -6,18 +6,26 @@ import CTABand from "../components/sections/CTABand.astro";
 import RichContent from "../components/sections/RichContent.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import Container from "../components/ui/Container.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
 const about = content.pages.about;
 const { business } = content;
 const title = `About ${business.name} | Gym in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const fallbackDesc = `Learn about ${business.name}, a gym in ${business.geo.city}, ${business.geo.stateAbbr}. ${business.tagline}`;
 const aboutDesc = about.gymStory?.slice(0, 157) || fallbackDesc.slice(0, 157) + (fallbackDesc.length > 157 ? "…" : "");
+const theme = content.meta.templateTheme ?? "baseline";
 ---
 <GymLayout title={title} description={aboutDesc} path="/about" image={about.hero.backgroundImageUrl}>
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "About", path: "/about" }]} /></Fragment>
-  <Hero hero={about.hero} />
-  <section class="py-16"><Container><p class="mx-auto max-w-3xl text-center text-lg text-secondary">{about.gymStory}</p></Container></section>
-  <TeamGrid team={about.team} />
-  {about.richContent && <RichContent sections={about.richContent} />}
-  <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+  {theme === "beanburito" ? (
+    <PageRenderer pageKey="about" />
+  ) : (
+    <>
+      <Hero hero={about.hero} />
+      <section class="py-16"><Container><p class="mx-auto max-w-3xl text-center text-lg text-secondary">{about.gymStory}</p></Container></section>
+      <TeamGrid team={about.team} />
+      {about.richContent && <RichContent sections={about.richContent} />}
+      <CTABand headline="The hardest step is always the first step." ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
+    </>
+  )}
 </GymLayout>

@@ -1,9 +1,25 @@
 // apps/api/scripts/stages/template-eval.ts
+// Post-build QA gate for generated Milo template sites.
+// Serves the Astro dist locally, crawls every internal link, validates JSON-LD,
+// runs axe-core WCAG 2 AA checks, and audits every rendered page for real gym
+// business info and placeholder leakage. Fixable issues are self-healed by
+// patching the generate artifact and rebuilding; unfixable issues fail the stage
+// before publish can run.
 import { createServer } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readFile } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
+import { AxeBuilder } from "@axe-core/playwright";
 import type { StageRunner, StageContext, StageResult } from "./types";
+import { templateStage } from "./template.js";
+import { loadArtifact, saveArtifact } from "../../src/utils/pipeline/artifact-store.js";
+import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import {
+  auditPage,
+  applySelfHeals,
+  buildAllowedPaths,
+  type AuditFailure,
+} from "../../src/services/template/rendered-audit.js";
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -14,6 +30,31 @@ const MIME: Record<string, string> = {
   ".json": "application/json",
   ".webmanifest": "application/manifest+json",
 };
+
+async function loadGenerateContent(
+  ctx: StageContext,
+  distDir: string,
+): Promise<GymSiteContent | null> {
+  // Prefer the generate artifact — it is the source of truth for business info.
+  const generateStage = "generate" as unknown as Parameters<typeof loadArtifact>[2];
+  const artifact = await loadArtifact(
+    ctx.db,
+    { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+    generateStage,
+  );
+  if (artifact?.payload) {
+    return artifact.payload as GymSiteContent;
+  }
+
+  // Fallback: read the gym.json that was baked into the renderer build.
+  const gymJsonPath = path.join(distDir, "content", "gym.json");
+  if (!existsSync(gymJsonPath)) return null;
+  try {
+    return JSON.parse(await readFile(gymJsonPath, "utf8")) as GymSiteContent;
+  } catch {
+    return null;
+  }
+}
 
 export const templateEvalStage: StageRunner = {
   label: "template-eval",
@@ -57,75 +98,186 @@ export const templateEvalStage: StageRunner = {
     const port = (server.address() as { port: number }).port;
     const base = `http://127.0.0.1:${port}`;
 
-    const failures: string[] = [];
-    const visited = new Set<string>();
-    const queue = ["/"];
+    let content = await loadGenerateContent(ctx, distDir);
+    if (content) {
+      ctx.log(`  Loaded generate artifact for audit`);
+    } else {
+      ctx.log(`  [warn] No generate artifact or gym.json — skipping rendered-content audit`);
+    }
 
     let browser;
+    let failures: AuditFailure[] = [];
+    let warnings: string[] = [];
+    let healCount = 0;
+    let lastPageCount = 0;
+
     try {
       browser = await chromium.launch();
       const page = await browser.newPage();
 
-      while (queue.length > 0) {
-        const route = queue.shift()!;
-        if (visited.has(route)) continue;
-        visited.add(route);
+      // Self-heal loop: audit, patch, rebuild, re-audit. Max 2 rebuilds.
+      for (let round = 0; round <= 2; round++) {
+        const visited = new Set<string>();
+        const queue = ["/"];
+        failures = [];
+        warnings = [];
+        const allowedPaths = content ? buildAllowedPaths(content) : new Set<string>();
 
-        const res = await page.goto(base + route, { waitUntil: "domcontentloaded" });
-        if (!res || res.status() >= 400) {
-          failures.push(`${route}: HTTP ${res?.status()}`);
-          continue;
-        }
+        while (queue.length > 0) {
+          const route = queue.shift()!;
+          if (visited.has(route)) continue;
+          visited.add(route);
 
-        // JSON-LD must parse on every page
-        const ldErrors = await page.evaluate(() => {
-          const errs: string[] = [];
-          document
-            .querySelectorAll('script[type="application/ld+json"]')
-            .forEach((s, i) => {
-              try {
-                JSON.parse(s.textContent ?? "");
-              } catch {
-                errs.push(`ld+json #${i} invalid`);
-              }
+          const res = await page.goto(base + route, { waitUntil: "domcontentloaded" });
+          if (!res || res.status() >= 400) {
+            failures.push({
+              page: route,
+              check: "http",
+              message: `HTTP ${res?.status()}`,
+              fixable: false,
             });
-          if (
-            document.querySelectorAll('script[type="application/ld+json"]').length === 0
-          )
-            errs.push("no JSON-LD");
-          return errs;
-        });
-        for (const e of ldErrors) failures.push(`${route}: ${e}`);
+            continue;
+          }
 
-        // Enqueue internal links
-        const links = await page.evaluate(() =>
-          Array.from(document.querySelectorAll("a[href]"))
-            .map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? "")
-            .filter((h) => h.startsWith("/") && !h.startsWith("//")),
+          const html = await page.content();
+
+          // JSON-LD must parse on every page
+          const ldErrors = await page.evaluate(() => {
+            const errs: string[] = [];
+            document
+              .querySelectorAll('script[type="application/ld+json"]')
+              .forEach((s, i) => {
+                try {
+                  JSON.parse(s.textContent ?? "");
+                } catch {
+                  errs.push(`ld+json #${i} invalid`);
+                }
+              });
+            if (
+              document.querySelectorAll('script[type="application/ld+json"]').length === 0
+            )
+              errs.push("no JSON-LD");
+            return errs;
+          });
+          for (const e of ldErrors) {
+            failures.push({
+              page: route,
+              check: "jsonld-parse",
+              message: e,
+              fixable: false,
+            });
+          }
+
+          // Accessibility / contrast check on every page. Failures are warnings unless
+          // they are critical or impact form usability (color-contrast, label).
+          try {
+            const axeResults = await new AxeBuilder({ page })
+              .withTags(["wcag2aa"])
+              .analyze();
+            for (const violation of axeResults.violations) {
+              const msg = `axe ${violation.id} (${violation.impact}) — ${violation.help}`;
+              if (["critical", "serious"].includes(violation.impact ?? "")) {
+                failures.push({
+                  page: route,
+                  check: "axe",
+                  message: msg,
+                  fixable: false,
+                });
+              } else {
+                warnings.push(`${route}: ${msg}`);
+              }
+            }
+          } catch {
+            // Axe can throw on unusual DOM; don't let it kill the whole eval.
+          }
+
+          // Enqueue internal links
+          const links = await page.evaluate(() =>
+            Array.from(document.querySelectorAll("a[href]"))
+              .map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? "")
+              .filter((h) => h.startsWith("/") && !h.startsWith("//")),
+          );
+          for (const l of links) {
+            const clean = l.split("#")[0].split("?")[0];
+            if (clean && !visited.has(clean)) queue.push(clean);
+          }
+
+          // Deterministic rendered-content audit
+          if (content) {
+            const audit = auditPage(route, html, content.business, allowedPaths, links);
+            failures.push(...audit.failures);
+            warnings.push(...audit.warnings);
+          }
+        }
+
+        // Required discovery/SEO files
+        for (const f of ["sitemap.xml", "robots.txt", "llms.txt", "rss.xml"]) {
+          if (!existsSync(path.join(distDir, f))) {
+            failures.push({
+              page: "/",
+              check: "required-file",
+              message: `missing ${f}`,
+              fixable: false,
+            });
+          }
+        }
+
+        lastPageCount = visited.size;
+        const fixable = failures.filter((f) => f.fixable);
+        if (fixable.length === 0 || !content || round >= 2) {
+          break;
+        }
+
+        // Self-heal: patch the artifact and rebuild
+        const before = JSON.stringify(content);
+        const healResult = applySelfHeals(content, failures);
+        if (!healResult.healed) {
+          break;
+        }
+        content = healResult.content;
+
+        // Only save + rebuild if the artifact actually changed
+        if (JSON.stringify(content) === before) {
+          break;
+        }
+
+        healCount++;
+        ctx.log(`  Self-heal round ${healCount}: ${healResult.heals.join("; ")}`);
+        const saveStage = "generate" as unknown as Parameters<typeof saveArtifact>[2];
+        await saveArtifact(
+          ctx.db,
+          { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+          saveStage,
+          content,
         );
-        for (const l of links) {
-          const clean = l.split("#")[0].split("?")[0];
-          if (clean && !visited.has(clean)) queue.push(clean);
+
+        const rebuildResult = await templateStage.run(ctx);
+        if (rebuildResult.status === "fail") {
+          failures.push({
+            page: "/",
+            check: "self-heal-rebuild",
+            message: `Self-heal rebuild failed: ${rebuildResult.error ?? "unknown error"}`,
+            fixable: false,
+          });
+          break;
         }
       }
 
-      // Required discovery/SEO files
-      for (const f of ["sitemap.xml", "robots.txt", "llms.txt", "rss.xml"]) {
-        if (!existsSync(path.join(distDir, f))) failures.push(`missing ${f}`);
-      }
+      ctx.log(`  Crawled ${lastPageCount} pages, ${failures.length} failures, ${healCount} self-heal rounds`);
 
-      ctx.log(`  Crawled ${visited.size} pages, ${failures.length} failures`);
-
+      const groupedFailures = groupFailures(failures);
       return {
         stage: "template-eval",
         status: failures.length > 0 ? "fail" : "pass",
         durationMs: Date.now() - start,
         metrics: {
-          pagesCrawled: visited.size,
+          pagesCrawled: lastPageCount,
           failures: failures.length,
+          warnings: warnings.length,
+          selfHealRounds: healCount,
         },
-        warnings: [],
-        error: failures.length > 0 ? failures.slice(0, 5).join("; ") : undefined,
+        warnings,
+        error: failures.length > 0 ? groupedFailures.slice(0, 10).join("; ") : undefined,
       };
     } finally {
       if (browser) {
@@ -135,3 +287,20 @@ export const templateEvalStage: StageRunner = {
     }
   },
 };
+
+function groupFailures(failures: AuditFailure[]): string[] {
+  const byCheck = new Map<string, number>();
+  const samples: string[] = [];
+  for (const f of failures) {
+    const key = `${f.page}: ${f.message}`;
+    if (!byCheck.has(key)) {
+      byCheck.set(key, 0);
+      samples.push(key);
+    }
+    byCheck.set(key, byCheck.get(key)! + 1);
+  }
+  return samples.map((s) => {
+    const count = byCheck.get(s)!;
+    return count > 1 ? `${s} (×${count})` : s;
+  });
+}

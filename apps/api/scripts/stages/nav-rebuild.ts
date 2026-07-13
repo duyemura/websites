@@ -23,6 +23,7 @@ import { promoteDeploy } from "../../src/services/mirror/deploy.js";
 import { publishLatestStagingToProduction } from "../../src/services/site-versions.js";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store.js";
 import { buildNavigation, type CapturedNavItem } from "../../src/services/template/nav-slots.js";
+import { sanitizeContentCtas } from "../../src/services/template/content-mapper.js";
 import type { StageRunner, StageContext, StageResult } from "./types.js";
 import type { GymSiteContent } from "@ploy-gyms/shared-types";
 
@@ -100,7 +101,9 @@ export const navRebuildStage: StageRunner = {
 
     ctx.log(`  Built nav: header=${navigation.header.length} items, footer=${navigation.footer.length} groups`);
 
-    // 4. Patch navigation into the existing GymSiteContent — everything else unchanged
+    // 4. Patch navigation into the existing GymSiteContent — everything else unchanged.
+    // Also sanitize CTAs: an existing generate artifact may contain stale source-site
+    // CTA URLs that no longer map to generated pages.
     const patchedContent: GymSiteContent = {
       ...gymContent,
       navigation,
@@ -109,11 +112,12 @@ export const navRebuildStage: StageRunner = {
         ...(ctx.templateTheme ? { templateTheme: ctx.templateTheme } : {}),
       },
     };
+    sanitizeContentCtas(patchedContent.pages, patchedContent.business, []);
 
     // 5. Build + deploy (no LLM, no content re-generation)
     const siteUrl = site.customDomain
       ? `https://${site.customDomain}`
-      : `${ctx.config.CDN_BASE_URL}/sites/${site.uuid}/current`;
+      : `${ctx.config.CDN_BASE_URL}/sites/${site.uuid}`;
 
     ctx.log(`  Building Astro template with updated nav...`);
     const result = await deployTemplate({
@@ -125,6 +129,7 @@ export const navRebuildStage: StageRunner = {
       apiBaseUrl: ctx.config.CDN_BASE_URL,
       siteUrl,
       rendererDir: ctx.rendererDir,
+      googleMapsApiKey: ctx.config.GOOGLE_PLACES_API_KEY,
       templateTheme: ctx.templateTheme,
       content: patchedContent,
       log: {

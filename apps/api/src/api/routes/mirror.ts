@@ -1,6 +1,7 @@
 import type { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
+import type { PipelineStage } from "../../types/pipeline-artifacts";
 import type { MirrorCrawlArtifact, MirrorAssetsArtifact, MirrorSnapshotArtifact } from "../../types/mirror";
 
 const Params = z.object({ siteUuid: z.string().uuid() });
@@ -184,14 +185,16 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       }
 
       const ctx = { siteUuid, workspaceUuid: request.workspace.uuid };
-      const [crawl, assets, snapshot, deploy] = await Promise.all([
-        loadArtifact<MirrorCrawlArtifact>(fastify.db, ctx, "mirror-crawl"),
+      const [crawlNew, crawlLegacy, assets, snapshot, deploy] = await Promise.all([
+        loadArtifact<MirrorCrawlArtifact>(fastify.db, ctx, "crawl"),
+        loadArtifact<MirrorCrawlArtifact>(fastify.db, ctx, "mirror-crawl" as PipelineStage),
         loadArtifact<MirrorAssetsArtifact>(fastify.db, ctx, "mirror-assets"),
         loadArtifact<MirrorSnapshotArtifact>(fastify.db, ctx, "mirror-snapshot"),
         loadArtifact<{ previewUrl: string; pageCount: number; warnings: string[] }>(
           fastify.db, ctx, "mirror-deploy",
         ),
       ]);
+      const crawl = crawlNew ?? crawlLegacy;
 
       return {
         crawl: crawl

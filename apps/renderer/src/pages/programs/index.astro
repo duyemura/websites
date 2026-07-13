@@ -1,7 +1,7 @@
 ---
 import GymLayout from "../../layouts/GymLayout.astro";
-import ProgramCards from "../../components/sections/ProgramCards.astro";
-import CTABand from "../../components/sections/CTABand.astro";
+import Programs from "../../components/sections/beanburito/Programs.astro";
+import CTABand from "../../components/sections/beanburito/CTABand.astro";
 import BreadcrumbSchema from "../../components/seo/BreadcrumbSchema.astro";
 import Container from "../../components/ui/Container.astro";
 import { content } from "../../lib/content";
@@ -19,14 +19,14 @@ const desc = `Explore programs at ${business.name} in ${business.geo.city}, ${bu
   <Fragment slot="head">
     <BreadcrumbSchema crumbs={[{ name: "Programs", path: "/programs" }]} />
   </Fragment>
-  <section class="bg-primary py-16">
-    <Container>
-      <h1 class="font-heading text-4xl font-black uppercase text-white text-center">
+  <section class="section-skew bg-black pt-24 text-white">
+    <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+      <h1 class="font-heading text-4xl font-black uppercase text-center md:text-5xl">
         Our Programs
       </h1>
-      <p class="mt-4 text-center text-slate-300">{business.name} in {business.geo.city}, {business.geo.stateAbbr}</p>
-    </Container>
+      <p class="mt-4 text-center text-white/70">{business.name} in {business.geo.city}, {business.geo.stateAbbr}</p>
+    </div>
   </section>
-  <ProgramCards slugs={slugs} headline="" />
+  <Programs slugs={slugs} headline="" />
   <CTABand headline="Not sure which program is right for you?" ctaLabel={business.primaryCta.label} ctaUrl={business.primaryCta.url} />
 </GymLayout>

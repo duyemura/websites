@@ -101,7 +101,17 @@ export const ExtractPageSchema = z.object({
     navLinks: z.array(z.object({ label: z.string(), href: z.string() })).default([]),
     meta: z.record(z.string(), z.string()).default({}),
     jsonLd: z.array(z.unknown()).default([]),
-    iframes: z.array(z.object({ src: z.string(), kind: z.enum(["map", "schedule", "form", "video", "other"]) })).default([]),
+    iframes: z.array(z.object({
+      src: z.string(),
+      width: z.string().optional(),
+      height: z.string().optional(),
+      title: z.string().optional(),
+      sandbox: z.string().optional(),
+      style: z.string().optional(),
+      allow: z.string().optional(),
+      referrerpolicy: z.string().optional(),
+      loading: z.enum(["eager", "lazy"]).optional(),
+    })).default([]),
     videos: z.array(z.object({ src: z.string(), poster: z.string().optional() })).default([]),
     primaryCta: z.object({ label: z.string(), href: z.string() }).optional(),
     lottieUrls: z.array(z.string()).default([]),
@@ -314,11 +324,14 @@ export type VerifyArtifact = z.infer<typeof VerifyArtifactSchema>;
 export const REBUILD_STAGES = ["extract", "segment", "contract", "docgen", "build", "verify"] as const;
 export type RebuildStage = (typeof REBUILD_STAGES)[number];
 
-export const MIRROR_STAGES = ["mirror-crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;
+export const MIRROR_STAGES = ["crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;
 export type MirrorPipelineStage = (typeof MIRROR_STAGES)[number];
 
 export const ENRICHMENT_STAGES = ["enrich"] as const;
 export type EnrichmentStage = (typeof ENRICHMENT_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES] as const;
+export const CONTENT_STAGES = ["content"] as const;
+export type ContentStage = (typeof CONTENT_STAGES)[number];
+
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];

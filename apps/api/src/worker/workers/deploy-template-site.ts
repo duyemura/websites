@@ -4,7 +4,8 @@ import type { Job } from "bullmq";
 import path from "node:path";
 import { getS3Client } from "../../s3";
 import { deployTemplate } from "../../services/template/deploy-template";
-import { publishSiteVersion } from "../../services/site-versions";
+import { promoteDeploy } from "../../services/mirror/deploy";
+import { invalidatePreviewCache } from "../../services/mirror/cloudfront";
 import type { QueueConfig } from "../../bullmq";
 
 function deployTemplateSiteProcessor(fastify: FastifyInstance) {
@@ -38,18 +39,22 @@ function deployTemplateSiteProcessor(fastify: FastifyInstance) {
       apiBaseUrl: config.CDN_BASE_URL,
       siteUrl: site.customDomain
         ? `https://${site.customDomain}`
-        : `${config.CDN_BASE_URL}/sites/${siteUuid}/current`,
+        : `${config.CDN_BASE_URL}/sites/${siteUuid}`,
       rendererDir,
+      googleMapsApiKey: config.GOOGLE_PLACES_API_KEY,
       log: {
         info: (o, m) => fastify.log.info(o, m),
         warn: (o, m) => fastify.log.warn(o, m),
       },
     });
 
-    // Auto-publish so the new build goes live immediately
-    await publishSiteVersion(fastify.db, s3Client, bucket, siteUuid, result.version);
-
-    fastify.log.info({ jobId: job.id, siteUuid, version: result.version }, "deploy-template worker finished");
+    // Promote the immutable deploy to staging so the preview URL reflects the latest build.
+    await promoteDeploy(s3Client, bucket, siteUuid, result.deployPrefix);
+    await invalidatePreviewCache(config.CLOUDFRONT_DISTRIBUTION_ID);
+    fastify.log.info(
+      { jobId: job.id, siteUuid, version: result.version, deployPrefix: result.deployPrefix },
+      "deploy-template worker finished; staging promoted and preview cache invalidated",
+    );
     return { version: result.version, deployPrefix: result.deployPrefix };
   };
 }

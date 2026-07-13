@@ -79,10 +79,25 @@ export interface PageContent {
   legal: LegalPage[];
 }
 
+export interface IframeEmbed {
+  src: string;                       // iframe src URL
+  /** Template-defined variant that controls default styling (review, schedule, form, video, default). */
+  variant?: string;
+  title?: string;                    // accessible title / optional section heading
+  width?: string;                    // CSS width override
+  height?: string;                   // CSS height override (e.g. "500px", "60vh")
+  sandbox?: string;                  // explicit sandbox policy
+  style?: string;                    // inline style overrides
+  allow?: string;                    // iframe allow attribute
+  referrerpolicy?: string;           // iframe referrer policy, e.g. "no-referrer", "origin"
+  loading?: "eager" | "lazy";        // iframe loading strategy
+}
+
 export interface HomeContent {
   hero: HeroContent;
   valueProps: ValueProp[];
   programsHeadline: string;
+  programsSubheadline?: string;      // supporting line under programs headline
   featuredPrograms: string[];        // program slugs
   features: Feature[];               // FeatureGrid items
   communityHeadline: string;         // "A community that will keep you going"
@@ -92,6 +107,9 @@ export interface HomeContent {
   howItWorksHeadline: string;
   testimonials: Testimonial[];
   faq: FAQItem[];
+  iframes?: IframeEmbed[];            // third-party iframe widgets captured from source or added by admin
+  ctaSubtext?: string;               // supporting copy under bottom CTA headline
+  ctaHeadline?: string;              // distinct bottom CTA headline (falls back to trustHeadline)
   richContent?: RichContentSection[];
 }
 
@@ -109,6 +127,7 @@ export interface ProgramContent {
   gettingStarted: Step[];
   testimonials: Testimonial[];
   faq: FAQItem[];
+  iframes?: IframeEmbed[];            // program-page third-party iframe widgets
   richContent?: RichContentSection[];
 }
 
@@ -116,6 +135,7 @@ export interface AboutContent {
   hero: HeroContent;
   gymStory: string;                  // markdown allowed
   team: TeamMember[];
+  iframes?: IframeEmbed[];
   richContent?: RichContentSection[];
 }
 
@@ -123,6 +143,7 @@ export interface PricingContent {
   hero: HeroContent;
   grid?: PricingGridContent;
   form?: { headline: string; intro: string };
+  iframes?: IframeEmbed[];
 }
 export interface PricingGridContent { headline?: string; subheading?: string; plans: PricingPlan[] }
 export interface PricingPlan {
@@ -131,12 +152,13 @@ export interface PricingPlan {
   highlighted?: boolean; badge?: string;
 }
 
-export interface ContactContent { hero: HeroContent; intro?: string }
+export interface ContactContent { hero: HeroContent; intro?: string; iframes?: IframeEmbed[] }
+
 
 export interface ScheduleContent {
   hero: HeroContent;
-  widgetEmbedHtml?: string;          // PushPress booking widget embed
   note?: string;
+  iframes?: IframeEmbed[];            // booking/schedule widgets rendered as generic iframe embeds
 }
 
 export interface BlogContent { heroHeadline: string; posts: BlogPost[] }
@@ -166,6 +188,8 @@ export interface ValueProp { icon: string; headline: string; body: string }
 export interface Feature {
   icon: string;
   label: string;
+  /** URL for an optional background image rendered behind the amenity card. */
+  imageUrl?: string;
   /** Renderer-only layout hints from the section contract. */
   position?: { col?: number; row?: number };
   background?: "accent" | "dark" | "transparent" | "image";

@@ -31,7 +31,7 @@ export interface CapturedPage {
     navLinks: Array<{ label: string; href: string }>;
     meta: Record<string, string>;
     jsonLd: unknown[];
-    iframes: Array<{ src: string; kind: "map" | "schedule" | "form" | "video" | "other" }>;
+    iframes: Array<{ src: string; width?: string; height?: string; title?: string; sandbox?: string; style?: string; allow?: string; referrerpolicy?: string; loading?: "eager" | "lazy" }>;
     videos: Array<{ src: string; poster?: string }>;
     primaryCta?: { label: string; href: string };
     lottieUrls: string[];
@@ -391,13 +391,33 @@ const EXTRACT_CONTENT_SCRIPT = String.raw`(function() {
     jsonLd: jsonLd,
     primaryCta: primaryCta,
     iframes: Array.from(document.querySelectorAll("iframe[src]")).map(function(f) {
-      var src = f.getAttribute("src") || "";
-      var kind = /google\.[^/]*\/maps|maps\.google/.test(src) ? "map"
-        : /calendly|schedule|booking|zenplanner|wodify|pushpress/.test(src) ? "schedule"
-        : /typeform|jotform|forms\./.test(src) ? "form"
-        : /youtube|vimeo|wistia/.test(src) ? "video"
-        : "other";
-      return { src: src, kind: kind };
+      function attr(name) {
+        var v = f.getAttribute(name);
+        return v === null ? undefined : v;
+      }
+      function styleProp(name) {
+        var v = (f.style && f.style[name]) || getComputedStyle(f)[name];
+        return v && v !== "auto" ? v : undefined;
+      }
+      var sandbox = attr("sandbox");
+      if (sandbox !== undefined) {
+        sandbox = sandbox.replace(/\s+/g, " ").trim();
+      }
+      var loading = attr("loading");
+      if (loading !== "eager" && loading !== "lazy") {
+        loading = undefined;
+      }
+      return {
+        src: f.getAttribute("src") || "",
+        width: attr("width") || styleProp("width") || undefined,
+        height: attr("height") || styleProp("height") || undefined,
+        title: attr("title") || f.getAttribute("aria-label") || undefined,
+        sandbox: sandbox,
+        style: f.getAttribute("style") || undefined,
+        allow: attr("allow") || undefined,
+        referrerpolicy: attr("referrerpolicy") || undefined,
+        loading: loading,
+      };
     }),
     videos: Array.from(document.querySelectorAll("video"))
       .map(function(v) {
@@ -529,14 +549,23 @@ export async function extractNavData(page: Page): Promise<ExtractedNav | null> {
     // ---- logo ----
     var navRect = navEl.getBoundingClientRect();
     var allImgs = Array.from(navEl.querySelectorAll("img"));
+    var WIDGET_DENY = ["bugherd.com", "intercom", "zendesk", "crisp.chat", "crisp.im", "freshchat", "hubspot.com", "hs-scripts.com", "js.hs-scripts.com", "livechatinc.com", "chat-widget", "usemessages.com", "termly.io", "cookiebot.com", "usercentrics.eu", "reviews.io", "trustpilot.com", "feefo.com", "google.com", "gstatic.com", "googletagmanager.com", "doubleclick.net", "recaptcha", "klaviyo.com", "mailchimp.com", "chimpstatic.com"];
+    function isWidgetImg(src) {
+      var s = (src || "").toLowerCase();
+      return WIDGET_DENY.some(function(d) { return s.indexOf(d) !== -1; });
+    }
     var logoImg = null;
     for (var li = 0; li < allImgs.length; li++) {
       var ir = allImgs[li].getBoundingClientRect();
-      if (ir.width > 8 && ir.height > 8 && ir.left < navRect.left + navRect.width * 0.4) {
+      if (ir.width > 24 && ir.height > 24 && ir.left < navRect.left + navRect.width * 0.4 && !isWidgetImg(allImgs[li].src)) {
         logoImg = allImgs[li]; break;
       }
     }
-    if (!logoImg && allImgs.length > 0) logoImg = allImgs[0];
+    if (!logoImg) {
+      for (var li = 0; li < allImgs.length; li++) {
+        if (!isWidgetImg(allImgs[li].src)) { logoImg = allImgs[li]; break; }
+      }
+    }
 
     var logo;
     if (logoImg) {

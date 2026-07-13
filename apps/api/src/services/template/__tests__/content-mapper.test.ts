@@ -6,6 +6,8 @@ import {
   extractNavigation,
   extractPages,
   classifyPage,
+  sanitizeInternalUrl,
+  sanitizeContentCtas,
 } from "../content-mapper";
 import type { DesignSystemV2 } from "../../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../../types/site-hierarchy";
@@ -90,9 +92,9 @@ describe("extractBrand", () => {
   test("maps design-system tokens to BrandTokens", () => {
     const warnings: string[] = [];
     const brand = extractBrand(DS, warnings);
-    expect(brand.primaryColor).toBe("#e63946");
+    expect(brand.primaryColor).toBe("#0d0d0d");
     expect(brand.secondaryColor).toBe("#0d0d0d");
-    expect(brand.accentColor).toBe("#f1f1f1");
+    expect(brand.accentColor).toBe("#e63946");
     expect(brand.headingFont).toBe("Barlow Condensed");
     expect(brand.bodyFont).toBe("Inter");
     expect(brand.logoUrl).toBe("https://cdn.example.com/logo.png");
@@ -115,11 +117,12 @@ describe("extractBrand", () => {
       brand: { logo: { type: "text", value: "KSA" }, headingStyle: { uppercase: false, bold: false } },
     };
     const brand = extractBrand(sparse, warnings);
-    expect(brand.primaryColor).toBe(DEFAULT_TEMPLATE_TOKENS.colors.primary);
+    expect(brand.primaryColor).toBe("#0d0d0d");
     expect(brand.headingFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.heading);
     expect(brand.bodyFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.body);
     expect(brand.logoUrl).toBe("");
-    expect(warnings.some((w) => w.includes("primaryColor"))).toBe(true);
+    expect(warnings.some((w) => w.includes("headingFont"))).toBe(true);
+    expect(warnings.some((w) => w.includes("bodyFont"))).toBe(true);
   });
 });
 
@@ -246,6 +249,98 @@ describe("extractNavigation", () => {
   });
 });
 
+describe("sanitizeInternalUrl", () => {
+  const allowed = new Set(["/", "/about", "/contact", "/programs", "/programs/group-strength"]);
+
+  test("preserves external URLs, anchors, mailto, and tel", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("https://example.com", allowed, "/contact", warnings, "test")).toBe("https://example.com");
+    expect(sanitizeInternalUrl("mailto:hi@gym.com", allowed, "/contact", warnings, "test")).toBe("mailto:hi@gym.com");
+    expect(sanitizeInternalUrl("tel:5551234", allowed, "/contact", warnings, "test")).toBe("tel:5551234");
+    expect(sanitizeInternalUrl("#faq", allowed, "/contact", warnings, "test")).toBe("#faq");
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("preserves valid internal paths", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("/about", allowed, "/contact", warnings, "test")).toBe("/about");
+    expect(sanitizeInternalUrl("/programs/group-strength", allowed, "/contact", warnings, "test")).toBe("/programs/group-strength");
+    expect(sanitizeInternalUrl("/programs/", allowed, "/contact", warnings, "test")).toBe("/programs/");
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("replaces invalid internal paths with fallback and warns", () => {
+    const warnings: string[] = [];
+    expect(sanitizeInternalUrl("/programs/get-started", allowed, "/contact", warnings, "hero")).toBe("/contact");
+    expect(sanitizeInternalUrl("/drop-in", allowed, "/contact", warnings, "hero")).toBe("/contact");
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("/programs/get-started");
+  });
+});
+
+describe("sanitizeContentCtas", () => {
+  test("sanitizes stale business.primaryCta.url and all hero CTAs", () => {
+    const warnings: string[] = [];
+    const business = {
+      name: "KSA",
+      tagline: "Train hard.",
+      address: { street: "", city: "Torrance", state: "CA", zip: "90505" },
+      phone: "",
+      email: "",
+      hours: [],
+      primaryCta: { label: "Get Started", url: "/programs/get-started" },
+      geo: { city: "Torrance", state: "California", stateAbbr: "CA" },
+    } as any;
+    const pages = {
+      home: { hero: { headline: "", ctaLabel: "Join", ctaUrl: "/drop-in" }, valueProps: [], programsHeadline: "", featuredPrograms: [], features: [], communityHeadline: "", communityProps: [], trustHeadline: "", howItWorks: [], howItWorksHeadline: "", testimonials: [], faq: [] },
+      programs: [{ slug: "group-strength", name: "Group Strength", shortDescription: "", coverImageUrl: "", hero: { headline: "", ctaUrl: "/programs/get-started" }, whatIsIt: { headline: "", body: "" }, whatMakesUsDifferent: [], whatToExpect: { headline: "", steps: [] }, whoIsItFor: [], gettingStarted: [], testimonials: [], faq: [] }],
+      about: { hero: { headline: "" }, gymStory: "", team: [] },
+      pricing: { hero: { headline: "" } },
+      contact: { hero: { headline: "" } },
+      schedule: { hero: { headline: "" } },
+      blog: { heroHeadline: "", posts: [] },
+      legal: [],
+    } as any;
+
+    sanitizeContentCtas(pages, business, warnings);
+
+    expect(business.primaryCta.url).toBe("/contact");
+    expect(pages.home.hero.ctaUrl).toBe("/contact");
+    expect(pages.programs[0].hero.ctaUrl).toBe("/contact");
+    expect(warnings.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("preserves valid internal program-page CTAs", () => {
+    const warnings: string[] = [];
+    const business = {
+      name: "KSA",
+      tagline: "Train hard.",
+      address: { street: "", city: "Torrance", state: "CA", zip: "90505" },
+      phone: "",
+      email: "",
+      hours: [],
+      primaryCta: { label: "Free tour", url: "/contact" },
+      geo: { city: "Torrance", state: "California", stateAbbr: "CA" },
+    } as any;
+    const pages = {
+      home: { hero: { headline: "", ctaUrl: "/programs/group-strength" }, valueProps: [], programsHeadline: "", featuredPrograms: [], features: [], communityHeadline: "", communityProps: [], trustHeadline: "", howItWorks: [], howItWorksHeadline: "", testimonials: [], faq: [] },
+      programs: [{ slug: "group-strength", name: "Group Strength", shortDescription: "", coverImageUrl: "", hero: { headline: "", ctaUrl: "/contact" }, whatIsIt: { headline: "", body: "" }, whatMakesUsDifferent: [], whatToExpect: { headline: "", steps: [] }, whoIsItFor: [], gettingStarted: [], testimonials: [], faq: [] }],
+      about: { hero: { headline: "" }, gymStory: "", team: [] },
+      pricing: { hero: { headline: "" } },
+      contact: { hero: { headline: "" } },
+      schedule: { hero: { headline: "" } },
+      blog: { heroHeadline: "", posts: [] },
+      legal: [],
+    } as any;
+
+    sanitizeContentCtas(pages, business, warnings);
+
+    expect(warnings).toHaveLength(0);
+    expect(pages.home.hero.ctaUrl).toBe("/programs/group-strength");
+    expect(pages.programs[0].hero.ctaUrl).toBe("/contact");
+  });
+});
+
 describe("extractPages", () => {
   test("maps home hero from hero section", () => {
     const warnings: string[] = [];
@@ -352,5 +447,47 @@ describe("extractPages", () => {
     expect(pages.programs[0].slug).toBe("crossfit");
     expect(pages.programs[0].hero.headline).toBe("CrossFit in Torrance");
     expect(pages.programs[0].coverImageUrl).toBe("https://cdn.example.com/cf.jpg");
+  });
+
+  test("uses hierarchy hero when distinct about/pricing/contact/schedule pages exist", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+      {
+        slug: "about",
+        title: "Our Story",
+        sections: [{
+          id: "s1", tag: "hero", intent: "hero", evidenceId: "e1",
+          content: { heading: "Built in Torrance" },
+        }],
+      },
+      {
+        slug: "pricing",
+        title: "Memberships",
+        sections: [{
+          id: "s2", tag: "hero", intent: "hero", evidenceId: "e2",
+          content: { heading: "Simple rates" },
+        }],
+      },
+    ]);
+    const biz = { name: "KSA", primaryCta: { label: "Join", url: "/contact" }, geo: { city: "Torrance", state: "California", stateAbbr: "CA" } };
+    const pages = extractPages(h, biz as any, warnings);
+    expect(pages.about.hero.headline).toBe("Built in Torrance");
+    expect(pages.pricing.hero.headline).toBe("Simple rates");
+  });
+
+  test("falls back to contextual hero copy when hierarchy lacks distinct pages", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      { slug: "", isHomePage: true, title: "Home", sections: [] },
+    ]);
+    const biz = { name: "KSA", primaryCta: { label: "Join", url: "/contact" }, geo: { city: "Torrance", state: "California", stateAbbr: "CA" } };
+    const pages = extractPages(h, biz as any, warnings);
+    expect(pages.about.hero.headline).toBe("About KSA in Torrance, CA");
+    expect(pages.pricing.hero.headline).toBe("Memberships and rates in Torrance, CA");
+    expect(pages.contact.hero.headline).toBe("Visit us in Torrance, CA");
+    expect(pages.schedule.hero.headline).toBe("Class schedule in Torrance, CA");
+    expect(pages.localGuide?.hero.headline).toBe("Your fitness guide to Torrance, CA");
+    expect(pages.about.hero.backgroundImageUrl).toBe("__NO_IMAGE__");
   });
 });

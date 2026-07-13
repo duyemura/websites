@@ -2,19 +2,23 @@
 // Exported separately so tests can import without triggering milo.ts's top-level main() call.
 
 export type MiloCommand =
-  | { cmd: "join"; url: string; theme?: "baseline" | "impact" | "beanburito"; tier: "free" | "paid"; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "new"; url: string; theme?: "baseline" | "impact" | "beanburito"; tier: "free" | "paid"; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "upgrade"; site: string; theme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "rebuild"; site: string; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "rebuild"; site: string; theme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "page"; site: string; path: string; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "eval"; site: string; verbose: boolean; quiet: boolean }
+  | { cmd: "eval"; site: string; path?: string; url?: string; keywords?: string[]; verbose: boolean; quiet: boolean }
+  | { cmd: "eval-fix"; site?: string; evalUuid?: string; path?: string; url?: string; keywords?: string[]; verbose: boolean; quiet: boolean; scoreThreshold?: number; maxLoops?: number }
+  | { cmd: "publish"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean };
 
 export const PIPELINES = {
-  join:    ["enrich", "clone", "docgen", "content"] as const,
-  upgrade: ["generate", "template", "publish"] as const,
-  rebuild: ["generate", "template", "publish"] as const,
+  // Build pipelines stage to staging only. Publishing to production is a
+  // separate explicit `milo publish --site <uuid>` step.
+  new:     ["enrich", "crawl", "docgen", "content", "generate", "template", "template-eval", "eval"] as const,
+  upgrade: ["generate", "template", "template-eval", "eval"] as const,
+  rebuild: ["generate", "template", "template-eval", "eval"] as const,
 } as const;
 
 export function parseArgs(): MiloCommand {
@@ -27,20 +31,22 @@ export function parseArgs(): MiloCommand {
   const has = (flag: string) => argv.includes(`--${flag}`);
   const bool = { verbose: has("verbose"), force: has("force"), quiet: has("quiet") };
 
-  if (subcommand === "join") {
+  if (subcommand === "new") {
     const url = get("url");
-    if (!url) throw new Error("milo join requires --url <url>");
-    return { cmd: "join", url, theme: get("theme") as "baseline" | "impact" | "beanburito" | undefined, tier: (get("tier") ?? "free") as "free" | "paid", ...bool };
+    if (!url) throw new Error("milo new requires --url <url>");
+    // Default new sites to the beanburito template; override with --theme.
+    return { cmd: "new", url, theme: (get("theme") ?? "beanburito") as "baseline" | "impact" | "beanburito", tier: (get("tier") ?? "free") as "free" | "paid", ...bool };
   }
   if (subcommand === "upgrade") {
     const site = get("site");
     if (!site) throw new Error("milo upgrade requires --site <uuid>");
-    return { cmd: "upgrade", site, theme: get("theme") as "baseline" | "impact" | "beanburito" | undefined, ...bool };
+    // Default upgrades to beanburito unless an explicit theme is requested.
+    return { cmd: "upgrade", site, theme: (get("theme") ?? "beanburito") as "baseline" | "impact" | "beanburito", ...bool };
   }
   if (subcommand === "rebuild") {
     const site = get("site");
     if (!site) throw new Error("milo rebuild requires --site <uuid>");
-    return { cmd: "rebuild", site, ...bool };
+    return { cmd: "rebuild", site, theme: get("theme") as "baseline" | "impact" | "beanburito" | undefined, ...bool };
   }
   if (subcommand === "page") {
     const site = get("site");
@@ -52,7 +58,44 @@ export function parseArgs(): MiloCommand {
   if (subcommand === "eval") {
     const site = get("site");
     if (!site) throw new Error("milo eval requires --site <uuid>");
-    return { cmd: "eval", site, ...bool };
+    const keywords = get("keywords");
+    return {
+      cmd: "eval",
+      site,
+      path: get("path") ?? "/",
+      url: get("url"),
+      keywords: keywords ? keywords.split(",").map((s) => s.trim()) : undefined,
+      ...bool,
+    };
+  }
+  if (subcommand === "eval-fix") {
+    const site = get("site");
+    if (!site) throw new Error("milo eval-fix requires --site <uuid>");
+    const evalUuid = get("eval-uuid");
+    const path = get("path");
+    const url = get("url");
+    const keywords = get("keywords");
+    if (!evalUuid && !path) {
+      throw new Error("milo eval-fix requires --site <uuid> with --eval-uuid <uuid> or --path /slug");
+    }
+    const scoreThresholdStr = get("score-threshold");
+    const maxLoopsStr = get("max-loops");
+    return {
+      cmd: "eval-fix",
+      site,
+      evalUuid,
+      path,
+      url,
+      keywords: keywords ? keywords.split(",").map((s) => s.trim()) : undefined,
+      scoreThreshold: scoreThresholdStr ? Number(scoreThresholdStr) : undefined,
+      maxLoops: maxLoopsStr ? Number(maxLoopsStr) : undefined,
+      ...bool,
+    };
+  }
+  if (subcommand === "publish") {
+    const site = get("site");
+    if (!site) throw new Error("milo publish requires --site <uuid>");
+    return { cmd: "publish", site, ...bool };
   }
   if (subcommand === "nav") {
     const site = get("site");
@@ -89,11 +132,13 @@ export function parseArgs(): MiloCommand {
   throw new Error(
     `Unknown command: "${subcommand ?? "(none)"}"\n` +
     `Usage:\n` +
-    `  milo join    --url <url> [--theme x] [--tier free|paid]\n` +
+    `  milo new     --url <url> [--theme x] [--tier free|paid]\n` +
     `  milo upgrade --site <uuid> [--theme x]\n` +
-    `  milo rebuild --site <uuid>\n` +
+    `  milo rebuild --site <uuid> [--theme x]\n` +
+    `  milo publish --site <uuid>\n` +
     `  milo page    --site <uuid> --path /slug\n` +
-    `  milo eval    --site <uuid>\n` +
+    `  milo eval    --site <uuid> [--path /slug] [--url <url>] [--keywords k1,k2]\n` +
+    `  milo eval-fix --site <uuid> --eval-uuid <uuid> | --path /slug [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
     `  milo nav     --site <uuid>\n` +
     `  milo restore --site <uuid> --version <n>\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,

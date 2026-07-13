@@ -50,6 +50,7 @@ export const DesignSystemV2Schema = z.object({
     shell: z.object({
       header: SiteSectionSchema.optional(),
       footer: SiteSectionSchema.optional(),
+      navLinks: z.array(z.object({ label: z.string(), href: z.string() })).optional(),
     }),
     rules: z.object({
       spacing: z.string().optional(),
@@ -103,6 +104,7 @@ export interface DesignSystemV2 {
     shell: {
       header?: SiteSection; // SiteHeader only
       footer?: SiteSection; // SiteFooter only
+      navLinks?: { label: string; href: string }[];
     };
     rules: {
       spacing?: string;

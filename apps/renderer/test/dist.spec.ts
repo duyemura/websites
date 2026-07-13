@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { loadPage, gym, builtCss, jsonLd, readDist, distExists } from "./helpers";
 
+function asSchema(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+function asSchemas(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+}
+
 describe("layout skeleton", () => {
   it("homepage renders with gym name in title and exact hero headline", () => {
     const $ = loadPage("index.html");
@@ -43,8 +51,10 @@ describe("SEO layer", () => {
     expect(lb).toBeTruthy();
     expect(lb!["name"]).toBe(gym.business.name);
     expect(lb!["telephone"]).toBe(gym.business.phone);
-    expect((lb!["geo"] as any).latitude).toBe(gym.business.coordinates.lat);
-    expect((lb!["aggregateRating"] as any).reviewCount).toBe(String(gym.business.aggregateRating.reviewCount));
+    expect(asSchema(lb!["geo"])["latitude"]).toBe(gym.business.coordinates.lat);
+    expect(asSchema(lb!["aggregateRating"])["reviewCount"]).toBe(
+      String(gym.business.aggregateRating.reviewCount),
+    );
     expect(lb!["sameAs"]).toContain(gym.business.social.facebook);
     expect((lb!["areaServed"] as string[])).toContain(gym.business.serviceArea[0]);
     expect(lb!["description"]).toBe(gym.business.tagline);
@@ -105,10 +115,11 @@ describe("homepage", () => {
   it("renders FAQ as accessible details/summary and emits FAQPage schema", () => {
     const $ = loadPage("index.html");
     expect($("details.faq-item").length).toBe(gym.pages.home.faq.length);
-    const faq = jsonLd($).find((s) => s["@type"] === "FAQPage") as any;
+    const faq = asSchema(jsonLd($).find((s) => s["@type"] === "FAQPage"));
     expect(faq).toBeTruthy();
-    expect(faq.mainEntity.length).toBe(gym.pages.home.faq.length);
-    expect(faq.mainEntity[0].name).toBe(gym.pages.home.faq[0].question);
+    const faqMainEntity = asSchemas(faq["mainEntity"]);
+    expect(faqMainEntity.length).toBe(gym.pages.home.faq.length);
+    expect(asSchema(faqMainEntity[0])["name"]).toBe(gym.pages.home.faq[0].question);
   });
 
   it("renders the location section with address, directions link, and map embed", () => {
@@ -134,11 +145,11 @@ describe("program pages", () => {
     const firstProgram = gym.pages.programs[0];
     const $ = loadPage(`programs/${firstProgram.slug}/index.html`);
     const schemas = jsonLd($);
-    const service = schemas.find((s) => s["@type"] === "Service") as any;
-    expect(service.name).toBe(firstProgram.name);
-    expect(service.areaServed.map((a: any) => a.name)).toContain(gym.business.serviceArea[0]);
-    const crumbs = schemas.find((s) => s["@type"] === "BreadcrumbList") as any;
-    expect(crumbs.itemListElement[2].name).toBe(firstProgram.name);
+    const service = asSchema(schemas.find((s) => s["@type"] === "Service"));
+    expect(service["name"]).toBe(firstProgram.name);
+    expect(asSchemas(service["areaServed"]).map((a) => a["name"])).toContain(gym.business.serviceArea[0]);
+    const crumbs = asSchema(schemas.find((s) => s["@type"] === "BreadcrumbList"));
+    expect(asSchemas(crumbs["itemListElement"])[2]?.["name"]).toBe(firstProgram.name);
   });
 
   it("renders differentiators, class structure, and program FAQ with schema", () => {
@@ -168,9 +179,9 @@ describe("about / contact / schedule", () => {
     expect(form.find('input[name="email"]').length).toBe(1);
   });
 
-  it("schedule embeds the booking widget html", () => {
+  it("schedule embeds the iframe band", () => {
     const $ = loadPage("schedule/index.html");
-    expect($("#fixture-booking-widget").length).toBe(1);
+    expect($('iframe[src*="schedule"]').length).toBeGreaterThan(0);
   });
 });
 
@@ -206,9 +217,9 @@ describe("blog + wells + utility pages", () => {
     const $ = loadPage(`blog/${post.slug}/index.html`);
     expect($("body").text()).toContain("Why now?");
     expect($("article img").length).toBeGreaterThan(0);
-    const schema = jsonLd($).find((s) => s["@type"] === "BlogPosting") as any;
-    expect(schema.headline).toBe(post.title);
-    expect(schema.datePublished).toBe(post.publishedAt);
+    const schema = asSchema(jsonLd($).find((s) => s["@type"] === "BlogPosting"));
+    expect(schema["headline"]).toBe(post.title);
+    expect(schema["datePublished"]).toBe(post.publishedAt);
   });
 
   it("local guide renders rich content sections", () => {

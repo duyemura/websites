@@ -12,7 +12,9 @@ import FooterImpact from "../components/chrome/FooterImpact.astro";
 import HeaderBeanburito from "../components/chrome/HeaderBeanburito.astro";
 import FooterBeanburito from "../components/chrome/FooterBeanburito.astro";
 import CookieBannerImpact from "../components/chrome/CookieBannerImpact.astro";
+import CookieBannerBeanburito from "../components/chrome/CookieBannerBeanburito.astro";
 import StickyCTA from "../components/chrome/StickyCTA.astro";
+import { getTemplateSpec } from "@ploy-gyms/shared-types";
 
 interface Props {
   title?: string;
@@ -52,8 +54,16 @@ const rootCss = [
   `--color-accent: ${sanitize(brand.accentColor)};`,
   `--font-heading: '${sanitize(brand.headingFont)}',sans-serif;`,
   `--font-body: '${sanitize(brand.bodyFont)}',sans-serif;`,
+  `--brand-accent: ${sanitize(brand.accentColor)};`,
   `}`,
 ].join("");
+
+// Resolve template-registered head assets and body classes from the spec.
+// This keeps GymLayout template-agnostic: each template declares what it needs.
+const templateSpec = getTemplateSpec(meta.templateTheme ?? "baseline");
+const headAssets = templateSpec?.headAssets ?? [];
+const bodyClasses = templateSpec?.bodyClasses ?? ["bg-white"];
+
 ---
 <!doctype html>
 <html lang="en">
@@ -71,12 +81,17 @@ const rootCss = [
     <style is:inline set:html={rootCss}></style>
     <Tracking />
     {image && image !== NO_IMAGE && <link rel="preload" as="image" href={image} fetchpriority="high" />}
-    {isBeanburito && <link rel="stylesheet" href="/styles/beanburito.css" />}
+    {headAssets.map((asset) => {
+      if (asset.tag === "link") return <link {...asset.attrs} />;
+      if (asset.tag === "style") return <style is:inline set:html={asset.innerHtml ?? ""} />;
+      if (asset.tag === "script") return <script is:inline set:html={asset.innerHtml ?? ""} />;
+      return null;
+    })}
     <link rel="icon" href={brand.logoUrl !== NO_IMAGE ? brand.logoUrl : "/favicon.ico"} />
     <link rel="manifest" href="/site.webmanifest" />
     <slot name="head" />
   </head>
-  <body class:list={["font-body text-secondary", isBeanburito ? "bg-black" : "bg-white", isBeanburito && "theme-beanburito"]}>
+  <body class:list={["font-body text-secondary", ...bodyClasses]}>
     <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-white">Skip to main content</a>
     {gtmId && (
       <noscript>
@@ -90,9 +105,10 @@ const rootCss = [
     <main id="main-content"><slot /></main>
     {isBeanburito ? <FooterBeanburito /> : isImpact ? <FooterImpact /> : <Footer />}
     <StickyCTA />
-    {isImpact && <CookieBannerImpact />}
+    {isBeanburito && <CookieBannerBeanburito />}
+      {isImpact && <CookieBannerImpact />}
     <!-- Hidden entity anchor for AI crawlers (AEO). Off-screen, NOT display:none. -->
-    <p class="sr-only">
+    <p class="sr-only" aria-hidden="true">
       {business.name} is a gym located at {business.address.street} in {business.geo.city}, {business.geo.stateAbbr}. {business.tagline}
     </p>
   </body>

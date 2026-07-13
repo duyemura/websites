@@ -1,0 +1,87 @@
+---
+import { content, programBySlug } from "../../../lib/content";
+import type { ProgramContent } from "../../../types/gym-content";
+const NO_IMAGE = "__NO_IMAGE__";
+const { slugs, headline, subheadline } = Astro.props as { slugs: string[]; headline?: string; subheadline?: string };
+if (!slugs?.length) return;
+const programs = slugs.map(programBySlug);
+const { business } = content;
+
+// Fallback gym photos distributed across program cards when the generate stage
+// did not assign a cover image. This is a last-resort renderer fallback; the
+// preferred fix is to populate coverImageUrl in gym.json during generation.
+const FALLBACK_PROGRAM_IMAGES: string[] = [
+  "/_assets/0fedc81a3875.jpg",
+  "/_assets/19ba40645487.jpg",
+  "/_assets/2d1429f5ff67.jpg",
+  "/_assets/2500ae664601.jpg",
+];
+
+function coverFor(program: ProgramContent): string | null {
+  if (program.coverImageUrl && program.coverImageUrl !== NO_IMAGE) return program.coverImageUrl;
+  const idx = [...program.slug].reduce((a, c) => a + c.charCodeAt(0), 0) % FALLBACK_PROGRAM_IMAGES.length;
+  return FALLBACK_PROGRAM_IMAGES[idx];
+}
+---
+<section data-section="programs" data-section-tag="content-block" class="section-straight bg-black py-20 text-white lg:py-28">
+  <div class="mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class="programs-layout flex flex-col gap-12 lg:flex-row lg:gap-20">
+      <article class="st-programs lg:sticky lg:top-32 lg:w-[19rem] lg:flex-shrink-0 lg:self-start">
+        {headline && (
+          <h2 class="font-heading text-4xl font-black uppercase leading-[0.95] tracking-tight text-white md:text-5xl">
+            {headline}
+          </h2>
+        )}
+        {subheadline && <p class="mt-4 text-lg text-white/80">{subheadline}</p>}
+        <a
+          href={business.primaryCta.url}
+          data-track="contact"
+          class="cta-skew mt-10 inline-flex items-center gap-4 bg-accent px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-[#0040a5]"
+        >
+          <span>{business.primaryCta.label}</span>
+          <svg width="12" height="18" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <path d="M1 1l5 5-5 5" />
+          </svg>
+        </a>
+      </article>
+
+      <div class="programs-list flex-1">
+        {programs.map((program: ProgramContent) => {
+          const coverUrl = coverFor(program);
+          return (
+            <a
+              href={`/programs/${program.slug}`}
+              class="program-card group"
+            >
+              {coverUrl && (
+                <div class="program-card-media">
+                  <img
+                    src={coverUrl}
+                    alt=""
+                    loading="lazy"
+                    onerror="this.closest('.program-card').classList.add('no-image')"
+                  />
+                </div>
+              )}
+              <div class="program-card-body relative">
+                <div class="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent lg:bg-gradient-to-l lg:from-transparent lg:via-black/40 lg:to-black/80" />
+                <div class="relative z-10">
+                  <h3 class="font-heading text-3xl font-black uppercase leading-[0.95] tracking-tight text-white md:text-4xl">
+                    {program.name}
+                  </h3>
+                  {program.shortDescription && <p class="mt-3 max-w-md text-white/80">{program.shortDescription}</p>}
+                  <span class="mt-5 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-white">
+                    View program details
+                    <svg width="12" height="18" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
+                      <path d="M1 1l5 5-5 5" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,88 @@
+---
+import { content } from "../../../lib/content";
+const { business } = content;
+
+// Skip the section entirely if we have neither an address nor a map.
+if (!business.address?.street && !business.mapEmbedUrl) return;
+
+const mapSearch = encodeURIComponent(
+  `${business.address.street}, ${business.address.city}, ${business.geo.stateAbbr} ${business.address.zip}`,
+);
+const phoneDigits = business.phone?.replace(/[^0-9+]/g, "");
+
+function firstSentence(text: string, maxChars = 140): string {
+  const sentence = text.split(/(?<=[.!?])\s+/, 1)[0]?.trim() ?? text;
+  if (sentence.length <= maxChars) return sentence;
+  const truncated = sentence.slice(0, maxChars).replace(/\s+\S*$/, "");
+  return `${truncated}…`;
+}
+
+const shortIntro = business.tagline
+  ? firstSentence(business.tagline)
+  : `Visit us in ${business.geo.city}. We'd love to show you around.`;
+---
+<section data-section="location" data-section-tag="location-block" class="section-skew bg-white text-black">
+  <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class="grid gap-10 lg:grid-cols-2 lg:items-stretch">
+      <div class="space-y-6">
+        <span class="inline-block bg-accent px-3 py-1 font-heading text-xs font-bold uppercase tracking-wide text-white">
+          {business.geo.city}
+        </span>
+        <h2 class="font-heading text-3xl font-black uppercase tracking-tight md:text-4xl lg:text-5xl">
+          Find us in {business.geo.city}
+        </h2>
+        <p class="max-w-md text-lg leading-relaxed text-black/80">
+          {shortIntro}
+        </p>
+
+        <address class="not-italic text-lg leading-relaxed text-black/80">
+          {business.address.street}<br />
+          {business.address.city}, {business.geo.stateAbbr} {business.address.zip}
+        </address>
+
+        {phoneDigits && (
+          <p class="text-lg">
+            <a href={`tel:${phoneDigits}`} class="text-accent hover:text-black">
+              {business.phone}
+            </a>
+          </p>
+        )}
+
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${mapSearch}`}
+          rel="noopener noreferrer"
+          target="_blank"
+          class="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-accent hover:text-black"
+        >
+          Get directions
+          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M1 1l5 5-5 5" />
+          </svg>
+        </a>
+
+        {business.serviceArea && business.serviceArea.length > 0 && (
+          <div class="pt-4">
+            <p class="text-sm font-bold uppercase tracking-wide text-black/60">Areas served</p>
+            <p class="mt-1 text-black/80">{business.serviceArea.join(", ")}</p>
+          </div>
+        )}
+      </div>
+
+      <div class="h-[360px] overflow-hidden bg-black/10 lg:h-[420px]">
+        {business.mapEmbedUrl ? (
+          <iframe
+            src={business.mapEmbedUrl}
+            class="h-full w-full border-0"
+            allowfullscreen
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            title={`Map to ${business.name}`}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          />
+        ) : (
+          <div class="flex h-full items-center justify-center text-black/50">Map unavailable</div>
+        )}
+      </div>
+    </div>
+  </div>
+</section>

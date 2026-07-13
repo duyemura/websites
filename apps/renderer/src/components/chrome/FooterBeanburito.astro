@@ -2,19 +2,43 @@
 import { content } from "../../lib/content";
 const NO_IMAGE = "__NO_IMAGE__";
 const { navigation, business, brand } = content;
-const socials = Object.entries(business.social ?? {}).filter(([, url]) => Boolean(url)) as [string, string][];
+const phoneDigits = business.phone?.replace(/[^0-9+]/g, "");
+const hasLogoImage = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
+// Only show social links that look real — never render placeholder URLs.
+const socials = Object.entries(business.social ?? {})
+  .filter(([, url]) => Boolean(url) && !/example\.com|yourgym|placeholder|\.test\//i.test(url)) as [string, string][];
 const programsGroup = navigation.footer.find((g) => /programs/i.test(g.label));
 const bottomPrograms = programsGroup?.links ?? [];
+// Avoid listing programs twice: render them in the bottom strip only.
+const footerGroups = navigation.footer.filter((g) => !/programs/i.test(g.label));
+const currentYear = new Date().getFullYear();
 ---
 <footer class="bg-black py-16 text-white">
   <div class="mx-auto max-w-[90rem] px-6 lg:px-10">
     <div class="grid gap-12 sm:grid-cols-2 lg:grid-cols-5">
       <div class="lg:col-span-2">
-        <a href="/" class="block h-12 w-40">
-          {brand.logoUrl !== NO_IMAGE && <img src={brand.logoUrl} alt={brand.logoAlt} class="h-full w-auto object-contain brightness-0 invert" loading="lazy" />}
+        <a href="/" class="block">
+          {hasLogoImage ? (
+            <img src={brand.logoUrl} alt={brand.logoAlt || business.name} width="160" height="48" class="h-12 w-auto object-contain brightness-0 invert" loading="lazy" />
+          ) : (
+            <span class="font-heading text-xl font-black uppercase tracking-tight text-white">
+              {business.name}
+            </span>
+          )}
         </a>
+        <address class="mt-4 not-italic text-sm leading-relaxed text-white/70">
+          {business.address.street}
+          <br />
+          {business.address.city}, {business.geo.stateAbbr} {business.address.zip}
+          {phoneDigits && (
+            <>
+              <br />
+              <a href={`tel:${phoneDigits}`} class="hover:text-white">{business.phone}</a>
+            </>
+          )}
+        </address>
         {socials.length > 0 && (
-          <ul class="mt-6 flex flex-wrap gap-4">
+          <ul class="mt-4 flex flex-wrap gap-4">
             {socials.map(([name, url]) => (
               <li>
                 <a href={url} rel="noopener noreferrer" target="_blank" class="text-sm font-semibold uppercase tracking-tight text-white/70 hover:text-white">
@@ -26,7 +50,7 @@ const bottomPrograms = programsGroup?.links ?? [];
         )}
       </div>
 
-      {navigation.footer.map((group) => (
+      {footerGroups.map((group) => (
         <div>
           <h3 class="font-heading text-sm font-bold uppercase tracking-wide text-white">{group.label}</h3>
           <ul class="mt-4 space-y-2">
@@ -41,15 +65,20 @@ const bottomPrograms = programsGroup?.links ?? [];
     </div>
 
     {bottomPrograms.length > 0 && (
-      <div class="mt-12 flex flex-wrap gap-x-6 gap-y-2 border-t border-white/10 pt-8">
-        {bottomPrograms.map((p) => (
-          <a href={p.href} class="text-sm font-semibold uppercase tracking-tight text-white/70 hover:text-white">{p.label}</a>
+      <div class="mt-12 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/10 pt-8">
+        {bottomPrograms.map((p, i) => (
+          <>
+            <a href={p.href} class="text-sm font-semibold uppercase tracking-tight text-white/70 hover:text-white">{p.label}</a>
+            {i < bottomPrograms.length - 1 && (
+              <span class="text-white/30" aria-hidden="true"> · </span>
+            )}
+          </>
         ))}
       </div>
     )}
 
     <div class="mt-10 text-center text-xs text-white/50">
-      ©2022 Copyright {business.name} | Site by PushPress
+      ©{currentYear} {business.name}. All rights reserved.
     </div>
   </div>
 </footer>

@@ -5,7 +5,7 @@
       if (window.gtag) window.gtag("event", gaEvent);
       else if (window.dataLayer) window.dataLayer.push({ event: gaEvent });
       if (window.fbq) window.fbq("track", fbEvent);
-    } catch (e) { /* never break the page for tracking */ }
+    } catch { /* never break the page for tracking */ }
   }
   document.addEventListener("click", function (e) {
     var el = e.target && e.target.closest && e.target.closest("[data-track]");

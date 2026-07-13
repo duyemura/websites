@@ -22,7 +22,7 @@ export const generateStage: StageRunner = {
 
     const siteUrl = site.customDomain
       ? `https://${site.customDomain}`
-      : `${ctx.config.CDN_BASE_URL}/sites/${site.uuid}/current`;
+      : `${ctx.config.CDN_BASE_URL}/sites/${site.uuid}`;
 
     const theme = ctx.templateTheme ?? "beanburito";
     ctx.log(`  Theme: ${theme}`);

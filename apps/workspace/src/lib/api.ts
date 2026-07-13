@@ -15,7 +15,7 @@ export function setAuthTokenGetter(
   authTokenGetter = getter;
 }
 
-async function getAuthToken(): Promise<string | null> {
+export async function getAuthToken(): Promise<string | null> {
   if (authTokenGetter) {
     const token = await authTokenGetter();
     if (token) return token;
@@ -67,14 +67,29 @@ export interface Site {
   name: string;
   status: "draft" | "published" | "archived";
   mode?: "replication" | "template" | "greenfield" | null;
+  tier?: "free" | "paid" | null;
   subdomain?: string | null;
   customDomain?: string | null;
   themeUuid?: string | null;
   sourceUrl?: string | null;
+  previewUrl?: string | null;
+  productionUrl?: string | null;
   defaultMetaTitle?: string | null;
   defaultMetaDescription?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SiteVersion {
+  uuid: string;
+  siteUuid: string;
+  workspaceUuid: string;
+  version: number;
+  kind: string;
+  deployPrefix: string;
+  label: string | null;
+  createdAt: string;
+  publishedAt: string | null;
 }
 
 export interface Doc {
@@ -199,28 +214,6 @@ export interface ScrapeSiteResult {
   screenshotAsset?: { uuid: string; url: string; storageKey: string } | null;
 }
 
-export interface GenerateSiteResult {
-  aiJobUuid: string;
-  attemptId: string;
-  status: string;
-}
-
-export interface ApprovePageResult {
-  approved: string;
-  remainingPagesEnqueued: string[];
-}
-
-export interface Deployment {
-  uuid: string;
-  buildId: string;
-  status: "building" | "failed" | "pending" | "success";
-  previewUrl: string | null;
-  artifactUrl: string | null;
-  metadata?: unknown | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface AiActivityResponse {
   activities: {
     uuid: string;
@@ -248,14 +241,6 @@ export interface AiActivityResponse {
   summary: { totalCostUsd: number; totalTokens: number; count: number };
 }
 
-export interface GenerateSiteOptions {
-  mode?: "replication" | "template" | "greenfield";
-  accuracy?: "fast" | "balanced" | "accurate";
-  maxQaIterations?: number;
-  maxBudgetUsd?: number;
-  fidelityThreshold?: number;
-}
-
 export type CreateAssetBody = Omit<
   Asset,
   "uuid" | "workspaceUuid" | "createdAt" | "signedUrl" | "mimeType"
@@ -263,77 +248,101 @@ export type CreateAssetBody = Omit<
   mimeType?: string;
 };
 
-export interface BuildStatus {
-  site: Site;
-  aiJob: {
-    uuid: string;
-    type: string;
-    status: string;
-    state: unknown;
-    steps: unknown;
-    createdAt: string;
-    updatedAt: string;
-  } | null;
-  deployment: {
-    uuid: string;
-    buildId: string;
-    status: string;
-    previewUrl: string | null;
-    artifactUrl: string | null;
-    metadata: unknown;
-    createdAt: string;
-    updatedAt: string;
-  } | null;
-  blueprint: {
-    build_plan: {
-      next_page: string;
-      page_status: Record<string, string>;
-      build_order: string[];
-    };
-  } | null;
-  aiActivity: {
-    uuid: string;
-    actionType: string;
-    outcome: string;
-    summary: string;
-    createdAt: string;
-    metadata: unknown;
-  }[];
+export interface PipelineStageStatus {
+  version: number;
+  createdAt: string;
+  stale: boolean;
 }
 
-export interface BuildCommandResponse {
-  reply: string;
-  action: string | null;
-  enqueued: boolean;
-  messages?: { role: "assistant" | "user"; content: string }[];
-  userMessage?: string;
+export interface PipelineStatus {
+  stages: {
+    extract: PipelineStageStatus | null;
+    segment: PipelineStageStatus | null;
+    contract: PipelineStageStatus | null;
+    docgen: PipelineStageStatus | null;
+    build: PipelineStageStatus | null;
+    verify: PipelineStageStatus | null;
+  };
+  scores: {
+    mechanicalFidelity: number;
+    visualFidelity: number;
+    masterFidelity: number;
+  } | null;
 }
+
+export interface PipelineArtifact {
+  version: number;
+  createdAt: string;
+  payload: unknown;
+}
+
+export interface PipelineFieldOption {
+  label: string;
+  value: string;
+}
+
+export interface PipelineField {
+  key: string;
+  label: string;
+  type: "text" | "number" | "select" | "multiselect" | "boolean" | "uuid";
+  required: boolean;
+  options?: PipelineFieldOption[];
+  hint?: string;
+  dependsOn?: { key: string; value: string };
+}
+
+export interface PipelineOptions {
+  stages: string[];
+  modes: string[];
+  fields: PipelineField[];
+}
+
+export interface CreateSiteBody {
+  name?: string;
+  slug?: string;
+  sourceUrl?: string;
+  mode?: "replication" | "template" | "greenfield";
+  tier?: "free" | "paid";
+  templateKey?: string;
+}
+
+export interface SiteFile {
+  key: string;
+  size: number;
+  lastModified: string | null;
+  url: string;
+  type: "html" | "css" | "js" | "image" | "video" | "font" | "favicon" | "other";
+}
+
+export interface JobStatus {
+  found: boolean;
+  queue?: string;
+  state?: string;
+  progress?: number;
+  returnvalue?: unknown;
+  failedReason?: string;
+  data?: unknown;
+}
+
+export interface PipelineRunBody {
+  url: string;
+  pages?: string[];
+  mode?: "replication" | "template" | "greenfield";
+  tier?: "free" | "paid";
+  contentSiteUuid?: string;
+  designSiteUuid?: string;
+}
+
 export const api = {
   getSites: () => fetchJson<Site[]>("/sites"),
   getSite: (uuid: string) => fetchJson<Site>(`/sites/${encodeURIComponent(uuid)}`),
-  createSite: (body: { name: string; slug: string; templateKey?: string }) =>
+  createSite: (body: CreateSiteBody) =>
     fetchJson<Site>("/sites", { method: "POST", body: JSON.stringify(body) }),
   scrapeSite: (body: { url: string; name?: string }) =>
     fetchJson<ScrapeSiteResult>("/sites/scrape", {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  generateSite: (siteUuid: string, options: GenerateSiteOptions = {}) =>
-    fetchJson<GenerateSiteResult>(
-      `/sites/${encodeURIComponent(siteUuid)}/generate`,
-      { method: "POST", body: JSON.stringify(options) },
-    ),
-  approvePage: (siteUuid: string, slug: string) =>
-    fetchJson<ApprovePageResult>(
-      `/sites/${encodeURIComponent(siteUuid)}/pages/${encodeURIComponent(slug)}/approve`,
-      { method: "POST" },
-    ),
-  listDeployments: (siteUuid: string) =>
-    fetchJson<Deployment[]>(
-      `/sites/${encodeURIComponent(siteUuid)}/deployments`,
-    ),
-  previewUrl: (siteUuid: string, attemptId: string) =>
-    `${API_BASE}/sites/${encodeURIComponent(siteUuid)}/preview/${encodeURIComponent(attemptId)}`,
   getSiteAiActivity: (siteUuid: string, options?: { actionType?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (options?.actionType) params.set("actionType", options.actionType);
@@ -342,13 +351,39 @@ export const api = {
       `/sites/${encodeURIComponent(siteUuid)}/ai-activity?${params.toString()}`,
     );
   },
-  getBuildStatus: (siteUuid: string) =>
-    fetchJson<BuildStatus>(`/sites/${encodeURIComponent(siteUuid)}/build-status`),
-  sendBuildCommand: (siteUuid: string, message: string) =>
-    fetchJson<BuildCommandResponse>(`/sites/${encodeURIComponent(siteUuid)}/build-commands`, {
+
+  getSiteVersions: (siteUuid: string) =>
+    fetchJson<SiteVersion[]>(`/sites/${encodeURIComponent(siteUuid)}/versions`),
+  publishSiteVersion: (siteUuid: string, version: number) =>
+    fetchJson<{ version: number; deployPrefix: string }>(
+      `/sites/${encodeURIComponent(siteUuid)}/versions/${version}/publish`,
+      { method: "POST" },
+    ),
+  getPipelineStatus: (siteUuid: string) =>
+    fetchJson<PipelineStatus>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/status`),
+  getPipelineArtifact: (siteUuid: string, stage: string) =>
+    fetchJson<PipelineArtifact>(
+      `/sites/${encodeURIComponent(siteUuid)}/pipeline/artifacts/${encodeURIComponent(stage)}`,
+    ),
+  getPipelineOptions: (siteUuid: string) =>
+    fetchJson<PipelineOptions>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/options`),
+  getGlobalPipelineOptions: () => fetchJson<PipelineOptions>("/pipeline/options"),
+  runPipeline: (siteUuid: string, body: PipelineRunBody) =>
+    fetchJson<{ jobId: string; queue: string }>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/run`, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(body),
     }),
+  runPipelineStage: (siteUuid: string, stage: string, body: PipelineRunBody) =>
+    fetchJson<{ jobId: string; stage: string; queue: string }>(
+      `/sites/${encodeURIComponent(siteUuid)}/pipeline/${encodeURIComponent(stage)}`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  getSiteFiles: (siteUuid: string) =>
+    fetchJson<{ files: SiteFile[] }>(`/sites/${encodeURIComponent(siteUuid)}/files`),
+  getJobStatus: (jobId: string, queue?: string) =>
+    fetchJson<JobStatus>(
+      `/jobs/${encodeURIComponent(jobId)}/status${queue ? `?queue=${encodeURIComponent(queue)}` : ""}`,
+    ),
 
   getDocs: () => fetchJson<Doc[]>("/docs"),
   getSiteDocs: (siteUuid: string) =>

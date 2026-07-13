@@ -13,13 +13,26 @@
 
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, IframeEmbed } from "@ploy-gyms/shared-types";
 import { buildNavigation } from "./nav-slots.js";
-import { beanburitoSpec, buildSpecPrompt } from "./specs/beanburito.js";
+import {
+  beanburitoSpec,
+  buildSpecPrompt,
+  validateIcon,
+  resolveIcon,
+  placeholderImage,
+  inferIframeVariant,
+  isAllowedIframeSrc,
+  sanitizeIframe,
+} from "@ploy-gyms/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
+import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
+import type { MirrorAssetsArtifact } from "../../types/mirror.js";
+import type { ExtractArtifact } from "../../types/pipeline-artifacts.js";
+import { buildImageMatcher, makeRoundRobin } from "../mirror/image-matcher.js";
 
 export interface GenerateContentInput {
   db: Kysely<DB>;
@@ -42,13 +55,17 @@ interface GeneratedHomeSlots {
     ctaLabel?: string;
     ctaUrl?: string;
   };
-  valueProps: Array<{ headline: string; body: string }>;
+  valueProps: Array<{ headline: string; body: string; icon?: string }>;
   howItWorks: Array<{ headline: string; body: string }>;
   howItWorksHeadline: string;
-  features: Array<{ label: string }>;
+  features: Array<{ label: string; icon?: string }>;
   communityHeadline: string;
   trustHeadline: string;
+  ctaHeadline?: string;
+  programsSubheadline?: string;
+  ctaSubtext?: string;
   serviceArea?: string[];
+  programs?: Array<{ slug?: string; name?: string; shortDescription: string }>;
 }
 
 // ── Doc loading ──────────────────────────────────────────────────────────────
@@ -64,15 +81,109 @@ async function loadDoc(db: Kysely<DB>, siteUuid: string, key: string): Promise<s
   return row?.content ?? "";
 }
 
-async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<any | null> {
-  const row = await (db as any)
+interface ContentArtifactPage {
+  path: string;
+  pageType: string;
+  purpose?: string;
+  contentFound?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}
+interface ContentArtifact {
+  pages?: ContentArtifactPage[];
+}
+
+async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<ContentArtifact | null> {
+  const row = await db
     .selectFrom("pipelineArtifacts")
     .select("payload")
     .where("siteUuid", "=", siteUuid)
     .where("stage", "=", "content")
     .orderBy("version", "desc")
     .executeTakeFirst();
-  return row?.payload ?? null;
+  const payload = row?.payload as ContentArtifact | undefined;
+  return payload ?? null;
+}
+
+async function loadExtractArtifact(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<ExtractArtifact | null> {
+  const artifact = await loadArtifact<ExtractArtifact>(
+    db,
+    { siteUuid, workspaceUuid },
+    "extract",
+  ).catch(() => null);
+  return artifact?.payload ?? null;
+}
+
+interface IframeConfigFile {
+  iframes?: IframeEmbed[];
+}
+
+async function loadIframeConfig(
+  s3Client: S3Client,
+  bucket: string,
+  siteUuid: string,
+): Promise<IframeEmbed[]> {
+  try {
+    const obj = await s3Client.send(new GetObjectCommand({
+      Bucket: bucket,
+      Key: `sites/${siteUuid}/config/iframes.json`,
+    }));
+    const raw = await obj.Body?.transformToString() ?? "{}";
+    const parsed = JSON.parse(raw) as IframeConfigFile;
+    return Array.isArray(parsed.iframes) ? parsed.iframes : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Turn raw crawled iframes into template embeds. We don't know the service,
+ * so we never hardcode third-party domains here. We only apply a very loose
+ * URL-pattern hint to pick a default variant. A human or the AI assistant
+ * can override variant/title/height/style in sites/{uuid}/config/iframes.json.
+ */
+function iframesFromExtract(extract: ExtractArtifact | null): IframeEmbed[] {
+  if (!extract?.pages?.length) return [];
+  const home = extract.pages.find((p) => p.path === "/" || p.path === "");
+  return (home?.content?.iframes ?? [])
+    .filter((f) => isAllowedIframeSrc(f.src))
+    .map((f) => {
+      const src = f.src;
+      return sanitizeIframe({
+        src,
+        variant: inferIframeVariant(src),
+        title: f.title,
+        height: f.height,
+        width: f.width,
+        sandbox: f.sandbox,
+        style: f.style,
+        allow: f.allow,
+        referrerpolicy: f.referrerpolicy,
+        loading: f.loading,
+      });
+    });
+}
+
+// ── Icon / image helpers ───────────────────────────────────────────────────
+
+/** List relative /_assets/ image paths from a mirror deploy prefix. */
+async function listMirrorAssets(
+  s3Client: S3Client,
+  bucket: string,
+  deployPrefix: string,
+): Promise<string[]> {
+  try {
+    const result = await s3Client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: `${deployPrefix}/_assets/`,
+    }));
+    return (result.Contents ?? [])
+      .map((obj) => obj.Key ?? "")
+      .filter((key) => /\/_assets\/[^/]+\.(jpg|jpeg|png|webp|avif)$/i.test(key))
+      .map((key) => key.replace(`${deployPrefix}/_assets/`, "/_assets/"))
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 // ── Context builder ──────────────────────────────────────────────────────────
@@ -94,34 +205,37 @@ function extractJsonObject(raw: string): string | undefined {
   return undefined;
 }
 
-function buildContextFromArtifact(artifact: any): string {
+function buildContextFromArtifact(artifact: ContentArtifact | null): string {
   if (!artifact?.pages?.length) return "";
   const lines: string[] = ["CONTENT FOUND ON THEIR WEBSITE:"];
 
-  for (const page of artifact.pages as any[]) {
-    const cf = page.contentFound ?? page.data ?? {};
-    const hero = cf.hero ?? {};
+  for (const page of artifact.pages) {
+    const cf = (page.contentFound ?? page.data ?? {}) as Record<string, unknown>;
+    const hero = (cf.hero ?? {}) as Record<string, unknown>;
     lines.push(`\nPage: ${page.path} (${page.pageType})`);
     if (page.purpose) lines.push(`  Purpose: ${page.purpose}`);
     if (hero.headline) lines.push(`  Hero headline: "${hero.headline}"`);
     if (hero.subheading) lines.push(`  Hero subheading: "${hero.subheading}"`);
-    if (cf.body && cf.body.length > 20) lines.push(`  Body text: ${cf.body.slice(0, 600)}`);
-    if (cf.testimonials?.length) {
-      lines.push(`  Testimonials (${cf.testimonials.length} found):`);
-      for (const t of cf.testimonials.slice(0, 5)) {
+    if (cf.body && String(cf.body).length > 20) lines.push(`  Body text: ${String(cf.body).slice(0, 600)}`);
+    const testimonials = Array.isArray(cf.testimonials) ? cf.testimonials as Array<Record<string, unknown>> : [];
+    if (testimonials.length > 0) {
+      lines.push(`  Testimonials (${testimonials.length} found):`);
+      for (const t of testimonials.slice(0, 5)) {
         lines.push(`    - "${t.quote}" — ${t.name}${t.program ? ` (${t.program})` : ""}`);
       }
     }
-    if (cf.faq?.length) {
-      lines.push(`  FAQ (${cf.faq.length} found):`);
-      for (const f of cf.faq.slice(0, 7)) {
+    const faq = Array.isArray(cf.faq) ? cf.faq as Array<Record<string, unknown>> : [];
+    if (faq.length > 0) {
+      lines.push(`  FAQ (${faq.length} found):`);
+      for (const f of faq.slice(0, 7)) {
         lines.push(`    Q: ${f.question}`);
         lines.push(`    A: ${f.answer}`);
       }
     }
-    if (cf.valueProps?.length) {
+    const valueProps = Array.isArray(cf.valueProps) ? cf.valueProps as Array<Record<string, unknown>> : [];
+    if (valueProps.length > 0) {
       lines.push(`  Value props found:`);
-      for (const v of cf.valueProps) lines.push(`    - ${v.headline}: ${v.body}`);
+      for (const v of valueProps) lines.push(`    - ${v.headline}: ${v.body}`);
     }
   }
   return lines.join("\n");
@@ -144,32 +258,36 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   ]);
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
+  const extractArtifact = await loadExtractArtifact(db, siteUuid, workspaceUuid);
 
   // crawl pages no longer needed here — navigation built from capturedNav + contentBriefs
 
   // Load mirror deploy prefix so we can resolve hero image URLs
-  const mirrorDeployArtifact = await (db as any)
+  const mirrorDeployArtifact = await db
     .selectFrom("pipelineArtifacts")
     .select("payload")
     .where("siteUuid", "=", siteUuid)
     .where("stage", "=", "mirror-deploy")
     .orderBy("version", "desc")
     .executeTakeFirst();
-  const mirrorDeployPrefix: string = mirrorDeployArtifact?.payload?.deployPrefix ?? "";
+  const mirrorPayload = mirrorDeployArtifact?.payload as { deployPrefix?: string } | undefined;
+  const mirrorDeployPrefix: string = mirrorPayload?.deployPrefix ?? "";
 
   // Load nav structure.
   // Priority:
   //   1. sites/{uuid}/config/nav-structure.json — stable, editable by admin/AI (never overwritten by clone)
   //   2. {deployPrefix}/nav-structure.json     — captured during last clone (seed source)
   // This means owners can edit the nav at any time without a re-clone.
-  let capturedNav: Array<{ label: string; href: string; children?: any[] }> = [];
+  interface NavNode { label: string; href: string; children?: NavNode[]; }
+  let capturedNav: NavNode[] = [];
   const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
   const configNavKey = `sites/${siteUuid}/config/nav-structure.json`;
+  const configuredIframes = await loadIframeConfig(input.s3Client, bucket, siteUuid);
 
   let navSource = "none";
   try {
     const obj = await input.s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: configNavKey }));
-    capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+    capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]") as NavNode[];
     navSource = "config";
   } catch {
     // Config nav not yet set — fall back to deploy-prefix capture
@@ -179,7 +297,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
           Bucket: bucket,
           Key: `${mirrorDeployPrefix}/nav-structure.json`,
         }));
-        capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]");
+        capturedNav = JSON.parse(await obj.Body?.transformToString() ?? "[]") as NavNode[];
         navSource = "deploy-capture";
         // Seed the stable config path so future edits work without re-clone
         if (capturedNav.length > 0) {
@@ -217,11 +335,39 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     } catch { /* hero-image.txt not yet present — run clone again to capture */ }
   }
 
+  // Build a pool of scraped gym photos for program covers and amenity backgrounds.
+  // Exclude the hero image so it isn't reused as a generic box background.
+  let mirrorAssets: string[] = [];
+  if (mirrorDeployPrefix) {
+    mirrorAssets = (await listMirrorAssets(input.s3Client, bucket, mirrorDeployPrefix))
+      .filter((a) => a !== heroImageUrl)
+      .sort();
+    if (mirrorAssets.length > 0) {
+      log(`  Mirror assets available: ${mirrorAssets.length}`);
+    }
+  }
+
+  // Load the mirror-assets artifact for vision tags + section context.
+  // Fall back to a plain S3 list if the artifact is missing (older captures).
+  const assetsArtifact = await loadArtifact<MirrorAssetsArtifact>(db, { siteUuid, workspaceUuid }, "mirror-assets");
+  const taggedAssets = assetsArtifact?.payload.assets ?? [];
+  const imageMatcher = buildImageMatcher(taggedAssets);
+  const hasVisionTags = taggedAssets.some((a) => a.visionTags && a.visionTags.length > 0);
+  const fallbackPicker = makeRoundRobin(
+    taggedAssets.length > 0 ? taggedAssets : mirrorAssets.map((localPath) => ({
+      originalUrl: localPath,
+      storageKey: "",
+      localPath,
+      contentType: "image/jpeg",
+    })),
+  );
+  log(`  Image matcher ready: ${imageMatcher.photos.length} tagged photos (vision: ${hasVisionTags})`);
+
   // Get base GymSiteContent from content-mapper (handles brand, business NAP, nav, programs)
   log(`  Building base content from docs...`);
   const { buildGymJson } = await import("./content-mapper.js");
   const { content: baseContent, warnings: mapperWarnings } = await buildGymJson(
-    db, siteUuid, { apiBaseUrl, siteUrl }, workspaceUuid,
+    db, siteUuid, { apiBaseUrl, siteUrl, googleMapsApiKey: config.GOOGLE_PLACES_API_KEY }, workspaceUuid,
   );
   if (mapperWarnings.length > 0) {
     log(`  [mapper] ${mapperWarnings.slice(0, 3).join(", ")}${mapperWarnings.length > 3 ? ` (+${mapperWarnings.length - 3} more)` : ""}`);
@@ -235,14 +381,17 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   }
 
   // Extract testimonials and FAQ from content artifact (real content, not generated)
-  const homePage = contentArtifact?.pages?.find((p: any) => p.path === "/");
-  const homeCf = homePage?.contentFound ?? homePage?.data ?? {};
-  const existingTestimonials: Testimonial[] = (homeCf.testimonials ?? [])
-    .filter((t: any) => t.quote && t.name)
-    .map((t: any) => ({ quote: String(t.quote), name: String(t.name), program: t.program ?? undefined }));
-  const existingFaq: FAQItem[] = (homeCf.faq ?? [])
-    .filter((f: any) => f.question && f.answer)
-    .map((f: any) => ({ question: String(f.question), answer: String(f.answer) }));
+  const homePage = contentArtifact?.pages?.find((p) => p.path === "/");
+  const homeCf = (homePage?.contentFound ?? homePage?.data ?? {}) as Record<string, unknown>;
+  const artifactHero = homeCf.hero as Record<string, unknown> | undefined;
+  const homeTestimonials = Array.isArray(homeCf.testimonials) ? homeCf.testimonials as Array<Record<string, unknown>> : [];
+  const homeFaq = Array.isArray(homeCf.faq) ? homeCf.faq as Array<Record<string, unknown>> : [];
+  const existingTestimonials: Testimonial[] = homeTestimonials
+    .filter((t) => t.quote && t.name)
+    .map((t) => ({ quote: String(t.quote), name: String(t.name), program: t.program ? String(t.program) : undefined }));
+  const existingFaq: FAQItem[] = homeFaq
+    .filter((f) => f.question && f.answer)
+    .map((f) => ({ question: String(f.question), answer: String(f.answer) }));
 
   const artifactContext = buildContextFromArtifact(contentArtifact);
 
@@ -294,9 +443,9 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
     "ctaUrl": "string (URL, use /contact if unknown)"
   },
   "valueProps": [
-    { "headline": "string (2-5 words)", "body": "string (15-25 words)" },
-    { "headline": "string", "body": "string" },
-    { "headline": "string", "body": "string" }
+    { "headline": "string (2-5 words)", "body": "string (15-25 words)", "icon": "string (Phosphor bold icon name, kebab-case, e.g. barbell, users, target)" },
+    { "headline": "string", "body": "string", "icon": "string" },
+    { "headline": "string", "body": "string", "icon": "string" }
   ],
   "howItWorks": [
     { "headline": "string (step name, 2-5 words)", "body": "string (15-25 words)" },
@@ -305,17 +454,27 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
   ],
   "howItWorksHeadline": "string (4-7 words)",
   "features": [
-    { "label": "string (2-4 words)" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" }
+    { "label": "string (2-4 words)", "icon": "string (Phosphor bold icon name, e.g. clock, car, drop, barbell)" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" }
   ],
   "communityHeadline": "string (4-8 words, emotional, about belonging)",
-  "trustHeadline": "string (5-10 words, social proof)",
-  "serviceArea": ["real nearby city 1", "real nearby city 2", "real nearby city 3", "real nearby city 4"]
+  "trustHeadline": "string (5-10 words, social proof for testimonials section)",
+  "ctaHeadline": "string (4-8 words, action-oriented bottom CTA headline; can echo the hero outcome)",
+  "programsSubheadline": "string (6-10 words, supporting the programs headline)",
+  "ctaSubtext": "string (8-12 words, friction-reducing line under the bottom CTA headline)",
+  "serviceArea": ["real nearby city 1", "real nearby city 2", "real nearby city 3", "real nearby city 4"],
+  "programs": [
+    { "slug": "group-strength", "shortDescription": "string (10-20 words, specific to group strength)" },
+    { "slug": "cardio-bootcamp", "shortDescription": "string (10-20 words, specific to cardio/bootcamp)" },
+    { "slug": "personal-training", "shortDescription": "string (10-20 words, specific to personal training)" }
+  ]
 }
+
+Guidance for programs.shortDescription: write a distinct, concrete line for each program. Mention the format (barbell, intervals, 1-on-1), the outcome, and who it's for. Do NOT repeat the same sentence structure across all three.
 
 For serviceArea: list 4 real nearby cities/neighborhoods that people actually drive from to go to this gym. Use your knowledge of the area based on the gym's city.`;
 
@@ -349,26 +508,51 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
 
   // Build merged home page content
   const baseHero = baseContent.pages.home.hero;
+  const heroContext = `hero ${generated.hero?.headline ?? baseHero.headline} ${generated.hero?.subheading ?? baseHero.subheading ?? ""} ${baseContent.business.name}`.trim();
+  const matchedHeroImage = !heroImageUrl
+    ? imageMatcher.match({ query: heroContext, preferredSectionType: "hero" })
+    : undefined;
   const generatedHero: HeroContent = {
     headline: generated.hero?.headline || baseHero.headline,
     subheading: generated.hero?.subheading || baseHero.subheading,
     intro: generated.hero?.intro || baseHero.intro,
     ctaLabel: generated.hero?.ctaLabel || baseHero.ctaLabel || baseContent.business.primaryCta.label,
     ctaUrl: generated.hero?.ctaUrl || baseHero.ctaUrl || baseContent.business.primaryCta.url,
-    backgroundImageUrl: heroImageUrl || baseHero.backgroundImageUrl,
+    backgroundImageUrl: heroImageUrl || matchedHeroImage || baseHero.backgroundImageUrl,
   };
 
   const generatedValueProps: ValueProp[] = (generated.valueProps ?? [])
     .slice(0, 3)
-    .map((v) => ({ icon: "star", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
+    .map((v) => ({
+      icon: validateIcon(v.icon ?? "") === "star" ? resolveIcon(v.headline) : validateIcon(v.icon ?? ""),
+      headline: String(v.headline ?? ""),
+      body: String(v.body ?? ""),
+    }));
 
   const generatedHowItWorks: Step[] = (generated.howItWorks ?? [])
     .slice(0, 3)
     .map((s, i) => ({ number: i + 1, headline: String(s.headline ?? ""), body: String(s.body ?? "") }));
 
+  const usedFeatureImages = new Set<string>();
   const generatedFeatures: Feature[] = (generated.features ?? [])
     .slice(0, 6)
-    .map((f) => ({ icon: "star", label: String(f.label ?? "") }));
+    .map((f, i) => {
+      const query = `${f.label ?? ""} ${i < 3 ? "amenity facility" : "feature service"}`.trim();
+      const matched = imageMatcher.match({
+        query,
+        exclude: usedFeatureImages,
+        preferredSectionType: "feature-grid",
+      });
+      const imageUrl = matched
+        ?? (hasVisionTags ? placeholderImage(String(f.label ?? "Feature"), 800, 600) : fallbackPicker(usedFeatureImages))
+        ?? "";
+      if (imageUrl) usedFeatureImages.add(imageUrl);
+      return {
+        icon: validateIcon(f.icon ?? "") === "star" ? resolveIcon(f.label) : validateIcon(f.icon ?? ""),
+        label: String(f.label ?? ""),
+        imageUrl,
+      };
+    });
 
   // Use real testimonials from content artifact; fall back to base content-mapper testimonials
   const testimonials = existingTestimonials.length > 0
@@ -380,17 +564,52 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     ? existingFaq
     : baseContent.pages.home.faq;
 
+  // Prefer real hero copy captured from the source site over LLM-generated defaults.
+  const finalHero: HeroContent = {
+    ...generatedHero,
+    headline: artifactHero?.headline ? String(artifactHero.headline) : generatedHero.headline,
+    subheading: artifactHero?.subheading ? String(artifactHero.subheading) : generatedHero.subheading,
+    intro: artifactHero?.intro
+      ? String(artifactHero.intro)
+      : (baseContent.pages.home.hero.intro ?? generatedHero.intro ?? ""),
+  };
+  // Drop generic "Welcome to ... premier ..." intros that the LLM tends to invent.
+  if (/welcome to.*premier.*facility/i.test(finalHero.intro ?? "")) {
+    finalHero.intro = "";
+  }
+
+  const detectedIframes = iframesFromExtract(extractArtifact);
+  const existingIframes = (baseContent.pages.home.iframes ?? [])
+    .filter((e) => isAllowedIframeSrc(e.src))
+    .map(sanitizeIframe);
+  const safeConfiguredIframes = configuredIframes
+    .filter((e) => isAllowedIframeSrc(e.src))
+    .map(sanitizeIframe);
+  const seenSrc = new Set([...existingIframes, ...safeConfiguredIframes].map((e) => e.src));
+  const homeIframes: IframeEmbed[] = [
+    ...existingIframes,
+    ...safeConfiguredIframes,
+    ...detectedIframes.filter((e) => !seenSrc.has(e.src)),
+  ];
+  if (homeIframes.length > 0) {
+    log(`  Iframes: ${homeIframes.map((e) => `${e.variant ?? "default"} (${e.src})`).join(", ")}`);
+  }
+
   const generatedHome: HomeContent = {
     ...baseContent.pages.home,
-    hero: generatedHero,
+    hero: finalHero,
     valueProps: generatedValueProps.length > 0 ? generatedValueProps : baseContent.pages.home.valueProps,
     howItWorks: generatedHowItWorks.length > 0 ? generatedHowItWorks : baseContent.pages.home.howItWorks,
     howItWorksHeadline: generated.howItWorksHeadline || baseContent.pages.home.howItWorksHeadline,
     features: generatedFeatures.length > 0 ? generatedFeatures : baseContent.pages.home.features,
     communityHeadline: generated.communityHeadline || baseContent.pages.home.communityHeadline,
     trustHeadline: generated.trustHeadline || baseContent.pages.home.trustHeadline,
+    ctaHeadline: generated.ctaHeadline || generated.trustHeadline || baseContent.pages.home.ctaHeadline || baseContent.pages.home.trustHeadline,
+    programsSubheadline: generated.programsSubheadline || baseContent.pages.home.programsSubheadline,
+    ctaSubtext: generated.ctaSubtext || baseContent.pages.home.ctaSubtext,
     testimonials,
     faq,
+    iframes: homeIframes.length > 0 ? homeIframes : undefined,
   };
 
   // Patch serviceArea into business if LLM provided real nearby cities
@@ -404,7 +623,40 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
 
-  return {
+  // Merge generated per-program descriptions into program pages.
+  const programsBySlug = new Map(
+    (generated.programs ?? []).map((p) => [p.slug ?? p.name?.toLowerCase().replace(/\s+/g, "-") ?? "", p]),
+  );
+
+  // Assign scraped gym photos to each program page and cover by matching
+  // the program's topic against vision tags + source-section context.
+  const usedProgramImages = new Set<string>();
+  const mergedPrograms = baseContent.pages.programs.map((p) => {
+    const generatedDesc = programsBySlug.get(p.slug)?.shortDescription;
+    const programContext = `${p.name} ${p.shortDescription ?? ""} ${generatedDesc ?? ""} program workout`.trim();
+    const matched = imageMatcher.match({
+      query: programContext,
+      exclude: usedProgramImages,
+      preferredSectionType: "feature-grid",
+    });
+    const coverImageUrl = matched
+      ?? (hasVisionTags ? placeholderImage(p.name, 800, 600) : fallbackPicker(usedProgramImages))
+      ?? p.coverImageUrl;
+    if (coverImageUrl) usedProgramImages.add(coverImageUrl);
+    const next: typeof p = {
+      ...p,
+      coverImageUrl,
+      hero: {
+        ...p.hero,
+        backgroundImageUrl: coverImageUrl,
+      },
+    };
+    return generatedDesc
+      ? { ...next, shortDescription: String(generatedDesc).slice(0, 160) }
+      : next;
+  });
+
+  const mergedContent: GymSiteContent = {
     ...baseContent,
     navigation,
     business: {
@@ -414,6 +666,14 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     pages: {
       ...baseContent.pages,
       home: generatedHome,
+      programs: mergedPrograms,
     },
   };
+
+  // LLM-generated or source-captured CTAs may point to pages that won't be rendered.
+  // Sanitize after all merges so every internal CTA is guaranteed valid.
+  const { sanitizeContentCtas } = await import("./content-mapper.js");
+  sanitizeContentCtas(mergedContent.pages, mergedContent.business, []);
+
+  return mergedContent;
 }

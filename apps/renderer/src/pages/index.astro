@@ -2,11 +2,11 @@
 import GymLayout from "../layouts/GymLayout.astro";
 import HomeBaseline from "../components/pages/HomeBaseline.astro";
 import HomeImpact from "../components/pages/HomeImpact.astro";
-import HomeBeanburito from "../components/pages/HomeBeanburito.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content, geoTitle } from "../lib/content";
 const home = content.pages.home;
 const theme = content.meta.templateTheme ?? "baseline";
 ---
-<GymLayout title={geoTitle("Group Strength, Cardio Bootcamp & Personal Training")} description={home.hero.subheading} path="/" image={home.hero.backgroundImageUrl}>
-  {theme === "beanburito" ? <HomeBeanburito /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
+<GymLayout title={geoTitle("Personal Training")} description={content.meta.defaultDescription} path="/" image={home.hero.backgroundImageUrl}>
+  {theme === "beanburito" ? <PageRenderer pageKey="home" /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
 </GymLayout>
