@@ -21,6 +21,7 @@ export type CanonicalSectionTag =
   | "schedule"
   | "team"
   | "contact"
+  | "iframe"
   | "unknown";
 
 export interface SectionStyleHint {
@@ -59,6 +60,8 @@ export interface HierarchySection {
     items?: { title?: string; description?: string; imageUrl?: string }[];
     images?: { url: string; alt?: string; context?: string }[];
     cta?: { label: string; href: string };
+    /** Source iframe/widget src URL when this section represents an embedded third-party widget. */
+    widgetUrl?: string;
   };
   styleHint?: SectionStyleHint;
   evidenceId: string;

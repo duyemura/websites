@@ -5,8 +5,10 @@
 
 import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import * as cheerio from "cheerio";
+import type { AnyNode } from "domhandler";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
 import type { ScrapedColor, ScrapedImage } from "@ploy-gyms/shared-types";
+import { isAllowedIframeSrc } from "@ploy-gyms/shared-types";
 import type { ScrapedSection, ScrapedWebsiteData } from "../scrape-docs";
 import type { SectionVisualEvidenceRow } from "../../types/section-visual-evidence";
 import { findMostSaturatedColor, hexSaturation, isDarkNeutral } from "../site-blueprint";
@@ -275,6 +277,49 @@ function extractContact($: cheerio.CheerioAPI): {
   };
 }
 
+function findNearbyHeading($el: cheerio.Cheerio<AnyNode>): string | undefined {
+  // Look inside the containing section/article/main/div first.
+  const container = $el.closest("section, article, main, div").first();
+  const ownHeading = container.find("h1, h2, h3").first().text().trim();
+  if (ownHeading.length >= 3 && ownHeading.length <= 200) return ownHeading;
+
+  // Fall back to the nearest preceding heading.
+  let prev = $el.prev();
+  for (let i = 0; i < 5 && prev.length; i++, prev = prev.prev()) {
+    const h = prev.find("h1, h2, h3").first().text().trim() || prev.filter("h1, h2, h3").first().text().trim();
+    if (h.length >= 3 && h.length <= 200) return h;
+  }
+  return undefined;
+}
+
+function extractIframeSections($: cheerio.CheerioAPI): ScrapedSection[] {
+  const seen = new Set<string>();
+  const sections: ScrapedSection[] = [];
+
+  $("iframe[src]").each((_, el) => {
+    const src = $(el).attr("src")?.trim();
+    if (!src || !isAllowedIframeSrc(src)) return;
+    if (seen.has(src)) return;
+    seen.add(src);
+
+    const $el = $(el);
+    const title = $el.attr("title")?.trim();
+    const heading = findNearbyHeading($el) || title;
+    const type = "iframe";
+    const id = `index-iframe-${sections.length}`;
+
+    sections.push({
+      id,
+      type,
+      heading,
+      widgetUrl: src,
+      visualEvidence: makeVisualEvidence(id),
+    });
+  });
+
+  return sections;
+}
+
 function extractSections($: cheerio.CheerioAPI): ScrapedSection[] {
   const selectors = [
     "body > section",
@@ -401,6 +446,10 @@ export async function buildScrapedWebsiteDataFromCrawl(
   // Extract colors from raw HTML/styles before stripping script/style tags.
   const colors = extractColors($);
 
+  // Capture iframe widgets before stripping them; otherwise the source site's
+  // review/schedule/map embeds are lost and can't be replicated on generated pages.
+  const iframeSections = extractIframeSections($);
+
   // Strip script/style so they don't pollute text extraction.
   $("script, style, noscript, iframe").remove();
 
@@ -430,6 +479,6 @@ export async function buildScrapedWebsiteDataFromCrawl(
     team: [],
     offerings: [],
     contact,
-    sections: extractSections($),
+    sections: [...iframeSections, ...extractSections($)],
   };
 }

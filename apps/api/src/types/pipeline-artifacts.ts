@@ -53,7 +53,7 @@ export const PageClassificationSchema = z.enum([
 export const CanonicalSectionTagSchema = z.enum([
   "hero", "header", "footer", "cta-band", "content-block", "media-block",
   "feature-grid", "testimonial-band", "location-block", "faq-block",
-  "social-proof-band", "steps-band", "schedule", "team", "contact", "unknown",
+  "social-proof-band", "steps-band", "schedule", "team", "contact", "iframe", "unknown",
 ]);
 export type CanonicalSectionTag = z.infer<typeof CanonicalSectionTagSchema>;
 

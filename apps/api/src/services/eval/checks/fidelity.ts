@@ -367,6 +367,7 @@ const TAG_SELECTOR_HINTS: Record<CanonicalSectionTag, string[]> = {
   schedule: ["[data-section], [data-widget='schedule']"],
   team: ["[data-section], .team-member"],
   contact: ["[data-section='location']", "form, address"],
+  iframe: ["[data-section='iframe']", "iframe[src]"],
   unknown: [],
 };
 

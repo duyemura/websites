@@ -102,4 +102,28 @@ describe("buildScrapedWebsiteDataFromCrawl", () => {
     const data = await buildScrapedWebsiteDataFromCrawl(crawl, s3, config);
     expect(data.colors).toEqual([]);
   });
+
+  test("captures iframe widgets as scraped sections before stripping them", async () => {
+    const html = `
+      <html><body>
+        <section>
+          <h2>What our members say</h2>
+          <iframe src="https://widgets.trustpilot.com/reviews/123" title="Member reviews"></iframe>
+        </section>
+        <section>
+          <iframe src="javascript:alert(1)"></iframe>
+        </section>
+      </body></html>
+    `;
+    const { crawl, s3, config } = makeCrawl(html);
+    const data = await buildScrapedWebsiteDataFromCrawl(crawl, s3, config);
+
+    const iframeSections = data.sections?.filter((s) => s.type === "iframe") ?? [];
+    expect(iframeSections).toHaveLength(1);
+    expect(iframeSections[0]).toMatchObject({
+      type: "iframe",
+      widgetUrl: "https://widgets.trustpilot.com/reviews/123",
+      heading: "What our members say",
+    });
+  });
 });
