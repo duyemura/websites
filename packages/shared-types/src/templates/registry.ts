@@ -20,6 +20,7 @@ export type {
   ComponentPropSource,
   ComponentPropSpec,
   ComponentSpec,
+  HeadAsset,
   PageSpec,
   SectionSpec,
   SlotSpec,

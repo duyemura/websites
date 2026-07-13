@@ -87,7 +87,7 @@ function mergeGmbIntoScraped(
 
 export const docgenStage: StageRunner = {
   label: "docgen",
-  requires: ["enrich", "mirror-crawl"],
+  requires: ["enrich", "crawl"],
   produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
@@ -105,10 +105,10 @@ export const docgenStage: StageRunner = {
     const crawlStored = await loadArtifact<MirrorCrawlArtifact>(
       ctx.db,
       { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-      "mirror-crawl",
+      "crawl",
     );
     if (!crawlStored) {
-      throw new Error("No mirror-crawl artifact found — run the clone stage first");
+      throw new Error("No crawl artifact found — run the crawl stage first");
     }
 
     const gmb = enrichStored.payload.listing;

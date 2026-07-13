@@ -314,7 +314,7 @@ export type VerifyArtifact = z.infer<typeof VerifyArtifactSchema>;
 export const REBUILD_STAGES = ["extract", "segment", "contract", "docgen", "build", "verify"] as const;
 export type RebuildStage = (typeof REBUILD_STAGES)[number];
 
-export const MIRROR_STAGES = ["mirror-crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;
+export const MIRROR_STAGES = ["crawl", "mirror-assets", "mirror-snapshot", "mirror-deploy"] as const;
 export type MirrorPipelineStage = (typeof MIRROR_STAGES)[number];
 
 export const ENRICHMENT_STAGES = ["enrich"] as const;

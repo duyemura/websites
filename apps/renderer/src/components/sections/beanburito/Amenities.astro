@@ -1,42 +1,30 @@
 ---
 import type { Feature } from "../../../types/gym-content";
+import { resolveIcon, iconHtml } from "../../../lib/beanburito-icons";
+const NO_IMAGE = "__NO_IMAGE__";
 const { items, headline } = Astro.props as { items: Feature[]; headline?: string };
 if (!items?.length) return;
 
-const KNOWN_ICONS = new Set(["ticket", "target", "phone", "water", "dumbbell", "calendar"]);
-const iconFor = (label: string, explicitIcon?: string) => {
-  if (explicitIcon && KNOWN_ICONS.has(explicitIcon)) return explicitIcon;
-  if (/water|purified/i.test(label)) return "water";
-  if (/nutrition/i.test(label)) return "nutrition";
-  if (/app/i.test(label)) return "phone";
-  if (/weekend|class/i.test(label)) return "calendar";
-  if (/reservation/i.test(label)) return "ticket";
-  if (/program|individual/i.test(label)) return "target";
-  if (/training|coach/i.test(label)) return "dumbbell";
-  return "star";
-};
+function hasImage(f: Feature): boolean {
+  return !!f.imageUrl && f.imageUrl !== NO_IMAGE;
+}
 ---
-<section data-section="amenities" data-section-tag="feature-grid" class="section-skew-reverse section-overlap bg-black py-16 text-white lg:py-24">
-  <div class="section-skew-inner-reverse mx-auto max-w-[90rem] px-6 lg:px-10">
+<section data-section="amenities" data-section-tag="feature-grid" class="section-straight bg-black py-20 text-white lg:py-28">
+  <div class="mx-auto max-w-[90rem] px-6 lg:px-10">
     {headline && <h2 class="mx-auto mb-14 max-w-4xl text-center font-heading text-3xl font-black uppercase tracking-tight text-white md:text-4xl lg:text-5xl">{headline}</h2>}
 
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+    <div class="grid grid-cols-1 gap-0 md:grid-cols-2 lg:grid-cols-3">
       {items.slice(0, 6).map((f) => {
-        const icon = iconFor(f.label, f.icon);
+        const icon = resolveIcon(f.label, f.icon);
+        const image = hasImage(f) ? `background-image: url('${f.imageUrl}');` : "";
         return (
-          <div class="flex min-h-[12rem] flex-col items-center justify-center bg-accent p-8 text-center text-white transition-transform duration-300 hover:-translate-y-1"
-          >
-            <span aria-hidden="true" class="mb-4">
-              {icon === "ticket" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 20h44v24H10z"/><path d="M18 20v24"/><path d="M46 32h4"/></svg>}
-              {icon === "target" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="10"/><path d="M48 16l-4 8"/></svg>}
-              {icon === "phone" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="6" width="24" height="52" rx="4"/><path d="M28 54h8"/></svg>}
-              {icon === "water" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32 10c0 0-16 18-16 30a16 16 0 0 0 32 0C48 28 32 10 32 10z"/><path d="M24 42c0-4 4-8 8-8"/><path d="M28 48c0-2 2-4 4-4"/></svg>}
-              {icon === "dumbbell" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36l8-8"/><path d="M20 28l24 24"/><path d="M44 20l8-8"/><path d="M8 40l8-8"/><path d="M16 32l24 24"/><path d="M40 24l8-8"/><circle cx="52" cy="12" r="4"/><circle cx="12" cy="52" r="4"/></svg>}
-              {icon === "calendar" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="48" height="44" rx="4"/><path d="M8 26h48"/><path d="M20 8v8"/><path d="M44 8v8"/></svg>}
-              {icon === "nutrition" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="8" width="32" height="48" rx="4"/><path d="M24 20h16"/><path d="M24 28h16"/><path d="M24 36h10"/></svg>}
-              {icon === "star" && <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32 8l8 18 18 2-14 12 4 18-16-10-16 10 4-18-14-12 18-2z"/></svg>}
-            </span>
-            <h3 class="font-heading text-lg font-black uppercase tracking-tight text-white md:text-xl">{f.label}</h3>
+          <div class="amenity-card group">
+            {image && <div class="amenity-card-bg" style={image} />}
+            <div class="amenity-card-overlay" />
+            <div class="amenity-card-content">
+              <span aria-hidden="true" class="mb-4 inline-block text-white" set:html={iconHtml(icon, 56)} />
+              <h3 class="font-heading text-lg font-black uppercase tracking-tight text-white md:text-xl">{f.label}</h3>
+            </div>
           </div>
         );
       })}

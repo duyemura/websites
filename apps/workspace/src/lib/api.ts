@@ -80,6 +80,18 @@ export interface Site {
   updatedAt: string;
 }
 
+export interface SiteVersion {
+  uuid: string;
+  siteUuid: string;
+  workspaceUuid: string;
+  version: number;
+  kind: string;
+  deployPrefix: string;
+  label: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+}
+
 export interface Doc {
   uuid: string;
   workspaceUuid: string;
@@ -340,6 +352,13 @@ export const api = {
     );
   },
 
+  getSiteVersions: (siteUuid: string) =>
+    fetchJson<SiteVersion[]>(`/sites/${encodeURIComponent(siteUuid)}/versions`),
+  publishSiteVersion: (siteUuid: string, version: number) =>
+    fetchJson<{ version: number; deployPrefix: string }>(
+      `/sites/${encodeURIComponent(siteUuid)}/versions/${version}/publish`,
+      { method: "POST" },
+    ),
   getPipelineStatus: (siteUuid: string) =>
     fetchJson<PipelineStatus>(`/sites/${encodeURIComponent(siteUuid)}/pipeline/status`),
   getPipelineArtifact: (siteUuid: string, stage: string) =>

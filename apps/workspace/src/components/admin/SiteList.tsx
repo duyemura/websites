@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace";
 
 interface SiteListProps {
   selectedSiteUuid: string | null;
@@ -12,8 +13,9 @@ interface SiteListProps {
 }
 
 export function SiteList({ selectedSiteUuid, onSelect, onNewSite, onOpenChat }: SiteListProps) {
+  const { currentWorkspaceSlug } = useWorkspace();
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["sites"],
+    queryKey: ["sites", currentWorkspaceSlug],
     queryFn: () => api.getSites(),
   });
 

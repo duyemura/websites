@@ -1,30 +1,25 @@
 ---
 import { content } from "../../../lib/content";
 const { business } = content;
-const { headline, ctaLabel = business.primaryCta.label, ctaUrl = business.primaryCta.url } = Astro.props as { headline: string; ctaLabel?: string; ctaUrl?: string };
+const props = Astro.props as { headline: string; subtext?: string; ctaLabel?: string; ctaUrl?: string };
+const headline = props.headline;
+const subtext = props.subtext;
+const ctaLabel = props.ctaLabel ?? business.primaryCta.label;
+const ctaUrl = props.ctaUrl ?? business.primaryCta.url;
 ---
-<section data-section="ctaBand" data-section-tag="cta-band" class="section-skew section-overlap overflow-hidden bg-accent py-16 text-center text-white lg:py-24">
-  <div class="section-skew-inner mx-auto max-w-4xl px-6 lg:px-10">
+<section data-section="ctaBand" data-section-tag="cta-band" class="section-skew overflow-hidden bg-white text-center text-black">
+  <div class="section-inner mx-auto max-w-4xl px-6 lg:px-10">
     <h2 class="font-heading text-3xl font-black uppercase tracking-tight md:text-4xl lg:text-5xl">{headline}</h2>
+    {subtext && <p class="mx-auto mt-4 max-w-2xl text-black/70">{subtext}</p>}
     {ctaLabel && ctaUrl && (
       <div class="mt-8 flex flex-wrap justify-center gap-4">
         <a
           href={ctaUrl}
           data-track="contact"
-          class="inline-flex items-center gap-4 border-2 border-white bg-white px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-accent transition hover:bg-transparent hover:text-white"
+          class="cta-skew group inline-flex items-center gap-4 border-2 border-black bg-black px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-transparent hover:text-black"
         >
           {ctaLabel}
-          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path d="M1 1l5 5-5 5" />
-          </svg>
-        </a>
-        <a
-          href={ctaUrl}
-          data-track="contact"
-          class="inline-flex items-center gap-4 border-2 border-white px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-white hover:text-accent"
-        >
-          {ctaLabel}
-          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <svg width="12" height="18" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
             <path d="M1 1l5 5-5 5" />
           </svg>
         </a>

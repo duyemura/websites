@@ -3,17 +3,25 @@ import type { Step } from "../../../types/gym-content";
 const { steps, headline } = Astro.props as { steps: Step[]; headline?: string };
 if (!steps?.length) return;
 ---
-<section data-section="howItWorks" data-section-tag="steps-band" class="section-skew section-overlap bg-white py-16 text-black lg:py-24">
-  <div class="section-skew-inner mx-auto max-w-[90rem] px-6 lg:px-10">
-    {headline && <h2 class="mb-12 text-center font-heading text-3xl font-black uppercase tracking-tight md:text-4xl lg:text-5xl">{headline}</h2>}
-    <ol class="grid gap-10 md:grid-cols-3">
+<section data-section="howItWorks" data-section-tag="steps-band" class="section-skew bg-white text-black">
+  <div class="section-inner mx-auto max-w-[80rem] px-6 lg:px-10">
+    {headline && (
+      <h2 class="mb-20 text-center font-heading text-3xl font-black uppercase tracking-tight md:mb-24 md:text-4xl lg:text-5xl">
+        {headline}
+      </h2>
+    )}
+    <ol class="grid gap-16 md:grid-cols-3 md:gap-10 lg:gap-16">
       {steps.map((step) => (
         <li class="text-center">
-          <div class="mx-auto mb-5 flex h-20 w-20 items-center justify-center border-2 border-accent font-heading text-3xl font-black text-accent">
+          <span class="block font-heading text-7xl font-black leading-none text-accent md:text-8xl" aria-hidden="true">
             {step.number}
-          </div>
-          <h3 class="font-heading text-lg font-bold uppercase tracking-wide">{step.headline}</h3>
-          <p class="mt-2 text-sm leading-relaxed text-black/70">{step.body}</p>
+          </span>
+          <h3 class="mt-8 font-heading text-xl font-black uppercase tracking-tight md:text-2xl">
+            {step.headline}
+          </h3>
+          <p class="mx-auto mt-4 max-w-xs text-base leading-relaxed text-black/70 lg:text-lg">
+            {step.body}
+          </p>
         </li>
       ))}
     </ol>

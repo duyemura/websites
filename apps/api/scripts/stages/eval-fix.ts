@@ -1,17 +1,15 @@
 // apps/api/scripts/stages/eval-fix.ts
 // CLI runner that heals a page from a per-page QA report, rebuilds the registry
-// template, publishes it, and re-evaluates the live page. This keeps the entire
-// fix loop on the registry-driven Tier 2 path.
+// template locally until the page passes, then publishes once. This keeps the
+// entire fix loop on the registry-driven Tier 2 path while avoiding S3/CloudFront
+// churn per iteration.
 
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
-import { buildFixPlan } from "../../src/services/eval/eval-fix.js";
-import { evaluatePage } from "../../src/services/eval/page-evaluator.js";
+import path from "node:path";
 import type { PageEvalReport } from "../../src/services/eval/page-eval-report.js";
-import { loadSiteHierarchyDoc, saveSiteHierarchyDoc } from "../../src/utils/site-hierarchy-io.js";
-import { loadDesignSystemDoc, saveDesignSystemDoc } from "../../src/utils/design-system-io.js";
-import { buildGymJson } from "../../src/services/template/content-mapper.js";
-import { saveArtifact, loadArtifact } from "../../src/utils/pipeline/artifact-store.js";
-import { templateStage } from "./template.js";
+import { evaluatePage } from "../../src/services/eval/page-evaluator.js";
+import { runEvalFixLoop } from "../../src/services/eval/run-eval-fix-loop.js";
+import { deployTemplateDist } from "../../src/services/template/deploy-template.js";
+import { promoteDeploy } from "../../src/services/mirror/deploy.js";
 import { publishStage } from "./publish.js";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
@@ -22,6 +20,13 @@ export interface EvalFixOptions {
   path?: string;
   url?: string;
   keywords?: string[];
+  /**
+   * Minimum overall score to consider the page acceptable. Default matches the
+   * evaluator's pass threshold (70).
+   */
+  scoreThreshold?: number;
+  /** Maximum number of heal/build/eval loops. Default 10. */
+  maxLoops?: number;
 }
 
 function pathToSlug(path: string): string {
@@ -45,25 +50,14 @@ function resolveEvalUrl(
   return undefined;
 }
 
-function resolveProductionUrl(
-  site: { uuid: string; customDomain: string | null },
-  config: StageContext["config"],
-): string | undefined {
-  if (site.customDomain) return `https://${site.customDomain}`;
-  if (config.MILO_PREVIEW_DOMAIN) {
-    return `https://${site.uuid.slice(0, 8)}.${config.MILO_PREVIEW_DOMAIN}`;
-  }
-  return undefined;
-}
-
 export function evalFixStage(options: EvalFixOptions = {}): StageRunner {
   return {
-    label: "Eval fix + rebuild + publish",
+    label: "Eval fix + local rebuild loop + publish",
     requires: [],
     produces: "",
     run: async (ctx: StageContext): Promise<StageResult> => {
       const start = Date.now();
-      const { db, config, siteUuid, workspaceUuid, s3Client } = ctx;
+      const { db, config, siteUuid, workspaceUuid, s3Client, rendererDir } = ctx;
 
       let report: PageEvalReport;
       let resolvedPath = options.path ?? "/";
@@ -112,110 +106,88 @@ export function evalFixStage(options: EvalFixOptions = {}): StageRunner {
         };
       }
 
-      const site = await db
+      const hierarchy = await db
         .selectFrom("sites")
-        .select(["uuid", "workspaceUuid", "customDomain"])
+        .selectAll()
         .where("uuid", "=", siteUuid)
-        .executeTakeFirstOrThrow();
-
-      const hierarchy = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
-      if (!hierarchy) {
+        .executeTakeFirst();
+      // We need the hierarchy doc to resolve the page slug; the loop loads it itself,
+      // but we need to pick the right slug before calling it.
+      const { loadSiteHierarchyDoc } = await import("../../src/utils/site-hierarchy-io.js");
+      const hierarchyDoc = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
+      if (!hierarchyDoc) {
         throw new Error(`Site hierarchy not found for ${siteUuid}`);
-      }
-
-      const designSystemDoc = await loadDesignSystemDoc(db, workspaceUuid, siteUuid);
-      if (!designSystemDoc || designSystemDoc.version !== "2") {
-        throw new Error(`Design system v2 not found for ${siteUuid}`);
-      }
-
-      // Prefer the generate artifact (LLM-produced GymSiteContent) so fixes apply
-      // to the same content the template stage renders. Fall back to the content
-      // mapper only when the artifact is missing.
-      let content: GymSiteContent | undefined;
-      const generateArtifact = await loadArtifact<GymSiteContent>(
-        db,
-        { siteUuid, workspaceUuid },
-        "generate" as unknown as Parameters<typeof loadArtifact>[2],
-      );
-      if (generateArtifact?.payload) {
-        content = generateArtifact.payload;
-      } else {
-        try {
-          const { content: mapped } = await buildGymJson(
-            db,
-            siteUuid,
-            { apiBaseUrl: "", siteUrl: "", workspaceUuid },
-            workspaceUuid,
-          );
-          content = mapped;
-        } catch {
-          // Tier 1 clone-only sites may not have mappable GymSiteContent.
-        }
       }
 
       const pageSlug = pathToSlug(resolvedPath);
       const resolvedPageSlug =
-        hierarchy.pages.find((p) => p.slug === pageSlug)?.slug ??
-        hierarchy.pages.find((p) => p.path === resolvedPath)?.slug ??
+        hierarchyDoc.pages.find((p) => p.slug === pageSlug)?.slug ??
+        hierarchyDoc.pages.find((p) => p.path === resolvedPath)?.slug ??
         pageSlug;
 
-      const plan = buildFixPlan({
+      const loopResult = await runEvalFixLoop({
+        db,
+        config,
+        s3Client,
+        siteUuid,
+        workspaceUuid,
+        rendererDir,
         report,
-        content,
-        hierarchy,
-        designSystem: designSystemDoc,
-        pageSlug: resolvedPageSlug,
+        resolvedPath,
+        resolvedPageSlug,
+        scoreThreshold: options.scoreThreshold,
+        maxLoops: options.maxLoops,
+        keywords: options.keywords,
+        templateTheme: ctx.templateTheme,
+        log: (msg) => ctx.log(msg),
       });
 
-      if (!plan.changed) {
+      if (!loopResult.changed) {
+        const finalMetrics = loopResult.report.categories.flatMap((c) => c.issues);
+        const criticalIssues = finalMetrics.filter((i) => i.severity === "critical").length;
         return {
           stage: "eval-fix",
           status: "fail",
           durationMs: Date.now() - start,
           metrics: {
-            score: report.overall.score,
-            grade: report.overall.grade,
+            score: loopResult.report.overall.score,
+            grade: loopResult.report.overall.grade,
             appliedHeals: 0,
-            sectionInstructions: plan.brief.sectionInstructions.length,
+            sectionInstructions: loopResult.sectionInstructions,
+            loops: loopResult.loops,
+            totalIssues: finalMetrics.length,
+            criticalIssues,
           },
-          warnings: plan.brief.sectionInstructions.map((s) => `[${s.sectionId}] ${s.instructions}`),
-          error: "No deterministic heals could be applied; remaining issues need visual/interactivity edits.",
+          warnings: loopResult.report.categories.flatMap((c) =>
+            c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
+          ),
+          error: loopResult.convergedReason ?? "No deterministic heals could be applied; remaining issues need visual/interactivity edits.",
         };
       }
 
-      await saveSiteHierarchyDoc(db, workspaceUuid, siteUuid, plan.hierarchy);
-      await saveDesignSystemDoc(db, workspaceUuid, siteUuid, plan.designSystem);
+      // TODO: when the loop exits without meeting the score threshold + 0 criticals,
+      // add a site flag (e.g. `sites.hiddenFromCustomer = true`) so the published
+      // build is visible to us for cleanup but not surfaced to the gym. Until then
+      // we publish unconditionally so eval-fix behaves like a normal build.
+      ctx.log(`\n  Publishing converged build after ${loopResult.loops} loop${loopResult.loops === 1 ? "" : "s"}...`);
+      const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
+      const distDir = path.join(rendererDir, "dist");
+      const templateResult = await deployTemplateDist({
+        db,
+        s3Client,
+        bucket,
+        siteUuid,
+        workspaceUuid,
+        distDir,
+        templateTheme: ctx.templateTheme,
+        label: "Eval-fix converged build",
+        log: {
+          info: (o, m) => ctx.log(`  [deploy] ${m}`),
+          warn: (o, m) => ctx.log(`  [warn] ${m}`),
+        },
+      });
+      await promoteDeploy(s3Client, bucket, siteUuid, templateResult.deployPrefix);
 
-      // Save the healed content back so the template stage uses it instead of the
-      // older generate artifact or content-mapper defaults.
-      if (plan.content) {
-        await saveArtifact(
-          db,
-          { siteUuid, workspaceUuid },
-          "generate" as unknown as Parameters<typeof saveArtifact>[2],
-          plan.content,
-        );
-      }
-
-      ctx.log("  Rebuilding template from healed docs...");
-      const templateResult = await templateStage.run(ctx);
-      if (templateResult.status === "fail") {
-        return {
-          stage: "eval-fix",
-          status: "fail",
-          durationMs: Date.now() - start,
-          metrics: {
-            score: report.overall.score,
-            grade: report.overall.grade,
-            appliedHeals: plan.brief.appliedHeals.length,
-            sectionInstructions: plan.brief.sectionInstructions.length,
-          },
-          warnings: plan.brief.appliedHeals.map((h) => `[${h.category}] ${h.target}: ${h.message}`),
-          error: `Template rebuild failed: ${templateResult.error ?? "unknown error"}`,
-        };
-      }
-
-      ctx.log("  Publishing updated build...");
       const publishResult = await publishStage.run(ctx);
       if (publishResult.status === "fail") {
         return {
@@ -223,65 +195,46 @@ export function evalFixStage(options: EvalFixOptions = {}): StageRunner {
           status: "fail",
           durationMs: Date.now() - start,
           metrics: {
-            score: report.overall.score,
-            grade: report.overall.grade,
-            appliedHeals: plan.brief.appliedHeals.length,
-            sectionInstructions: plan.brief.sectionInstructions.length,
-            templateVersion: templateResult.metrics.version,
+            score: loopResult.report.overall.score,
+            grade: loopResult.report.overall.grade,
+            appliedHeals: loopResult.appliedHeals,
+            sectionInstructions: loopResult.sectionInstructions,
+            loops: loopResult.loops,
+            templateVersion: templateResult.version,
           },
-          warnings: plan.brief.appliedHeals.map((h) => `[${h.category}] ${h.target}: ${h.message}`),
+          warnings: loopResult.report.categories.flatMap((c) =>
+            c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
+          ),
           error: `Publish failed: ${publishResult.error ?? "unknown error"}`,
         };
       }
 
-      const productionUrl = resolveProductionUrl(site, config);
-      if (!productionUrl) {
-        throw new Error("Could not resolve production URL — configure MILO_PREVIEW_DOMAIN or set a custom domain");
-      }
-      const reEvalUrl = `${productionUrl}${resolvedPath}`;
-      ctx.log(`  Re-evaluating ${reEvalUrl}`);
-      const reEvalReport = await evaluatePage({
-        db,
-        config,
-        s3Client,
-        siteUuid,
-        workspaceUuid,
-        path: resolvedPath,
-        url: reEvalUrl,
-        keywords: options.keywords,
-        log: (msg) => ctx.log(msg),
-      });
-
-      const totalIssues = reEvalReport.categories.flatMap((c) => c.issues).length;
-      const criticalIssues = reEvalReport.categories
-        .flatMap((c) => c.issues)
-        .filter((i) => i.severity === "critical").length;
-      const failedCategories = reEvalReport.categories
-        .filter((c) => c.status === "failed")
-        .map((c) => c.name);
-      const reEvalStatus = reEvalReport.overall.status === "passed" ? "pass" : "fail";
+      const finalIssues = loopResult.report.categories.flatMap((c) => c.issues);
+      const criticalIssues = finalIssues.filter((i) => i.severity === "critical").length;
+      const reEvalStatus = loopResult.report.overall.status === "passed" ? "pass" : "fail";
 
       return {
         stage: "eval-fix",
         status: reEvalStatus,
         durationMs: Date.now() - start,
         metrics: {
-          score: reEvalReport.overall.score,
-          grade: reEvalReport.overall.grade,
-          totalIssues,
+          score: loopResult.report.overall.score,
+          grade: loopResult.report.overall.grade,
+          totalIssues: finalIssues.length,
           criticalIssues,
-          failedCategories: failedCategories.length,
-          appliedHeals: plan.brief.appliedHeals.length,
-          sectionInstructions: plan.brief.sectionInstructions.length,
-          templateVersion: templateResult.metrics.version,
+          failedCategories: loopResult.report.categories.filter((c) => c.status === "failed").length,
+          appliedHeals: loopResult.appliedHeals,
+          sectionInstructions: loopResult.sectionInstructions,
+          loops: loopResult.loops,
+          templateVersion: templateResult.version,
           publishedVersion: publishResult.metrics.version,
         },
         warnings: [
-          ...plan.brief.appliedHeals.map((h) => `[${h.category}] ${h.target}: ${h.message}`),
-          ...reEvalReport.categories.flatMap((c) =>
+          loopResult.convergedReason ?? undefined,
+          ...loopResult.report.categories.flatMap((c) =>
             c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
           ),
-        ],
+        ].filter(Boolean) as string[],
       };
     },
   };

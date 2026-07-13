@@ -67,10 +67,12 @@ The `milo` CLI (`apps/api/scripts/milo.ts`) orchestrates stages. Run with:
 `enrich → clone → docgen`
 
 ### Upgrade pipeline (runs when gym upgrades to Tier 2)
-`generate → template → publish`
+`generate → template`
+
+Publishing to production requires explicit user approval — run `milo --stages publish --site <uuid>` or call `POST /sites/:uuid/publish`.
 
 ### Full pipeline (dev/testing — runs both in sequence)
-`enrich → clone → docgen → generate → template → publish`
+`enrich → clone → docgen → generate → template`
 
 ### Auxiliary tools (separate CLI commands, not pipeline stages)
 - `eval` — pixel-diff QA between source site and clone

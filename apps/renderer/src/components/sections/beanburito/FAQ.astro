@@ -6,8 +6,8 @@ const { items, headline = "Questions? We have the answers!" } = Astro.props as {
 if (!items?.length) return;
 const { business } = content;
 ---
-<section data-section="faq" data-section-tag="faq-block" class="section-skew-reverse section-overlap bg-white py-16 text-black lg:py-24">
-  <div class="section-skew-inner-reverse mx-auto max-w-3xl px-6 lg:px-10">
+<section data-section="faq" data-section-tag="faq-block" class="section-skew bg-white text-black">
+  <div class="section-inner mx-auto max-w-3xl px-6 lg:px-10">
     <div class="mb-10 text-center">
       <h2 class="font-heading text-3xl font-black uppercase tracking-tight text-black md:text-4xl">{headline}</h2>
       <p class="mt-2 text-black/70">Still curious? Talk to us!</p>
@@ -23,7 +23,7 @@ const { business } = content;
         <details class="faq-item py-5">
           <summary class="flex cursor-pointer list-none items-center justify-between font-heading text-lg font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
             <span>{f.question}</span>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="transition-transform duration-200">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="faq-chevron transition-transform duration-200">
               <path d="M4 6l4 4 4-4" />
             </svg>
           </summary>

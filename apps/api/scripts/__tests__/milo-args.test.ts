@@ -57,17 +57,17 @@ describe("milo parseArgs", () => {
   });
 
   test("legacy --stages still works", () => {
-    const cmd = parseArgsFrom(["--url", "https://example.com", "--stages", "enrich,clone"]);
+    const cmd = parseArgsFrom(["--url", "https://example.com", "--stages", "enrich,crawl"]);
     expect(cmd.cmd).toBe("stages");
-    expect((cmd as any).stages).toEqual(["enrich", "clone"]);
+    expect((cmd as any).stages).toEqual(["enrich", "crawl"]);
   });
 
   test("unknown command throws", () => {
     expect(() => parseArgsFrom(["foo"])).toThrow("Unknown command");
   });
 
-  test("join missing --url throws", () => {
-    expect(() => parseArgsFrom(["join"])).toThrow("--url");
+  test("new missing --url throws", () => {
+    expect(() => parseArgsFrom(["new"])).toThrow("--url");
   });
 });
 

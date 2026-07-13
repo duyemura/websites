@@ -36,8 +36,8 @@ export function WorkspaceProvider({
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentWorkspaceSlug, setSlug] = useState<string>(() => {
-    if (typeof window === "undefined") return "local";
-    return localStorage.getItem(STORAGE_KEY) || "local";
+    if (typeof window === "undefined") return "eval-workspace";
+    return localStorage.getItem(STORAGE_KEY) || "eval-workspace";
   });
 
   const refresh = async () => {

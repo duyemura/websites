@@ -125,6 +125,11 @@ export async function publishSiteVersion(
     .where("uuid", "=", row.uuid)
     .execute();
 
+  await db.updateTable("sites")
+    .set({ status: "published" })
+    .where("uuid", "=", siteUuid)
+    .execute();
+
   return { version: row.version, deployPrefix: row.deployPrefix };
 }
 
@@ -153,6 +158,10 @@ export async function publishLatestStagingToProduction(
     await db.updateTable("siteVersions")
       .set({ publishedAt: new Date() })
       .where("uuid", "=", latest.uuid)
+      .execute();
+    await db.updateTable("sites")
+      .set({ status: "published" })
+      .where("uuid", "=", siteUuid)
       .execute();
     return { version: latest.version };
   }

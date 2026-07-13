@@ -292,6 +292,26 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         loadStageSummary(fastify.db, ctx, "verify"),
       ]);
 
+      // New Milo pipeline (enrich → docgen → content → generate → template → publish)
+      // does not store a "build" artifact. Derive build availability from the latest
+      // deployed site version so the preview UI still works.
+      const latestVersion = await fastify.db
+        .selectFrom("siteVersions")
+        .select(["version", "kind", "deployPrefix", "publishedAt", "createdAt"])
+        .where("siteUuid", "=", site.siteUuid)
+        .orderBy("version", "desc")
+        .limit(1)
+        .executeTakeFirst();
+
+      const effectiveBuild: StageSummary | null = build ??
+        (latestVersion
+          ? {
+              version: latestVersion.version,
+              createdAt: latestVersion.publishedAt ?? latestVersion.createdAt,
+              payload: { kind: latestVersion.kind, deployPrefix: latestVersion.deployPrefix },
+            }
+          : null);
+
       const segmentStale = isStale(segment, extract, (p) => {
         const value = (p as { sourceExtractAt?: unknown }).sourceExtractAt;
         return typeof value === "string" ? value : undefined;
@@ -299,8 +319,8 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       const contractStale = isStale(contract, segment);
       // Docgen has no explicit source ref, so fall back to createdAt vs segment.
       const docgenStale = isStale(docgen, contract);
-      const buildStale = isStale(build, docgen);
-      const verifyStale = isStale(verify, build);
+      const buildStale = isStale(effectiveBuild, docgen);
+      const verifyStale = isStale(verify, effectiveBuild);
 
       const format = (
         s: StageSummary | null,
@@ -349,7 +369,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
           segment: format(segment, segmentStale),
           contract: format(contract, contractStale),
           docgen: format(docgen, docgenStale),
-          build: format(build, buildStale),
+          build: format(effectiveBuild, buildStale),
           verify: format(verify, verifyStale),
         },
         scores,

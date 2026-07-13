@@ -5,30 +5,30 @@ const privacyHref = "/legal/privacy-policy";
 ---
 <div
   id="cookie-banner"
-  class="fixed inset-x-0 bottom-0 z-50 hidden border-t border-white/10 bg-black px-4 py-4 text-white shadow-2xl md:py-5"
+  class="fixed bottom-3 right-3 z-50 hidden max-w-md rounded-tl-xl border-l border-t border-white/10 bg-black/95 px-4 py-3 text-white shadow-2xl backdrop-blur"
   role="dialog"
   aria-label="Cookie consent"
 >
-  <div class="mx-auto flex max-w-7xl flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-    <p class="text-sm leading-relaxed text-white/80">
+  <div class="mx-auto flex max-w-7xl flex-col items-start gap-3 lg:max-w-none lg:flex-col lg:items-stretch">
+    <p class="text-sm leading-snug text-white/80">
       By clicking “Accept all cookies”, you agree to the storing of cookies on your device to enhance site navigation,
       analyze site usage, and assist in our marketing efforts.
       {privacyHref && (
         <> <a href={privacyHref} class="underline hover:text-white">View our privacy policy</a> for more information.</>
       )}
     </p>
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap gap-2">
       <button
         type="button"
         data-cookie="deny"
-        class="border border-white/30 px-5 py-2 font-heading text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white/10"
+        class="border border-white/30 px-4 py-1.5 font-heading text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/10"
       >
         Deny
       </button>
       <button
         type="button"
         data-cookie="accept"
-        class="bg-accent px-5 py-2 font-heading text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white hover:text-primary"
+        class="bg-accent px-4 py-1.5 font-heading text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white hover:text-primary"
       >
         Accept all cookies
       </button>

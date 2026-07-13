@@ -1,5 +1,5 @@
 // apps/api/src/utils/mirror/crawl-to-scraped.ts
-// Build a ScrapedWebsiteData shape from the mirror-crawl homepage HTML so the
+// Build a ScrapedWebsiteData shape from the crawl homepage HTML so the
 // existing doc generators (workspace-memory, site-memory, brand-guidelines,
 // business-info, site-strategy, site-hierarchy) can run without extract/segment.
 
@@ -39,21 +39,7 @@ async function fetchHtmlFromS3(
   }
 }
 
-function inferSectionType(cls: string, heading?: string): string {
-  const lower = `${cls} ${heading ?? ""}`.toLowerCase();
-  if (/\bhero\b/.test(lower)) return "hero";
-  if (/\btestimonial|\breview|\bmember story/.test(lower)) return "testimonial";
-  if (/\bpricing|\bplan|\bmembership|\bpackage/.test(lower)) return "pricing";
-  if (/\bfaq|\bfrequently asked/.test(lower)) return "faq";
-  if (/\bteam|\bcoach|\btrainer|\bstaff/.test(lower)) return "team";
-  if (/\blocation|\bcontact|\bfind us|\bvisit/.test(lower)) return "location";
-  if (/\bcta|\bcall.to.action/.test(lower)) return "cta";
-  if (/\bfeature|\bbenefit|\bservice|\bprogram|\bclass/.test(lower)) return "feature-grid";
-  if (/\bstep|\bprocess|\bhow it works/.test(lower)) return "steps";
-  if (/\bgallery|\bimage|\bmedia/.test(lower)) return "media";
-  if (/\babout|\bstory|\bmision/.test(lower)) return "about";
-  return "section";
-}
+import { inferSectionType } from "./extract-image-contexts";
 
 function makeVisualEvidence(id: string, pageSlug = "index"): SectionVisualEvidenceRow {
   return {

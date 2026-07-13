@@ -208,21 +208,6 @@ export function sanitizeContentCtas(
 
 // ── Brand ────────────────────────────────────────────────────────────────────
 
-export function extractBrand(ds: DesignSystemV2, warnings: string[]): BrandTokens {
-  const c = ds.global.tokens.colors;
-  const f = ds.global.tokens.fonts;
-  const logo = ds.brand.logo;
-  const baseline = DEFAULT_TEMPLATE_TOKENS;
-  return {
-    primaryColor: fallback(c.primary, baseline.colors.primary, warnings, "primaryColor"),
-    secondaryColor: fallback(c.background, baseline.colors.foreground, warnings, "secondaryColor"),
-    accentColor: fallback(c.foreground, baseline.colors.mutedForeground, warnings, "accentColor"),
-    headingFont: fallback(f.heading, baseline.fonts.heading, warnings, "headingFont"),
-    bodyFont: fallback(f.body, baseline.fonts.body, warnings, "bodyFont"),
-    logoUrl: logo.type === "image" ? (logo.value || fallback("", "", warnings, "logoUrl")) : "",
-    logoAlt: logo.alt || ds.business.name || DEFAULT_BUSINESS_NAME,
-  };
-}
 
 // ── Business ─────────────────────────────────────────────────────────────────
 
@@ -304,9 +289,9 @@ export function extractBusiness(
     "business.tagline",
   );
 
-  // Phone / email
+  // Phone / email: never fall back to placeholder email; leave empty if unknown.
   const phone = fallback(enrichPhone || labelLine("Phone"), baseline.phone, warnings, "phone");
-  const email = enrichEmail || labelLine("Email") || baseline.email;
+  const email = enrichEmail || labelLine("Email") || undefined;
 
   // Address: prefer enrich artifact, then markdown label, then baseline
   let address = enrichAddress;
@@ -320,7 +305,8 @@ export function extractBusiness(
   const stateAbbr = fallback(address?.stateAbbr, baseline.address.state, warnings, "address.state");
   const zip = fallback(address?.zip, baseline.address.zip, warnings, "address.zip");
 
-  // Social links from labeled lines, merged with enrich
+  // Social links from labeled lines, merged with enrich. Never fall back to
+  // placeholder social URLs when no real links were found.
   const socialPlatforms = ["facebook", "instagram", "twitter", "tiktok", "youtube"] as const;
   const social: Partial<Record<typeof socialPlatforms[number], string>> = { ...enrichSocial };
   for (const platform of socialPlatforms) {
@@ -346,7 +332,32 @@ export function extractBusiness(
     geo: { city, state: STATE_ABBRS[stateAbbr] ?? stateAbbr, stateAbbr },
     serviceArea: baseline.serviceArea,
     aggregateRating: enrichRating,
-    social: Object.keys(social).length > 0 ? (social as BusinessInfo["social"]) : baseline.social,
+    social: Object.keys(social).length > 0 ? (social as BusinessInfo["social"]) : undefined,
+  };
+}
+
+// ── Brand ────────────────────────────────────────────────────────────────────
+
+export function extractBrand(
+  ds: DesignSystemV2,
+  warnings: string[],
+  businessName: string = "",
+): BrandTokens {
+  const c = ds.global.tokens.colors;
+  const f = ds.global.tokens.fonts;
+  const logo = ds.brand.logo;
+  const baseline = DEFAULT_TEMPLATE_TOKENS;
+  // Text-logo sites have no image URL; image-logo sites without a value render
+  // as text as well so the footer/header never show a broken image.
+  const logoUrl = logo.type === "image" ? (logo.value || "") : "";
+  return {
+    primaryColor: fallback(c.primary, baseline.colors.primary, warnings, "primaryColor"),
+    secondaryColor: fallback(c.background, baseline.colors.foreground, warnings, "secondaryColor"),
+    accentColor: fallback(c.foreground, baseline.colors.mutedForeground, warnings, "accentColor"),
+    headingFont: fallback(f.heading, baseline.fonts.heading, warnings, "headingFont"),
+    bodyFont: fallback(f.body, baseline.fonts.body, warnings, "bodyFont"),
+    logoUrl,
+    logoAlt: logo.alt || ds.business.name || businessName || DEFAULT_BUSINESS_NAME,
   };
 }
 
@@ -458,12 +469,19 @@ export function extractPages(
     howItWorksHeadline: "",
     testimonials: [],
     faq: [],
+    ctaHeadline: "",
+  };
+
+  const programDescriptions: Record<string, string> = {
+    "group-strength": "Small-group barbell and functional strength sessions scaled to every level.",
+    "cardio-bootcamp": "High-energy interval training that builds endurance, burns calories, and keeps you moving.",
+    "personal-training": "One-on-one coaching built around your goals, schedule, and starting point.",
   };
 
   const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
     slug: p.slug,
     name: p.name,
-    shortDescription: "Coach-led training for every fitness level.",
+    shortDescription: programDescriptions[p.slug] ?? `Coach-led ${p.name.toLowerCase()} sessions designed for real results.`,
     coverImageUrl: NO_IMAGE,
     hero: {
       headline: `Try our ${p.name}`,
@@ -485,7 +503,7 @@ export function extractPages(
     ? programPages.map((p) => ({
         slug: p.slug,
         name: p.title,
-        shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160),
+        shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160) || programDescriptions[p.slug] || `Coach-led ${p.title.toLowerCase()} sessions designed for real results.`.slice(0, 160),
         coverImageUrl: p.heroImageUrl || placeholderImage(p.title, 800, 600),
         hero: {
           ...heroFromPage(p),
@@ -569,6 +587,70 @@ export function extractPages(
   return { home, programs, about, pricing, contact, schedule, blog, localGuide, legal };
 }
 
+// Build a useful default meta description when the extracted tagline is missing
+// or too short for search results. Keep it within 150–160 characters.
+function buildDefaultDescription(business: BusinessInfo, home: HomeContent): string {
+  const base =
+    home.hero.intro ||
+    business.tagline ||
+    `${business.name} is a gym in ${business.geo.city}, ${business.geo.stateAbbr}.`;
+  const suffix = ` Join ${business.name} in ${business.geo.city} for personalized training and a supportive community.`;
+  let combined = `${base}${suffix}`;
+  if (combined.length > 160) {
+    combined = `${base.slice(0, Math.max(0, 160 - suffix.length - 3)).replace(/\s+\S*$/, "")}...${suffix}`;
+  }
+  return combined.length < 120
+    ? `${combined} Start your fitness journey today.`
+    : combined;
+}
+
+// Generic fallback legal pages so the cookie-banner privacy link and any footer
+// legal references always resolve. Replace with gym-specific docs once available.
+function defaultLegalPages(business: BusinessInfo): LegalPage[] {
+  const name = business.name;
+  const year = new Date().getFullYear();
+  return [
+    {
+      slug: "privacy-policy",
+      title: "Privacy Policy",
+      blocks: [
+        {
+          type: "text",
+          html: `<p>${name} (“we”, “us”, or “our”) respects your privacy. This Privacy Policy explains how we collect, use, and protect your personal information when you visit our website or use our services.</p>
+          <h2>Information we collect</h2>
+          <p>We may collect contact details (such as name, email, and phone number), billing information, and usage data when you fill out forms, book classes, or interact with our site.</p>
+          <h2>How we use your information</h2>
+          <p>We use the information we collect to provide and improve our services, communicate with you, process payments, and comply with legal obligations.</p>
+          <h2>Cookies and tracking</h2>
+          <p>Our site may use cookies and similar technologies to understand how visitors use our site and to improve your experience. You can control cookies through your browser settings.</p>
+          <h2>Third-party services</h2>
+          <p>We may share information with trusted service providers who help us operate our business (for example, payment processors and scheduling platforms). We do not sell your personal information.</p>
+          <h2>Contact us</h2>
+          <p>If you have questions about this Privacy Policy, please contact us at ${business.email || "privacy@" + name.toLowerCase().replace(/\s+/g, "") + ".com"}.</p>
+          <p>Last updated: ${year}.</p>`,
+        },
+      ],
+    },
+    {
+      slug: "terms-of-service",
+      title: "Terms of Service",
+      blocks: [
+        {
+          type: "text",
+          html: `<p>By accessing or using the ${name} website and services, you agree to these Terms of Service.</p>
+          <h2>Membership and payments</h2>
+          <p>Membership fees are billed according to the plan you select. Cancellations and refunds are handled per the agreement you sign when you join.</p>
+          <h2>Health and safety</h2>
+          <p>You acknowledge that physical exercise involves risk. Consult a physician before beginning any fitness program and follow coach instructions to reduce the chance of injury.</p>
+          <h2>Contact</h2>
+          <p>For questions about these terms, contact us at ${business.email || "support@" + name.toLowerCase().replace(/\s+/g, "") + ".com"}.</p>
+          <p>Last updated: ${year}.</p>`,
+        },
+      ],
+    },
+  ];
+}
+
 // ── Contract-aware mapping helpers ────────────────────────────────────────────
 
 function inferTemplateTheme(contract: ContractArtifact | null, _home: HomeContent): SiteMeta["templateTheme"] {
@@ -633,6 +715,8 @@ export interface MapperConfig {
   apiBaseUrl: string;
   siteUrl: string;
   workspaceUuid?: string;
+  /** Google Maps API key used to build embed URLs from GMB place IDs. */
+  googleMapsApiKey?: string;
 }
 
 export async function buildGymJson(
@@ -698,8 +782,22 @@ export async function buildGymJson(
     buildPlan: { nextPage: "", pageStatus: {}, buildOrder: [] },
   }) as SiteHierarchy;
 
-  const brand = extractBrand(ds, warnings);
-  const business = extractBusiness(bizDoc?.content ?? "", ds, warnings, enrichArtifact?.payload ?? null);
+  let business = extractBusiness(bizDoc?.content ?? "", ds, warnings, enrichArtifact?.payload ?? null);
+  const brand = extractBrand(ds, warnings, business.name);
+
+  // Build a Google Maps embed URL from the business name + address. We use the
+  // classic output=embed endpoint because the Maps Embed API requires a separate
+  // API-key activation that is easy to miss in new projects.
+  if (!business.mapEmbedUrl && business.address?.street) {
+    const q = encodeURIComponent(
+      `${business.name}, ${business.address.street}, ${business.address.city}, ${business.geo.stateAbbr} ${business.address.zip}`,
+    );
+    business = {
+      ...business,
+      mapEmbedUrl: `https://www.google.com/maps?q=${q}&output=embed`,
+    };
+  }
+
   const navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
 
@@ -829,6 +927,12 @@ export async function buildGymJson(
     warnings.push(`content merged: ${contentArtifact.payload.pages.length} page briefs applied`);
   }
 
+  // Always provide fallback privacy/terms pages so the cookie banner and footer
+  // links resolve. Gym-specific legal docs can replace these later.
+  if (pages.legal.length === 0) {
+    pages.legal = defaultLegalPages(business);
+  }
+
   // Ensure every internal CTA points to a page that will actually be rendered.
   sanitizeContentCtas(pages, business, warnings);
 
@@ -844,7 +948,7 @@ export async function buildGymJson(
     apiBaseUrl: config.apiBaseUrl,
     siteUrl: config.siteUrl,
     defaultTitle: business.name ? `${business.name} | ${business.geo.city} Gym` : `${DEFAULT_BUSINESS_NAME} | ${DEFAULT_CITY} Gym`,
-    defaultDescription: business.tagline,
+    defaultDescription: buildDefaultDescription(business, pages.home),
     preview: false,
     templateTheme: inferredTemplateTheme,
   };

@@ -1,5 +1,5 @@
 export const MIRROR_STAGES = [
-  "mirror-crawl",
+  "crawl",
   "mirror-assets",
   "mirror-snapshot",
   "mirror-deploy",
@@ -80,6 +80,19 @@ export interface MirrorCrawlArtifact {
   ugcRegistry: string[];
 }
 
+export interface AssetAppearance {
+  /** Absolute original URL of the asset. */
+  originalUrl: string;
+  /** Normalized page path where the asset appeared, e.g. "/" or "/programs" */
+  pagePath: string;
+  /** Detected section type from class/heading, e.g. "hero", "program", "blog" */
+  sectionType: string;
+  /** First heading in the containing section, if any. */
+  sectionHeading?: string;
+  /** First meaningful paragraph in the containing section, if any. */
+  sectionBody?: string;
+}
+
 export interface MirrorAsset {
   originalUrl: string;
   /** S3 key under the snapshot prefix */
@@ -87,6 +100,18 @@ export interface MirrorAsset {
   /** Path used inside the rewritten site, e.g. "/_assets/ab12cd.css" */
   localPath: string;
   contentType: string;
+  /** Every page/section where this asset was found during crawl. */
+  appearances?: AssetAppearance[];
+  /** Vision-generated content tags for matching to generated sections. */
+  visionTags?: string[];
+  /** Vision-generated natural-language description. */
+  visionDescription?: string;
+  /** Vision-generated contexts where this image fits, e.g. ["blog", "nutrition"]. */
+  visionContexts?: string[];
+  /** Short vision subject, e.g. "pizza close-up". */
+  visionSubject?: string;
+  /** Vision confidence 0-1. */
+  visionConfidence?: number;
 }
 
 export interface MirrorAssetsArtifact {

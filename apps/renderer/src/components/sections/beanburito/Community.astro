@@ -6,8 +6,8 @@ const { items, headline, imageUrl } = Astro.props as { items: ValueProp[]; headl
 if (!items?.length && !headline) return;
 const hasImage = imageUrl && imageUrl !== NO_IMAGE;
 ---
-<section data-section="community" data-section-tag="content-block" class="section-skew section-overlap bg-black py-16 text-white lg:py-24">
-  <div class="section-skew-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+<section data-section="community" data-section-tag="content-block" class="section-skew bg-black text-white">
+  <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
     <div class="two-columns-wrapper flex flex-col items-center gap-12 lg:flex-row-reverse lg:items-center lg:gap-24">
       <div class="flex-1">
         {headline && (

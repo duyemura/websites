@@ -61,6 +61,21 @@ export interface PageSpec {
   };
 }
 
+export interface HeadAsset {
+  /** HTML element tag name, e.g. "link" or "script". */
+  tag: "link" | "script" | "style";
+  /** Attributes to place on the element. For inline styles/scripts, use innerHtml. */
+  attrs?: Record<string, string>;
+  /** Inline content for <style> or <script> tags. */
+  innerHtml?: string;
+  /** Set true if this asset should be preloaded as a font. */
+  preloadFont?: {
+    href: string;
+    type: string;
+    crossorigin?: string;
+  };
+}
+
 export interface TemplateSpec {
   name: string;
   description: string;
@@ -70,6 +85,10 @@ export interface TemplateSpec {
   components: Record<string, ComponentSpec>;
   /** Page layouts defined as ordered component sequences. */
   pages: Record<string, PageSpec>;
+  /** Extra <head> assets required by this template (stylesheets, fonts, scripts). */
+  headAssets?: HeadAsset[];
+  /** CSS classes to apply to <body> for this template. */
+  bodyClasses?: string[];
 }
 
 export type TemplateTheme = "baseline" | "impact" | "beanburito";

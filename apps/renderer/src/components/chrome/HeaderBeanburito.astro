@@ -2,24 +2,26 @@
 import { content } from "../../lib/content";
 const NO_IMAGE = "__NO_IMAGE__";
 const { navigation, business, brand } = content;
-const logoBlack = brand.logoUrl !== NO_IMAGE ? brand.logoUrl : undefined;
+const logoSrc = brand.logoUrl !== NO_IMAGE ? brand.logoUrl : undefined;
+// Keep the header CTA compact so it never crowd out the last nav item.
+const headerCtaLabel = business.primaryCta.label.length > 18 ? "Book intro" : business.primaryCta.label;
 ---
-<header class="fixed inset-x-0 top-0 z-50 bg-white text-black">
+<header class="site-header fixed inset-x-0 top-0 z-50 bg-black/90 text-white backdrop-blur">
   <div class="mx-auto flex max-w-[90rem] items-center justify-between px-6 py-3 lg:px-10">
     <a href="/" class="relative flex h-12 items-center">
-      {logoBlack
-        ? <img src={logoBlack} alt={brand.logoAlt} class="h-full w-auto object-contain" loading="eager" />
-        : <span class="font-heading text-sm font-black uppercase tracking-tight">{business.name}</span>
+      {logoSrc
+        ? <img src={logoSrc} alt={brand.logoAlt} class="header-logo h-full w-auto object-contain" loading="eager" />
+        : <span class="header-logo-text font-heading text-sm font-black uppercase tracking-tight">{business.name}</span>
       }
     </a>
 
-    <nav aria-label="Main" class="hidden items-center gap-1 lg:flex">
+    <nav aria-label="Main" class="hidden items-center gap-5 pr-4 xl:flex 2xl:gap-7">
       {navigation.header.map((item) => (
         <div class="group relative">
           <a
             href={item.href}
             aria-haspopup={item.children ? "true" : undefined}
-            class="flex items-center gap-1 px-3 py-4 font-heading text-sm font-bold uppercase tracking-tight text-black hover:text-accent"
+            class="header-nav-link flex items-center gap-1 px-3 py-3.5 font-heading text-sm font-bold uppercase tracking-tight transition hover:text-accent"
           >
             {item.label}
             {item.children && (
@@ -47,17 +49,17 @@ const logoBlack = brand.logoUrl !== NO_IMAGE ? brand.logoUrl : undefined;
       <a
         href={business.primaryCta.url}
         data-track="contact"
-        class="hidden bg-accent px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[#0040a5] sm:inline-block"
+        class="header-cta cta-skew hidden h-10 items-center border-2 border-[var(--color-accent)] bg-[var(--color-accent)] px-5 py-2 font-heading text-sm font-bold uppercase tracking-wide text-white transition hover:bg-transparent hover:text-white sm:inline-flex"
       >
-        {business.primaryCta.label}
+        <span>{headerCtaLabel}</span>
       </a>
 
-      <details class="group lg:hidden">
-        <summary class="cursor-pointer list-none px-2 py-1 font-heading text-sm font-bold uppercase tracking-wide" aria-label="Toggle main menu">
+      <details class="group xl:hidden" data-mobile-menu>
+        <summary class="header-nav-link cursor-pointer list-none px-2 py-1 font-heading text-sm font-bold uppercase tracking-wide" aria-label="Toggle main menu">
           <span class="group-open:hidden">Menu</span>
           <span class="hidden group-open:inline">Close</span>
         </summary>
-        <nav aria-label="Mobile navigation" class="fixed inset-x-0 top-[4.5rem] z-40 border-t border-black/10 bg-white px-6 pb-6 pt-4 shadow-xl">
+        <nav aria-label="Mobile navigation" aria-hidden="true" class="mobile-menu fixed inset-x-0 top-[4.5rem] z-40 border-t border-black/10 px-6 pb-6 pt-4 shadow-xl">
           <ul class="space-y-1">
             {navigation.header.map((item) => (
               <li>
@@ -77,4 +79,27 @@ const logoBlack = brand.logoUrl !== NO_IMAGE ? brand.logoUrl : undefined;
       </details>
     </div>
   </div>
+
+  <script is:inline>
+    (function () {
+      var header = document.querySelector('.site-header');
+      if (header) {
+        function update() {
+          header.classList.toggle('is-scrolled', window.scrollY > 40);
+        }
+        update();
+        window.addEventListener('scroll', update, { passive: true });
+      }
+
+      var details = document.querySelector('[data-mobile-menu]');
+      var menu = details && details.querySelector('.mobile-menu');
+      if (details && menu) {
+        function syncAria() {
+          menu.setAttribute('aria-hidden', String(!details.open));
+        }
+        details.addEventListener('toggle', syncAria);
+        syncAria();
+      }
+    })();
+  </script>
 </header>

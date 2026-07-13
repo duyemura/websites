@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { useWorkspace } from "@/lib/workspace";
 import {
   PipelineRunFields,
   type PipelineRunFieldValues,
@@ -16,6 +17,7 @@ interface NewSitePanelProps {
 
 export function NewSitePanel({ onCreated }: NewSitePanelProps) {
   const queryClient = useQueryClient();
+  const { currentWorkspaceSlug } = useWorkspace();
   const { data: options, isLoading } = useQuery({
     queryKey: ["pipeline-options", "global"],
     queryFn: () => api.getGlobalPipelineOptions(),
@@ -56,7 +58,7 @@ export function NewSitePanel({ onCreated }: NewSitePanelProps) {
       setCreatedSiteUuid(site.uuid);
       setJobId(newJobId);
       setJobQueue(queue ?? null);
-      void queryClient.invalidateQueries({ queryKey: ["sites"] });
+      void queryClient.invalidateQueries({ queryKey: ["sites", currentWorkspaceSlug] });
       onCreated?.(site.uuid, "run");
     },
   });

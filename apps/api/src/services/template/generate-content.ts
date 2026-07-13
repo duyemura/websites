@@ -13,13 +13,16 @@
 
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
 import { buildNavigation } from "./nav-slots.js";
-import { beanburitoSpec, buildSpecPrompt } from "@ploy-gyms/shared-types";
+import { beanburitoSpec, buildSpecPrompt, validateIcon, resolveIcon, placeholderImage } from "@ploy-gyms/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
+import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
+import type { MirrorAssetsArtifact } from "../../types/mirror.js";
+import { buildImageMatcher, makeRoundRobin } from "../mirror/image-matcher.js";
 
 export interface GenerateContentInput {
   db: Kysely<DB>;
@@ -42,13 +45,17 @@ interface GeneratedHomeSlots {
     ctaLabel?: string;
     ctaUrl?: string;
   };
-  valueProps: Array<{ headline: string; body: string }>;
+  valueProps: Array<{ headline: string; body: string; icon?: string }>;
   howItWorks: Array<{ headline: string; body: string }>;
   howItWorksHeadline: string;
-  features: Array<{ label: string }>;
+  features: Array<{ label: string; icon?: string }>;
   communityHeadline: string;
   trustHeadline: string;
+  ctaHeadline?: string;
+  programsSubheadline?: string;
+  ctaSubtext?: string;
   serviceArea?: string[];
+  programs?: Array<{ slug?: string; name?: string; shortDescription: string }>;
 }
 
 // ── Doc loading ──────────────────────────────────────────────────────────────
@@ -85,6 +92,29 @@ async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<Co
     .executeTakeFirst();
   const payload = row?.payload as ContentArtifact | undefined;
   return payload ?? null;
+}
+
+// ── Icon / image helpers ───────────────────────────────────────────────────
+
+/** List relative /_assets/ image paths from a mirror deploy prefix. */
+async function listMirrorAssets(
+  s3Client: S3Client,
+  bucket: string,
+  deployPrefix: string,
+): Promise<string[]> {
+  try {
+    const result = await s3Client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: `${deployPrefix}/_assets/`,
+    }));
+    return (result.Contents ?? [])
+      .map((obj) => obj.Key ?? "")
+      .filter((key) => /\/_assets\/[^/]+\.(jpg|jpeg|png|webp|avif)$/i.test(key))
+      .map((key) => key.replace(`${deployPrefix}/_assets/`, "/_assets/"))
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 // ── Context builder ──────────────────────────────────────────────────────────
@@ -234,11 +264,39 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     } catch { /* hero-image.txt not yet present — run clone again to capture */ }
   }
 
+  // Build a pool of scraped gym photos for program covers and amenity backgrounds.
+  // Exclude the hero image so it isn't reused as a generic box background.
+  let mirrorAssets: string[] = [];
+  if (mirrorDeployPrefix) {
+    mirrorAssets = (await listMirrorAssets(input.s3Client, bucket, mirrorDeployPrefix))
+      .filter((a) => a !== heroImageUrl)
+      .sort();
+    if (mirrorAssets.length > 0) {
+      log(`  Mirror assets available: ${mirrorAssets.length}`);
+    }
+  }
+
+  // Load the mirror-assets artifact for vision tags + section context.
+  // Fall back to a plain S3 list if the artifact is missing (older captures).
+  const assetsArtifact = await loadArtifact<MirrorAssetsArtifact>(db, { siteUuid, workspaceUuid }, "mirror-assets");
+  const taggedAssets = assetsArtifact?.payload.assets ?? [];
+  const imageMatcher = buildImageMatcher(taggedAssets);
+  const hasVisionTags = taggedAssets.some((a) => a.visionTags && a.visionTags.length > 0);
+  const fallbackPicker = makeRoundRobin(
+    taggedAssets.length > 0 ? taggedAssets : mirrorAssets.map((localPath) => ({
+      originalUrl: localPath,
+      storageKey: "",
+      localPath,
+      contentType: "image/jpeg",
+    })),
+  );
+  log(`  Image matcher ready: ${imageMatcher.photos.length} tagged photos (vision: ${hasVisionTags})`);
+
   // Get base GymSiteContent from content-mapper (handles brand, business NAP, nav, programs)
   log(`  Building base content from docs...`);
   const { buildGymJson } = await import("./content-mapper.js");
   const { content: baseContent, warnings: mapperWarnings } = await buildGymJson(
-    db, siteUuid, { apiBaseUrl, siteUrl }, workspaceUuid,
+    db, siteUuid, { apiBaseUrl, siteUrl, googleMapsApiKey: config.GOOGLE_PLACES_API_KEY }, workspaceUuid,
   );
   if (mapperWarnings.length > 0) {
     log(`  [mapper] ${mapperWarnings.slice(0, 3).join(", ")}${mapperWarnings.length > 3 ? ` (+${mapperWarnings.length - 3} more)` : ""}`);
@@ -254,6 +312,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   // Extract testimonials and FAQ from content artifact (real content, not generated)
   const homePage = contentArtifact?.pages?.find((p) => p.path === "/");
   const homeCf = (homePage?.contentFound ?? homePage?.data ?? {}) as Record<string, unknown>;
+  const artifactHero = homeCf.hero as Record<string, unknown> | undefined;
   const homeTestimonials = Array.isArray(homeCf.testimonials) ? homeCf.testimonials as Array<Record<string, unknown>> : [];
   const homeFaq = Array.isArray(homeCf.faq) ? homeCf.faq as Array<Record<string, unknown>> : [];
   const existingTestimonials: Testimonial[] = homeTestimonials
@@ -313,9 +372,9 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
     "ctaUrl": "string (URL, use /contact if unknown)"
   },
   "valueProps": [
-    { "headline": "string (2-5 words)", "body": "string (15-25 words)" },
-    { "headline": "string", "body": "string" },
-    { "headline": "string", "body": "string" }
+    { "headline": "string (2-5 words)", "body": "string (15-25 words)", "icon": "string (Phosphor bold icon name, kebab-case, e.g. barbell, users, target)" },
+    { "headline": "string", "body": "string", "icon": "string" },
+    { "headline": "string", "body": "string", "icon": "string" }
   ],
   "howItWorks": [
     { "headline": "string (step name, 2-5 words)", "body": "string (15-25 words)" },
@@ -324,17 +383,27 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
   ],
   "howItWorksHeadline": "string (4-7 words)",
   "features": [
-    { "label": "string (2-4 words)" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" },
-    { "label": "string" }
+    { "label": "string (2-4 words)", "icon": "string (Phosphor bold icon name, e.g. clock, car, drop, barbell)" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" },
+    { "label": "string", "icon": "string" }
   ],
   "communityHeadline": "string (4-8 words, emotional, about belonging)",
-  "trustHeadline": "string (5-10 words, social proof)",
-  "serviceArea": ["real nearby city 1", "real nearby city 2", "real nearby city 3", "real nearby city 4"]
+  "trustHeadline": "string (5-10 words, social proof for testimonials section)",
+  "ctaHeadline": "string (4-8 words, action-oriented bottom CTA headline; can echo the hero outcome)",
+  "programsSubheadline": "string (6-10 words, supporting the programs headline)",
+  "ctaSubtext": "string (8-12 words, friction-reducing line under the bottom CTA headline)",
+  "serviceArea": ["real nearby city 1", "real nearby city 2", "real nearby city 3", "real nearby city 4"],
+  "programs": [
+    { "slug": "group-strength", "shortDescription": "string (10-20 words, specific to group strength)" },
+    { "slug": "cardio-bootcamp", "shortDescription": "string (10-20 words, specific to cardio/bootcamp)" },
+    { "slug": "personal-training", "shortDescription": "string (10-20 words, specific to personal training)" }
+  ]
 }
+
+Guidance for programs.shortDescription: write a distinct, concrete line for each program. Mention the format (barbell, intervals, 1-on-1), the outcome, and who it's for. Do NOT repeat the same sentence structure across all three.
 
 For serviceArea: list 4 real nearby cities/neighborhoods that people actually drive from to go to this gym. Use your knowledge of the area based on the gym's city.`;
 
@@ -368,26 +437,51 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
 
   // Build merged home page content
   const baseHero = baseContent.pages.home.hero;
+  const heroContext = `hero ${generated.hero?.headline ?? baseHero.headline} ${generated.hero?.subheading ?? baseHero.subheading ?? ""} ${baseContent.business.name}`.trim();
+  const matchedHeroImage = !heroImageUrl
+    ? imageMatcher.match({ query: heroContext, preferredSectionType: "hero" })
+    : undefined;
   const generatedHero: HeroContent = {
     headline: generated.hero?.headline || baseHero.headline,
     subheading: generated.hero?.subheading || baseHero.subheading,
     intro: generated.hero?.intro || baseHero.intro,
     ctaLabel: generated.hero?.ctaLabel || baseHero.ctaLabel || baseContent.business.primaryCta.label,
     ctaUrl: generated.hero?.ctaUrl || baseHero.ctaUrl || baseContent.business.primaryCta.url,
-    backgroundImageUrl: heroImageUrl || baseHero.backgroundImageUrl,
+    backgroundImageUrl: heroImageUrl || matchedHeroImage || baseHero.backgroundImageUrl,
   };
 
   const generatedValueProps: ValueProp[] = (generated.valueProps ?? [])
     .slice(0, 3)
-    .map((v) => ({ icon: "star", headline: String(v.headline ?? ""), body: String(v.body ?? "") }));
+    .map((v) => ({
+      icon: validateIcon(v.icon ?? "") === "star" ? resolveIcon(v.headline) : validateIcon(v.icon ?? ""),
+      headline: String(v.headline ?? ""),
+      body: String(v.body ?? ""),
+    }));
 
   const generatedHowItWorks: Step[] = (generated.howItWorks ?? [])
     .slice(0, 3)
     .map((s, i) => ({ number: i + 1, headline: String(s.headline ?? ""), body: String(s.body ?? "") }));
 
+  const usedFeatureImages = new Set<string>();
   const generatedFeatures: Feature[] = (generated.features ?? [])
     .slice(0, 6)
-    .map((f) => ({ icon: "star", label: String(f.label ?? "") }));
+    .map((f, i) => {
+      const query = `${f.label ?? ""} ${i < 3 ? "amenity facility" : "feature service"}`.trim();
+      const matched = imageMatcher.match({
+        query,
+        exclude: usedFeatureImages,
+        preferredSectionType: "feature-grid",
+      });
+      const imageUrl = matched
+        ?? (hasVisionTags ? placeholderImage(String(f.label ?? "Feature"), 800, 600) : fallbackPicker(usedFeatureImages))
+        ?? "";
+      if (imageUrl) usedFeatureImages.add(imageUrl);
+      return {
+        icon: validateIcon(f.icon ?? "") === "star" ? resolveIcon(f.label) : validateIcon(f.icon ?? ""),
+        label: String(f.label ?? ""),
+        imageUrl,
+      };
+    });
 
   // Use real testimonials from content artifact; fall back to base content-mapper testimonials
   const testimonials = existingTestimonials.length > 0
@@ -399,15 +493,32 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     ? existingFaq
     : baseContent.pages.home.faq;
 
+  // Prefer real hero copy captured from the source site over LLM-generated defaults.
+  const finalHero: HeroContent = {
+    ...generatedHero,
+    headline: artifactHero?.headline ? String(artifactHero.headline) : generatedHero.headline,
+    subheading: artifactHero?.subheading ? String(artifactHero.subheading) : generatedHero.subheading,
+    intro: artifactHero?.intro
+      ? String(artifactHero.intro)
+      : (baseContent.pages.home.hero.intro ?? generatedHero.intro ?? ""),
+  };
+  // Drop generic "Welcome to ... premier ..." intros that the LLM tends to invent.
+  if (/welcome to.*premier.*facility/i.test(finalHero.intro ?? "")) {
+    finalHero.intro = "";
+  }
+
   const generatedHome: HomeContent = {
     ...baseContent.pages.home,
-    hero: generatedHero,
+    hero: finalHero,
     valueProps: generatedValueProps.length > 0 ? generatedValueProps : baseContent.pages.home.valueProps,
     howItWorks: generatedHowItWorks.length > 0 ? generatedHowItWorks : baseContent.pages.home.howItWorks,
     howItWorksHeadline: generated.howItWorksHeadline || baseContent.pages.home.howItWorksHeadline,
     features: generatedFeatures.length > 0 ? generatedFeatures : baseContent.pages.home.features,
     communityHeadline: generated.communityHeadline || baseContent.pages.home.communityHeadline,
     trustHeadline: generated.trustHeadline || baseContent.pages.home.trustHeadline,
+    ctaHeadline: generated.ctaHeadline || generated.trustHeadline || baseContent.pages.home.ctaHeadline || baseContent.pages.home.trustHeadline,
+    programsSubheadline: generated.programsSubheadline || baseContent.pages.home.programsSubheadline,
+    ctaSubtext: generated.ctaSubtext || baseContent.pages.home.ctaSubtext,
     testimonials,
     faq,
   };
@@ -423,6 +534,39 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
 
+  // Merge generated per-program descriptions into program pages.
+  const programsBySlug = new Map(
+    (generated.programs ?? []).map((p) => [p.slug ?? p.name?.toLowerCase().replace(/\s+/g, "-") ?? "", p]),
+  );
+
+  // Assign scraped gym photos to each program page and cover by matching
+  // the program's topic against vision tags + source-section context.
+  const usedProgramImages = new Set<string>();
+  const mergedPrograms = baseContent.pages.programs.map((p) => {
+    const generatedDesc = programsBySlug.get(p.slug)?.shortDescription;
+    const programContext = `${p.name} ${p.shortDescription ?? ""} ${generatedDesc ?? ""} program workout`.trim();
+    const matched = imageMatcher.match({
+      query: programContext,
+      exclude: usedProgramImages,
+      preferredSectionType: "feature-grid",
+    });
+    const coverImageUrl = matched
+      ?? (hasVisionTags ? placeholderImage(p.name, 800, 600) : fallbackPicker(usedProgramImages))
+      ?? p.coverImageUrl;
+    if (coverImageUrl) usedProgramImages.add(coverImageUrl);
+    const next: typeof p = {
+      ...p,
+      coverImageUrl,
+      hero: {
+        ...p.hero,
+        backgroundImageUrl: coverImageUrl,
+      },
+    };
+    return generatedDesc
+      ? { ...next, shortDescription: String(generatedDesc).slice(0, 160) }
+      : next;
+  });
+
   const mergedContent: GymSiteContent = {
     ...baseContent,
     navigation,
@@ -433,6 +577,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     pages: {
       ...baseContent.pages,
       home: generatedHome,
+      programs: mergedPrograms,
     },
   };
 

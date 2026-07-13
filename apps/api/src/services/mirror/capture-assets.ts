@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { extractCssUrls, rewriteCssUrls } from "../../utils/mirror/rewrite-css";
-import type { MirrorAsset, MirrorAssetsArtifact, MirrorCrawlArtifact } from "../../types/mirror";
+import { extractImageContexts } from "../../utils/mirror/extract-image-contexts";
+import type { AssetAppearance, MirrorAsset, MirrorAssetsArtifact, MirrorCrawlArtifact } from "../../types/mirror";
+import { tagPhotoAssets, type VisionConfig } from "./tag-assets";
 
 const ASSET_SELECTORS: [string, string][] = [
   ["link[rel=stylesheet][href]", "href"],
@@ -75,6 +77,8 @@ export interface CaptureDeps {
   /** e.g. sites/{siteUuid}/snapshots/{version} */
   snapshotPrefix: string;
   log: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
+  /** Optional vision config; when provided, photo assets are tagged for contextual matching. */
+  vision?: VisionConfig;
 }
 
 async function getS3Text(s3: S3Client, bucket: string, key: string): Promise<string> {
@@ -111,9 +115,17 @@ export async function captureAssets(
   deps: CaptureDeps,
 ): Promise<{ artifact: MirrorAssetsArtifact; assetMap: Map<string, string> }> {
   const urls = new Set<string>();
+  const appearancesByUrl = new Map<string, AssetAppearance[]>();
+
   for (const page of crawl.pages) {
     const html = await getS3Text(deps.s3Client, deps.bucket, page.htmlKey);
     for (const u of collectAssetUrls(html, page.url, crawl.origin)) urls.add(u);
+    const contexts = extractImageContexts(html, page.url, page.path);
+    for (const ctx of contexts) {
+      const list = appearancesByUrl.get(ctx.originalUrl) ?? [];
+      list.push(ctx);
+      appearancesByUrl.set(ctx.originalUrl, list);
+    }
   }
 
   // Download assets with bounded concurrency — sequential was 5-10min on real sites (I3)
@@ -143,6 +155,13 @@ export async function captureAssets(
     cssDepth += 1;
   }
 
+  // Vision-tag photo assets so later stages can match images to section context.
+  const visionTags = await tagPhotoAssets(
+    [...downloads.entries()].map(([url, dl]) => ({ url, buffer: dl.buffer, contentType: dl.contentType })),
+    deps.vision,
+    deps.log,
+  );
+
   // Build the complete map before uploading so CSS can be rewritten against it
   const assetMap = new Map<string, string>();
   for (const url of downloads.keys()) assetMap.set(url, `/_assets/${assetLocalName(url)}`);
@@ -164,14 +183,24 @@ export async function captureAssets(
         ContentType: dl.contentType,
       }),
     );
+
+    const tags = visionTags.get(url);
+    const appearances = appearancesByUrl.get(url);
+
     assets.push({
       originalUrl: url,
       storageKey,
       localPath: `/_assets/${localName}`,
       contentType: dl.contentType,
+      appearances: appearances && appearances.length > 0 ? appearances : undefined,
+      visionTags: tags?.tags,
+      visionDescription: tags?.description,
+      visionContexts: tags?.contexts,
+      visionSubject: tags?.subject,
+      visionConfidence: tags?.confidence,
     });
   });
 
-  deps.log.info({ count: assets.length, failures: failures.length }, "mirror assets captured");
+  deps.log.info({ count: assets.length, failures: failures.length, tagged: visionTags.size }, "mirror assets captured");
   return { artifact: { assets, failures }, assetMap };
 }

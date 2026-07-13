@@ -206,7 +206,7 @@ describe("eval-fix worker", () => {
         siteUuid: "site-1",
         workspaceUuid: "ws-1",
         path: "/",
-        url: "https://site-1.preview.example.com/",
+        url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/$/),
       }),
     );
     expect(result).toMatchObject({

@@ -1,6 +1,7 @@
 // apps/api/scripts/stages/template.ts
 import { deployTemplate } from "../../src/services/template/deploy-template";
 import { promoteDeploy } from "../../src/services/mirror/deploy";
+import { invalidatePreviewCache } from "../../src/services/mirror/cloudfront";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
@@ -50,6 +51,7 @@ export const templateStage: StageRunner = {
       apiBaseUrl: ctx.config.CDN_BASE_URL,
       siteUrl,
       rendererDir: ctx.rendererDir,
+      googleMapsApiKey: ctx.config.GOOGLE_PLACES_API_KEY,
       templateTheme: ctx.templateTheme,
       content: generateArtifact?.payload ?? undefined,
       log: {
@@ -63,6 +65,9 @@ export const templateStage: StageRunner = {
     // Promote deploy prefix → staging/ so it can be previewed and QA'd before publish
     ctx.log(`  Promoting to staging/...`);
     await promoteDeploy(ctx.s3Client, bucket, ctx.siteUuid, result.deployPrefix);
+
+    // Ensure the preview URL reflects the new build immediately.
+    await invalidatePreviewCache(ctx.config.CLOUDFRONT_DISTRIBUTION_ID);
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
     const shortId = ctx.siteUuid.slice(0, 8);

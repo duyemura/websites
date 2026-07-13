@@ -1,4 +1,7 @@
-// apps/api/scripts/stages/clone.ts
+// apps/api/scripts/stages/crawl.ts
+// Crawl the source gym site to capture homepage + structural pages and assets.
+// This replaces the old "clone" stage: we no longer deploy a live mirror, but
+// we still need the crawl data for docgen and content extraction.
 import { runMirrorPipeline } from "../../src/services/mirror/run-mirror";
 import { CRAWL_TIER_PAID, CRAWL_TIER_FREE } from "../../src/types/mirror";
 import { dedupeWarnings, estimateMirrorCosts } from "./types";
@@ -22,8 +25,8 @@ function detectCms(warnings: string[]): string | null {
   return null;
 }
 
-export const cloneStage: StageRunner = {
-  label: "clone",
+export const crawlStage: StageRunner = {
+  label: "crawl",
   requires: [],
   produces: "mirror-deploy",
   async run(ctx: StageContext): Promise<StageResult> {
@@ -70,7 +73,7 @@ export const cloneStage: StageRunner = {
     const costs = estimateMirrorCosts(result.pageCount, assetCount);
 
     return {
-      stage: "clone",
+      stage: "crawl",
       status: deduped.length > 0 ? "warn" : "pass",
       durationMs: 0,
       metrics: {

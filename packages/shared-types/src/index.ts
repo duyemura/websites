@@ -16,9 +16,19 @@ export type {
   ComponentPropSource,
   ComponentPropSpec,
   ComponentSpec,
+  HeadAsset,
   PageSpec,
   SectionSpec,
+  SlotSpec,
   TemplateSpec,
   TemplateTheme,
 } from "./templates/registry.js";
 export { beanburitoSpec, buildSpecPrompt } from "./templates/beanburito.js";
+export {
+  GYM_ICON_CATEGORIES,
+  KNOWN_PHOSPHOR_ICONS,
+  validateIcon,
+  iconFor,
+  resolveIcon,
+  iconHtml,
+} from "./templates/beanburito-icons.js";

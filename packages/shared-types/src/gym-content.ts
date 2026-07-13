@@ -83,6 +83,7 @@ export interface HomeContent {
   hero: HeroContent;
   valueProps: ValueProp[];
   programsHeadline: string;
+  programsSubheadline?: string;      // supporting line under programs headline
   featuredPrograms: string[];        // program slugs
   features: Feature[];               // FeatureGrid items
   communityHeadline: string;         // "A community that will keep you going"
@@ -92,6 +93,8 @@ export interface HomeContent {
   howItWorksHeadline: string;
   testimonials: Testimonial[];
   faq: FAQItem[];
+  ctaSubtext?: string;               // supporting copy under bottom CTA headline
+  ctaHeadline?: string;              // distinct bottom CTA headline (falls back to trustHeadline)
   richContent?: RichContentSection[];
 }
 
@@ -166,6 +169,8 @@ export interface ValueProp { icon: string; headline: string; body: string }
 export interface Feature {
   icon: string;
   label: string;
+  /** URL for an optional background image rendered behind the amenity card. */
+  imageUrl?: string;
   /** Renderer-only layout hints from the section contract. */
   position?: { col?: number; row?: number };
   background?: "accent" | "dark" | "transparent" | "image";

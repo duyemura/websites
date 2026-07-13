@@ -146,9 +146,10 @@ function applyComponentDefaults(
     return { ...props, imageUrl: props.imageUrl ?? "/assets/beanburito/community.webp" };
   }
   if (componentId === "ctaBand") {
+    const trust = (content.pages.home as unknown as Record<string, unknown>).trustHeadline as string | undefined;
     return {
       ...props,
-      headline: props.headline ?? "Ready to see what we are about?",
+      headline: props.headline ?? trust ?? "Ready to see what we are about?",
       ctaLabel: props.ctaLabel ?? content.business.primaryCta.label,
       ctaUrl: props.ctaUrl ?? content.business.primaryCta.url,
     };

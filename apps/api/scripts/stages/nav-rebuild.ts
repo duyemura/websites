@@ -129,6 +129,7 @@ export const navRebuildStage: StageRunner = {
       apiBaseUrl: ctx.config.CDN_BASE_URL,
       siteUrl,
       rendererDir: ctx.rendererDir,
+      googleMapsApiKey: ctx.config.GOOGLE_PLACES_API_KEY,
       templateTheme: ctx.templateTheme,
       content: patchedContent,
       log: {

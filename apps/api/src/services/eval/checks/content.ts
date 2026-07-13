@@ -14,7 +14,7 @@ import { callLlmAndLog } from "../../../ai/llm-with-logging.js";
 import type { Config } from "../../../plugins/env";
 import { checkTemplateFidelity, checkStructureFidelity } from "./fidelity.js";
 
-const MAX_LLM_TEXT = 6000;
+const MAX_LLM_TEXT = 12000;
 
 function extractVisibleText(html: string): { text: string; wordCount: number } {
   const $ = cheerio.load(html);
@@ -22,6 +22,23 @@ function extractVisibleText(html: string): { text: string; wordCount: number } {
   const text = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return { text, wordCount };
+}
+
+/** Truncate text at a safe boundary for the LLM prompt. */
+function truncateForLlm(text: string, max: number): string {
+  if (text.length <= max) return text;
+  // Walk back from the limit to the nearest sentence or clause boundary
+  // so the model never sees a fragment like "Are classes s".
+  const clipped = text.slice(0, max);
+  const boundary = /[.!?](?:\s|$)/;
+  let cut = max;
+  for (let i = max - 1; i > max * 0.75; i--) {
+    if (boundary.test(clipped.slice(i, i + 2))) {
+      cut = i + 1;
+      break;
+    }
+  }
+  return text.slice(0, cut).trim() + "\n\n[Page text continues beyond this point.]";
 }
 
 function deriveKeywords(content: CheckContext["content"], path: string): string[] {
@@ -90,7 +107,7 @@ async function llmContentReview(
               `Page title: ${title}\n` +
               `H1: ${h1 ?? "none"}\n` +
               `Target keywords/phrases: ${keywords.join(", ") || "none provided"}\n\n` +
-              `Page text:\n${text.slice(0, MAX_LLM_TEXT)}`,
+              `Page text:\n${truncateForLlm(text, MAX_LLM_TEXT)}`,
           },
         ],
         jsonMode: true,

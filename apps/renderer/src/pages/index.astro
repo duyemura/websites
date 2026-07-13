@@ -7,6 +7,6 @@ import { content, geoTitle } from "../lib/content";
 const home = content.pages.home;
 const theme = content.meta.templateTheme ?? "baseline";
 ---
-<GymLayout title={geoTitle("Group Strength, Cardio Bootcamp & Personal Training")} description={home.hero.subheading} path="/" image={home.hero.backgroundImageUrl}>
+<GymLayout title={geoTitle("Personal Training")} description={content.meta.defaultDescription} path="/" image={home.hero.backgroundImageUrl}>
   {theme === "beanburito" ? <PageRenderer pageKey="home" /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
 </GymLayout>

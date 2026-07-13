@@ -17,6 +17,21 @@ export type { ComponentPropSpec, ComponentSpec, PageSpec, SectionSpec };
 export const beanburitoSpec: TemplateSpec = {
   name: "beanburito",
   description: "Dark, bold, community-focused gym template. Large typography, high contrast, testimonials-first social proof.",
+  headAssets: [
+    { tag: "link", attrs: { rel: "stylesheet", href: "/styles/beanburito.css" } },
+    { tag: "link", attrs: { rel: "stylesheet", href: "/assets/phosphor/phosphor-bold.css" } },
+    {
+      tag: "link",
+      attrs: {
+        rel: "preload",
+        as: "font",
+        href: "/assets/phosphor/Phosphor-Bold.woff2",
+        type: "font/woff2",
+        crossorigin: "anonymous",
+      },
+    },
+  ],
+  bodyClasses: ["theme-beanburito", "bg-black"],
 
   sections: {
 
@@ -75,9 +90,15 @@ export const beanburitoSpec: TemplateSpec = {
         body: {
           purpose: "One sentence expanding the benefit with specifics.",
           type: "string",
-          maxWords: 28,
-          guidance: "15-25 words. Concrete and specific. Name the type of person this serves if possible. Connect to the gym's identity from the docs.",
-          example: "Whether you've never touched a barbell or trained for years, our coaches scale every workout to where you are today.",
+          maxWords: 24,
+          guidance: "12-20 words. Concrete and specific. Name the type of person this serves if possible. Connect to the gym's identity from the docs. Keep it short enough to display fully in a 3-up card grid.",
+          example: "Our coaches scale every workout to where you are today.",
+        },
+        icon: {
+          purpose: "Phosphor bold icon name that visually represents this benefit.",
+          type: "string",
+          guidance: "Pick one Phosphor bold icon name in kebab-case. Must be a real icon name. Examples: barbell, users, target, calendar-check, lightning, user-gear, compass, notepad, fingerprint, drop, carrot, device-mobile, heart-beat, buildings, shield-check. If nothing fits, use 'star'.",
+          example: "barbell",
         },
       },
     },
@@ -127,6 +148,12 @@ export const beanburitoSpec: TemplateSpec = {
           guidance: "2-4 words. Real amenities from the gym's docs. If fewer than 6 real amenities are documented, use their actual program types or service offerings. e.g. 'Open Gym Access', 'Certified Coaches', 'Nutrition Guidance', 'Weekend Classes', 'Outdoor Training Area', 'Changing Rooms'",
           example: "Open Gym Access",
         },
+        icon: {
+          purpose: "Phosphor bold icon name that visually represents this amenity.",
+          type: "string",
+          guidance: "Pick one Phosphor bold icon name in kebab-case. Must be a real icon name. Examples: barbell, users, calendar-check, clock, car, drop, carrot, fork-knife, device-mobile, wifi-high, lockers, shower, t-shirt, toilet, buildings, shield-check, heart-beat, lightning, check. If nothing fits, use 'star'.",
+          example: "clock",
+        },
       },
     },
 
@@ -144,7 +171,7 @@ export const beanburitoSpec: TemplateSpec = {
     },
 
     trustHeadline: {
-      purpose: "Short social-proof banner headline shown above testimonials or CTA bands.",
+      purpose: "Short social-proof headline shown above testimonials.",
       slots: {
         value: {
           purpose: "Social proof statement",
@@ -152,6 +179,19 @@ export const beanburitoSpec: TemplateSpec = {
           maxWords: 10,
           guidance: "5-10 words. Quantify if possible — member count, years in business, city reputation. e.g. 'Trusted by 500+ Members in Torrance', 'Loved by Our Community Since 2018', '400+ Members Can't Be Wrong'",
           example: "Trusted and Loved By Hundreds of Torrance Residents",
+        },
+      },
+    },
+
+    ctaHeadline: {
+      purpose: "Final call-to-action headline at the bottom of the page. Distinct from the testimonials social-proof headline.",
+      slots: {
+        value: {
+          purpose: "Bottom CTA headline",
+          type: "string",
+          maxWords: 8,
+          guidance: "4-8 words. Action-oriented, focused on the next step. May echo the hero headline or primary outcome. e.g. 'Start Your Transformation Today', 'Take the First Step', 'Your Fitness Journey Starts Here'",
+          example: "Start Your Transformation Today",
         },
       },
     },
@@ -185,6 +225,14 @@ export const beanburitoSpec: TemplateSpec = {
           guidance: "Action-oriented, specific to the gym's programming.",
           example: "Programs Built For You",
           source: { kind: "field", path: "pages.home.programsHeadline" },
+        },
+        subheadline: {
+          purpose: "Short supporting line below the headline.",
+          type: "string",
+          maxWords: 10,
+          guidance: "Sets the emotional frame for the program grid.",
+          example: "Find a fitness routine that works for you",
+          source: { kind: "field", path: "pages.home.programsSubheadline" },
         },
         slugs: {
           purpose: "Program slugs to render in the grid.",
@@ -227,9 +275,17 @@ export const beanburitoSpec: TemplateSpec = {
           type: "string",
           required: true,
           maxWords: 8,
-          guidance: "Short, outcome-focused. Falls back to the page's trustHeadline or a generic CTA.",
+          guidance: "Short, outcome-focused. Uses the page's ctaHeadline, falling back to trustHeadline or a generic CTA.",
           example: "Start Your Transformation Today",
-          source: { kind: "pageField", path: "trustHeadline" },
+          source: { kind: "pageField", path: "ctaHeadline" },
+        },
+        subtext: {
+          purpose: "One-line supporting copy below the headline.",
+          type: "string",
+          maxWords: 12,
+          guidance: "Reduces friction. e.g. 'Fill out the form and a coach will reach out within 24 hours.'",
+          example: "Fill out the form and a coach will reach out within 24 hours.",
+          source: { kind: "field", path: "pages.home.ctaSubtext" },
         },
         ctaLabel: {
           purpose: "Button label.",
@@ -393,10 +449,10 @@ export const beanburitoSpec: TemplateSpec = {
         "howItWorks",
         "amenities",
         "community",
+        "location",
         "testimonials",
         "faq",
         "ctaBand",
-        "location",
       ],
     },
     about: {

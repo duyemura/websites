@@ -22,6 +22,13 @@ export interface RunMirrorInput {
     CDN_BASE_URL: string;
     MILO_PREVIEW_DOMAIN?: string;
     CLOUDFRONT_KVS_ARN?: string;
+    /** Optional LLM vision config; when provided, scraped photo assets are tagged for contextual matching. */
+    LLM_PROVIDER?: "openrouter" | "ollama";
+    OPENROUTER_API_KEY?: string;
+    OPENROUTER_BASE_URL?: string;
+    OLLAMA_API_KEY?: string;
+    OLLAMA_BASE_URL?: string;
+    VISION_LLM_MODEL?: string;
   };
   siteUuid: string;
   workspaceUuid: string;
@@ -87,16 +94,27 @@ export async function runMirrorPipeline(input: RunMirrorInput): Promise<RunMirro
     });
 
     if (crawl.pages.length === 0) {
-      throw new Error(`Mirror crawl captured 0 pages: ${JSON.stringify(crawl.failures)}`);
+      throw new Error(`Crawl captured 0 pages: ${JSON.stringify(crawl.failures)}`);
     }
-    await saveArtifact(db, ctx, "mirror-crawl", crawl);
+    await saveArtifact(db, ctx, "crawl", crawl);
 
     // Stage 2: asset capture
+    const visionConfig = config.VISION_LLM_MODEL
+      ? {
+          LLM_PROVIDER: config.LLM_PROVIDER ?? "openrouter",
+          OPENROUTER_API_KEY: config.OPENROUTER_API_KEY,
+          OPENROUTER_BASE_URL: config.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+          OLLAMA_API_KEY: config.OLLAMA_API_KEY,
+          OLLAMA_BASE_URL: config.OLLAMA_BASE_URL ?? "http://localhost:11434",
+          VISION_LLM_MODEL: config.VISION_LLM_MODEL,
+        }
+      : undefined;
     const { artifact: assetsArtifact } = await captureAssets(crawl, {
       s3Client,
       bucket,
       snapshotPrefix,
       log,
+      vision: visionConfig,
     });
     await saveArtifact(db, ctx, "mirror-assets", assetsArtifact);
 

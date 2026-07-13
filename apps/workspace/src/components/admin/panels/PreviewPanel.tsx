@@ -11,13 +11,13 @@ export function PreviewPanel({ siteUuid }: PreviewPanelProps) {
     queryKey: ["site", siteUuid],
     queryFn: () => api.getSite(siteUuid),
   });
-  const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ["pipeline-status", siteUuid],
-    queryFn: () => api.getPipelineStatus(siteUuid),
+  const { data: versions, isLoading: versionsLoading } = useQuery({
+    queryKey: ["site-versions", siteUuid],
+    queryFn: () => api.getSiteVersions(siteUuid),
   });
 
-  const isLoading = siteLoading || statusLoading;
-  const hasBuild = status?.stages?.build != null;
+  const isLoading = siteLoading || versionsLoading;
+  const hasBuild = (versions?.length ?? 0) > 0;
   const previewUrl = site?.previewUrl ?? null;
 
   return (
@@ -36,6 +36,11 @@ export function PreviewPanel({ siteUuid }: PreviewPanelProps) {
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
             <p>No build available yet.</p>
             <p>Run the pipeline from the Run tab to generate a preview.</p>
+            {site?.productionUrl && (
+              <p className="text-xs">
+                Production URL: <a href={site.productionUrl} target="_blank" rel="noopener noreferrer" className="underline">{site.productionUrl}</a>
+              </p>
+            )}
           </div>
         ) : (
           <iframe

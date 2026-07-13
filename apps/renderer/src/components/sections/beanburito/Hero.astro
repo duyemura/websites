@@ -1,13 +1,14 @@
 ---
 import type { HeroContent } from "../../../types/gym-content";
 const NO_IMAGE = "__NO_IMAGE__";
-const { hero } = Astro.props as { hero: HeroContent };
+const { hero, h1 = true } = Astro.props as { hero: HeroContent; h1?: boolean };
+const HeadlineTag = h1 ? "h1" : "h2";
 
 const hasDesktopImage = !!hero.backgroundImageUrl && hero.backgroundImageUrl !== NO_IMAGE;
 const safeBgUrl = hero.backgroundImageUrl ?? "";
 const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.webp") : "";
 ---
-<section data-section="hero" data-section-tag="hero" class="relative min-h-[90vh] w-full overflow-hidden bg-black text-white lg:min-h-[100vh]">
+<section data-section="hero" data-section-tag="hero" class="relative h-[46rem] w-full overflow-hidden bg-black text-white lg:h-[52rem]">
   {hasDesktopImage && (
     <>
       <img
@@ -23,33 +24,40 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
         class="absolute inset-0 h-full w-full object-cover object-center lg:hidden"
       />
       <div class="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-black/40" />
+      <div class="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-transparent" />
     </>
   )}
 
-  <div class="relative z-10 mx-auto flex min-h-[90vh] max-w-[90rem] flex-col justify-center px-6 py-32 lg:min-h-[100vh] lg:px-10">
-    <article class="max-w-2xl">
+  <div class="section-inner relative z-10 mx-auto flex h-full max-w-[90rem] flex-col justify-center px-8 pb-24 pt-36 sm:px-12 md:px-16 lg:px-20 lg:pb-28 lg:pt-44 xl:px-24">
+    <article class="max-w-3xl">
       {hero.subheading && (
-        <div class="mb-4">
-          <span class="inline-block font-heading text-sm font-bold uppercase tracking-wide text-white/70">
+        <div class="mb-6">
+          <span
+            class="inline-block font-heading text-base font-bold uppercase tracking-wide text-white md:text-lg"
+            style="text-shadow: 0 1px 3px rgba(0,0,0,.7)"
+          >
             {hero.subheading}
           </span>
         </div>
       )}
-      <h1 class="font-heading text-5xl font-black uppercase leading-[0.92] tracking-[-0.04em] text-white sm:text-6xl md:text-7xl lg:text-[5.5rem]">
+      <HeadlineTag class="font-heading text-4xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl md:text-6xl lg:text-7xl">
         {hero.headline}
-      </h1>
+      </HeadlineTag>
       {hero.intro && (
-        <p class="mt-6 max-w-lg text-lg leading-relaxed text-white/80">{hero.intro}</p>
+        <p
+          class="mt-8 max-w-xl text-lg leading-relaxed text-white/90"
+          style="text-shadow: 0 1px 3px rgba(0,0,0,.7)"
+        >{hero.intro}</p>
       )}
       {hero.ctaLabel && hero.ctaUrl && (
-        <footer class="mt-8">
+        <footer class="mt-10">
           <a
             href={hero.ctaUrl}
             data-track="contact"
-            class="group inline-flex items-center gap-4 bg-accent px-7 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-[#0040a5]"
+            class="cta-skew group inline-flex items-center gap-4 border-2 border-[var(--color-accent)] bg-[var(--color-accent)] px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-transparent hover:text-white"
           >
             <span>{hero.ctaLabel}</span>
-            <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
+            <svg width="12" height="18" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
               <path d="M1 1l5 5-5 5" />
             </svg>
           </a>
