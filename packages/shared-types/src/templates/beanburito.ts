@@ -252,7 +252,7 @@ export const beanburitoSpec: TemplateSpec = {
     },
 
     benefits: {
-      component: "Benefits",
+      component: "IconCardGrid",
       purpose: "Three benefit/value-prop cards with icons.",
       props: {
         items: {
@@ -306,7 +306,7 @@ export const beanburitoSpec: TemplateSpec = {
     },
 
     valueProps: {
-      component: "Benefits",
+      component: "IconCardGrid",
       purpose: "Three benefit cards (alias of benefits for homepage naming).",
       props: {
         items: {
@@ -344,11 +344,11 @@ export const beanburitoSpec: TemplateSpec = {
     },
 
     amenities: {
-      component: "Amenities",
-      purpose: "Up to 6 amenity labels rendered as icon cards.",
+      component: "IconCardGrid",
+      purpose: "Up to 6 icon-card features rendered as a dense, dark grid.",
       props: {
         items: {
-          purpose: "Amenity/feature objects.",
+          purpose: "Feature objects.",
           type: "object",
           required: true,
           guidance: "Rendered from the current page's features, falling back to home.features.",
@@ -437,6 +437,22 @@ export const beanburitoSpec: TemplateSpec = {
         },
       },
     },
+
+    iframeBand: {
+      component: "IframeBand",
+      purpose: "Sandboxed third-party iframe embeds captured from the source site or added by an admin/AI. Each embed carries its own src and an optional template variant for styling.",
+      conditional: true,
+      props: {
+        iframes: {
+          purpose: "Iframe embed objects to render.",
+          type: "object",
+          required: true,
+          guidance: "Rendered from the current page's iframes, falling back to home.iframes. Maps live in the Location section, so skip any embed whose variant is 'map'. Variants are defined by the template (review, schedule, form, video, default) and only affect default styling; all dimensions, titles, sandbox, and style overrides can be set per-embed.",
+          example: "[{ src: 'https://widget.trustpilot.com/...', variant: 'review', title: 'What our members say' }, ...]",
+          source: { kind: "pageField", path: "iframes" },
+        },
+      },
+    },
   },
 
   pages: {
@@ -451,6 +467,7 @@ export const beanburitoSpec: TemplateSpec = {
         "community",
         "location",
         "testimonials",
+        "iframeBand",
         "faq",
         "ctaBand",
       ],

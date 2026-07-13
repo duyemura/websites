@@ -37,10 +37,11 @@ describe("template registry", () => {
       "howItWorks",
       "amenities",
       "community",
+      "location",
       "testimonials",
+      "iframeBand",
       "faq",
       "ctaBand",
-      "location",
     ]);
   });
 

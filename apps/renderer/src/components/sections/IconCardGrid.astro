@@ -1,0 +1,87 @@
+---
+import { resolveIcon, iconHtml } from "../../lib/beanburito-icons";
+
+export interface IconCardItem {
+  icon?: string;
+  headline?: string;
+  label?: string;
+  body?: string;
+  imageUrl?: string;
+}
+
+interface Props {
+  items: IconCardItem[];
+  variant?: "valueProps" | "amenities" | "benefits" | "generic";
+  sectionId?: string;
+  sectionTag?: string;
+  headline?: string;
+  headlineHidden?: boolean;
+  arrows?: boolean;
+}
+
+const {
+  items,
+  variant = "generic",
+  sectionId = "icon-card-grid",
+  sectionTag = "feature-grid",
+  headline,
+  headlineHidden = false,
+  arrows = false,
+} = Astro.props as Props;
+
+if (!items?.length) return;
+
+const iconSize = variant === "amenities" ? 72 : 80;
+const hasHeadline = !!headline;
+const variantClass = variant === "benefits" || variant === "valueProps" ? "value-props" : variant;
+---
+
+<section
+  data-section={sectionId}
+  data-section-tag={sectionTag}
+  class={`icon-card-grid icon-card-grid--${variantClass} ${hasHeadline ? "icon-card-grid--has-headline" : ""}`}
+>
+  <div class="icon-card-grid__inner">
+    <div class="icon-card-grid__container mx-auto max-w-[90rem] px-6 lg:px-10">
+      {hasHeadline && (
+        <h2 class={`icon-card-grid__headline ${headlineHidden ? "sr-only" : ""}`}>
+          {headline}
+        </h2>
+      )}
+
+      {arrows && (
+        <div class="icon-card-grid__arrows" aria-hidden="true">
+          <svg width="68" height="320" viewBox="0 0 68 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <path
+                id="bb-arrow"
+                d="M34 0v280M14 260l20 24 20-24"
+                stroke="rgba(255,255,255,0.2)"
+                stroke-width="2"
+                fill="none"
+              />
+              <pattern id="bb-arrow-pattern" x="0" y="0" width="68" height="80" patternUnits="userSpaceOnUse">
+                <use href="#bb-arrow" y="-16" />
+              </pattern>
+            </defs>
+            <rect width="68" height="320" fill="url(#bb-arrow-pattern)" />
+          </svg>
+        </div>
+      )}
+
+      <div class="icon-card-grid__items">
+        {items.map((item) => {
+          const title = item.headline ?? item.label ?? "";
+          const icon = resolveIcon(title, item.icon);
+          return (
+            <article class="icon-card">
+              <span aria-hidden="true" class="icon-card__icon" set:html={iconHtml(icon, iconSize)} />
+              <h3 class="icon-card__title">{title}</h3>
+              {item.body && <p class="icon-card__body">{item.body}</p>}
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</section>

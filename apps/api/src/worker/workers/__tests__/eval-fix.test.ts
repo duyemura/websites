@@ -14,10 +14,16 @@ vi.mock("../../../services/template/content-mapper.js", () => ({
 
 vi.mock("../../../services/template/deploy-template.js", () => ({
   deployTemplate: vi.fn(),
+  buildTemplateLocal: vi.fn(),
+  deployTemplateDist: vi.fn(),
 }));
 
 vi.mock("../../../services/site-versions.js", () => ({
   publishLatestStagingToProduction: vi.fn(),
+}));
+
+vi.mock("../../../services/mirror/deploy.js", () => ({
+  promoteDeploy: vi.fn(),
 }));
 
 vi.mock("../../../services/eval/page-evaluator.js", () => ({
@@ -41,8 +47,9 @@ vi.mock("../../../utils/pipeline/artifact-store.js", () => ({
 
 import { buildFixPlan } from "../../../services/eval/eval-fix.js";
 import { buildGymJson } from "../../../services/template/content-mapper.js";
-import { deployTemplate } from "../../../services/template/deploy-template.js";
+import { deployTemplate, deployTemplateDist, buildTemplateLocal } from "../../../services/template/deploy-template.js";
 import { publishLatestStagingToProduction } from "../../../services/site-versions.js";
+import { promoteDeploy } from "../../../services/mirror/deploy.js";
 import { evaluatePage } from "../../../services/eval/page-evaluator.js";
 import { loadSiteHierarchyDoc, saveSiteHierarchyDoc } from "../../../utils/site-hierarchy-io.js";
 import { loadDesignSystemDoc, saveDesignSystemDoc } from "../../../utils/design-system-io.js";
@@ -53,7 +60,7 @@ function makeFastify(stubs: {
   siteRow?: { uuid: string; workspaceUuid: string; customDomain: string | null } | null;
 } = {}): FastifyInstance {
   const chain = (result: unknown, whereCount: number) => {
-    let current: any = {
+    let current: unknown = {
       executeTakeFirst: vi.fn().mockResolvedValue(result),
     };
     for (let i = 0; i < whereCount; i++) {
@@ -157,6 +164,17 @@ describe("eval-fix worker", () => {
       redirects: [],
     });
 
+    vi.mocked(buildTemplateLocal).mockResolvedValue(undefined);
+
+    vi.mocked(deployTemplateDist).mockResolvedValue({
+      version: 7,
+      deployPrefix: "sites/site-1/deploys/tpl-123",
+      routes: 5,
+      redirects: [],
+    });
+
+    vi.mocked(promoteDeploy).mockResolvedValue(undefined);
+
     vi.mocked(publishLatestStagingToProduction).mockResolvedValue({ version: 7 });
 
     vi.mocked(evaluatePage).mockResolvedValue(
@@ -185,7 +203,7 @@ describe("eval-fix worker", () => {
       expect.anything(),
       healedContent,
     );
-    expect(deployTemplate).toHaveBeenCalledWith(
+    expect(deployTemplateDist).toHaveBeenCalledWith(
       expect.objectContaining({
         db: fastify.db,
         siteUuid: "site-1",

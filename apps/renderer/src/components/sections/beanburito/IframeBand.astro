@@ -1,0 +1,141 @@
+---
+import type { IframeEmbed } from "../../../types/gym-content";
+import {
+  isAllowedIframeSrc,
+  sanitizeIframe,
+} from "@ploy-gyms/shared-types";
+
+interface VariantConfig {
+  /** Section heading shown above the iframe. */
+  title?: string;
+  /** Accessible title for the iframe element (defaults to a variant-specific label). */
+  iframeTitle?: string;
+  height?: string;
+  sandbox?: string;
+  /** Tailwind classes applied to the iframe container. */
+  containerClasses?: string;
+  /** Whether this embed should preserve a video aspect ratio. */
+  video?: boolean;
+}
+
+const { iframes } = Astro.props as { iframes?: IframeEmbed[] };
+
+function normalizeDimension(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return /^\d+(\.\d+)?$/.test(value.trim()) ? `${value.trim()}px` : value;
+}
+
+// Template-defined variants. These are presentation defaults only — every field
+// can be overridden by the individual embed or by the admin config.
+const variants: Record<string, VariantConfig> = {
+  map: {
+    title: undefined,
+    iframeTitle: "Map",
+    height: "400px",
+    sandbox: "allow-scripts allow-same-origin allow-popups",
+  },
+  schedule: {
+    title: "Book your spot",
+    iframeTitle: "Class schedule and booking widget",
+    height: "720px",
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-popups",
+  },
+  form: {
+    title: "Get in touch",
+    iframeTitle: "Contact form",
+    height: "640px",
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-popups",
+  },
+  video: {
+    title: "Watch",
+    iframeTitle: "Video player",
+    height: undefined,
+    sandbox: "allow-scripts allow-same-origin allow-presentation",
+    containerClasses: "aspect-video",
+    video: true,
+  },
+  review: {
+    title: "What our members say",
+    iframeTitle: "Member reviews widget",
+    height: "560px",
+    sandbox: "allow-scripts allow-same-origin allow-popups",
+  },
+  default: {
+    iframeTitle: "Embedded third-party content",
+    height: "480px",
+    sandbox: "allow-scripts allow-same-origin",
+  },
+};
+
+function resolveConfig(embed: IframeEmbed) {
+  const variant = variants[embed.variant ?? "default"] ?? variants.default;
+  const title = embed.title ?? variant.title ?? "";
+  const iframeTitle = embed.title ?? variant.iframeTitle ?? "Embedded content";
+  const height = normalizeDimension(embed.height ?? variant.height);
+  const width = normalizeDimension(embed.width);
+  const defaultSandbox = variant.sandbox ?? "allow-scripts allow-same-origin";
+  // Always apply production safety filters; variant defaults fill any gaps the
+  // source/admin config leaves behind.
+  const safe = sanitizeIframe({
+    ...embed,
+    sandbox: embed.sandbox ?? defaultSandbox,
+  });
+  return {
+    src: safe.src,
+    title,
+    iframeTitle,
+    width,
+    height,
+    sandbox: safe.sandbox,
+    allow: safe.allow,
+    style: safe.style,
+    containerClasses: variant.containerClasses ?? "",
+    video: variant.video ?? false,
+    loading: embed.loading ?? "lazy",
+  };
+}
+
+const filtered = (iframes ?? [])
+  .filter((e) => e?.src && isAllowedIframeSrc(e.src))
+  .filter((e) => (e.variant ?? "default") !== "map");
+if (filtered.length === 0) return;
+---
+
+<section data-section="iframeBand" data-section-tag="iframe-band" class="section-skew bg-black text-white">
+  <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class="flex flex-col gap-16">
+      {filtered.map((embed) => {
+        const cfg = resolveConfig(embed);
+        const containerStyleParts: string[] = [];
+        if (cfg.width) containerStyleParts.push(`max-width: ${cfg.width};`);
+        if (cfg.height && !cfg.video) containerStyleParts.push(`height: ${cfg.height};`);
+        const containerStyle = containerStyleParts.length > 0 ? containerStyleParts.join(" ") : undefined;
+        return (
+          <div class="w-full">
+            {cfg.title && (
+              <h2 class="mb-8 text-center font-heading text-3xl font-black uppercase tracking-tight text-white md:text-4xl lg:text-5xl">
+                {cfg.title}
+              </h2>
+            )}
+            <div
+              class={`relative mx-auto w-full overflow-hidden bg-white/5 ${cfg.containerClasses}`.trim()}
+              style={containerStyle}
+            >
+              <iframe
+                src={cfg.src}
+                class="h-full w-full border-0"
+                title={cfg.iframeTitle}
+                loading={cfg.loading}
+                referrerpolicy={embed.referrerpolicy ?? "no-referrer-when-downgrade"}
+                sandbox={cfg.sandbox}
+                allow={cfg.allow}
+                style={cfg.style}
+                allowfullscreen={cfg.video ? true : undefined}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+</section>

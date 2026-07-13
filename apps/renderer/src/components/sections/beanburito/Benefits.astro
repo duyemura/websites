@@ -1,25 +1,19 @@
 ---
 import type { ValueProp } from "../../../types/gym-content";
-import { resolveIcon, iconHtml } from "../../../lib/beanburito-icons";
-const { items, sectionId = "benefits" } = Astro.props as { items: ValueProp[]; sectionId?: string };
+import IconCardGrid from "../IconCardGrid.astro";
+
+const { items, sectionId = "benefits" } = Astro.props as {
+  items: ValueProp[];
+  sectionId?: string;
+};
 if (!items?.length) return;
 ---
-<section data-section={sectionId} data-section-tag="feature-grid" class="section-skew bg-white text-black">
-  <div class="section-inner mx-auto max-w-[80rem] px-6 lg:px-10">
-    <h2 class="sr-only">Why train with us</h2>
-    <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-16">
-      {items.map((item) => {
-        const icon = resolveIcon(item.headline, item.icon);
-        return (
-          <div class="flex min-h-[18rem] flex-col items-center text-center">
-            <span class="mb-7 inline-block text-accent" aria-hidden="true" set:html={iconHtml(icon, 80)} />
-            <h3 class="font-heading text-2xl font-black uppercase leading-[0.95] tracking-tight text-black md:text-3xl">
-              {item.headline}
-            </h3>
-            <p class="mx-auto mt-4 max-w-sm text-base leading-relaxed text-black/70">{item.body}</p>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-</section>
+
+<IconCardGrid
+  items={items}
+  variant="valueProps"
+  sectionId={sectionId}
+  sectionTag="feature-grid"
+  headline="Why train with us"
+  headlineHidden
+/>

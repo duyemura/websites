@@ -66,6 +66,32 @@ function pageContentByPath(content: GymSiteContent, path: string): { pageKey?: s
   return {};
 }
 
+/**
+ * Resolve a pageField source path against GymSiteContent. Supports simple paths
+ * like "hero" (relative to the current page) and absolute paths like
+ * "pages.home.iframes". Returns undefined when the field is missing or empty.
+ */
+function resolvePageField(
+  content: GymSiteContent | undefined,
+  pageKey: string,
+  path: string,
+): unknown {
+  if (!content) return undefined;
+  if (path.startsWith("pages.")) {
+    const parts = path.split(".");
+    let value: unknown = content;
+    for (const part of parts) {
+      if (value == null) return undefined;
+      value = (value as Record<string, unknown>)[part];
+    }
+    return value;
+  }
+  // Relative path on the current page object, e.g. "iframes" or "hero".
+  const page = (content.pages as unknown as Record<string, unknown>)[pageKey];
+  if (!page) return undefined;
+  return (page as Record<string, unknown>)[path];
+}
+
 export async function checkTemplateFidelity(ctx: CheckContext): Promise<PageEvalIssue[]> {
   const issues: PageEvalIssue[] = [];
   if (!ctx.content) {
@@ -234,6 +260,7 @@ function checkRegistryStructureFidelity(
   html: string,
   templateTheme: string,
   path: string,
+  content: GymSiteContent | undefined,
 ): PageEvalIssue[] {
   const issues: PageEvalIssue[] = [];
   const spec = getTemplateSpec(templateTheme as "baseline" | "impact" | "beanburito");
@@ -259,9 +286,20 @@ function checkRegistryStructureFidelity(
   const expectedIds = pageComponents(spec, pageKey);
   const actualIds = renderedSectionIds(html);
 
-  // Check each expected component is present.
+  // Check each expected component is present. Conditional components may be skipped
+  // when their required data is missing, so we consult the spec before flagging.
   for (const componentId of expectedIds) {
     if (!actualIds.includes(componentId)) {
+      const componentSpec = spec.components[componentId];
+      if (componentSpec?.conditional) {
+        const firstPropKey = Object.keys(componentSpec.props)[0];
+        const source = firstPropKey ? componentSpec.props[firstPropKey]?.source : undefined;
+        const fieldPath = source?.kind === "pageField" ? source.path : undefined;
+        const hasData = fieldPath
+          ? Boolean(resolvePageField(content, pageKey, fieldPath))
+          : true;
+        if (!hasData) continue;
+      }
       issues.push({
         severity: componentId === "hero" ? "critical" : "major",
         category: "content",
@@ -374,7 +412,7 @@ export async function checkStructureFidelity(ctx: CheckContext): Promise<PageEva
   const templateTheme = ctx.content?.meta?.templateTheme;
   if (ctx.siteMode === "template" || ctx.siteMode === "greenfield") {
     if (templateTheme) {
-      const registryIssues = checkRegistryStructureFidelity(html, templateTheme, ctx.path);
+      const registryIssues = checkRegistryStructureFidelity(html, templateTheme, ctx.path, ctx.content);
       issues.push(...registryIssues);
     } else {
       issues.push({

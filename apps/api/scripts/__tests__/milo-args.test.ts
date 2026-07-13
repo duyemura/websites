@@ -9,15 +9,15 @@ function parseArgsFrom(argv: string[]): MiloCommand {
 }
 
 describe("milo parseArgs", () => {
-  test("join routes correctly", () => {
-    const cmd = parseArgsFrom(["join", "--url", "https://example.com"]);
-    expect(cmd.cmd).toBe("join");
+  test("new routes correctly", () => {
+    const cmd = parseArgsFrom(["new", "--url", "https://example.com"]);
+    expect(cmd.cmd).toBe("new");
     expect((cmd as any).url).toBe("https://example.com");
     expect((cmd as any).tier).toBe("free");
   });
 
-  test("join with tier flag", () => {
-    const cmd = parseArgsFrom(["join", "--url", "https://example.com", "--tier", "paid"]);
+  test("new with tier flag", () => {
+    const cmd = parseArgsFrom(["new", "--url", "https://example.com", "--tier", "paid"]);
     expect((cmd as any).tier).toBe("paid");
   });
 
@@ -88,7 +88,7 @@ describe("parseArgs additional edge cases", () => {
     expect(() => parseArgsFrom(["eval"])).toThrow("--site");
   });
 
-  test("eval parses path, url, keywords, and auto-fix", () => {
+  test("eval parses path, url, and keywords", () => {
     const cmd = parseArgsFrom([
       "eval",
       "--site",
@@ -99,14 +99,12 @@ describe("parseArgs additional edge cases", () => {
       "https://example.com/about",
       "--keywords",
       "gym,torrance",
-      "--auto-fix",
     ]);
     expect(cmd.cmd).toBe("eval");
     expect((cmd as any).site).toBe("abc-123");
     expect((cmd as any).path).toBe("/about");
     expect((cmd as any).url).toBe("https://example.com/about");
     expect((cmd as any).keywords).toEqual(["gym", "torrance"]);
-    expect((cmd as any).autoFix).toBe(true);
   });
 
   test("eval-fix requires --site and either --eval-uuid or --path", () => {

@@ -15,18 +15,21 @@ import Hero from "../sections/beanburito/Hero.astro";
 import Programs from "../sections/beanburito/Programs.astro";
 import Location from "../sections/beanburito/Location.astro";
 import Benefits from "../sections/beanburito/Benefits.astro";
+import IconCardGrid from "../sections/IconCardGrid.astro";
 import CTABand from "../sections/beanburito/CTABand.astro";
 import HowItWorks from "../sections/beanburito/HowItWorks.astro";
 import Amenities from "../sections/beanburito/Amenities.astro";
 import Community from "../sections/beanburito/Community.astro";
 import Testimonials from "../sections/beanburito/Testimonials.astro";
 import FAQ from "../sections/beanburito/FAQ.astro";
+import IframeBand from "../sections/beanburito/IframeBand.astro";
 
 const BEANBURITO_COMPONENT_MAP: Record<string, AstroComponent> = {
   hero: Hero as unknown as AstroComponent,
   programs: Programs as unknown as AstroComponent,
   location: Location as unknown as AstroComponent,
   benefits: Benefits as unknown as AstroComponent,
+  iconCardGrid: IconCardGrid as unknown as AstroComponent,
   ctaBand: CTABand as unknown as AstroComponent,
   valueProps: Benefits as unknown as AstroComponent,
   howItWorks: HowItWorks as unknown as AstroComponent,
@@ -34,6 +37,7 @@ const BEANBURITO_COMPONENT_MAP: Record<string, AstroComponent> = {
   community: Community as unknown as AstroComponent,
   testimonials: Testimonials as unknown as AstroComponent,
   faq: FAQ as unknown as AstroComponent,
+  iframeBand: IframeBand as unknown as AstroComponent,
 };
 
 const THEME_SPECS: Record<string, TemplateSpec> = {

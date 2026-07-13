@@ -42,6 +42,8 @@ export interface ComponentSpec {
    */
   component: string;
   purpose: string;
+  /** When true, the renderer/fidelity may skip this component if its required data is missing. */
+  conditional?: boolean;
   props: Record<string, ComponentPropSpec>;
 }
 

@@ -6,9 +6,10 @@
 import { GetObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import * as cheerio from "cheerio";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
-import type { ScrapedImage } from "@ploy-gyms/shared-types";
+import type { ScrapedColor, ScrapedImage } from "@ploy-gyms/shared-types";
 import type { ScrapedSection, ScrapedWebsiteData } from "../scrape-docs";
 import type { SectionVisualEvidenceRow } from "../../types/section-visual-evidence";
+import { findMostSaturatedColor, hexSaturation, isDarkNeutral } from "../site-blueprint";
 
 interface S3Config {
   S3_ENDPOINT?: string;
@@ -49,6 +50,115 @@ function makeVisualEvidence(id: string, pageSlug = "index"): SectionVisualEviden
     boundingBox: { x: 0, y: 0, width: 0, height: 0 },
     computedStyles: [],
   };
+}
+
+const HEX_RE = /#([0-9a-fA-F]{3,8})\b/g;
+const RGB_RE = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)/g;
+
+function normalizeHex(raw: string): string | undefined {
+  const clean = raw.replace("#", "").toLowerCase();
+  if (clean.length === 3 || clean.length === 4) {
+    const expanded = clean.split("").map((c) => c + c).join("");
+    if (expanded.length === 6) return `#${expanded}`;
+    return undefined;
+  }
+  if (clean.length === 6 || clean.length === 8) {
+    return `#${clean.slice(0, 6)}`;
+  }
+  return undefined;
+}
+
+function rgbToHex(rgb: string): string | undefined {
+  const m = rgb.match(/rgba?\((\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})/);
+  if (!m) return undefined;
+  const r = parseInt(m[1]!, 10);
+  const g = parseInt(m[2]!, 10);
+  const b = parseInt(m[3]!, 10);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b) || r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+    return undefined;
+  }
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hexLuminance(hex: string): number {
+  const parsed = normalizeHex(hex);
+  if (!parsed) return 0.5;
+  const full = parsed.replace("#", "");
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function gatherColorsFromHtml($: cheerio.CheerioAPI): Map<string, number> {
+  const counts = new Map<string, number>();
+  const add = (raw: string) => {
+    const hex = raw.startsWith("#") ? normalizeHex(raw) : rgbToHex(raw);
+    if (!hex) return;
+    counts.set(hex, (counts.get(hex) ?? 0) + 1);
+  };
+
+  // Inline styles.
+  $("[style]").each((_, el) => {
+    const style = $(el).attr("style") ?? "";
+    let m: RegExpExecArray | null;
+    while ((m = HEX_RE.exec(style)) !== null) add(m[0]);
+    while ((m = RGB_RE.exec(style)) !== null) add(m[0]);
+  });
+
+  // <style> blocks.
+  $("style").each((_, el) => {
+    const css = $(el).text();
+    let m: RegExpExecArray | null;
+    while ((m = HEX_RE.exec(css)) !== null) add(m[0]);
+    while ((m = RGB_RE.exec(css)) !== null) add(m[0]);
+  });
+
+  // Link rel=stylesheet hrefs — try to fetch same-origin CSS only.
+  $("link[rel='stylesheet']").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    // Skip external CSS; colors in the homepage HTML are usually enough and
+    // fetching arbitrary third-party URLs is slow/unreliable.
+    if (href.startsWith("http") && !href.startsWith("/")) return;
+  });
+
+  return counts;
+}
+
+function extractColors($: cheerio.CheerioAPI): ScrapedColor[] {
+  const counts = gatherColorsFromHtml($);
+  if (counts.size === 0) return [];
+
+  const entries = [...counts.entries()].map(([hex, count]) => ({ hex, count }));
+  entries.sort((a, b) => b.count - a.count);
+
+  const background = entries.find((c) => hexLuminance(c.hex) > 0.5 && hexSaturation(c.hex) < 0.15)?.hex
+    ?? entries.find((c) => hexLuminance(c.hex) > 0.5)?.hex;
+  const text = entries.find((c) => hexLuminance(c.hex) < 0.5 && hexSaturation(c.hex) < 0.15 && c.hex !== background)?.hex
+    ?? entries.find((c) => isDarkNeutral(c.hex) && c.hex !== background)?.hex
+    ?? entries.find((c) => c.hex !== background && hexLuminance(c.hex) < 0.5)?.hex;
+  const accent = findMostSaturatedColor(
+    entries.filter((c) => c.hex !== background && c.hex !== text && !(c.hex === "#000000" || c.hex === "#ffffff")),
+  );
+
+  const colors: ScrapedColor[] = [];
+  if (background) {
+    colors.push({ token: "bg-primary", hex: background, role: "background" });
+  }
+  if (text) {
+    colors.push({ token: "text-primary", hex: text, role: "text" });
+  }
+  if (accent) {
+    colors.push({ token: "accent-primary", hex: accent, role: "accent" });
+  }
+  // Muted text from the top neutral that isn't text/background.
+  const muted = entries.find((c) => c.hex !== background && c.hex !== text && c.hex !== accent && hexSaturation(c.hex) < 0.15);
+  if (muted) {
+    colors.push({ token: "text-muted", hex: muted.hex, role: "textMuted" });
+  }
+
+  return colors;
 }
 
 function extractNavLinks($: cheerio.CheerioAPI): { label: string; href: string }[] {
@@ -288,6 +398,9 @@ export async function buildScrapedWebsiteDataFromCrawl(
   const html = (await fetchHtmlFromS3(s3, config, homePage.htmlKey)) ?? "";
   const $ = cheerio.load(html);
 
+  // Extract colors from raw HTML/styles before stripping script/style tags.
+  const colors = extractColors($);
+
   // Strip script/style so they don't pollute text extraction.
   $("script, style, noscript, iframe").remove();
 
@@ -306,7 +419,7 @@ export async function buildScrapedWebsiteDataFromCrawl(
     paragraphs: extractParagraphs($),
     buttons: extractButtons($),
     navLinks: extractNavLinks($),
-    colors: [],
+    colors,
     fonts: [],
     fontSizes: [],
     images: extractImages($),

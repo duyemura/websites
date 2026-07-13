@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { buildDesignSystem, sanitizeTokens, type DesignSystem } from "../design-system";
+import { deriveThemeTokens } from "../site-blueprint";
 import type { ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
 
 const tokens: ThemeTokens = {
@@ -135,5 +136,92 @@ describe("design-system", () => {
     expect(ds.siteMetadata.targetUrl).toBe("https://example.com");
     expect(ds.siteMetadata.generatedAt).toBe("2026-07-01T00:00:00.000Z");
     expect(ds.brand.headingStyle).toBeDefined();
+  });
+});
+
+describe("deriveThemeTokens", () => {
+  test("uses scraped accent as primary", () => {
+    const tokens = deriveThemeTokens({
+      url: "https://example.com",
+      title: "",
+      businessName: "",
+      headings: [],
+      paragraphs: [],
+      buttons: [],
+      navLinks: [],
+      colors: [
+        { role: "background", hex: "#ffffff", token: "bg" },
+        { role: "text", hex: "#111111", token: "text" },
+        { role: "accent", hex: "#0063ff", token: "accent" },
+      ],
+      fonts: [],
+      fontSizes: [],
+      images: [],
+      layoutRules: [],
+      faqs: [],
+      testimonials: [],
+      locations: [],
+      team: [],
+      offerings: [],
+      contact: {},
+    } as any);
+    expect(tokens.colors.primary).toBe("#0063ff");
+  });
+
+  test("prefers most saturated palette color over dark body text when accent is missing", () => {
+    const tokens = deriveThemeTokens({
+      url: "https://example.com",
+      title: "",
+      businessName: "",
+      headings: [],
+      paragraphs: [],
+      buttons: [],
+      navLinks: [],
+      colors: [
+        { role: "background", hex: "#ffffff", token: "bg" },
+        { role: "text", hex: "#111111", token: "text" },
+        { role: "surface", hex: "#f5f5f5", token: "surface" },
+        { role: "border", hex: "#e5e5e5", token: "border" },
+        { role: "unknown", hex: "#2563ff", token: "brand" },
+      ],
+      fonts: [],
+      fontSizes: [],
+      images: [],
+      layoutRules: [],
+      faqs: [],
+      testimonials: [],
+      locations: [],
+      team: [],
+      offerings: [],
+      contact: {},
+    } as any);
+    expect(tokens.colors.primary).toBe("#2563ff");
+  });
+
+  test("falls back to neutral when no accent and only dark neutrals exist", () => {
+    const tokens = deriveThemeTokens({
+      url: "https://example.com",
+      title: "",
+      businessName: "",
+      headings: [],
+      paragraphs: [],
+      buttons: [],
+      navLinks: [],
+      colors: [
+        { role: "background", hex: "#ffffff", token: "bg" },
+        { role: "text", hex: "#171717", token: "text" },
+      ],
+      fonts: [],
+      fontSizes: [],
+      images: [],
+      layoutRules: [],
+      faqs: [],
+      testimonials: [],
+      locations: [],
+      team: [],
+      offerings: [],
+      contact: {},
+    } as any);
+    expect(tokens.colors.primary).toBe("#171717");
   });
 });

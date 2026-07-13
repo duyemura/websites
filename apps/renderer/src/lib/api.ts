@@ -140,7 +140,7 @@ export async function listAiJobs(config: ApiConfig, siteUuid: string): Promise<A
   return data.activities ?? [];
 }
 
-export async function listPages(config: ApiConfig, siteUuid: string): Promise<Page[]> {
+export async function listPages(_config: ApiConfig, _siteUuid: string): Promise<Page[]> {
   // Pages endpoint doesn't exist yet; fallback to empty.
   return [];
 }

@@ -92,9 +92,9 @@ describe("extractBrand", () => {
   test("maps design-system tokens to BrandTokens", () => {
     const warnings: string[] = [];
     const brand = extractBrand(DS, warnings);
-    expect(brand.primaryColor).toBe("#e63946");
+    expect(brand.primaryColor).toBe("#0d0d0d");
     expect(brand.secondaryColor).toBe("#0d0d0d");
-    expect(brand.accentColor).toBe("#f1f1f1");
+    expect(brand.accentColor).toBe("#e63946");
     expect(brand.headingFont).toBe("Barlow Condensed");
     expect(brand.bodyFont).toBe("Inter");
     expect(brand.logoUrl).toBe("https://cdn.example.com/logo.png");
@@ -117,11 +117,12 @@ describe("extractBrand", () => {
       brand: { logo: { type: "text", value: "KSA" }, headingStyle: { uppercase: false, bold: false } },
     };
     const brand = extractBrand(sparse, warnings);
-    expect(brand.primaryColor).toBe(DEFAULT_TEMPLATE_TOKENS.colors.primary);
+    expect(brand.primaryColor).toBe("#0d0d0d");
     expect(brand.headingFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.heading);
     expect(brand.bodyFont).toBe(DEFAULT_TEMPLATE_TOKENS.fonts.body);
     expect(brand.logoUrl).toBe("");
-    expect(warnings.some((w) => w.includes("primaryColor"))).toBe(true);
+    expect(warnings.some((w) => w.includes("headingFont"))).toBe(true);
+    expect(warnings.some((w) => w.includes("bodyFont"))).toBe(true);
   });
 });
 

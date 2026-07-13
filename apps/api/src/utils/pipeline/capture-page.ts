@@ -31,7 +31,7 @@ export interface CapturedPage {
     navLinks: Array<{ label: string; href: string }>;
     meta: Record<string, string>;
     jsonLd: unknown[];
-    iframes: Array<{ src: string; kind: "map" | "schedule" | "form" | "video" | "other" }>;
+    iframes: Array<{ src: string; width?: string; height?: string; title?: string; sandbox?: string; style?: string; allow?: string; referrerpolicy?: string; loading?: "eager" | "lazy" }>;
     videos: Array<{ src: string; poster?: string }>;
     primaryCta?: { label: string; href: string };
     lottieUrls: string[];
@@ -391,13 +391,33 @@ const EXTRACT_CONTENT_SCRIPT = String.raw`(function() {
     jsonLd: jsonLd,
     primaryCta: primaryCta,
     iframes: Array.from(document.querySelectorAll("iframe[src]")).map(function(f) {
-      var src = f.getAttribute("src") || "";
-      var kind = /google\.[^/]*\/maps|maps\.google/.test(src) ? "map"
-        : /calendly|schedule|booking|zenplanner|wodify|pushpress/.test(src) ? "schedule"
-        : /typeform|jotform|forms\./.test(src) ? "form"
-        : /youtube|vimeo|wistia/.test(src) ? "video"
-        : "other";
-      return { src: src, kind: kind };
+      function attr(name) {
+        var v = f.getAttribute(name);
+        return v === null ? undefined : v;
+      }
+      function styleProp(name) {
+        var v = (f.style && f.style[name]) || getComputedStyle(f)[name];
+        return v && v !== "auto" ? v : undefined;
+      }
+      var sandbox = attr("sandbox");
+      if (sandbox !== undefined) {
+        sandbox = sandbox.replace(/\s+/g, " ").trim();
+      }
+      var loading = attr("loading");
+      if (loading !== "eager" && loading !== "lazy") {
+        loading = undefined;
+      }
+      return {
+        src: f.getAttribute("src") || "",
+        width: attr("width") || styleProp("width") || undefined,
+        height: attr("height") || styleProp("height") || undefined,
+        title: attr("title") || f.getAttribute("aria-label") || undefined,
+        sandbox: sandbox,
+        style: f.getAttribute("style") || undefined,
+        allow: attr("allow") || undefined,
+        referrerpolicy: attr("referrerpolicy") || undefined,
+        loading: loading,
+      };
     }),
     videos: Array.from(document.querySelectorAll("video"))
       .map(function(v) {

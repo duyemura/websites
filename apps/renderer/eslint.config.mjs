@@ -6,9 +6,9 @@ export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
   {
-    files: ["src/**/*.ts", "test/**/*.ts", "migrations/**/*.ts"],
+    files: ["src/**/*.{ts,tsx,mts}", "test/**/*.ts"],
     languageOptions: {
-      globals: globals.node,
+      globals: globals.browser,
     },
     rules: {
       "@typescript-eslint/no-unused-vars": [
@@ -18,12 +18,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ["test/**/*.ts", "**/__tests__/**/*.ts"],
+    files: ["public/**/*.js"],
+    languageOptions: {
+      globals: globals.browser,
+    },
     rules: {
-      "@typescript-eslint/no-explicit-any": "off",
+      "no-unused-vars": ["error", { caughtErrorsIgnorePattern: "^_.*" }],
     },
   },
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**"],
-  }
+    ignores: ["dist/**", "node_modules/**", ".astro/**", ".turbo/**"],
+  },
 );

@@ -32,3 +32,12 @@ export {
   resolveIcon,
   iconHtml,
 } from "./templates/beanburito-icons.js";
+export {
+  inferIframeVariant,
+  isAllowedIframeSrc,
+  sanitizeSandbox,
+  sanitizeAllow,
+  sanitizeStyle,
+  upgradeToHttps,
+  sanitizeIframe,
+} from "./iframe-utils.js";

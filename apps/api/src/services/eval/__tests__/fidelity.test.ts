@@ -302,10 +302,10 @@ describe("checkStructureFidelity", () => {
         <section data-section="howItWorks"></section>
         <section data-section="amenities"></section>
         <section data-section="community"></section>
+        <section data-section="location"></section>
         <section data-section="testimonials"></section>
         <section data-section="faq"></section>
         <section data-section="ctaBand"></section>
-        <section data-section="location"></section>
       </body></html>
     `;
     const ctx = makeCtx(baseContent(), "/", html, "template");

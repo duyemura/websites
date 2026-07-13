@@ -1,5 +1,5 @@
 import type { Kysely } from "kysely";
-import type { DB } from "../../types/db";
+import type { DB, Json } from "../../types/db";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../types/site-hierarchy";
 import {
@@ -19,6 +19,7 @@ import type {
   ScheduleContent, BlogContent, LocalGuideContent, LegalPage, HeroContent, Feature,
 } from "@ploy-gyms/shared-types";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
+import { hexSaturation } from "../../utils/site-blueprint";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 import type { EnrichArtifact } from "../../types/enrich-artifact";
 
@@ -46,6 +47,52 @@ function fallback<T>(value: T | undefined | null | "", def: T, warnings: string[
     return def;
   }
   return value;
+}
+
+/** Luminance above which we treat a color as light; below it is dark. */
+const DARK_LUMINANCE_THRESHOLD = 0.4;
+/** Minimum saturation (0-1) we consider a "brand" color rather than a neutral. */
+const MIN_BRAND_SATURATION = 0.25;
+
+function hexLuminance(hex: string): number {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  if (full.length !== 6) return 0.5;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return 0.5;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function isValidHex(hex: string | undefined | null): hex is string {
+  return typeof hex === "string" && /^#([0-9A-Fa-f]{3}){1,2}$/.test(hex);
+}
+
+/** Pick the darkest scraped color for large surfaces (headers, heroes without images). */
+function pickPrimaryColor(
+  c: DesignSystemV2["global"]["tokens"]["colors"],
+  baseline: (typeof DEFAULT_TEMPLATE_TOKENS)["colors"],
+): string {
+  const candidates = [c.foreground, c.background, c.primary, c.muted, c.border].filter(isValidHex);
+  const dark = candidates.filter((hex) => hexLuminance(hex) < DARK_LUMINANCE_THRESHOLD);
+  if (dark.length > 0) {
+    return dark.sort((a, b) => hexLuminance(a) - hexLuminance(b))[0]!;
+  }
+  return baseline.primary;
+}
+
+/** Pick the most saturated scraped color for small accents (CTAs, icons, callouts). */
+function pickAccentColor(
+  c: DesignSystemV2["global"]["tokens"]["colors"],
+  baseline: (typeof DEFAULT_TEMPLATE_TOKENS)["colors"],
+): string {
+  const candidates = [c.primary, c.foreground, c.mutedForeground, c.border].filter(isValidHex);
+  const saturated = candidates.filter((hex) => hexSaturation(hex) >= MIN_BRAND_SATURATION);
+  if (saturated.length > 0) {
+    return saturated.sort((a, b) => hexSaturation(b) - hexSaturation(a))[0]!;
+  }
+  return c.primary ?? c.foreground ?? baseline.mutedForeground;
 }
 
 function stripSeoSuffix(name: string | undefined | null): string | undefined {
@@ -350,10 +397,17 @@ export function extractBrand(
   // Text-logo sites have no image URL; image-logo sites without a value render
   // as text as well so the footer/header never show a broken image.
   const logoUrl = logo.type === "image" ? (logo.value || "") : "";
+
+  // Keep large surfaces dark/neutral while letting the brand color pop on small
+  // accents (buttons, icons, step numbers). This matches the beanburito reference
+  // and also improves baseline/impact contrast.
+  const inferredPrimary = pickPrimaryColor(c, baseline.colors);
+  const inferredAccent = pickAccentColor(c, baseline.colors);
+
   return {
-    primaryColor: fallback(c.primary, baseline.colors.primary, warnings, "primaryColor"),
+    primaryColor: fallback(inferredPrimary, baseline.colors.primary, warnings, "primaryColor"),
     secondaryColor: fallback(c.background, baseline.colors.foreground, warnings, "secondaryColor"),
-    accentColor: fallback(c.foreground, baseline.colors.mutedForeground, warnings, "accentColor"),
+    accentColor: fallback(inferredAccent, baseline.colors.mutedForeground, warnings, "accentColor"),
     headingFont: fallback(f.heading, baseline.fonts.heading, warnings, "headingFont"),
     bodyFont: fallback(f.body, baseline.fonts.body, warnings, "bodyFont"),
     logoUrl,
@@ -693,8 +747,10 @@ function featureGridItems(section: SectionContract): Feature[] {
 
 // ── Doc loader ───────────────────────────────────────────────────────────────
 
+const JSON_FENCE_RE = /```json\n([\s\S]*?)\n```/;
+
 async function loadDoc(db: Kysely<DB>, siteUuid: string, key: string) {
-  return db
+  const row = await db
     .selectFrom("docs")
     .select(["content", "contentJson"])
     .where("siteUuid", "=", siteUuid)
@@ -702,6 +758,24 @@ async function loadDoc(db: Kysely<DB>, siteUuid: string, key: string) {
     .where("status", "=", "active")
     .orderBy("updatedAt", "desc")
     .executeTakeFirst();
+
+  if (!row) return undefined;
+
+  // Docs written before the content_json column was populated store JSON inside
+  // a markdown fence in `content`. Parse it as a fallback so older sites and
+  // docs generated by the current pipeline still feed the template mapper.
+  if (!row.contentJson && row.content) {
+    const match = row.content.match(JSON_FENCE_RE);
+    if (match?.[1]) {
+      try {
+        row.contentJson = JSON.parse(match[1]) as Json;
+      } catch {
+        // leave contentJson null; caller falls back to defaults
+      }
+    }
+  }
+
+  return row;
 }
 
 // ── Main entry point ─────────────────────────────────────────────────────────
@@ -719,6 +793,8 @@ export interface MapperConfig {
   googleMapsApiKey?: string;
 }
 
+const VALID_TEMPLATE_THEMES = new Set<string>(["baseline", "impact", "beanburito"]);
+
 export async function buildGymJson(
   db: Kysely<DB>,
   siteUuid: string,
@@ -727,13 +803,25 @@ export async function buildGymJson(
 ): Promise<MapperResult> {
   const warnings: string[] = [];
 
+  const siteRow = await db
+    .selectFrom("sites")
+    .leftJoin("themes", "themes.uuid", "sites.themeUuid")
+    .select(["sites.workspaceUuid", "themes.templateKey"])
+    .where("sites.uuid", "=", siteUuid)
+    .executeTakeFirst();
+
+  const explicitTemplateTheme =
+    siteRow?.templateKey && VALID_TEMPLATE_THEMES.has(siteRow.templateKey)
+      ? (siteRow.templateKey as SiteMeta["templateTheme"])
+      : undefined;
+
   const [dsDoc, bizDoc, hierDoc] = await Promise.all([
     loadDoc(db, siteUuid, "design-system"),
     loadDoc(db, siteUuid, "business-info"),
     loadDoc(db, siteUuid, "site-hierarchy"),
   ]);
 
-  const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? "";
+  const resolvedWorkspaceUuid = workspaceUuid ?? config.workspaceUuid ?? siteRow?.workspaceUuid ?? "";
 
   let contract: ContractArtifact | null = null;
   if (resolvedWorkspaceUuid) {
@@ -941,7 +1029,7 @@ export async function buildGymJson(
   // 2. Contract-driven beanburito signal (bold sticky headline + dark contrast).
   // 3. Contract-driven impact signal (bento feature grid).
   // 4. Default baseline.
-  const inferredTemplateTheme = inferTemplateTheme(contract, pages.home);
+  const inferredTemplateTheme = explicitTemplateTheme ?? inferTemplateTheme(contract, pages.home);
 
   const meta: SiteMeta = {
     siteId: siteUuid,

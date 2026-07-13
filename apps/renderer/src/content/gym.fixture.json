@@ -218,7 +218,9 @@
     },
     "schedule": {
       "hero": { "headline": "Class Schedule", "subheading": "Reserve your spot — classes fill up." },
-      "widgetEmbedHtml": "<div id=\"fixture-booking-widget\" data-widget=\"pushpress\">Booking widget placeholder</div>",
+      "iframes": [
+        { "src": "https://example.pushpress.com/schedule?site=fixture", "title": "Class schedule", "variant": "schedule" }
+      ],
       "note": "First time? Book a free consultation and we'll walk you in."
     },
     "blog": {

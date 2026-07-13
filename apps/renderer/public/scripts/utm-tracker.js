@@ -7,7 +7,7 @@
       var v = params.get(k);
       if (v) sessionStorage.setItem(k, v);
     });
-  } catch (e) { /* sessionStorage unavailable — degrade silently */ }
+  } catch { /* sessionStorage unavailable — degrade silently */ }
 
   function inject() {
     document.querySelectorAll("form[data-lead-form]").forEach(function (form) {

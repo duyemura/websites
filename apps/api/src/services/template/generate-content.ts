@@ -16,12 +16,22 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, IframeEmbed } from "@ploy-gyms/shared-types";
 import { buildNavigation } from "./nav-slots.js";
-import { beanburitoSpec, buildSpecPrompt, validateIcon, resolveIcon, placeholderImage } from "@ploy-gyms/shared-types";
+import {
+  beanburitoSpec,
+  buildSpecPrompt,
+  validateIcon,
+  resolveIcon,
+  placeholderImage,
+  inferIframeVariant,
+  isAllowedIframeSrc,
+  sanitizeIframe,
+} from "@ploy-gyms/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
 import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
 import type { MirrorAssetsArtifact } from "../../types/mirror.js";
+import type { ExtractArtifact } from "../../types/pipeline-artifacts.js";
 import { buildImageMatcher, makeRoundRobin } from "../mirror/image-matcher.js";
 
 export interface GenerateContentInput {
@@ -92,6 +102,65 @@ async function loadContentArtifact(db: Kysely<DB>, siteUuid: string): Promise<Co
     .executeTakeFirst();
   const payload = row?.payload as ContentArtifact | undefined;
   return payload ?? null;
+}
+
+async function loadExtractArtifact(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<ExtractArtifact | null> {
+  const artifact = await loadArtifact<ExtractArtifact>(
+    db,
+    { siteUuid, workspaceUuid },
+    "extract",
+  ).catch(() => null);
+  return artifact?.payload ?? null;
+}
+
+interface IframeConfigFile {
+  iframes?: IframeEmbed[];
+}
+
+async function loadIframeConfig(
+  s3Client: S3Client,
+  bucket: string,
+  siteUuid: string,
+): Promise<IframeEmbed[]> {
+  try {
+    const obj = await s3Client.send(new GetObjectCommand({
+      Bucket: bucket,
+      Key: `sites/${siteUuid}/config/iframes.json`,
+    }));
+    const raw = await obj.Body?.transformToString() ?? "{}";
+    const parsed = JSON.parse(raw) as IframeConfigFile;
+    return Array.isArray(parsed.iframes) ? parsed.iframes : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Turn raw crawled iframes into template embeds. We don't know the service,
+ * so we never hardcode third-party domains here. We only apply a very loose
+ * URL-pattern hint to pick a default variant. A human or the AI assistant
+ * can override variant/title/height/style in sites/{uuid}/config/iframes.json.
+ */
+function iframesFromExtract(extract: ExtractArtifact | null): IframeEmbed[] {
+  if (!extract?.pages?.length) return [];
+  const home = extract.pages.find((p) => p.path === "/" || p.path === "");
+  return (home?.content?.iframes ?? [])
+    .filter((f) => isAllowedIframeSrc(f.src))
+    .map((f) => {
+      const src = f.src;
+      return sanitizeIframe({
+        src,
+        variant: inferIframeVariant(src),
+        title: f.title,
+        height: f.height,
+        width: f.width,
+        sandbox: f.sandbox,
+        style: f.style,
+        allow: f.allow,
+        referrerpolicy: f.referrerpolicy,
+        loading: f.loading,
+      });
+    });
 }
 
 // ── Icon / image helpers ───────────────────────────────────────────────────
@@ -189,6 +258,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   ]);
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
+  const extractArtifact = await loadExtractArtifact(db, siteUuid, workspaceUuid);
 
   // crawl pages no longer needed here — navigation built from capturedNav + contentBriefs
 
@@ -212,6 +282,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   let capturedNav: NavNode[] = [];
   const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
   const configNavKey = `sites/${siteUuid}/config/nav-structure.json`;
+  const configuredIframes = await loadIframeConfig(input.s3Client, bucket, siteUuid);
 
   let navSource = "none";
   try {
@@ -507,6 +578,23 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     finalHero.intro = "";
   }
 
+  const detectedIframes = iframesFromExtract(extractArtifact);
+  const existingIframes = (baseContent.pages.home.iframes ?? [])
+    .filter((e) => isAllowedIframeSrc(e.src))
+    .map(sanitizeIframe);
+  const safeConfiguredIframes = configuredIframes
+    .filter((e) => isAllowedIframeSrc(e.src))
+    .map(sanitizeIframe);
+  const seenSrc = new Set([...existingIframes, ...safeConfiguredIframes].map((e) => e.src));
+  const homeIframes: IframeEmbed[] = [
+    ...existingIframes,
+    ...safeConfiguredIframes,
+    ...detectedIframes.filter((e) => !seenSrc.has(e.src)),
+  ];
+  if (homeIframes.length > 0) {
+    log(`  Iframes: ${homeIframes.map((e) => `${e.variant ?? "default"} (${e.src})`).join(", ")}`);
+  }
+
   const generatedHome: HomeContent = {
     ...baseContent.pages.home,
     hero: finalHero,
@@ -521,6 +609,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     ctaSubtext: generated.ctaSubtext || baseContent.pages.home.ctaSubtext,
     testimonials,
     faq,
+    iframes: homeIframes.length > 0 ? homeIframes : undefined,
   };
 
   // Patch serviceArea into business if LLM provided real nearby cities

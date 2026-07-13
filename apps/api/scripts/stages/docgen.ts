@@ -134,6 +134,9 @@ export const docgenStage: StageRunner = {
       paragraphs: scrapedFromCrawl.paragraphs.length > 0 ? scrapedFromCrawl.paragraphs : enrichedBase.paragraphs,
       navLinks: scrapedFromCrawl.navLinks.length > 0 ? scrapedFromCrawl.navLinks : enrichedBase.navLinks,
       images: scrapedFromCrawl.images.length > 0 ? scrapedFromCrawl.images : enrichedBase.images,
+      colors: scrapedFromCrawl.colors.length > 0 ? scrapedFromCrawl.colors : enrichedBase.colors,
+      fonts: scrapedFromCrawl.fonts.length > 0 ? scrapedFromCrawl.fonts : enrichedBase.fonts,
+      fontSizes: scrapedFromCrawl.fontSizes.length > 0 ? scrapedFromCrawl.fontSizes : enrichedBase.fontSizes,
       sections: scrapedFromCrawl.sections && scrapedFromCrawl.sections.length > 0
         ? scrapedFromCrawl.sections
         : enrichedBase.sections,
@@ -141,6 +144,9 @@ export const docgenStage: StageRunner = {
       locations: enrichedBase.locations.length > 0 ? enrichedBase.locations : scrapedFromCrawl.locations,
       testimonials: enrichedBase.testimonials.length > 0 ? enrichedBase.testimonials : scrapedFromCrawl.testimonials,
       offerings: enrichedBase.offerings.length > 0 ? enrichedBase.offerings : scrapedFromCrawl.offerings,
+      team: enrichedBase.team.length > 0 ? enrichedBase.team : scrapedFromCrawl.team,
+      faqs: enrichedBase.faqs.length > 0 ? enrichedBase.faqs : scrapedFromCrawl.faqs,
+      layoutRules: scrapedFromCrawl.layoutRules.length > 0 ? scrapedFromCrawl.layoutRules : enrichedBase.layoutRules,
     };
 
     const data = mergeGmbIntoScraped(merged, gmb);
