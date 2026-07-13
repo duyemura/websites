@@ -512,6 +512,7 @@ function sectionTagIntent(tag: CanonicalSectionTag): string {
     schedule: "Display schedule details or booking availability.",
     team: "Introduce the coaches, instructors, or team members.",
     contact: "Provide primary contact channels and next steps.",
+    iframe: "Render a third-party embedded widget from the source site.",
     unknown: "Present the captured content in a layout faithful to the source.",
   };
   return intents[tag];

@@ -490,4 +490,34 @@ describe("extractPages", () => {
     expect(pages.localGuide?.hero.headline).toBe("Your fitness guide to Torrance, CA");
     expect(pages.about.hero.backgroundImageUrl).toBe("__NO_IMAGE__");
   });
+
+  test("maps iframe widget sections to the matching generated page by variant", () => {
+    const warnings: string[] = [];
+    const h = makeHierarchy([
+      {
+        slug: "",
+        isHomePage: true,
+        title: "Home",
+        sections: [
+          { id: "reviews", tag: "iframe", intent: "social proof", evidenceId: "e1", content: { widgetUrl: "https://widgets.trustpilot.com/reviews/123", heading: "Member reviews" } },
+          { id: "schedule", tag: "iframe", intent: "booking", evidenceId: "e2", content: { widgetUrl: "https://app.acuityscheduling.com/schedule.php?owner=123", heading: "Book a class" } },
+          { id: "map", tag: "iframe", intent: "location", evidenceId: "e3", content: { widgetUrl: "https://www.google.com/maps/embed?pb=abc", heading: "Find us" } },
+          { id: "unsafe", tag: "iframe", intent: "ignored", evidenceId: "e4", content: { widgetUrl: "javascript:alert(1)" } },
+        ],
+      },
+    ]);
+    const pages = extractPages(h, { name: "KSA" } as any, warnings);
+
+    expect(pages.home.iframes).toHaveLength(1);
+    expect(pages.home.iframes?.[0].src).toBe("https://widgets.trustpilot.com/reviews/123");
+    expect(pages.home.iframes?.[0].variant).toBe("default");
+
+    expect(pages.schedule.iframes).toHaveLength(1);
+    expect(pages.schedule.iframes?.[0].variant).toBe("schedule");
+
+    expect(pages.contact.iframes).toHaveLength(1);
+    expect(pages.contact.iframes?.[0].variant).toBe("map");
+
+    expect(warnings.some((w) => w.includes("unsafe"))).toBe(false);
+  });
 });

@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 import type { DB, Json } from "../../types/db";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
-import type { SiteHierarchy, HierarchyPage } from "../../types/site-hierarchy";
+import type { SiteHierarchy, HierarchyPage, HierarchySection } from "../../types/site-hierarchy";
 import {
   DEFAULT_TEMPLATE_TOKENS,
   DEFAULT_BUSINESS_PLACEHOLDER,
@@ -11,6 +11,11 @@ import {
   NO_IMAGE,
   placeholderImage,
 } from "@ploy-gyms/shared-types/template-baseline";
+import {
+  inferIframeVariant,
+  isAllowedIframeSrc,
+  sanitizeIframe,
+} from "@ploy-gyms/shared-types";
 
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
@@ -483,6 +488,47 @@ function heroFromPage(page: HierarchyPage, contractHero?: SectionContract, busin
   };
 }
 
+function iframeEmbedFromSection(section: HierarchySection): { embed: import("@ploy-gyms/shared-types").IframeEmbed; variant: string } | null {
+  const src = section.content.widgetUrl;
+  if (!src || !isAllowedIframeSrc(src)) return null;
+
+  const variant = inferIframeVariant(src);
+  const embed = sanitizeIframe({
+    src,
+    variant,
+    title: section.content.heading,
+  });
+  return { embed, variant };
+}
+
+/** Decide which generated page should host an iframe based on its variant. */
+function targetPageKeyForIframe(variant: string): "home" | "about" | "pricing" | "contact" | "schedule" {
+  switch (variant) {
+    case "schedule":
+      return "schedule";
+    case "map":
+      return "contact";
+    case "video":
+      return "about";
+    case "form":
+      return "contact";
+    default:
+      return "home";
+  }
+}
+
+function addIframeToPage(
+  page: { iframes?: import("@ploy-gyms/shared-types").IframeEmbed[] },
+  embed: import("@ploy-gyms/shared-types").IframeEmbed,
+  warnings: string[],
+  context: string,
+): void {
+  page.iframes = page.iframes ?? [];
+  if (page.iframes.some((e) => e.src === embed.src)) return;
+  page.iframes.push(embed);
+  warnings.push(`${context} iframe captured: ${embed.variant ?? "default"} ${embed.src}`);
+}
+
 export function extractPages(
   hierarchy: SiteHierarchy,
   business: Pick<BusinessInfo, "name" | "primaryCta" | "geo">,
@@ -637,6 +683,35 @@ export function extractPages(
     title: p.title,
     blocks: [],
   }));
+
+  // Map any iframe widget sections discovered in the hierarchy to the generated
+  // page that best matches their purpose (schedule, map, reviews, etc.).
+  for (const page of hierarchy.pages) {
+    for (const section of page.sections) {
+      if (section.tag !== "iframe" && !section.content.widgetUrl) continue;
+      const parsed = iframeEmbedFromSection(section);
+      if (!parsed) continue;
+      const { embed, variant } = parsed;
+      const target = targetPageKeyForIframe(variant);
+      switch (target) {
+        case "home":
+          addIframeToPage(home, embed, warnings, "home");
+          break;
+        case "about":
+          addIframeToPage(about, embed, warnings, "about");
+          break;
+        case "pricing":
+          addIframeToPage(pricing, embed, warnings, "pricing");
+          break;
+        case "contact":
+          addIframeToPage(contact, embed, warnings, "contact");
+          break;
+        case "schedule":
+          addIframeToPage(schedule, embed, warnings, "schedule");
+          break;
+      }
+    }
+  }
 
   return { home, programs, about, pricing, contact, schedule, blog, localGuide, legal };
 }

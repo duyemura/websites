@@ -136,31 +136,94 @@ async function loadIframeConfig(
 }
 
 /**
- * Turn raw crawled iframes into template embeds. We don't know the service,
- * so we never hardcode third-party domains here. We only apply a very loose
- * URL-pattern hint to pick a default variant. A human or the AI assistant
- * can override variant/title/height/style in sites/{uuid}/config/iframes.json.
+ * Turn raw crawled iframes into template embeds grouped by source page path.
+ * We don't know the service, so we never hardcode third-party domains here.
+ * We only apply a very loose URL-pattern hint to pick a default variant. A
+ * human or the AI assistant can override variant/title/height/style in
+ * sites/{uuid}/config/iframes.json.
  */
-function iframesFromExtract(extract: ExtractArtifact | null): IframeEmbed[] {
-  if (!extract?.pages?.length) return [];
-  const home = extract.pages.find((p) => p.path === "/" || p.path === "");
-  return (home?.content?.iframes ?? [])
-    .filter((f) => isAllowedIframeSrc(f.src))
-    .map((f) => {
-      const src = f.src;
-      return sanitizeIframe({
-        src,
-        variant: inferIframeVariant(src),
-        title: f.title,
-        height: f.height,
-        width: f.width,
-        sandbox: f.sandbox,
-        style: f.style,
-        allow: f.allow,
-        referrerpolicy: f.referrerpolicy,
-        loading: f.loading,
+function iframesByPathFromExtract(extract: ExtractArtifact | null): Map<string, IframeEmbed[]> {
+  const map = new Map<string, IframeEmbed[]>();
+  if (!extract?.pages?.length) return map;
+  for (const page of extract.pages) {
+    const embeds = (page.content.iframes ?? [])
+      .filter((f) => isAllowedIframeSrc(f.src))
+      .map((f) => {
+        const src = f.src;
+        return sanitizeIframe({
+          src,
+          variant: inferIframeVariant(src),
+          title: f.title,
+          height: f.height,
+          width: f.width,
+          sandbox: f.sandbox,
+          style: f.style,
+          allow: f.allow,
+          referrerpolicy: f.referrerpolicy,
+          loading: f.loading,
+        });
       });
-    });
+    if (embeds.length > 0) {
+      map.set(normalizePath(page.path), embeds);
+    }
+  }
+  return map;
+}
+
+export function normalizePath(path: string): string {
+  return path.replace(/\/$/, "") || "/";
+}
+
+export function matchExtractPath(path: string): "home" | "about" | "pricing" | "contact" | "schedule" | null {
+  const normalized = normalizePath(path);
+  if (normalized === "/") return "home";
+  if (/^\/about/i.test(normalized)) return "about";
+  if (/^\/contact/i.test(normalized)) return "contact";
+  if (/^\/pricing/i.test(normalized) || /^\/membership/i.test(normalized) || /^\/join/i.test(normalized)) return "pricing";
+  if (/^\/schedule/i.test(normalized) || /^\/classes/i.test(normalized) || /^\/book/i.test(normalized)) return "schedule";
+  return null;
+}
+
+/**
+ * Merge extracted per-page iframes into GymSiteContent pages, deduping by src
+ * against iframes already placed by content-mapper or configured overrides.
+ */
+export function mergeExtractIframesIntoPages(
+  pages: GymSiteContent["pages"],
+  extractIframes: Map<string, IframeEmbed[]>,
+): void {
+  type IframeTarget = { page: { iframes?: IframeEmbed[] }; paths: string[] };
+  const targets: IframeTarget[] = [
+    { page: pages.home, paths: ["/"] },
+    { page: pages.about, paths: ["/about"] },
+    { page: pages.contact, paths: ["/contact"] },
+    { page: pages.pricing, paths: ["/pricing", "/membership", "/join"] },
+    { page: pages.schedule, paths: ["/schedule", "/classes", "/book"] },
+    ...pages.programs.map((p) => ({
+      page: p,
+      paths: [`/programs/${p.slug}`, `/${p.slug}`],
+    })),
+  ];
+
+  const seen = new Set<string>();
+  for (const { page } of targets) {
+    for (const e of page.iframes ?? []) seen.add(e.src);
+  }
+
+  for (const { page, paths } of targets) {
+    const incoming: IframeEmbed[] = [];
+    for (const path of paths) {
+      const embeds = extractIframes.get(path);
+      if (embeds) incoming.push(...embeds);
+    }
+    if (incoming.length === 0) continue;
+    page.iframes = page.iframes ?? [];
+    for (const e of incoming) {
+      if (seen.has(e.src)) continue;
+      seen.add(e.src);
+      page.iframes.push(e);
+    }
+  }
 }
 
 // ── Icon / image helpers ───────────────────────────────────────────────────
@@ -578,21 +641,37 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     finalHero.intro = "";
   }
 
-  const detectedIframes = iframesFromExtract(extractArtifact);
-  const existingIframes = (baseContent.pages.home.iframes ?? [])
-    .filter((e) => isAllowedIframeSrc(e.src))
-    .map(sanitizeIframe);
+  // Merge iframe widgets discovered by the extract stage into every page, not
+  // just the home page. Configured overrides stay as the home-page source of truth.
+  const extractIframes = iframesByPathFromExtract(extractArtifact);
   const safeConfiguredIframes = configuredIframes
     .filter((e) => isAllowedIframeSrc(e.src))
     .map(sanitizeIframe);
-  const seenSrc = new Set([...existingIframes, ...safeConfiguredIframes].map((e) => e.src));
-  const homeIframes: IframeEmbed[] = [
-    ...existingIframes,
+
+  const existingHomeIframes = (baseContent.pages.home.iframes ?? [])
+    .filter((e) => isAllowedIframeSrc(e.src))
+    .map(sanitizeIframe);
+  const seenConfiguredSrc = new Set(safeConfiguredIframes.map((e) => e.src));
+  baseContent.pages.home.iframes = [
     ...safeConfiguredIframes,
-    ...detectedIframes.filter((e) => !seenSrc.has(e.src)),
+    ...existingHomeIframes.filter((e) => !seenConfiguredSrc.has(e.src)),
   ];
-  if (homeIframes.length > 0) {
-    log(`  Iframes: ${homeIframes.map((e) => `${e.variant ?? "default"} (${e.src})`).join(", ")}`);
+  if (baseContent.pages.home.iframes.length === 0) {
+    baseContent.pages.home.iframes = undefined;
+  }
+
+  mergeExtractIframesIntoPages(baseContent.pages, extractIframes);
+
+  const allIframes: IframeEmbed[] = [
+    ...(baseContent.pages.home.iframes ?? []),
+    ...baseContent.pages.programs.flatMap((p) => p.iframes ?? []),
+    ...(baseContent.pages.about.iframes ?? []),
+    ...(baseContent.pages.pricing.iframes ?? []),
+    ...(baseContent.pages.contact.iframes ?? []),
+    ...(baseContent.pages.schedule.iframes ?? []),
+  ];
+  if (allIframes.length > 0) {
+    log(`  Iframes: ${allIframes.map((e) => `${e.variant ?? "default"} (${e.src})`).join(", ")}`);
   }
 
   const generatedHome: HomeContent = {
@@ -609,7 +688,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     ctaSubtext: generated.ctaSubtext || baseContent.pages.home.ctaSubtext,
     testimonials,
     faq,
-    iframes: homeIframes.length > 0 ? homeIframes : undefined,
+    iframes: baseContent.pages.home.iframes,
   };
 
   // Patch serviceArea into business if LLM provided real nearby cities

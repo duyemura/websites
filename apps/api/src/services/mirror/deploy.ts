@@ -56,7 +56,7 @@ export function extractNavStructure(html: string, origin: string): CapturedNavIt
     $("[class*='navbar']").first(),
     $("[class*='nav-menu']").first(),
   ];
-  let $nav = navCandidates.find((el) => el.length > 0) ?? $("nav").first();
+  const $nav = navCandidates.find((el) => el.length > 0) ?? $("nav").first();
   if (!$nav || !$nav.length) return [];
 
   function normalizeHref(href: string): string {
@@ -106,7 +106,7 @@ export function extractNavStructure(html: string, origin: string): CapturedNavIt
 
   // Try parsing as a list-based nav first
   const $ul = $nav.find("ul").first();
-  let items = $ul.length ? parseItems($ul) : [];
+  const items = $ul.length ? parseItems($ul) : [];
 
   // Fallback: flat link extraction if no list structure
   if (items.length === 0) {

@@ -10,7 +10,7 @@ function evalInPage(siteUuid: string, extraHtml = ""): void {
   document.head.appendChild(scriptEl);
   if (extraHtml) document.body.innerHTML = extraHtml;
   // eval the interceptor
-  // eslint-disable-next-line no-new-func
+   
   new Function(INTERCEPTOR_SCRIPT)();
 }
 

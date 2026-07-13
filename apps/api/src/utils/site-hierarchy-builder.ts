@@ -15,6 +15,9 @@ import type {
 } from "../types/pipeline-artifacts";
 
 function inferTag(scraped: ScrapedSection): CanonicalSectionTag {
+  // Widget embeds (iframes) are classified by their embed URL, not by text or images.
+  if (scraped.widgetUrl) return "iframe";
+
   const type = scraped.type.toLowerCase();
   if (type.includes("hero")) return "hero";
   if (type.includes("header")) return "header";
@@ -66,6 +69,7 @@ function inferIntent(scraped: ScrapedSection): string {
     schedule: "Display schedule details or booking availability.",
     team: "Introduce the coaches, instructors, or team members.",
     contact: "Provide primary contact channels and next steps.",
+    iframe: "Render a third-party embedded widget from the source site.",
     unknown: "Present the captured content in a layout faithful to the source.",
   };
   return intents[tag];
@@ -87,6 +91,7 @@ const SEGMENT_INTENTS: Record<CanonicalSectionTag, string> = {
   schedule: "Display schedule details or booking availability.",
   team: "Introduce the coaches, instructors, or team members.",
   contact: "Provide primary contact channels and next steps.",
+  iframe: "Render a third-party embedded widget from the source site.",
   unknown: "Present the captured content in a layout faithful to the source.",
 };
 
@@ -110,6 +115,7 @@ export function buildSiteHierarchy(
         items: s.items,
         images: s.images,
         cta: s.cta,
+        widgetUrl: s.widgetUrl,
       },
       styleHint: s.styleHint,
       evidenceId: s.visualEvidence.evidenceId,
