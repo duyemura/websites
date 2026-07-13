@@ -42,7 +42,10 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
         name === "template-eval"
           ? "templateEvalStage"
           : `${name.replace(/-./g, (c) => c[1].toUpperCase())}Stage`;
-      if (mod[exportName]) registry[name] = mod[exportName] as StageRunner;
+      if (mod[exportName]) {
+        const exported = mod[exportName];
+        registry[name] = typeof exported === "function" ? exported() : exported;
+      }
     } catch {
       // Stage not yet implemented — skip
     }

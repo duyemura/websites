@@ -78,4 +78,17 @@ describe("mergeExtractIframesIntoPages", () => {
 
     expect(pages.home.iframes).toHaveLength(1);
   });
+
+  test("does not dedupe the same src across different generated pages", () => {
+    const pages = makePages();
+    const extractIframes = new Map([
+      ["/", [{ src: "https://widgets.trustpilot.com/reviews/123", variant: "default" }]],
+      ["/about", [{ src: "https://widgets.trustpilot.com/reviews/123", variant: "default" }]],
+    ]);
+
+    mergeExtractIframesIntoPages(pages, extractIframes);
+
+    expect(pages.home.iframes).toHaveLength(1);
+    expect(pages.about.iframes).toHaveLength(1);
+  });
 });

@@ -205,24 +205,18 @@ export function mergeExtractIframesIntoPages(
     })),
   ];
 
-  const seen = new Set<string>();
-  for (const { page } of targets) {
-    for (const e of page.iframes ?? []) seen.add(e.src);
-  }
-
   for (const { page, paths } of targets) {
+    const seen = new Set((page.iframes ?? []).map((e) => e.src));
     const incoming: IframeEmbed[] = [];
     for (const path of paths) {
-      const embeds = extractIframes.get(path);
-      if (embeds) incoming.push(...embeds);
+      for (const e of extractIframes.get(path) ?? []) {
+        if (seen.has(e.src)) continue;
+        seen.add(e.src);
+        incoming.push(e);
+      }
     }
     if (incoming.length === 0) continue;
-    page.iframes = page.iframes ?? [];
-    for (const e of incoming) {
-      if (seen.has(e.src)) continue;
-      seen.add(e.src);
-      page.iframes.push(e);
-    }
+    page.iframes = [...(page.iframes ?? []), ...incoming];
   }
 }
 
@@ -661,6 +655,13 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   }
 
   mergeExtractIframesIntoPages(baseContent.pages, extractIframes);
+
+  // If the source site provided its own map embed on the contact page, prefer it
+  // over the synthetic GMB map so the replicated site matches the source.
+  const contactMap = baseContent.pages.contact.iframes?.find((e) => e.variant === "map");
+  if (contactMap) {
+    baseContent.business.mapEmbedUrl = contactMap.src;
+  }
 
   const allIframes: IframeEmbed[] = [
     ...(baseContent.pages.home.iframes ?? []),

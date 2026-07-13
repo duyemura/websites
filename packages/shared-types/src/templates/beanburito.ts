@@ -474,11 +474,11 @@ export const beanburitoSpec: TemplateSpec = {
     },
     about: {
       path: "/about",
-      components: ["hero", "community", "testimonials", "ctaBand", "location"],
+      components: ["hero", "community", "testimonials", "iframeBand", "ctaBand", "location"],
     },
     contact: {
       path: "/contact",
-      components: ["hero", "location", "faq", "ctaBand"],
+      components: ["hero", "location", "faq", "iframeBand", "ctaBand"],
     },
     pricing: {
       path: "/pricing",
@@ -486,7 +486,7 @@ export const beanburitoSpec: TemplateSpec = {
     },
     schedule: {
       path: "/schedule",
-      components: ["hero", "ctaBand", "location"],
+      components: ["hero", "ctaBand", "location", "iframeBand"],
     },
     localGuide: {
       path: "/local-guide",
