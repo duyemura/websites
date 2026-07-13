@@ -1,6 +1,6 @@
 import { FastifyPluginCallbackZodOpenApi } from "fastify-zod-openapi";
 import { z } from "zod";
-import { getPlaceDetails, searchPlaces } from "@ploy-gyms/gmb-client";
+import { getPlaceDetails, searchPlaces } from "@milo/gmb-client";
 
 const SearchQuerySchema = z.object({
   q: z.string().min(1),

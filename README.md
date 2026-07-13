@@ -1,4 +1,4 @@
-# Ploy for gyms
+# Milo for gyms
 
 AI website builder for gyms and fitness studios. A lightweight, fitness-specific take on [Ploy](https://ploy.ai/).
 

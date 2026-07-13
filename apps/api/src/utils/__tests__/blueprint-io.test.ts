@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { updatePageStatus, pageBySlug, remainingPlannedSlugs } from "../blueprint-io";
 import type { SiteBlueprint } from "../site-blueprint";
-import type { TemplateShellPage } from "@ploy-gyms/shared-types";
+import type { TemplateShellPage } from "@milo/shared-types";
 
 const makeBlueprint = (overrides?: Partial<SiteBlueprint>): SiteBlueprint => {
   const pageStatus: Record<string, SiteBlueprint["build_plan"]["page_status"][string]> = {

@@ -6,19 +6,19 @@
 
 ## Strategy context
 
-Ploy is an AI marketing agent for gyms. The website is infrastructure the agent operates on, not the product. Onboarding is two-phase:
+Milo is an AI marketing agent for gyms. The website is infrastructure the agent operates on, not the product. Onboarding is two-phase:
 
-- **Phase 1 (this spec):** wholesale mirror of the gym's existing site — pixel-perfect by definition, live on Ploy hosting in minutes. Puts domain, hosting, analytics, and lead capture under Ploy control so off-site marketing starts immediately.
+- **Phase 1 (this spec):** wholesale mirror of the gym's existing site — pixel-perfect by definition, live on Milo hosting in minutes. Puts domain, hosting, analytics, and lead capture under Milo control so off-site marketing starts immediately.
 - **Phase 2 (separate spec):** brand-preserving rebuild on supported Astro templates, migrating **one route at a time** via `page-replace`. Never a big-bang cutover.
 
 The existing extract/segment/docgen pipeline is retargeted at populating a **template-agnostic content model** (business info, brand tokens, typed content blocks). The pixel-fidelity self-heal loop is retired.
 
 ## Goals
 
-1. Mirror any gym website (≤50 pages) to a static snapshot served from Ploy infrastructure.
+1. Mirror any gym website (≤50 pages) to a static snapshot served from Milo infrastructure.
 2. Serve on a preview subdomain instantly; on the gym's custom domain after a guided, verified DNS cutover.
 3. Give the marketing agent a safe day-1 write surface (the transform layer) for SEO work on the frozen mirror.
-4. Capture every native form submission as a Ploy lead.
+4. Capture every native form submission as a Milo lead.
 5. Preserve SEO exactly: URL paths, redirects, canonicals, sitemap.
 
 ## Non-goals (phase 2 or later)
@@ -158,5 +158,5 @@ Phase 2 consumes a template-agnostic content store. Phase 1 does not build it, b
 
 - Content licensing (stock photos, agency ownership): ToS places content-rights responsibility on the gym; add a basic sanitization pass (strip obviously injected spam/malware script tags flagged by heuristics) — not a full security scan.
 - Blogs are frozen: flagged as dynamic content; active bloggers are early candidates for phase-2 page porting.
-- Ploy becomes a hosting provider: uptime/SSL/support burden accepted; CloudFront + ACM auto-renewal minimizes SSL ops.
+- Milo becomes a hosting provider: uptime/SSL/support burden accepted; CloudFront + ACM auto-renewal minimizes SSL ops.
 - GHL/Grow overlap: positioning question, not a build question; out of scope here.

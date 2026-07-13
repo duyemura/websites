@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { WorkspaceMemory, SiteMemory } from "@ploy-gyms/shared-types";
+import type { WorkspaceMemory, SiteMemory } from "@milo/shared-types";
 
 const DEFAULT_TEMPLATE_PATH = path.resolve(__dirname, "./templates/memory-update.md");
 

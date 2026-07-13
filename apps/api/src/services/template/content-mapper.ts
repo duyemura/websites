@@ -10,14 +10,14 @@ import {
   DEFAULT_CITY,
   NO_IMAGE,
   placeholderImage,
-} from "@ploy-gyms/shared-types/template-baseline";
+} from "@milo/shared-types/template-baseline";
 
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
   ScheduleContent, BlogContent, LegalPage, HeroContent, Feature,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 

@@ -1,5 +1,5 @@
-import type { WorkspaceMemory, SiteMemory, IcpProfile } from "@ploy-gyms/shared-types";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { WorkspaceMemory, SiteMemory, IcpProfile } from "@milo/shared-types";
+import type { GmbListing } from "@milo/gmb-client";
 import type { Kysely } from "kysely";
 import type { Config } from "../plugins/env";
 import type { ScrapedWebsiteData } from "./scrape-docs";

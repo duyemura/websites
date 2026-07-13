@@ -1,12 +1,12 @@
 import { describe, test, expect } from "vitest";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import { generateBrandGuidelines, BRAND_GUIDELINES_DOC_KEY } from "../../src/utils/brand-guidelines";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import { generateSiteDocs, generateSiteDocsFromTemplate, generateSiteDocsForGreenfield } from "../../src/utils/site-docs";
 import type { SiteHierarchy } from "../../src/types/site-hierarchy";
 import type { DesignSystemV2 } from "../../src/types/design-system-v2";
 import type { SectionVisualEvidence } from "../../src/types/section-visual-evidence";
-import type { TemplateShell } from "@ploy-gyms/shared-types";
+import type { TemplateShell } from "@milo/shared-types";
 
 async function docKeys(docs: Promise<ReturnType<typeof generateSiteDocs>>): Promise<string[]> {
   return (await docs).map((d) => d.key);

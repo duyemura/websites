@@ -1,8 +1,8 @@
 {
-  "name": "@ploy-gyms/shared-types",
+  "name": "@milo/shared-types",
   "version": "0.0.1",
   "private": true,
-  "description": "Shared Zod contracts for Ploy for gyms",
+  "description": "Shared Zod contracts for Milo for gyms",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -1,10 +1,10 @@
 import { inferIndustry, type ScrapedWebsiteData } from "./scrape-docs";
-import { DEFAULT_TEMPLATE_TOKENS } from "@ploy-gyms/shared-types/template-baseline";
+import { DEFAULT_TEMPLATE_TOKENS } from "@milo/shared-types/template-baseline";
 import type {
   TemplateShell,
   TemplateShellPlaceholder,
   SiteSection,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 
 function createPlaceholderGenerator() {
   let counter = 0;

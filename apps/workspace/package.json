@@ -1,8 +1,8 @@
 {
-  "name": "@ploy-gyms/workspace",
+  "name": "@milo/workspace",
   "version": "0.0.1",
   "private": true,
-  "description": "Ploy for gyms — workspace SPA",
+  "description": "Milo for gyms — workspace SPA",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,7 @@
     "@blocknote/react": "^0.51.4",
     "@clerk/react": "^6.11.1",
     "@hey-api/client-fetch": "^0.8.0",
-    "@ploy-gyms/shared-types": "workspace:*",
+    "@milo/shared-types": "workspace:*",
     "@radix-ui/react-slot": "^1.1.1",
     "@tanstack/react-query": "^5.66.0",
     "@tanstack/react-query-devtools": "^5.66.0",

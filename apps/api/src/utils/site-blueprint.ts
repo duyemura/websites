@@ -4,7 +4,7 @@ import type {
   SiteSection,
   TemplateShellPage,
   ThemeTokens,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import type { BrandLogo, HeadingStyle } from "./design-system";
 import type { PageBuildStatus } from "../types/site-hierarchy";
 

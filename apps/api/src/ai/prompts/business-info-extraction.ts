@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { Kysely } from "kysely";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import { callLlmAndLog } from "../llm-with-logging";
 import type { Config } from "../../plugins/env";
 import type { ScrapedWebsiteData } from "../../utils/scrape-docs";

@@ -28,7 +28,7 @@ describe("rewriteHtml", () => {
     expect(out).toContain('href="https://instagram.com/gym"');
   });
 
-  it("rewrites form actions to the Ploy endpoint and injects a honeypot", () => {
+  it("rewrites form actions to the Milo endpoint and injects a honeypot", () => {
     const html = `<html><body><form action="/contact.php" method="post"><input name="email"></form></body></html>`;
     const out = rewriteHtml(html, ctx);
     expect(out).toContain('action="/forms/site-123/f1"');

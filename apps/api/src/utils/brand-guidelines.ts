@@ -1,4 +1,4 @@
-import type { ScrapedBrandInput, ScrapedColor, ScrapedDesignToken } from "@ploy-gyms/shared-types";
+import type { ScrapedBrandInput, ScrapedColor, ScrapedDesignToken } from "@milo/shared-types";
 
 const SWATCH_STYLE =
   "display:inline-block;width:20px;height:20px;border-radius:3px;border:1px solid rgba(0,0,0,0.15);margin-right:6px;margin-left:0;vertical-align:middle;";

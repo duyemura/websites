@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { downloadScrapedAssets } from "../../src/utils/scraped-assets";
 import type { Config } from "../../src/plugins/env";
-import type { ScrapedImage } from "@ploy-gyms/shared-types";
+import type { ScrapedImage } from "@milo/shared-types";
 import type { Kysely } from "kysely";
 import type { DB } from "../../src/types/db";
 import { db } from "../../src/database";
@@ -11,7 +11,7 @@ const mockConfig = {
   S3_REGION: "us-east-1",
   S3_ACCESS_KEY: "minioadmin",
   S3_SECRET_KEY: "minioadmin",
-  S3_ASSETS_BUCKET: "ploygyms-test-assets",
+  S3_ASSETS_BUCKET: "milo-test-assets",
   CDN_BASE_URL: "http://localhost:9010",
 } as unknown as Config;
 

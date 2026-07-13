@@ -3,7 +3,7 @@ import type {
   TemplateShellPage,
   TemplateShellPlaceholder,
   ThemeTokens,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 
 const API_BASE = "/api";
 

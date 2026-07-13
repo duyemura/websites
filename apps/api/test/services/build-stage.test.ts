@@ -233,7 +233,7 @@ describe("build stage", () => {
     config = loadConfig();
     tmpDir = path.join(
       os.tmpdir(),
-      `ploy-build-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      `milo-build-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     );
   });
 

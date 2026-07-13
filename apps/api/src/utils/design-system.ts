@@ -1,4 +1,4 @@
-import type { SiteSection, ThemeTokens } from "@ploy-gyms/shared-types";
+import type { SiteSection, ThemeTokens } from "@milo/shared-types";
 
 const CSS_ARTIFACT_PATTERN = /^\s*[*.#[@:\w-]+\s*\{/;
 const MAX_NAV_LABEL_LENGTH = 60;

@@ -55,7 +55,7 @@ const dbConfig = {
   DB_PORT: +(process.env.DB_PORT || 5432),
   DB_USER: process.env.DB_USER ?? "postgres",
   DB_PASSWORD: process.env.DB_PASSWORD ?? "postgres",
-  DB_NAME: process.env.DB_NAME ?? "ploygyms",
+  DB_NAME: process.env.DB_NAME ?? "milo",
   DB_SSL_CA: process.env.DB_SSL_CA,
   MIGRATE_ON_START: process.env.MIGRATE_ON_START === "true",
   REDIS_HOST: process.env.REDIS_HOST ?? "localhost",

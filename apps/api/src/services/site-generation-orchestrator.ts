@@ -2,7 +2,7 @@ import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
 import type { FastifyInstance } from "fastify";
-import type { SiteSection } from "@ploy-gyms/shared-types";
+import type { SiteSection } from "@milo/shared-types";
 import type { PageBuildStatus, SiteHierarchy, HierarchySection } from "../types/site-hierarchy";
 import {
   loadSiteHierarchyDoc,

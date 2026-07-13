@@ -36,7 +36,7 @@ async function seedWorkspace() {
   const user = await db
     .insertInto("users")
     .values({
-      email: "test@ploygyms.dev",
+      email: "test@milo.dev",
       name: "Test User",
       externalUserId: "test-user",
     })

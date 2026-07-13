@@ -1,5 +1,5 @@
 {
-  "name": "@ploy-gyms/gmb-client",
+  "name": "@milo/gmb-client",
   "version": "0.0.1",
   "private": true,
   "description": "Google Business Profile / Places API client",

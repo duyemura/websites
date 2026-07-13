@@ -1,4 +1,4 @@
-import type { TemplateShellPage } from "@ploy-gyms/shared-types";
+import type { TemplateShellPage } from "@milo/shared-types";
 import type { SiteBlueprint } from "./site-blueprint";
 import type { CanonicalSectionTag, HierarchyPage, HierarchySection, SiteHierarchy } from "../types/site-hierarchy";
 import type { DesignSystemV2 } from "../types/design-system-v2";

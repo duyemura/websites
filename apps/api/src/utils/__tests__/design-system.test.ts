@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { buildDesignSystem, sanitizeTokens, type DesignSystem } from "../design-system";
-import type { ThemeTokens, SiteSection } from "@ploy-gyms/shared-types";
+import type { ThemeTokens, SiteSection } from "@milo/shared-types";
 
 const tokens: ThemeTokens = {
   colors: {

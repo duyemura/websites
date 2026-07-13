@@ -1,4 +1,4 @@
-import type { SiteSection } from "@ploy-gyms/shared-types";
+import type { SiteSection } from "@milo/shared-types";
 
 function json(value: unknown): string {
   return JSON.stringify(value ?? null);

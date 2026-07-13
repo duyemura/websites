@@ -1,5 +1,5 @@
-import { SiteSectionSchema, ThemeTokensSchema } from "@ploy-gyms/shared-types";
-import type { SiteSection, ThemeTokens } from "@ploy-gyms/shared-types";
+import { SiteSectionSchema, ThemeTokensSchema } from "@milo/shared-types";
+import type { SiteSection, ThemeTokens } from "@milo/shared-types";
 import type { BrandLogo, HeadingStyle } from "../utils/design-system";
 import type { SiteDocMetadata } from "./site-doc-metadata";
 import { z } from "zod";

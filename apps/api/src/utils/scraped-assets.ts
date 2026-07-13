@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { ScrapedImage } from "@ploy-gyms/shared-types";
+import type { ScrapedImage } from "@milo/shared-types";
 import { getS3Client, buildS3ObjectUrl } from "../s3";
 import { PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import path from "node:path";

@@ -8,7 +8,7 @@
 
 ## 1. Goals
 
-Restructure the Ploy Gyms site-generation pipeline in `apps/api` into five discrete, re-runnable, page-scoped stages that produce a true clone of an arbitrary gym website — one the gym owner can adjust as needed — plus the durable docs that power future marketing/business tooling.
+Restructure the Milo Gyms site-generation pipeline in `apps/api` into five discrete, re-runnable, page-scoped stages that produce a true clone of an arbitrary gym website — one the gym owner can adjust as needed — plus the durable docs that power future marketing/business tooling.
 
 **Problems this solves (from the 40-gym eval):**
 

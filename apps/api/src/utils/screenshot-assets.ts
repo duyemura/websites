@@ -66,7 +66,7 @@ export async function resolveReferenceScreenshot(
     await page.goto(targetUrl, { waitUntil: "networkidle", timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    const tmpDir = path.join(os.tmpdir(), "ploy-gyms-screenshots");
+    const tmpDir = path.join(os.tmpdir(), "milo-screenshots");
     await mkdir(tmpDir, { recursive: true });
     tmpPath = path.join(tmpDir, `ref-${siteUuid}-${pageSlug}-${Date.now()}.png`);
     await page.screenshot({ path: tmpPath, fullPage: true });

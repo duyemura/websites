@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { assembleMasterContext } from "../master-context";
-import type { Doc } from "@ploy-gyms/shared-types";
+import type { Doc } from "@milo/shared-types";
 
 function makeDoc(key: string, title: string, content: string): Doc {
   return {

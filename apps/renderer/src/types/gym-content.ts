@@ -1,2 +1,2 @@
-// Re-exported from @ploy-gyms/shared-types — edit there
-export * from "@ploy-gyms/shared-types";
+// Re-exported from @milo/shared-types — edit there
+export * from "@milo/shared-types";

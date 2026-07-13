@@ -439,7 +439,7 @@ describe("asset generation routes", () => {
     const memberUser = await db
       .insertInto("users")
       .values({
-        email: "member@ploygyms.dev",
+        email: "member@milo.dev",
         name: "Member User",
         externalUserId: "test-member",
       })

@@ -1,4 +1,4 @@
-import { getPlaceDetails, searchPlaces, type GmbListing } from "@ploy-gyms/gmb-client";
+import { getPlaceDetails, searchPlaces, type GmbListing } from "@milo/gmb-client";
 import type { ScrapedWebsiteData } from "./scrape-docs";
 
 function hostnameFromUrl(url: string): string {

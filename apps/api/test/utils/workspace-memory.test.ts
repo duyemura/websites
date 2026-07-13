@@ -82,7 +82,7 @@ describe("generateWorkspaceMemory", () => {
   });
 
   test("renders positioning when present", () => {
-    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+    const memory: import("@milo/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym",
       positioning: "Personal training for busy parents who need efficient, coached workouts.",
       industry: "fitness / gym",
@@ -105,7 +105,7 @@ describe("generateWorkspaceMemory", () => {
   });
 
   test("renders ICP(s) heading and profiles when present", () => {
-    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+    const memory: import("@milo/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym: CrossFit",
       industry: "fitness / gym: CrossFit",
       targetMember: "2 ICPs: Busy parents, Former athletes",
@@ -146,7 +146,7 @@ describe("generateWorkspaceMemory", () => {
   });
 
   test("omits About the business header when only business snapshot is present", () => {
-    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+    const memory: import("@milo/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym",
       industry: "fitness / gym",
       targetMember: "",
@@ -167,7 +167,7 @@ describe("generateWorkspaceMemory", () => {
   });
 
   test("does not render elevator pitch or brand positioning sections", () => {
-    const memory: import("@ploy-gyms/shared-types").WorkspaceMemory = {
+    const memory: import("@milo/shared-types").WorkspaceMemory = {
       businessSnapshot: "Beta Gym — fitness / gym",
       industry: "fitness / gym",
       targetMember: "People interested in group class",

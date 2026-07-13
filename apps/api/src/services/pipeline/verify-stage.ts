@@ -63,7 +63,7 @@ export interface VerifyStageInput {
   /**
    * Optional local directory containing built Astro `dist/` output. When
    * `servedUrl` is not provided, the stage will spin up a static file server
-   * over this directory. Defaults to `${os.tmpdir}/ploy-gyms-build/<siteUuid>/build/dist`.
+   * over this directory. Defaults to `${os.tmpdir}/milo-build/<siteUuid>/build/dist`.
    */
   sourceDir?: string;
 }
@@ -740,7 +740,7 @@ async function serveClone(input: VerifyStageInput): Promise<ServeResult> {
     path.join(
       // Prefer the standard build-stage tmpdir layout.
       os.tmpdir(),
-      "ploy-gyms-build",
+      "milo-build",
       input.siteUuid,
       "build",
     );

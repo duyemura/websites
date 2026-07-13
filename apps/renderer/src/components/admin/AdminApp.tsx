@@ -4,7 +4,7 @@ import { ConfigForm } from "./ConfigForm";
 import { ScrapeForm } from "./ScrapeForm";
 import { SiteManager } from "./SiteManager";
 
-const STORAGE_KEY = "ploy-admin-config";
+const STORAGE_KEY = "milo-admin-config";
 
 function loadConfig(): ApiConfig {
   try {

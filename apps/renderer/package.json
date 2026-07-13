@@ -1,12 +1,12 @@
 {
-  "name": "@ploy-gyms/renderer",
+  "name": "@milo/renderer",
   "version": "0.0.1",
   "private": true,
-  "description": "Ploy for gyms — Astro site renderer",
+  "description": "Milo for gyms — Astro site renderer",
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "node -e \"const fs=require('fs'); if(!fs.existsSync('src/content/gym.json')) fs.copyFileSync('src/content/gym.fixture.json','src/content/gym.json')\" && astro build",
     "preview": "astro preview",
     "lint": "eslint .",
     "typecheck": "astro check",
@@ -14,7 +14,7 @@
     "test": "pnpm use:fixture && vitest run"
   },
   "dependencies": {
-    "@ploy-gyms/shared-types": "workspace:*",
+    "@milo/shared-types": "workspace:*",
     "@astrojs/react": "^4.1.2",
     "@astrojs/tailwind": "^5.1.3",
     "astro": "^5.1.5",

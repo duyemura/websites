@@ -1,4 +1,4 @@
-import type { Doc } from "@ploy-gyms/shared-types";
+import type { Doc } from "@milo/shared-types";
 
 export type ContextJob =
   | "website-generation"

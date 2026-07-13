@@ -7,7 +7,7 @@ export default fp(
     void fastify.register(swagger, {
       openapi: {
         info: {
-          title: "Ploy for gyms API",
+          title: "Milo for gyms API",
           description: "AI website builder for gyms and fitness studios",
           version: "0.0.1",
         },

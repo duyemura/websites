@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 import type { DB } from "../types/db";
 import type { SiteBlueprint } from "./site-blueprint";
-import type { TemplateShellPage } from "@ploy-gyms/shared-types";
+import type { TemplateShellPage } from "@milo/shared-types";
 
 export const BLUEPRINT_DOC_KEY = "blueprint-draft";
 export const BLUEPRINT_DOC_TITLE = "Blueprint draft";

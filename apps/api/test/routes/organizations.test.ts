@@ -58,12 +58,12 @@ describe("organization routes", () => {
       method: "POST",
       url: `/api/organizations/${uuid}/members`,
       headers: authHeaders(),
-      payload: { email: "member@ploygyms.dev", name: "Member", role: "admin" },
+      payload: { email: "member@milo.dev", name: "Member", role: "admin" },
     });
 
     expect(response.statusCode).toBe(201);
     const body = response.json();
-    expect(body.user.email).toBe("member@ploygyms.dev");
+    expect(body.user.email).toBe("member@milo.dev");
     expect(body.role).toBe("admin");
 
     await app.close();
