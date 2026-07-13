@@ -2,7 +2,7 @@
 // Context passed to every per-page evaluator check.
 
 import type { Page, Browser } from "playwright";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import type { Kysely } from "kysely";
 import type { DB } from "../../../types/db";
 

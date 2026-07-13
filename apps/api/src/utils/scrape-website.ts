@@ -5,7 +5,7 @@ import type {
   ScrapedFont,
   ScrapedImage,
   ScrapedTextStyle,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import type { ScrapedWebsiteData } from "./scrape-docs";
 import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 import { dedupeFaqs } from "./faqs";

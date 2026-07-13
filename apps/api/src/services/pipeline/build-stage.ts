@@ -1087,7 +1087,7 @@ export async function runBuildStage(input: BuildStageInput): Promise<BuildStageR
   // 4. Prepare source dir + scaffold.
   const sourceDir =
     input.sourceDir ??
-    path.join(os.tmpdir(), "ploy-gyms-build", input.siteUuid, "build");
+    path.join(os.tmpdir(), "milo-build", input.siteUuid, "build");
   await mkdir(sourceDir, { recursive: true });
   // Load web font URLs, CSS animations, Lottie URLs, and extractedNav from the extract artifact.
   const extractArtifact = await loadArtifact<ExtractArtifact>(

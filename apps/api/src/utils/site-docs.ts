@@ -6,7 +6,7 @@ import {
   BRAND_GUIDELINES_DOC_TITLE,
 } from "./brand-guidelines";
 import { assertAllowedDocKey } from "./doc-registry";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import { buildBrandGuidelinesInput, type ScrapedWebsiteData } from "./scrape-docs";
 import { buildSiteHierarchy } from "./site-hierarchy-builder";
 import { buildDesignSystemV2 } from "./design-system-builder";
@@ -26,7 +26,7 @@ import {
 import type { SiteHierarchy, CanonicalSectionTag, HierarchySection, HierarchyPage } from "../types/site-hierarchy";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { SectionVisualEvidence } from "../types/section-visual-evidence";
-import type { TemplateShell, SiteSection, ThemeTokens } from "@ploy-gyms/shared-types";
+import type { TemplateShell, SiteSection, ThemeTokens } from "@milo/shared-types";
 import { sanitizeTokens } from "./design-system";
 import type { BrandLogo, HeadingStyle } from "./design-system";
 import type { Config } from "../plugins/env";

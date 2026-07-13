@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { DEFAULT_TEMPLATE_TOKENS, DEFAULT_BUSINESS_PLACEHOLDER } from "@ploy-gyms/shared-types/template-baseline";
+import { DEFAULT_TEMPLATE_TOKENS, DEFAULT_BUSINESS_PLACEHOLDER } from "@milo/shared-types/template-baseline";
 import {
   extractBrand,
   extractBusiness,

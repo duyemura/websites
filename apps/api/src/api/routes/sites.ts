@@ -13,8 +13,8 @@ import { generateSiteDocs, generateSiteDocsFromTemplate, saveSiteDocs } from "..
 import { enrichWithGmb } from "../../utils/gmb-enrichment";
 import { cropSectionScreenshots } from "../../utils/section-screenshots";
 import { HttpUrlSchema } from "../../utils/http-url";
-import { TemplateShellSchema } from "@ploy-gyms/shared-types";
-import type { TemplateShell } from "@ploy-gyms/shared-types";
+import { TemplateShellSchema } from "@milo/shared-types";
+import type { TemplateShell } from "@milo/shared-types";
 import {
   logAiActivity,
   getRecentAiActivity,
@@ -461,7 +461,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
 
       try {
         browser = await chromium.launch({ headless: true });
-        const tmpDir = path.join(os.tmpdir(), "ploy-gyms-scrapes");
+        const tmpDir = path.join(os.tmpdir(), "milo-scrapes");
         await mkdir(tmpDir, { recursive: true });
         const screenshotPath = path.join(
           tmpDir,
@@ -635,7 +635,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         }
 
         const gmbApiKey = fastify.config.GOOGLE_PLACES_API_KEY;
-        let gmbListing: import("@ploy-gyms/gmb-client").GmbListing | undefined;
+        let gmbListing: import("@milo/gmb-client").GmbListing | undefined;
         if (gmbApiKey) {
           const { data: enriched, result: gmbResult } = await enrichWithGmb(data, gmbApiKey);
           Object.assign(data, enriched);

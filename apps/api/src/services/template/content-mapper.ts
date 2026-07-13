@@ -10,19 +10,19 @@ import {
   DEFAULT_CITY,
   NO_IMAGE,
   placeholderImage,
-} from "@ploy-gyms/shared-types/template-baseline";
+} from "@milo/shared-types/template-baseline";
 import {
   inferIframeVariant,
   isAllowedIframeSrc,
   sanitizeIframe,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 
 import type {
   GymSiteContent, SiteMeta, BrandTokens, BusinessInfo,
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
   ScheduleContent, BlogContent, LocalGuideContent, LegalPage, HeroContent, Feature,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import { hexSaturation } from "../../utils/site-blueprint";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
@@ -488,7 +488,7 @@ function heroFromPage(page: HierarchyPage, contractHero?: SectionContract, busin
   };
 }
 
-function iframeEmbedFromSection(section: HierarchySection): { embed: import("@ploy-gyms/shared-types").IframeEmbed; variant: string } | null {
+function iframeEmbedFromSection(section: HierarchySection): { embed: import("@milo/shared-types").IframeEmbed; variant: string } | null {
   const src = section.content.widgetUrl;
   if (!src || !isAllowedIframeSrc(src)) return null;
 
@@ -518,8 +518,8 @@ function targetPageKeyForIframe(variant: string): "home" | "about" | "pricing" |
 }
 
 function addIframeToPage(
-  page: { iframes?: import("@ploy-gyms/shared-types").IframeEmbed[] },
-  embed: import("@ploy-gyms/shared-types").IframeEmbed,
+  page: { iframes?: import("@milo/shared-types").IframeEmbed[] },
+  embed: import("@milo/shared-types").IframeEmbed,
   warnings: string[],
   context: string,
 ): void {

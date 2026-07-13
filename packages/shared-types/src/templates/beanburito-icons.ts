@@ -9,7 +9,7 @@
 // e.g. "barbell", "users", "calendar-check". The renderer emits
 // `<i class="ph-bold ph-{name}"></i>`.
 //
-// This module is exported by @ploy-gyms/shared-types so both the renderer and
+// This module is exported by @milo/shared-types so both the renderer and
 // the API's generate-content stage share the same icon set and validation.
 
 export const GYM_ICON_CATEGORIES: Record<string, string> = {

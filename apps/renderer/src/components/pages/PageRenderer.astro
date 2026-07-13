@@ -2,13 +2,13 @@
 // apps/renderer/src/components/pages/PageRenderer.astro
 // Template-agnostic page body renderer.
 //
-// Consumes a TemplateSpec from @ploy-gyms/shared-types and renders the
+// Consumes a TemplateSpec from @milo/shared-types and renders the
 // declared component sequence for a given pageKey. Components are imported
 // statically so Astro can compile them; the resolver only determines which
 // ones to render and what props to pass.
 
 import { content } from "../../lib/content";
-import { beanburitoSpec, type TemplateSpec } from "@ploy-gyms/shared-types";
+import { beanburitoSpec, type TemplateSpec } from "@milo/shared-types";
 import { resolvePageComponents, type AstroComponent } from "../../lib/template-resolver";
 
 import Hero from "../sections/beanburito/Hero.astro";

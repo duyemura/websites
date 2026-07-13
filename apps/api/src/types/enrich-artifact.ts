@@ -1,4 +1,4 @@
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import type { ScrapedWebsiteData } from "../utils/scrape-docs";
 
 export interface EnrichArtifact {

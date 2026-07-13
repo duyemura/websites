@@ -15,7 +15,7 @@ export async function seed(db: Kysely<DB>): Promise<void> {
   const user = await db
     .insertInto("users")
     .values({
-      email: "local@ploygyms.dev",
+      email: "local@milo.dev",
       name: "Local User",
       externalUserId: "local-dev-user",
     })

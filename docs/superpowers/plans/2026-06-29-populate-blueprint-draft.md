@@ -6,7 +6,7 @@
 
 **Architecture:** Add a focused `site-blueprint.ts` builder that reuses the existing `buildTemplateShell` homepage construction and derives design tokens and extra pages from the raw scrape. `site-docs.ts` then renders that blueprint into the `blueprint-draft` markdown doc as a pretty-printed JSON block.
 
-**Tech Stack:** TypeScript, `@ploy-gyms/shared-types` (`ThemeTokens`, `TemplateShellPage`, `SiteSection`), Vitest.
+**Tech Stack:** TypeScript, `@milo/shared-types` (`ThemeTokens`, `TemplateShellPage`, `SiteSection`), Vitest.
 
 ---
 
@@ -149,7 +149,7 @@ import type {
   SiteSection,
   TemplateShellPage,
   ThemeTokens,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import { buildTemplateShell } from "./template-shell";
 
 const NEUTRAL_TOKENS: ThemeTokens = {

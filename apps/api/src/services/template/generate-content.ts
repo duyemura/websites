@@ -16,7 +16,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
-import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, IframeEmbed } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, IframeEmbed } from "@milo/shared-types";
 import { buildNavigation } from "./nav-slots.js";
 import {
   beanburitoSpec,
@@ -27,7 +27,7 @@ import {
   inferIframeVariant,
   isAllowedIframeSrc,
   sanitizeIframe,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
 import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
 import type { MirrorAssetsArtifact } from "../../types/mirror.js";

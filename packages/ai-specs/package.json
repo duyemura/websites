@@ -1,8 +1,8 @@
 {
-  "name": "@ploy-gyms/ai-specs",
+  "name": "@milo/ai-specs",
   "version": "0.0.1",
   "private": true,
-  "description": "Component AI generation specs for Ploy for gyms",
+  "description": "Component AI generation specs for Milo for gyms",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

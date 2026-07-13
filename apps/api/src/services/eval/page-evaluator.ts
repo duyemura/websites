@@ -4,7 +4,7 @@
 import { chromium } from "playwright";
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import { buildGymJson } from "../template/content-mapper.js";

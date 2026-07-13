@@ -77,12 +77,12 @@ describe("workspace routes", () => {
       method: "POST",
       url: `/api/workspaces/${uuid}/members`,
       headers: authHeaders(),
-      payload: { email: "teammate@ploygyms.dev", role: "admin" },
+      payload: { email: "teammate@milo.dev", role: "admin" },
     });
 
     expect(response.statusCode).toBe(201);
     const body = response.json();
-    expect(body.user.email).toBe("teammate@ploygyms.dev");
+    expect(body.user.email).toBe("teammate@milo.dev");
     expect(body.role).toBe("admin");
 
     await app.close();

@@ -24,7 +24,7 @@ interface WorkspaceContextValue {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-const STORAGE_KEY = "ploy-gyms:workspace-slug";
+const STORAGE_KEY = "milo:workspace-slug";
 
 export function WorkspaceProvider({
   children,

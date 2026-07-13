@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { DB } from "../types/db";
 import type { Config } from "../plugins/env";
-import type { SiteSection } from "@ploy-gyms/shared-types";
+import type { SiteSection } from "@milo/shared-types";
 import type { DesignSystem } from "../utils/design-system";
 import type { DesignSystemV2 } from "../types/design-system-v2";
 import type { HierarchyPage, HierarchySection } from "../types/site-hierarchy";
@@ -133,7 +133,7 @@ export async function signS3AssetUrls<T>(value: T, config: Config): Promise<T> {
 export async function generateAstroPage(input: GeneratePageInput): Promise<GeneratePageOutput> {
   const { config, workspaceUuid, siteUuid, pageSlug, designSystem: rawDesignSystem, page, renderedSections, attemptId } = input;
 
-  const sourceDir = path.join(os.tmpdir(), "ploy-gyms-build", siteUuid, attemptId, pageSlug);
+  const sourceDir = path.join(os.tmpdir(), "milo-build", siteUuid, attemptId, pageSlug);
   const distDir = path.join(sourceDir, "dist");
 
   await rm(sourceDir, { recursive: true, force: true });
@@ -334,7 +334,7 @@ export function sharedComponentFileName(id: string): string {
 function packageJson(): string {
   return JSON.stringify(
     {
-      name: "ploy-generated-site",
+      name: "milo-generated-site",
       type: "module",
       private: true,
       scripts: {
@@ -524,7 +524,7 @@ function layoutAstro(
   cssAnimations: { name: string; css: string }[] = [],
   hasLottie = false,
 ): string {
-  const businessName = designSystem.business.name ?? "Ploy for gyms";
+  const businessName = designSystem.business.name ?? "Milo for gyms";
   // Replication clones the original page structure, which already includes its
   // own header/footer sections. Adding the synthetic global shell creates a
   // duplicate navbar, so we only render the global shell for template/greenfield.

@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { downloadScrapedAssets } from "../../src/utils/scraped-assets";
 import type { Config } from "../../src/plugins/env";
-import type { ScrapedImage } from "@ploy-gyms/shared-types";
+import type { ScrapedImage } from "@milo/shared-types";
 import type { Kysely } from "kysely";
 import type { DB } from "../../src/types/db";
 import { db } from "../../src/database";

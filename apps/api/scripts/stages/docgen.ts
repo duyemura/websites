@@ -1,7 +1,7 @@
 // apps/api/scripts/stages/docgen.ts
 // Build the site docs from the clone's homepage HTML plus the GMB enrichment
 // artifact. No extract/segment required, and no LLM business-info extraction.
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import type { ScrapedWebsiteData } from "../../src/utils/scrape-docs";
 import {
   generateSiteDocs,

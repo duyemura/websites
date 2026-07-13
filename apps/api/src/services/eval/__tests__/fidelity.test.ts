@@ -3,7 +3,7 @@
 import { describe, test, expect, vi } from "vitest";
 import type { CheckContext } from "../checks/check-context.js";
 import { checkTemplateFidelity, checkStructureFidelity } from "../checks/fidelity.js";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 
 vi.mock("../../../utils/site-hierarchy-io.js", () => ({
   loadSiteHierarchyDoc: vi.fn(),

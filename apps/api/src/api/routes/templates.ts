@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 import path from "node:path";
 import os from "node:os";
 import { mkdir } from "node:fs/promises";
-import { TemplateShellSchema } from "@ploy-gyms/shared-types";
+import { TemplateShellSchema } from "@milo/shared-types";
 import { scrapeWebsite } from "../../utils/scrape-website";
 import { buildTemplateShell } from "../../utils/template-shell";
 import { HttpUrlSchema } from "../../utils/http-url";
@@ -173,7 +173,7 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       let browser;
       try {
         browser = await chromium.launch({ headless: true });
-        const tmpDir = path.join(os.tmpdir(), "ploy-gyms-template-shells");
+        const tmpDir = path.join(os.tmpdir(), "milo-template-shells");
         await mkdir(tmpDir, { recursive: true });
         const screenshotPath = path.join(tmpDir, `template-shell-${Date.now()}.png`);
 

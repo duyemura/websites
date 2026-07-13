@@ -1,4 +1,4 @@
-// Canonical baseline for every gym website template in the Ploy system.
+// Canonical baseline for every gym website template in the Milo system.
 // Templates are intentionally style-adjustable, but they must all start from the
 // same neutral default tokens, placeholder text, and placeholder images so that
 // previews and freshly imported shells look identical until brand values are applied.

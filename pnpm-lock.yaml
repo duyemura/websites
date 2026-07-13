@@ -68,13 +68,13 @@ importers:
       '@fastify/swagger-ui':
         specifier: ^5.2.2
         version: 5.2.6
-      '@ploy-gyms/ai-specs':
+      '@milo/ai-specs':
         specifier: workspace:*
         version: link:../../packages/ai-specs
-      '@ploy-gyms/gmb-client':
+      '@milo/gmb-client':
         specifier: workspace:*
         version: link:../../packages/gmb-client
-      '@ploy-gyms/shared-types':
+      '@milo/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
       bullmq:
@@ -222,7 +222,7 @@ importers:
       '@astrojs/tailwind':
         specifier: ^5.1.3
         version: 5.1.5(astro@5.18.2(@types/node@22.20.0)(ioredis@5.10.1)(jiti@1.21.7)(rollup@4.62.2)(tsx@4.22.4)(typescript@5.7.3)(yaml@2.9.0))(tailwindcss@3.4.19(tsx@4.22.4)(yaml@2.9.0))(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.7.3))
-      '@ploy-gyms/shared-types':
+      '@milo/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
       astro:
@@ -292,7 +292,7 @@ importers:
       '@hey-api/client-fetch':
         specifier: ^0.8.0
         version: 0.8.4
-      '@ploy-gyms/shared-types':
+      '@milo/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
       '@radix-ui/react-slot':

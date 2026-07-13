@@ -18,7 +18,7 @@
 - `pathToFileKey` is exported from `src/services/mirror/snapshot.ts`
 - `chatCompletion(options, config)` is in `src/ai/llm-client.ts`
 - `loadArtifact` / `saveArtifact` are in `src/utils/pipeline/artifact-store.ts`
-- `GymSiteContent` types are in `@ploy-gyms/shared-types` (gym-content.ts)
+- `GymSiteContent` types are in `@milo/shared-types` (gym-content.ts)
 - Cheerio usage pattern: `import * as cheerio from "cheerio"` then `const $ = cheerio.load(html)`
 - The `content` stage is registered in `apps/api/scripts/milo.ts` via the lazy registry
 

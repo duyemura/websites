@@ -1,8 +1,8 @@
 {
-  "name": "@ploy-gyms/api",
+  "name": "@milo/api",
   "version": "0.0.1",
   "private": true,
-  "description": "Ploy for gyms — Fastify API and worker",
+  "description": "Milo for gyms — Fastify API and worker",
   "main": "dist/app.js",
   "type": "commonjs",
   "scripts": {
@@ -42,9 +42,9 @@
     "@fastify/sensible": "^6.0.3",
     "@fastify/swagger": "^9.4.2",
     "@fastify/swagger-ui": "^5.2.2",
-    "@ploy-gyms/ai-specs": "workspace:*",
-    "@ploy-gyms/gmb-client": "workspace:*",
-    "@ploy-gyms/shared-types": "workspace:*",
+    "@milo/ai-specs": "workspace:*",
+    "@milo/gmb-client": "workspace:*",
+    "@milo/shared-types": "workspace:*",
     "bullmq": "^5.41.7",
     "cheerio": "^1.2.0",
     "dotenv": "^16.4.7",

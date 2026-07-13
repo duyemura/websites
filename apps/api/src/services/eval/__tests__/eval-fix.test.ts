@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { buildFixPlan } from "../eval-fix.js";
 import type { PageEvalReport } from "../page-eval-report.js";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import type { SiteHierarchy } from "../../../types/site-hierarchy";
 import type { DesignSystemV2 } from "../../../types/design-system-v2";
 

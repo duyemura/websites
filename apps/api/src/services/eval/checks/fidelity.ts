@@ -2,10 +2,10 @@
 // Deterministic fidelity checks: rendered page vs GymSiteContent and vs site-hierarchy.
 
 import * as cheerio from "cheerio";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import { loadSiteHierarchyDoc } from "../../../utils/site-hierarchy-io.js";
 import type { SiteHierarchy, HierarchyPage, CanonicalSectionTag } from "../../../types/site-hierarchy.js";
-import { getTemplateSpec, pageKeyByPath, pageComponents } from "@ploy-gyms/shared-types";
+import { getTemplateSpec, pageKeyByPath, pageComponents } from "@milo/shared-types";
 import type { CheckContext } from "./check-context.js";
 import type { PageEvalIssue } from "../page-eval-report.js";
 

@@ -5,8 +5,8 @@ import type {
   ScrapedImage,
   ScrapedLayoutRule,
   ScrapedTextStyle,
-} from "@ploy-gyms/shared-types";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+} from "@milo/shared-types";
+import type { GmbListing } from "@milo/gmb-client";
 import type { SectionVisualEvidenceRow } from "../types/section-visual-evidence";
 
 export interface ScrapedSection {
@@ -63,7 +63,7 @@ export interface ScrapedWebsiteData {
   fontSizes: ScrapedTextStyle[];
   images: ScrapedImage[];
   layoutRules: ScrapedLayoutRule[];
-  designTokens?: import("@ploy-gyms/shared-types").ScrapedDesignToken[];
+  designTokens?: import("@milo/shared-types").ScrapedDesignToken[];
   faqs: { question: string; answer: string }[];
   testimonials: { quote: string; author?: string; role?: string }[];
   locations: { name?: string; address?: string; hours?: string }[];

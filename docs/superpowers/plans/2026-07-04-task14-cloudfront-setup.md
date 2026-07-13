@@ -16,7 +16,7 @@ echo "Account: $ACCOUNT_ID"   # should print a 12-digit number
 ```bash
 export OAC_ID=$(aws cloudfront create-origin-access-control \
   --origin-access-control-config \
-    "Name=ploy-sites-oac,Description=OAC for Ploy gym sites,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=s3" \
+    "Name=milo-sites-oac,Description=OAC for Milo gym sites,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=s3" \
   --query 'OriginAccessControl.Id' --output text)
 echo "OAC_ID=$OAC_ID"
 # Save this value — you need it for every distribution you create
@@ -24,7 +24,7 @@ echo "OAC_ID=$OAC_ID"
 
 ## Step 2 — CloudFront URL rewrite function (run once)
 ```bash
-cat > /tmp/ploy-url-rewrite.js << 'EOF'
+cat > /tmp/milo-url-rewrite.js << 'EOF'
 function handler(event) {
   var request = event.request;
   var uri = request.uri;
@@ -38,13 +38,13 @@ function handler(event) {
 EOF
 
 FUNC_ETAG=$(aws cloudfront create-function \
-  --name ploy-url-rewrite \
+  --name milo-url-rewrite \
   --function-config "Comment=Rewrite /path to /path/index.html,Runtime=cloudfront-js-2.0" \
-  --function-code fileb:///tmp/ploy-url-rewrite.js \
+  --function-code fileb:///tmp/milo-url-rewrite.js \
   --query 'ETag' --output text)
 
 export FUNC_ARN=$(aws cloudfront publish-function \
-  --name ploy-url-rewrite \
+  --name milo-url-rewrite \
   --if-match "$FUNC_ETAG" \
   --query 'FunctionSummary.FunctionMetadata.FunctionARN' --output text)
 echo "FUNC_ARN=$FUNC_ARN"
@@ -96,8 +96,8 @@ Then create the distribution:
 ```bash
 export DIST_DOMAIN=$(aws cloudfront create-distribution \
   --distribution-config "{
-    \"CallerReference\": \"ploy-${SITE_UUID}\",
-    \"Comment\": \"Ploy mirror: ${SITE_UUID}\",
+    \"CallerReference\": \"milo-${SITE_UUID}\",
+    \"Comment\": \"Milo mirror: ${SITE_UUID}\",
     \"Enabled\": true,
     \"HttpVersion\": \"http2\",
     \"PriceClass\": \"PriceClass_100\",
@@ -105,7 +105,7 @@ export DIST_DOMAIN=$(aws cloudfront create-distribution \
     \"Origins\": {
       \"Quantity\": 1,
       \"Items\": [{
-        \"Id\": \"ploy-${SITE_UUID}\",
+        \"Id\": \"milo-${SITE_UUID}\",
         \"DomainName\": \"pushpress-marketing-dev.s3.us-east-1.amazonaws.com\",
         \"OriginPath\": \"/sites/${SITE_UUID}/current\",
         \"S3OriginConfig\": { \"OriginAccessIdentity\": \"\" },
@@ -113,7 +113,7 @@ export DIST_DOMAIN=$(aws cloudfront create-distribution \
       }]
     },
     \"DefaultCacheBehavior\": {
-      \"TargetOriginId\": \"ploy-${SITE_UUID}\",
+      \"TargetOriginId\": \"milo-${SITE_UUID}\",
       \"ViewerProtocolPolicy\": \"redirect-to-https\",
       \"AllowedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\",\"HEAD\"] },
       \"CachedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\",\"HEAD\"] },

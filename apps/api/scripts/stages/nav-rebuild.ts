@@ -25,7 +25,7 @@ import { loadArtifact } from "../../src/utils/pipeline/artifact-store.js";
 import { buildNavigation, type CapturedNavItem } from "../../src/services/template/nav-slots.js";
 import { sanitizeContentCtas } from "../../src/services/template/content-mapper.js";
 import type { StageRunner, StageContext, StageResult } from "./types.js";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 
 export const navRebuildStage: StageRunner = {
   label: "nav-rebuild",

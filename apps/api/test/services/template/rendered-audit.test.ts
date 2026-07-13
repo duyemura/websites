@@ -1,6 +1,6 @@
 // apps/api/test/services/template/rendered-audit.test.ts
 import { describe, expect, it } from "vitest";
-import type { GymSiteContent, BusinessInfo } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, BusinessInfo } from "@milo/shared-types";
 import {
   auditPage,
   applySelfHeals,

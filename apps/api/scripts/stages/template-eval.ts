@@ -13,7 +13,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { StageRunner, StageContext, StageResult } from "./types";
 import { templateStage } from "./template.js";
 import { loadArtifact, saveArtifact } from "../../src/utils/pipeline/artifact-store.js";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import {
   auditPage,
   applySelfHeals,

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { buildMemoryUpdatePrompt, loadMemoryUpdateTemplate } from "../memory-update";
-import type { WorkspaceMemory, SiteMemory } from "@ploy-gyms/shared-types";
+import type { WorkspaceMemory, SiteMemory } from "@milo/shared-types";
 
 const workspaceMemory: WorkspaceMemory = {
   businessSnapshot: "Beta Gym — fitness / gym | Stronger together.",

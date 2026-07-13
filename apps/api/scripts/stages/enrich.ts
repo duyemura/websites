@@ -2,7 +2,7 @@
 // First stage: resolve authoritative business facts from Google Business Profile
 // before we mirror the site. Produces an "enrich" artifact for docgen to consume.
 import * as cheerio from "cheerio";
-import type { GmbListing } from "@ploy-gyms/gmb-client";
+import type { GmbListing } from "@milo/gmb-client";
 import {
   enrichWithGmb,
   type GmbEnrichmentResult,

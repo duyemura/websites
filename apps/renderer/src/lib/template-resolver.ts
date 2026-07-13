@@ -2,7 +2,7 @@
 // Registry-driven prop resolution for the renderer.
 //
 // This file resolves the machine-readable TemplateSpec (from
-// @ploy-gyms/shared-types) into concrete prop objects for Astro components.
+// @milo/shared-types) into concrete prop objects for Astro components.
 // It does NOT import Astro components — those are statically imported by the
 // PageRenderer so Astro can compile them.
 
@@ -18,7 +18,7 @@ import type {
   TemplateSpec,
   ComponentPropSpec,
   ComponentPropSource,
-} from "@ploy-gyms/shared-types";
+} from "@milo/shared-types";
 
 export type AstroComponent = (props: Record<string, unknown>) => unknown;
 

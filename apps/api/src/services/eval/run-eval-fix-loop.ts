@@ -4,7 +4,7 @@
 // and re-evaluates until the page converges or we run out of loops.
 
 import path from "node:path";
-import type { GymSiteContent } from "@ploy-gyms/shared-types";
+import type { GymSiteContent } from "@milo/shared-types";
 import { buildFixPlan } from "./eval-fix.js";
 import { evaluatePage } from "./page-evaluator.js";
 import type { PageEvalReport } from "./page-eval-report.js";

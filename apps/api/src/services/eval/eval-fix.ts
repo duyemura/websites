@@ -2,7 +2,7 @@
 // Turn a per-page QA report into deterministic content heals + a fix brief that
 // the build process can consume to re-render the page.
 
-import type { GymSiteContent, HeroContent, NavItem } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, HeroContent, NavItem } from "@milo/shared-types";
 import { sanitizeContentCtas } from "../template/content-mapper.js";
 import type { SiteHierarchy, HierarchyPage } from "../../types/site-hierarchy";
 import type { DesignSystemV2 } from "../../types/design-system-v2";

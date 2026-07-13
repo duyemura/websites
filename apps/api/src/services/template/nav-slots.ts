@@ -6,7 +6,7 @@
  * (nav-only fast rebuild without LLM or re-clone).
  */
 
-import type { Navigation, NavItem, FooterGroup } from "@ploy-gyms/shared-types";
+import type { Navigation, NavItem, FooterGroup } from "@milo/shared-types";
 
 export interface CapturedNavItem {
   label: string;

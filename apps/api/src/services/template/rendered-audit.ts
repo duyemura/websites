@@ -4,14 +4,14 @@
 // JSON-LD. Only performs deterministic self-heal (no LLM).
 
 import * as cheerio from "cheerio";
-import type { GymSiteContent, BusinessInfo } from "@ploy-gyms/shared-types";
+import type { GymSiteContent, BusinessInfo } from "@milo/shared-types";
 import {
   DEFAULT_BUSINESS_NAME,
   DEFAULT_CITY,
   DEFAULT_STATE,
   DEFAULT_STATE_ABBR,
   DEFAULT_BUSINESS_PLACEHOLDER,
-} from "@ploy-gyms/shared-types/template-baseline";
+} from "@milo/shared-types/template-baseline";
 import { sanitizeContentCtas } from "./content-mapper.js";
 import { sanitizeNavigationLinks } from "./nav-slots.js";
 
