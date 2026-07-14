@@ -16,6 +16,7 @@ import { parseArgs, PIPELINES } from "./milo-args.js";
 import type { MiloCommand } from "./milo-args.js";
 import { perPageEvalStage } from "./stages/per-page-eval.js";
 import { evalFixStage } from "./stages/eval-fix.js";
+import { evalStage } from "./stages/eval.js";
 export type { MiloCommand } from "./milo-args.js";
 
 async function loadRegistry(): Promise<Record<string, StageRunner>> {
@@ -318,10 +319,9 @@ async function runNew(
   const results = await runPipeline(PIPELINES.new, ctx, registry, cmd);
 
   if (cmd.tier === "paid" && results.some((r) => r.stage === "eval" && r.status === "fail")) {
-    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    if (!cmd.quiet) console.log("\nEval failed — running full-site eval-fix");
     const fixResults = await runEvalFix({
       cmd: "eval-fix",
-      path: "/",
       verbose: cmd.verbose,
       quiet: cmd.quiet,
     }, siteUuid, workspaceUuid);
@@ -362,10 +362,9 @@ async function runUpgrade(
   const results = await runPipeline(PIPELINES.upgrade, ctx, registry, { ...cmd, force: true });
 
   if (results.some((r) => r.stage === "eval" && r.status === "fail")) {
-    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    if (!cmd.quiet) console.log("\nEval failed — running full-site eval-fix");
     const fixResults = await runEvalFix({
       cmd: "eval-fix",
-      path: "/",
       verbose: cmd.verbose,
       quiet: cmd.quiet,
     }, siteUuid, workspaceUuid);
@@ -396,10 +395,9 @@ async function runRebuild(
   const results = await runPipeline(PIPELINES.rebuild, ctx, registry, { force: cmd.force, quiet: cmd.quiet });
 
   if (results.some((r) => r.stage === "eval" && r.status === "fail")) {
-    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
+    if (!cmd.quiet) console.log("\nEval failed — running full-site eval-fix");
     const fixResults = await runEvalFix({
       cmd: "eval-fix",
-      path: "/",
       verbose: cmd.verbose,
       quiet: cmd.quiet,
     }, siteUuid, workspaceUuid);
@@ -521,8 +519,11 @@ async function runEval(
   const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet });
 
-  const runner = perPageEvalStage({ path: cmd.path, url: cmd.url, keywords: cmd.keywords });
-  if (!cmd.quiet) console.log(`\nMilo eval — site: ${siteUuid}, path: ${cmd.path ?? "/"}`);
+  const isSinglePage = cmd.path || cmd.url;
+  const runner = isSinglePage
+    ? perPageEvalStage({ path: cmd.path, url: cmd.url, keywords: cmd.keywords })
+    : evalStage;
+  if (!cmd.quiet) console.log(`\nMilo eval — site: ${siteUuid}${isSinglePage ? `, path: ${cmd.path ?? "/"}` : ""}`);
   const start = Date.now();
   let result: StageResult;
   try {
@@ -536,18 +537,8 @@ async function runEval(
   if (!result.durationMs) result.durationMs = Date.now() - start;
   renderReport([result], Date.now() - start, cmd.quiet);
 
-  if (result.status !== "pass") {
-    if (!cmd.quiet) console.log("\nEval failed — running eval-fix");
-    const fixResults = await runEvalFix({
-      cmd: "eval-fix",
-      path: cmd.path,
-      url: cmd.url,
-      keywords: cmd.keywords,
-      verbose: cmd.verbose,
-      quiet: cmd.quiet,
-    }, siteUuid, workspaceUuid);
-    return [result, ...fixResults];
-  }
+  // Single-page eval reports only; explicit `milo eval-fix` is required to heal.
+  // Full-site eval reports are also left to explicit eval-fix.
   return [result];
 }
 
@@ -562,7 +553,7 @@ async function runEvalFix(
   const { siteUuid, workspaceUuid } =
     explicitSiteUuid && explicitWorkspaceUuid
       ? { siteUuid: explicitSiteUuid, workspaceUuid: explicitWorkspaceUuid }
-      : await resolveSite(undefined, cmd.site);
+      : await resolveSiteByUuid(cmd.site);
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "paid" });
   const runner = evalFixStage({
     evalUuid: cmd.evalUuid,

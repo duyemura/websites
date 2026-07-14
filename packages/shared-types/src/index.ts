@@ -5,6 +5,7 @@ export * from "./template-shell.js";
 export * from "./docs.js";
 export * from "./template-baseline.js";
 export * from "./gym-content.js";
+export * from "./pipeline-content.js";
 export {
   getTemplateSpec,
   componentSpec,
@@ -23,7 +24,7 @@ export type {
   TemplateSpec,
   TemplateTheme,
 } from "./templates/registry.js";
-export { beanburitoSpec, buildSpecPrompt } from "./templates/beanburito.js";
+export { beanburitoSpec, buildSpecPrompt, buildPageSpecPrompt } from "./templates/beanburito.js";
 export {
   GYM_ICON_CATEGORIES,
   KNOWN_PHOSPHOR_ICONS,
@@ -41,3 +42,4 @@ export {
   upgradeToHttps,
   sanitizeIframe,
 } from "./iframe-utils.js";
+export { sanitizeHtml, sanitizeContentBlocks } from "./html-utils.js";

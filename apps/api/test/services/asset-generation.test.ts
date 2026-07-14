@@ -49,6 +49,8 @@ describe("asset generation service", () => {
   test("updateAssetGenerationStatus updates status and optional fields", async () => {
     const input = await makeInput();
     const { uuid } = await createAssetGeneration(db, input);
+    // Ensure the update timestamp advances past the creation timestamp.
+    await new Promise((r) => setTimeout(r, 5));
 
     await updateAssetGenerationStatus(db, uuid, "generating", {
       provider: "fal",

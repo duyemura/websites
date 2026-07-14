@@ -1,0 +1,42 @@
+---
+import Container from "../../ui/Container.astro";
+import type { RichContentBlock } from "../../../types/gym-content";
+import Block from "../../blocks/Block.astro";
+const NO_IMAGE = "__NO_IMAGE__";
+const { headline, subheadline, imageUrl, imageAlt, blocks } = Astro.props as {
+  headline?: string;
+  subheadline?: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  blocks?: RichContentBlock[];
+};
+if (!headline && !blocks?.length) return;
+const hasImage = imageUrl && imageUrl !== NO_IMAGE;
+---
+
+<section data-section="story" data-section-tag="content-block" class="section-skew bg-black text-white">
+  <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+    <div class={`two-columns-wrapper flex flex-col items-center gap-12 ${hasImage ? "lg:flex-row lg:items-start lg:gap-24" : "justify-center text-center"}`}>
+      {hasImage && (
+        <div class="flex w-full items-center justify-center lg:w-[22em] lg:flex-shrink-0">
+          <div class="relative h-[25.4375em] w-full overflow-hidden">
+            <img src={imageUrl} alt={imageAlt ?? headline ?? "Story"} class="h-full w-full object-cover" loading="lazy" />
+          </div>
+        </div>
+      )}
+      <div class="flex-1">
+        {headline && (
+          <h2 class="mb-4 font-heading text-4xl font-black uppercase leading-[0.95] tracking-tight text-white md:text-5xl">
+            {headline}
+          </h2>
+        )}
+        {subheadline && <p class="mb-8 text-lg leading-relaxed text-white/80">{subheadline}</p>}
+        {blocks?.length ? (
+          <div class="space-y-6 text-lg leading-relaxed text-white/80">
+            {blocks.map((b) => <Block block={b} />)}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  </div>
+</section>

@@ -135,14 +135,35 @@ export interface AboutContent {
   hero: HeroContent;
   gymStory: string;                  // markdown allowed
   team: TeamMember[];
+  /** Community/story section content used by the about-page archetype. */
+  communityHeadline?: string;
+  communityProps?: ValueProp[];
+  /** Long-form HTML body for the about-page community section. */
+  communityBody?: string;
+  /** Generic founder/background story band for the about-page archetype. */
+  story?: StoryBandContent;
+  /** Distinct bottom CTA headline on the about page. */
+  ctaHeadline?: string;
+  /** About-page testimonials (fall back to home.testimonials in the renderer). */
+  testimonials?: Testimonial[];
+  faq?: FAQItem[];
   iframes?: IframeEmbed[];
   richContent?: RichContentSection[];
+}
+
+export interface StoryBandContent {
+  headline?: string;
+  subheadline?: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  blocks?: RichContentBlock[];
 }
 
 export interface PricingContent {
   hero: HeroContent;
   grid?: PricingGridContent;
   form?: { headline: string; intro: string };
+  faq?: FAQItem[];
   iframes?: IframeEmbed[];
 }
 export interface PricingGridContent { headline?: string; subheading?: string; plans: PricingPlan[] }
@@ -152,16 +173,26 @@ export interface PricingPlan {
   highlighted?: boolean; badge?: string;
 }
 
-export interface ContactContent { hero: HeroContent; intro?: string; iframes?: IframeEmbed[] }
+export interface ContactContent {
+  hero: HeroContent;
+  intro?: string;
+  faq?: FAQItem[];
+  iframes?: IframeEmbed[];
+}
 
 
 export interface ScheduleContent {
   hero: HeroContent;
   note?: string;
+  faq?: FAQItem[];
   iframes?: IframeEmbed[];            // booking/schedule widgets rendered as generic iframe embeds
 }
 
-export interface BlogContent { heroHeadline: string; posts: BlogPost[] }
+export interface BlogContent {
+  heroHeadline: string;
+  posts: BlogPost[];
+  faq?: FAQItem[];
+}
 export interface BlogPost {
   slug: string; title: string; publishedAt: string; excerpt: string;
   category?: string;                 // "Education" | "Newsletters" | "Recipes" | ...
@@ -172,6 +203,8 @@ export interface BlogPost {
 export interface LocalGuideContent {
   hero: HeroContent;
   sections: RichContentSection[];
+  richContent?: RichContentSection[];
+  faq?: FAQItem[];
 }
 
 export interface LegalPage { slug: string; title: string; blocks: ContentBlock[] }
@@ -183,6 +216,8 @@ export interface HeroContent {
   intro?: string;
   ctaLabel?: string; ctaUrl?: string;
   backgroundImageUrl?: string;
+  /** When false, render the hero headline as an h2 because the page provides its own h1 (e.g. geo H1 on program pages). */
+  renderAsH1?: boolean;
 }
 export interface ValueProp { icon: string; headline: string; body: string }
 export interface Feature {
@@ -206,5 +241,7 @@ export type ContentBlock =
   | { type: "columns"; columns: ContentBlock[][] }
   | { type: "callout"; text: string; style: "info" | "warning" | "tip" }
   | { type: "embed"; html: string };
+
+export type RichContentBlock = ContentBlock;
 
 export interface RichContentSection { headline?: string; blocks: ContentBlock[] }

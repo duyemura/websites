@@ -223,6 +223,78 @@ export function renderMarkdownReport(report: PageEvalReport): string {
   return lines.join("\n");
 }
 
+export interface SiteEvalPageSummary {
+  path: string;
+  score: number;
+  grade: string;
+  status: "passed" | "failed";
+  title: string | null;
+  totalIssues: number;
+  criticalIssues: number;
+}
+
+export interface SiteEvalSummary {
+  totalPages: number;
+  passedPages: number;
+  failedPages: number;
+  avgScore: number;
+  minScore: number;
+  maxScore: number;
+  worstPath: string;
+  totalIssues: number;
+  criticalIssues: number;
+}
+
+export interface SiteEvalReport {
+  evaluatedAt: string;
+  pages: PageEvalReport[];
+  summaries: SiteEvalPageSummary[];
+  summary: SiteEvalSummary;
+}
+
+export function buildSiteEvalReport(pages: PageEvalReport[]): SiteEvalReport {
+  const summaries: SiteEvalPageSummary[] = pages.map((p) => {
+    const issues = p.categories.flatMap((c) => c.issues);
+    return {
+      path: p.metadata.path,
+      score: p.overall.score,
+      grade: p.overall.grade,
+      status: p.overall.status,
+      title: p.metadata.title,
+      totalIssues: issues.length,
+      criticalIssues: issues.filter((i) => i.severity === "critical").length,
+    };
+  });
+
+  const scores = pages.map((p) => p.overall.score);
+  const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const minScore = scores.length > 0 ? Math.min(...scores) : 0;
+  const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+  const worstPage = pages.find((p) => p.overall.score === minScore) ?? pages[0];
+  const totalIssues = pages.reduce((sum, p) => sum + p.categories.flatMap((c) => c.issues).length, 0);
+  const criticalIssues = pages.reduce(
+    (sum, p) => sum + p.categories.flatMap((c) => c.issues).filter((i) => i.severity === "critical").length,
+    0,
+  );
+
+  return {
+    evaluatedAt: new Date().toISOString(),
+    pages,
+    summaries,
+    summary: {
+      totalPages: pages.length,
+      passedPages: pages.filter((p) => p.overall.status === "passed").length,
+      failedPages: pages.filter((p) => p.overall.status === "failed").length,
+      avgScore,
+      minScore,
+      maxScore,
+      worstPath: worstPage?.metadata.path ?? "",
+      totalIssues,
+      criticalIssues,
+    },
+  };
+}
+
 export function finalizeReport(categories: PageEvalCategory[], metadata: PageEvalMetadata): PageEvalReport {
   const score = computeOverallScore(categories);
   const grade = scoreToGrade(score);

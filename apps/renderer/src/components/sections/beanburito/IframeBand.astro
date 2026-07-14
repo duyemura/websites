@@ -20,9 +20,15 @@ interface VariantConfig {
 
 const { iframes } = Astro.props as { iframes?: IframeEmbed[] };
 
+const SAFE_DIM_RE = /^[\d.]+\s*(px|em|rem|%|vh|vw|svh|lvh|dvh|ch|ex|cm|mm|in|pt|pc)?$/i;
+
 function normalizeDimension(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  return /^\d+(\.\d+)?$/.test(value.trim()) ? `${value.trim()}px` : value;
+  const trimmed = value.trim();
+  // Reject anything that could carry CSS injection: semicolons, url(), braces, comments.
+  if (/[;{}]|url\(|\/\*/i.test(trimmed)) return undefined;
+  if (/^\d+(\.\d+)?$/.test(trimmed)) return `${trimmed}px`;
+  return SAFE_DIM_RE.test(trimmed) ? trimmed : undefined;
 }
 
 // Template-defined variants. These are presentation defaults only — every field
@@ -126,7 +132,7 @@ if (filtered.length === 0) return;
                 class="h-full w-full border-0"
                 title={cfg.iframeTitle}
                 loading={cfg.loading}
-                referrerpolicy={embed.referrerpolicy ?? "no-referrer-when-downgrade"}
+                referrerpolicy={(embed.referrerpolicy ?? "no-referrer-when-downgrade") as any}
                 sandbox={cfg.sandbox}
                 allow={cfg.allow}
                 style={cfg.style}

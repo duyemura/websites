@@ -22,6 +22,7 @@ import {
   SITE_MEMORY_DOC_TITLE,
   type WorkspaceMemoryContext,
 } from "../../utils/workspace-memory";
+import type { WorkspaceMemory } from "@milo/shared-types";
 import {
   BRAND_GUIDELINES_DOC_KEY,
   BRAND_GUIDELINES_DOC_TITLE,
@@ -404,19 +405,92 @@ export function mapEvidenceForHybrid(
   return { version: designEvidence.version, rows: mapped };
 }
 
+function buildSitePlaybookSection(
+  extract: ExtractArtifact,
+  workspaceMemory?: WorkspaceMemory,
+): string {
+  const idealAction = "Book a free intro or tour";
+  const offer = "Free intro or trial class";
+  const icpSummary = workspaceMemory?.targetMember ?? "Prospects researching local fitness options";
+  const topObjections = workspaceMemory?.targetMembers
+    ?.flatMap((p) => p.commonObjections)
+    .filter(Boolean)
+    .slice(0, 3) ?? [];
+  const differentiators = workspaceMemory?.differentiators?.slice(0, 3)
+    ?? workspaceMemory?.businessPriorities?.slice(0, 3)
+    ?? [];
+
+  const trustAssets: string[] = [];
+  // Extract artifact does not carry review count directly; business-info doc holds trust signals.
+  trustAssets.push("See [[business-info]] for verified testimonials, ratings, and credentials.");
+
+  const voice = workspaceMemory?.brandVoice ?? "Friendly, credible, and action-oriented.";
+
+  const lines: string[] = [
+    "## Site playbook",
+    "",
+    "This section is the conversion brief for the site. Every page generator should read it before writing copy.",
+    "",
+    "### Conversion goal",
+    "",
+    "- Drive the primary conversion action on every page.",
+    "",
+    "### Ideal first action",
+    "",
+    `- ${idealAction}`,
+    "",
+    "### Offer / hook",
+    "",
+    `- ${offer}`,
+    "",
+    "### Ideal customer profile",
+    "",
+    `- ${icpSummary}`,
+  ];
+
+  if (topObjections.length > 0) {
+    lines.push("", "### Common objections to overcome", "", ...topObjections.map((o) => `- ${o}`));
+  }
+
+  if (differentiators.length > 0) {
+    lines.push("", "### Differentiators to echo on every page", "", ...differentiators.map((d) => `- ${d}`));
+  }
+
+  lines.push(
+    "",
+    "### Trust assets available",
+    "",
+    trustAssets.length > 0 ? trustAssets.map((a) => `- ${a}`).join("\n") : "- No verified trust assets captured yet.",
+    "",
+    "### Voice rules",
+    "",
+    `- ${voice}`,
+    "- Use sentence case for buttons, labels, and body copy.",
+    "- Mention the gym name and city naturally, at most once per section.",
+    "- Never promise specific results or invent prices, schedules, or guarantees.",
+    "- Every page should end with one clear call to action.",
+  );
+
+  return lines.join("\n");
+}
+
 function makeSiteStrategyDoc(
   extract: ExtractArtifact,
   hierarchy: SiteHierarchy,
+  workspaceMemory?: WorkspaceMemory,
 ): GeneratedSiteDoc {
   const businessName = extract.pages[0]?.content.businessName ?? extract.url;
   const pages = hierarchy.pages
     .map((p) => `- \`${p.slug}\`${p.isHomePage ? " (home)" : ""} — ${p.title}`)
     .join("\n");
+  const playbook = buildSitePlaybookSection(extract, workspaceMemory);
   const content = `# Site strategy for ${businessName}
 
 ## Goal
 
-Build an Astro static site that faithfully represents ${businessName} and gives the gym a reliable, editable foundation.
+Build an Astro static site that faithfully represents ${businessName}, converts visitors into leads, and gives the gym a reliable, editable foundation.
+
+${playbook}
 
 ## Source
 
@@ -577,7 +651,7 @@ export async function runDocgenStage(
   const searchPresence = buildSearchPresence(contentExtract);
 
   const businessInfoDoc = makeFallbackBusinessInfoDoc(contentExtract);
-  const siteStrategyDoc = makeSiteStrategyDoc(contentExtract, hierarchy);
+  const siteStrategyDoc = makeSiteStrategyDoc(contentExtract, hierarchy, workspaceMemory);
 
   const docs: GeneratedSiteDoc[] = [
     {

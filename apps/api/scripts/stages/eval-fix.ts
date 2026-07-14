@@ -1,22 +1,22 @@
 // apps/api/scripts/stages/eval-fix.ts
-// CLI runner that heals a page from a per-page QA report, rebuilds the registry
-// template locally until the page passes, then publishes once. This keeps the
-// entire fix loop on the registry-driven Tier 2 path while avoiding S3/CloudFront
-// churn per iteration.
+// Heal every generated page that fails QA. Evaluates the full local dist,
+// runs the per-page heal loop for failing routes, then deploys the converged
+// build to staging. Production publish requires an explicit `milo publish` call.
 
 import path from "node:path";
-import type { PageEvalReport } from "../../src/services/eval/page-eval-report.js";
+import { buildSiteEvalReport, type PageEvalReport, type SiteEvalReport } from "../../src/services/eval/page-eval-report.js";
 import { evaluatePage } from "../../src/services/eval/page-evaluator.js";
 import { runEvalFixLoop } from "../../src/services/eval/run-eval-fix-loop.js";
+import { loadSiteEval } from "../../src/services/eval/site-eval-persistence.js";
 import { deployTemplateDist } from "../../src/services/template/deploy-template.js";
 import { promoteDeploy } from "../../src/services/mirror/deploy.js";
-import { publishStage } from "./publish.js";
+import { runFullSiteEval } from "./full-site-eval.js";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 export interface EvalFixOptions {
-  /** Existing eval uuid to base fixes on. Either this or path must be provided. */
+  /** Existing eval uuid to base fixes on. If omitted, a fresh full-site eval is run. */
   evalUuid?: string;
-  /** Path to evaluate and fix (e.g. "/" or "/about"). Ignored when evalUuid is provided. */
+  /** Fix a single path instead of running the full site. */
   path?: string;
   url?: string;
   keywords?: string[];
@@ -25,18 +25,18 @@ export interface EvalFixOptions {
    * evaluator's pass threshold (70).
    */
   scoreThreshold?: number;
-  /** Maximum number of heal/build/eval loops. Default 10. */
+  /** Maximum number of heal/build/eval loops per page. Default 10. */
   maxLoops?: number;
 }
 
-function pathToSlug(path: string): string {
-  if (!path || path === "/") return "index";
-  return path.replace(/^\//, "").replace(/\//g, "-");
+function pathToSlug(pagePath: string): string {
+  if (!pagePath || pagePath === "/") return "index";
+  return pagePath.replace(/^\//, "").replace(/\//g, "-");
 }
 
 function resolveEvalUrl(
   siteUuid: string,
-  path: string,
+  pagePath: string,
   explicitUrl: string | undefined,
   previewDomain: string | undefined,
 ): string | undefined {
@@ -44,134 +44,216 @@ function resolveEvalUrl(
   if (previewDomain) {
     const shortId = siteUuid.slice(0, 8);
     const origin = `https://${shortId}-preview.${previewDomain}`;
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const normalizedPath = pagePath.startsWith("/") ? pagePath : `/${pagePath}`;
     return `${origin}${normalizedPath}`;
   }
   return undefined;
 }
 
+function pageFailed(report: PageEvalReport, threshold: number): boolean {
+  return report.overall.status === "failed" || report.overall.score < threshold;
+}
+
+function resolvePageSlug(
+  hierarchyDoc: { pages: Array<{ slug: string; path?: string }> },
+  pagePath: string,
+): string {
+  const slug = pathToSlug(pagePath);
+  return (
+    hierarchyDoc.pages.find((p) => p.slug === slug)?.slug ??
+    hierarchyDoc.pages.find((p) => p.path === pagePath)?.slug ??
+    slug
+  );
+}
+
+function aggregateWarnings(pages: PageEvalReport[]): string[] {
+  return pages.flatMap((p) =>
+    p.categories.flatMap((c) =>
+      c.issues.map((i) => `${p.metadata.path}: [${c.name}] ${i.severity}: ${i.message}`),
+    ),
+  );
+}
+
 export function evalFixStage(options: EvalFixOptions = {}): StageRunner {
   return {
-    label: "Eval fix + local rebuild loop + publish",
+    label: "Full-site eval-fix loop + publish",
     requires: [],
     produces: "",
     run: async (ctx: StageContext): Promise<StageResult> => {
       const start = Date.now();
       const { db, config, siteUuid, workspaceUuid, s3Client, rendererDir } = ctx;
+      const distDir = path.join(rendererDir, "dist");
+      const threshold = options.scoreThreshold ?? 70;
 
-      let report: PageEvalReport;
-      let resolvedPath = options.path ?? "/";
+      // 1. Gather initial per-page reports.
+      let allReports: PageEvalReport[] = [];
+      let source = "local dist";
 
       if (options.evalUuid) {
-        const row = await db
-          .selectFrom("siteEvals")
-          .select(["report", "pages"])
-          .where("uuid", "=", options.evalUuid)
-          .executeTakeFirst();
-        if (!row) {
+        const loaded = await loadSiteEval(db, options.evalUuid);
+        if (!loaded) {
           throw new Error(`Site eval not found: ${options.evalUuid}`);
         }
-        if (!row.report) {
-          throw new Error(`Site eval ${options.evalUuid} has no report`);
+        if (loaded.report?.pages) {
+          allReports = loaded.report.pages;
+          source = `eval ${options.evalUuid}`;
+        } else if (loaded.pages.length === 1) {
+          const p = loaded.pages[0]!;
+          const url = resolveEvalUrl(siteUuid, p.path, undefined, config.MILO_PREVIEW_DOMAIN);
+          if (!url) {
+            throw new Error("Could not resolve page URL from eval record");
+          }
+          ctx.log(`Evaluating ${url}`);
+          allReports = [
+            await evaluatePage({
+              db,
+              config,
+              s3Client,
+              siteUuid,
+              workspaceUuid,
+              path: p.path,
+              url,
+              keywords: options.keywords,
+              log: (msg) => ctx.log(msg),
+            }),
+          ];
+        } else {
+          throw new Error(`Site eval ${options.evalUuid} has no report or pages to act on`);
         }
-        report = typeof row.report === "string" ? (JSON.parse(row.report) as PageEvalReport) : (row.report as unknown as PageEvalReport);
-        const pages = row.pages as Array<{ path?: string }> | undefined;
-        resolvedPath = report.metadata.path ?? pages?.[0]?.path ?? "/";
-      } else {
-        const url = resolveEvalUrl(siteUuid, resolvedPath, options.url, config.MILO_PREVIEW_DOMAIN);
+      } else if (options.path || options.url) {
+        const pagePath = options.path ?? "/";
+        const url = resolveEvalUrl(siteUuid, pagePath, options.url, config.MILO_PREVIEW_DOMAIN);
         if (!url) {
           throw new Error("Could not resolve page URL — provide --url or configure MILO_PREVIEW_DOMAIN");
         }
         ctx.log(`Evaluating ${url}`);
-        report = await evaluatePage({
-          db,
-          config,
-          s3Client,
-          siteUuid,
-          workspaceUuid,
-          path: resolvedPath,
-          url,
-          keywords: options.keywords,
-          log: (msg) => ctx.log(msg),
-        });
+        allReports = [
+          await evaluatePage({
+            db,
+            config,
+            s3Client,
+            siteUuid,
+            workspaceUuid,
+            path: pagePath,
+            url,
+            keywords: options.keywords,
+            log: (msg) => ctx.log(msg),
+          }),
+        ];
+      } else {
+        ctx.log("Running full-site eval to identify failing pages...");
+        const { pages } = await runFullSiteEval(ctx, distDir, { concurrency: 3, keywords: options.keywords });
+        allReports = pages;
       }
 
-      if (report.overall.status === "passed") {
+      const initialReport = buildSiteEvalReport(allReports);
+      ctx.log(
+        `Initial QA: ${initialReport.summary.totalPages} pages, ${initialReport.summary.passedPages} passed, ${initialReport.summary.failedPages} failed`,
+      );
+
+      // 2. Determine failing pages.
+      let failingPages = allReports.filter((r) => pageFailed(r, threshold));
+      if (failingPages.length === 0) {
         return {
           stage: "eval-fix",
           status: "pass",
           durationMs: Date.now() - start,
-          metrics: { score: report.overall.score, grade: report.overall.grade },
-          warnings: ["No issues found — nothing to fix."],
+          metrics: {
+            pages: initialReport.summary.totalPages,
+            passedPages: initialReport.summary.passedPages,
+            failedPages: 0,
+            avgScore: initialReport.summary.avgScore,
+            minScore: initialReport.summary.minScore,
+            source,
+          },
+          warnings: aggregateWarnings(allReports),
         };
       }
 
-      const hierarchy = await db
-        .selectFrom("sites")
-        .selectAll()
-        .where("uuid", "=", siteUuid)
-        .executeTakeFirst();
-      // We need the hierarchy doc to resolve the page slug; the loop loads it itself,
-      // but we need to pick the right slug before calling it.
+      ctx.log(`Healing ${failingPages.length} failing page${failingPages.length === 1 ? "" : "s"}...`);
+
+      // 3. Load hierarchy once for slug resolution.
       const { loadSiteHierarchyDoc } = await import("../../src/utils/site-hierarchy-io.js");
       const hierarchyDoc = await loadSiteHierarchyDoc(db, workspaceUuid, siteUuid);
       if (!hierarchyDoc) {
         throw new Error(`Site hierarchy not found for ${siteUuid}`);
       }
 
-      const pageSlug = pathToSlug(resolvedPath);
-      const resolvedPageSlug =
-        hierarchyDoc.pages.find((p) => p.slug === pageSlug)?.slug ??
-        hierarchyDoc.pages.find((p) => p.path === resolvedPath)?.slug ??
-        pageSlug;
+      // 4. Run per-page heal loops.
+      let totalLoops = 0;
+      let totalAppliedHeals = 0;
+      let totalSectionInstructions = 0;
+      let anyChanged = false;
 
-      const loopResult = await runEvalFixLoop({
-        db,
-        config,
-        s3Client,
-        siteUuid,
-        workspaceUuid,
-        rendererDir,
-        report,
-        resolvedPath,
-        resolvedPageSlug,
-        scoreThreshold: options.scoreThreshold,
-        maxLoops: options.maxLoops,
-        keywords: options.keywords,
-        templateTheme: ctx.templateTheme,
-        log: (msg) => ctx.log(msg),
-      });
+      for (const report of failingPages) {
+        const pagePath = report.metadata.path;
+        const resolvedPageSlug = resolvePageSlug(hierarchyDoc, pagePath);
 
-      if (!loopResult.changed) {
-        const finalMetrics = loopResult.report.categories.flatMap((c) => c.issues);
-        const criticalIssues = finalMetrics.filter((i) => i.severity === "critical").length;
+        ctx.log(`\n  [${pagePath}] score ${report.overall.score}${report.overall.grade} — starting heal loop`);
+        const loopResult = await runEvalFixLoop({
+          db,
+          config,
+          s3Client,
+          siteUuid,
+          workspaceUuid,
+          rendererDir,
+          report,
+          resolvedPath: pagePath,
+          resolvedPageSlug,
+          scoreThreshold: threshold,
+          maxLoops: options.maxLoops,
+          keywords: options.keywords,
+          templateTheme: ctx.templateTheme,
+          log: (msg) => ctx.log(`  [${pagePath}] ${msg}`),
+        });
+
+        totalLoops += loopResult.loops;
+        totalAppliedHeals += loopResult.appliedHeals;
+        totalSectionInstructions += loopResult.sectionInstructions;
+        if (loopResult.changed) {
+          anyChanged = true;
+          // Update the stored report for this page so the final aggregate is accurate.
+          const idx = allReports.findIndex((r) => r.metadata.path === pagePath);
+          if (idx >= 0) {
+            allReports[idx] = loopResult.report;
+          }
+        }
+      }
+
+      // 5. Re-evaluate the converged dist to get final per-page grades.
+      let finalReport: SiteEvalReport;
+      if (anyChanged) {
+        ctx.log("\n  Running final full-site eval on converged build...");
+        const { report } = await runFullSiteEval(ctx, distDir, { concurrency: 3, keywords: options.keywords });
+        finalReport = report;
+      } else {
+        finalReport = buildSiteEvalReport(allReports);
+      }
+
+      if (!anyChanged && finalReport.summary.failedPages > 0) {
         return {
           stage: "eval-fix",
           status: "fail",
           durationMs: Date.now() - start,
           metrics: {
-            score: loopResult.report.overall.score,
-            grade: loopResult.report.overall.grade,
-            appliedHeals: 0,
-            sectionInstructions: loopResult.sectionInstructions,
-            loops: loopResult.loops,
-            totalIssues: finalMetrics.length,
-            criticalIssues,
+            pages: finalReport.summary.totalPages,
+            passedPages: finalReport.summary.passedPages,
+            failedPages: finalReport.summary.failedPages,
+            avgScore: finalReport.summary.avgScore,
+            minScore: finalReport.summary.minScore,
+            appliedHeals: totalAppliedHeals,
+            sectionInstructions: totalSectionInstructions,
+            loops: totalLoops,
           },
-          warnings: loopResult.report.categories.flatMap((c) =>
-            c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
-          ),
-          error: loopResult.convergedReason ?? "No deterministic heals could be applied; remaining issues need visual/interactivity edits.",
+          warnings: aggregateWarnings(finalReport.pages),
+          error: "No deterministic heals could be applied to the failing pages; remaining issues need visual/interactivity edits.",
         };
       }
 
-      // TODO: when the loop exits without meeting the score threshold + 0 criticals,
-      // add a site flag (e.g. `sites.hiddenFromCustomer = true`) so the published
-      // build is visible to us for cleanup but not surfaced to the gym. Until then
-      // we publish unconditionally so eval-fix behaves like a normal build.
-      ctx.log(`\n  Publishing converged build after ${loopResult.loops} loop${loopResult.loops === 1 ? "" : "s"}...`);
+      // 6. Deploy the converged build to staging. Production publish requires an
+      // explicit `milo publish --site <uuid>` invocation per workspace policy.
+      ctx.log(`\n  Staging converged build after ${totalLoops} loop${totalLoops === 1 ? "" : "s"}...`);
       const bucket = config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
-      const distDir = path.join(rendererDir, "dist");
       const templateResult = await deployTemplateDist({
         db,
         s3Client,
@@ -188,53 +270,26 @@ export function evalFixStage(options: EvalFixOptions = {}): StageRunner {
       });
       await promoteDeploy(s3Client, bucket, siteUuid, templateResult.deployPrefix);
 
-      const publishResult = await publishStage.run(ctx);
-      if (publishResult.status === "fail") {
-        return {
-          stage: "eval-fix",
-          status: "fail",
-          durationMs: Date.now() - start,
-          metrics: {
-            score: loopResult.report.overall.score,
-            grade: loopResult.report.overall.grade,
-            appliedHeals: loopResult.appliedHeals,
-            sectionInstructions: loopResult.sectionInstructions,
-            loops: loopResult.loops,
-            templateVersion: templateResult.version,
-          },
-          warnings: loopResult.report.categories.flatMap((c) =>
-            c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
-          ),
-          error: `Publish failed: ${publishResult.error ?? "unknown error"}`,
-        };
-      }
-
-      const finalIssues = loopResult.report.categories.flatMap((c) => c.issues);
-      const criticalIssues = finalIssues.filter((i) => i.severity === "critical").length;
-      const reEvalStatus = loopResult.report.overall.status === "passed" ? "pass" : "fail";
-
       return {
         stage: "eval-fix",
-        status: reEvalStatus,
+        status: finalReport.summary.failedPages === 0 ? "pass" : "fail",
         durationMs: Date.now() - start,
         metrics: {
-          score: loopResult.report.overall.score,
-          grade: loopResult.report.overall.grade,
-          totalIssues: finalIssues.length,
-          criticalIssues,
-          failedCategories: loopResult.report.categories.filter((c) => c.status === "failed").length,
-          appliedHeals: loopResult.appliedHeals,
-          sectionInstructions: loopResult.sectionInstructions,
-          loops: loopResult.loops,
+          pages: finalReport.summary.totalPages,
+          passedPages: finalReport.summary.passedPages,
+          failedPages: finalReport.summary.failedPages,
+          avgScore: finalReport.summary.avgScore,
+          minScore: finalReport.summary.minScore,
+          appliedHeals: totalAppliedHeals,
+          sectionInstructions: totalSectionInstructions,
+          loops: totalLoops,
           templateVersion: templateResult.version,
-          publishedVersion: publishResult.metrics.version,
+          stagedVersion: templateResult.version,
         },
         warnings: [
-          loopResult.convergedReason ?? undefined,
-          ...loopResult.report.categories.flatMap((c) =>
-            c.issues.map((i) => `[${c.name}] ${i.severity}: ${i.message}`),
-          ),
-        ].filter(Boolean) as string[],
+          ...aggregateWarnings(finalReport.pages),
+          "Build staged. Run `milo publish --site <uuid>` to promote to production.",
+        ],
       };
     },
   };

@@ -3,6 +3,8 @@ import { deployTemplate } from "../../src/services/template/deploy-template";
 import { promoteDeploy } from "../../src/services/mirror/deploy";
 import { invalidatePreviewCache } from "../../src/services/mirror/cloudfront";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
+import { getTemplateSpec } from "@milo/shared-types";
+import { validateContentPlaceholders } from "../../src/services/template/placeholder-validator.js";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 export const templateStage: StageRunner = {
@@ -42,6 +44,16 @@ export const templateStage: StageRunner = {
 
     ctx.log(`  Deploying template for site ${ctx.siteUuid}...`);
 
+    const theme = ctx.templateTheme ?? "beanburito";
+    const spec = getTemplateSpec(theme);
+    const content = generateArtifact?.payload ?? undefined;
+    if (spec && content) {
+      const report = validateContentPlaceholders(content as Record<string, unknown>, spec);
+      for (const issue of report.issues) {
+        ctx.log(`  ${issue.severity === "error" ? "❌" : "⚠️"}  ${issue.pageKey}: ${issue.message}`);
+      }
+    }
+
     const result = await deployTemplate({
       db: ctx.db,
       s3Client: ctx.s3Client,
@@ -53,7 +65,7 @@ export const templateStage: StageRunner = {
       rendererDir: ctx.rendererDir,
       googleMapsApiKey: ctx.config.GOOGLE_PLACES_API_KEY,
       templateTheme: ctx.templateTheme,
-      content: generateArtifact?.payload ?? undefined,
+      content,
       log: {
         info: (o, m) => ctx.log(`  [info] ${m}`),
         warn: (o, m) => ctx.log(`  [warn] ${m}`),

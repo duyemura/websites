@@ -3,33 +3,76 @@
     "siteId": "00000000-0000-0000-0000-00000000f1x1",
     "apiBaseUrl": "https://api.example.com",
     "siteUrl": "https://fixture-gym.example.com",
-    "defaultTitle": "Your Gym Name",
-    "defaultDescription": "Group strength, cardio bootcamp, and personal training in Your City, YS.",
+    "defaultTitle": "Ironwood Strength",
+    "defaultDescription": "Coach-led strength and conditioning in Torrance, CA for busy adults who want a plan and a community.",
     "preview": false,
     "googleSiteVerification": "fixture-gsc-token",
     "googleTagManagerId": "GTM-FIXTURE1",
-    "templateTheme": "impact"
+    "templateTheme": "beanburito"
   },
   "business": {
-    "name": "Your Gym Name",
-    "tagline": "Your Gym Name offers group strength, cardio bootcamp, and personal training in Your City, YS serving adults of all fitness levels.",
-    "address": { "street": "123 Main St", "city": "Your City", "state": "Your State", "zip": "00000" },
-    "phone": "(000) 000-0000",
-    "email": "hello@fixture-gym.example.com",
+    "name": "Ironwood Strength",
+    "tagline": "Ironwood Strength offers coach-led strength and conditioning in Torrance, CA, helping busy adults build strength, improve conditioning, and stay consistent with their health.",
+    "address": {
+      "street": "24444 Hawthorne Blvd",
+      "city": "Torrance",
+      "state": "California",
+      "zip": "90505"
+    },
+    "phone": "(310) 555-0142",
+    "email": "hello@ironwoodstrength.example.com",
     "hours": [
-      { "days": ["Monday","Tuesday","Wednesday","Thursday","Friday"], "opens": "05:00", "closes": "21:00" },
-      { "days": ["Saturday","Sunday"], "opens": "07:00", "closes": "12:00" }
+      {
+        "days": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "05:00",
+        "closes": "21:00"
+      },
+      {
+        "days": [
+          "Saturday",
+          "Sunday"
+        ],
+        "opens": "07:00",
+        "closes": "12:00"
+      }
     ],
-    "coordinates": { "lat": 0.0000, "lng": 0.0000 },
-    "primaryCta": { "label": "Book your free intro", "url": "/contact" },
-    "trialCta": { "label": "Start your free trial", "url": "/pricing" },
-    "geo": { "city": "Your City", "state": "Your State", "stateAbbr": "YS" },
-    "serviceArea": ["Nearby City 1", "Nearby City 2", "Nearby City 3", "Nearby City 4"],
-    "aggregateRating": { "ratingValue": "4.9", "reviewCount": 127 },
+    "coordinates": {
+      "lat": 33.8303,
+      "lng": -118.352
+    },
+    "primaryCta": {
+      "label": "Book your free intro",
+      "url": "/contact"
+    },
+    "trialCta": {
+      "label": "Start your free trial",
+      "url": "/pricing"
+    },
+    "geo": {
+      "city": "Torrance",
+      "state": "California",
+      "stateAbbr": "CA"
+    },
+    "serviceArea": [
+      "Redondo Beach",
+      "Palos Verdes",
+      "Manhattan Beach",
+      "Hermosa Beach"
+    ],
+    "aggregateRating": {
+      "ratingValue": "4.9",
+      "reviewCount": 127
+    },
     "social": {
-      "facebook": "https://facebook.com/fixturegym",
-      "instagram": "https://instagram.com/fixturegym",
-      "youtube": "https://youtube.com/@fixturegym"
+      "facebook": "https://facebook.com/ironwoodstrength",
+      "instagram": "https://instagram.com/ironwoodstrength",
+      "youtube": "https://youtube.com/@ironwoodstrength"
     },
     "mapEmbedUrl": "https://www.google.com/maps/embed?pb=fixture"
   },
@@ -40,89 +83,244 @@
     "headingFont": "Outfit",
     "bodyFont": "Outfit",
     "logoUrl": "__NO_IMAGE__",
-    "logoAlt": "Your Gym Name"
+    "logoAlt": "Ironwood Strength"
   },
   "navigation": {
-    "announcement": { "text": "Start your free trial", "url": "/pricing" },
+    "announcement": {
+      "text": "Start your free trial",
+      "url": "/pricing"
+    },
     "header": [
-      { "label": "Programs", "href": "/programs", "children": [
-        { "label": "Group Strength", "href": "/programs/group-strength" },
-        { "label": "Cardio Bootcamp", "href": "/programs/cardio-bootcamp" },
-        { "label": "Personal Training", "href": "/programs/personal-training" }
-      ]},
-      { "label": "Schedule", "href": "/schedule" },
-      { "label": "Pricing", "href": "/pricing" },
-      { "label": "About", "href": "/about" },
-      { "label": "Blog", "href": "/blog" },
-      { "label": "Contact", "href": "/contact" }
+      {
+        "label": "Programs",
+        "href": "/programs",
+        "children": [
+          {
+            "label": "Group Strength",
+            "href": "/programs/group-strength"
+          },
+          {
+            "label": "Cardio Bootcamp",
+            "href": "/programs/cardio-bootcamp"
+          },
+          {
+            "label": "Personal Training",
+            "href": "/programs/personal-training"
+          }
+        ]
+      },
+      {
+        "label": "Schedule",
+        "href": "/schedule"
+      },
+      {
+        "label": "Pricing",
+        "href": "/pricing"
+      },
+      {
+        "label": "About",
+        "href": "/about"
+      },
+      {
+        "label": "Blog",
+        "href": "/blog"
+      },
+      {
+        "label": "Contact",
+        "href": "/contact"
+      }
     ],
     "footer": [
-      { "label": "Programs", "links": [
-        { "label": "Group Strength", "href": "/programs/group-strength" },
-        { "label": "Cardio Bootcamp", "href": "/programs/cardio-bootcamp" },
-        { "label": "Personal Training", "href": "/programs/personal-training" }
-      ]},
-      { "label": "About", "links": [
-        { "label": "About Us", "href": "/about" },
-        { "label": "Contact Us", "href": "/contact" },
-        { "label": "Local Guide", "href": "/local-guide" }
-      ]},
-      { "label": "Legal", "links": [
-        { "label": "Privacy Policy", "href": "/legal/privacy-policy" },
-        { "label": "Terms of Use", "href": "/legal/terms-of-use" }
-      ]}
+      {
+        "label": "Programs",
+        "links": [
+          {
+            "label": "Group Strength",
+            "href": "/programs/group-strength"
+          },
+          {
+            "label": "Cardio Bootcamp",
+            "href": "/programs/cardio-bootcamp"
+          },
+          {
+            "label": "Personal Training",
+            "href": "/programs/personal-training"
+          }
+        ]
+      },
+      {
+        "label": "About",
+        "links": [
+          {
+            "label": "About Us",
+            "href": "/about"
+          },
+          {
+            "label": "Contact Us",
+            "href": "/contact"
+          },
+          {
+            "label": "Local Guide",
+            "href": "/local-guide"
+          }
+        ]
+      },
+      {
+        "label": "Legal",
+        "links": [
+          {
+            "label": "Privacy Policy",
+            "href": "/legal/privacy-policy"
+          },
+          {
+            "label": "Terms of Use",
+            "href": "/legal/terms-of-use"
+          }
+        ]
+      }
     ],
-    "membersApp": { "ios": "https://apps.apple.com/fixture", "android": "https://play.google.com/fixture" }
+    "membersApp": {
+      "ios": "https://apps.apple.com/fixture",
+      "android": "https://play.google.com/fixture"
+    }
   },
   "pages": {
     "home": {
       "hero": {
-        "headline": "Your first session is on us",
-        "subheading": "Book a free 1-on-1 intro with a coach. We will assess your goals, walk you through the gym, and build a plan that fits your life.",
+        "headline": "Build strength that lasts",
+        "subheading": "Coach-led training in Torrance for busy adults who want a plan, not a guess.",
         "ctaLabel": "Book your free intro",
         "ctaUrl": "/contact",
         "backgroundImageUrl": "/assets/impact/hero-homepage.webp"
       },
       "valueProps": [
-        { "icon": "🏋️", "headline": "Reach new heights", "body": "Build strength and endurance with coach-led training designed for every level." },
-        { "icon": "📅", "headline": "Easy workout scheduling", "body": "Book classes and appointments in seconds with our simple scheduling tools." },
-        { "icon": "🎯", "headline": "Guidance tailored toward your fitness goals", "body": "Whatever your wellness goals are, we'll help you figure out the right fitness plan and stick to it." }
+        {
+          "icon": "\ud83c\udfcb\ufe0f",
+          "headline": "Reach new heights",
+          "body": "Build strength and endurance with coach-led training designed for every level."
+        },
+        {
+          "icon": "\ud83d\udcc5",
+          "headline": "Easy workout scheduling",
+          "body": "Book classes and appointments in seconds with our simple scheduling tools."
+        },
+        {
+          "icon": "\ud83c\udfaf",
+          "headline": "Guidance tailored toward your fitness goals",
+          "body": "Whatever your wellness goals are, we'll help you figure out the right fitness plan and stick to it."
+        }
       ],
-      "programsHeadline": "Every body is unique.",
-      "featuredPrograms": ["group-strength", "cardio-bootcamp", "personal-training"],
+      "programsHeadline": "Programs built around you",
+      "featuredPrograms": [
+        "group-strength",
+        "cardio-bootcamp",
+        "personal-training"
+      ],
       "features": [
-        { "icon": "ticket", "label": "Class Reservations" },
-        { "icon": "target", "label": "Fitness Program for Over Age 65" },
-        { "icon": "phone", "label": "Members Only App" },
-        { "icon": "water", "label": "Purified Water Dispenser" },
-        { "icon": "dumbbell", "label": "Personal Training" },
-        { "icon": "calendar", "label": "Weekend Workout Classes" }
+        {
+          "icon": "ticket",
+          "label": "Class Reservations"
+        },
+        {
+          "icon": "target",
+          "label": "Fitness Program for Over Age 65"
+        },
+        {
+          "icon": "phone",
+          "label": "Members Only App"
+        },
+        {
+          "icon": "water",
+          "label": "Purified Water Dispenser"
+        },
+        {
+          "icon": "dumbbell",
+          "label": "Personal Training"
+        },
+        {
+          "icon": "calendar",
+          "label": "Weekend Workout Classes"
+        }
       ],
-      "communityHeadline": "A community that will keep you going",
+      "communityHeadline": "A community that shows up for you",
       "communityProps": [
-        { "icon": "🏅", "headline": "Expert coaching", "body": "Certified coaches in every class." },
-        { "icon": "🌱", "headline": "Beginner friendly", "body": "Start where you are." },
-        { "icon": "🧭", "headline": "Structured programs", "body": "A plan, not a guess." },
-        { "icon": "❤️", "headline": "Supportive community", "body": "Train with people who cheer for you." }
+        {
+          "icon": "\ud83c\udfc5",
+          "headline": "Expert coaching",
+          "body": "Certified coaches in every class."
+        },
+        {
+          "icon": "\ud83c\udf31",
+          "headline": "Beginner friendly",
+          "body": "Start where you are."
+        },
+        {
+          "icon": "\ud83e\udded",
+          "headline": "Structured programs",
+          "body": "A plan, not a guess."
+        },
+        {
+          "icon": "\u2764\ufe0f",
+          "headline": "Supportive community",
+          "body": "Train with people who cheer for you."
+        }
       ],
-      "trustHeadline": "Trusted and loved by hundreds of local residents",
+      "trustHeadline": "Trusted by 500+ members in the South Bay",
       "howItWorksHeadline": "Getting started is easy",
       "howItWorks": [
-        { "number": 1, "headline": "Book your free intro", "body": "Reserve a no-pressure session with a coach." },
-        { "number": 2, "headline": "Meet your coach", "body": "Review your goals and build a personalized plan." },
-        { "number": 3, "headline": "Start training", "body": "Jump into the right program and begin your journey." }
+        {
+          "number": 1,
+          "headline": "Book your free intro",
+          "body": "Reserve a no-pressure session with a coach."
+        },
+        {
+          "number": 2,
+          "headline": "Meet your coach",
+          "body": "Review your goals and build a personalized plan."
+        },
+        {
+          "number": 3,
+          "headline": "Start training",
+          "body": "Jump into the right program and begin your journey."
+        }
       ],
       "testimonials": [
-        { "quote": "I got stronger in 3 months here than 3 years alone.", "name": "Jamie R.", "program": "Group Strength" },
-        { "quote": "The coaches actually know my name and my goals.", "name": "Priya S.", "program": "Cardio Bootcamp" }
+        {
+          "quote": "I got stronger in 3 months here than 3 years alone.",
+          "name": "Jamie R.",
+          "program": "Group Strength"
+        },
+        {
+          "quote": "The coaches actually know my name and my goals.",
+          "name": "Priya S.",
+          "program": "Cardio Bootcamp"
+        }
       ],
       "faq": [
-        { "question": "Is group strength good for beginners?", "answer": "Yes. All workouts are coach-led and scalable to any fitness level." },
-        { "question": "Do I need to be in shape before starting?", "answer": "No. We meet you where you are and scale everything." },
-        { "question": "Do I have to sign a long-term contract?", "answer": "No. We offer flexible month-to-month memberships." },
-        { "question": "How long are classes?", "answer": "Classes are 60 minutes: warm-up, strength or skill work, workout, and cool down." },
-        { "question": "What should I bring to my first workout?", "answer": "Water, comfortable training shoes, and clothes you can move in." },
-        { "question": "Do you help with nutrition?", "answer": "Yes. Nutrition coaching is available with every membership." }
+        {
+          "question": "Is group strength good for beginners?",
+          "answer": "Yes. All workouts are coach-led and scalable to any fitness level."
+        },
+        {
+          "question": "Do I need to be in shape before starting?",
+          "answer": "No. We meet you where you are and scale everything."
+        },
+        {
+          "question": "Do I have to sign a long-term contract?",
+          "answer": "No. We offer flexible month-to-month memberships."
+        },
+        {
+          "question": "How long are classes?",
+          "answer": "Classes are 60 minutes: warm-up, strength or skill work, workout, and cool down."
+        },
+        {
+          "question": "What should I bring to my first workout?",
+          "answer": "Water, comfortable training shoes, and clothes you can move in."
+        },
+        {
+          "question": "Do you help with nutrition?",
+          "answer": "Yes. Nutrition coaching is available with every membership."
+        }
       ]
     },
     "programs": [
@@ -131,26 +329,71 @@
         "name": "Group Strength",
         "shortDescription": "Coach-led strength and conditioning for every level.",
         "coverImageUrl": "/assets/impact/program-strength.webp",
-        "hero": { "headline": "Try our Group Strength classes", "subheading": "Get stronger with a plan.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
-        "whatIsIt": { "headline": "What is group strength training?", "body": "Coach-led strength and conditioning sessions built around functional movements, professional coaching, structured programming, and a supportive community." },
+        "hero": {
+          "headline": "Try our Group Strength classes",
+          "subheading": "Get stronger with a plan.",
+          "ctaLabel": "Book your free intro",
+          "ctaUrl": "/contact",
+          "backgroundImageUrl": "__NO_IMAGE__"
+        },
+        "whatIsIt": {
+          "headline": "What is group strength training?",
+          "body": "Coach-led strength and conditioning sessions built around functional movements, professional coaching, structured programming, and a supportive community."
+        },
         "whatMakesUsDifferent": [
-          "Coach-led every class — guidance from start to finish",
-          "Scalable for all fitness levels — beginners welcome",
+          "Coach-led every class \u2014 guidance from start to finish",
+          "Scalable for all fitness levels \u2014 beginners welcome",
           "Strength + conditioning programmed weekly",
           "Supportive, welcoming community",
           "Progress tracking so you know you're improving"
         ],
-        "whatToExpect": { "headline": "What to expect in a class", "steps": ["Warm-Up & Mobility", "Strength or Skill Work", "Conditioning Circuit", "Cool Down & Recovery"] },
-        "whoIsItFor": ["Busy adults who want a plan", "Former athletes getting back into it", "Complete beginners", "Anyone bored of the globo gym"],
-        "gettingStarted": [
-          { "number": 1, "headline": "Book a free consultation", "body": "15 minutes, no pressure." },
-          { "number": 2, "headline": "Movement screening", "body": "A coach learns how you move." },
-          { "number": 3, "headline": "Join your first class", "body": "We'll be expecting you." }
+        "whatToExpect": {
+          "headline": "What to expect in a class",
+          "steps": [
+            "Warm-Up & Mobility",
+            "Strength or Skill Work",
+            "Cool Down & Recovery"
+          ]
+        },
+        "whoIsItFor": [
+          "Busy adults who want a plan",
+          "Former athletes getting back into it",
+          "Complete beginners",
+          "Anyone bored of the globo gym"
         ],
-        "testimonials": [ { "quote": "Best coaching in town, period.", "name": "Mark T.", "program": "Group Strength" } ],
+        "gettingStarted": [
+          {
+            "number": 1,
+            "headline": "Book a free consultation",
+            "body": "15 minutes, no pressure."
+          },
+          {
+            "number": 2,
+            "headline": "Movement screening",
+            "body": "A coach learns how you move."
+          },
+          {
+            "number": 3,
+            "headline": "Join your first class",
+            "body": "We'll be expecting you."
+          }
+        ],
+        "testimonials": [
+          {
+            "quote": "Best coaching in town, period.",
+            "name": "Mark T.",
+            "program": "Group Strength"
+          }
+        ],
         "faq": [
-          { "question": "Do I need strength training experience?", "answer": "No. All workouts are coach-led and scalable for beginners." },
-          { "question": "How often should I train?", "answer": "Most members attend 3–5 classes per week depending on their goals." }
+          {
+            "question": "Do I need strength training experience?",
+            "answer": "No. All workouts are coach-led and scalable for beginners."
+          },
+          {
+            "question": "How often should I train?",
+            "answer": "Most members attend 3\u20135 classes per week depending on their goals."
+          }
         ]
       },
       {
@@ -158,68 +401,306 @@
         "name": "Cardio Bootcamp",
         "shortDescription": "High-energy circuit training. Zero barbells, all results.",
         "coverImageUrl": "/assets/impact/program-fundamentals.webp",
-        "hero": { "headline": "Cardio Bootcamp", "subheading": "Beginner-friendly workouts adjusted to any fitness level.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
-        "whatIsIt": { "headline": "Why it works", "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss." },
-        "whatMakesUsDifferent": ["Beginner-friendly by design", "No barbell complexity", "Coached, not just supervised", "Fun, loud, motivating"],
-        "whatToExpect": { "headline": "What you'll do in class", "steps": ["Warm-Up", "Circuit Training", "Cool Down & Stretch"] },
-        "whoIsItFor": ["Fitness newcomers", "People who want to lose weight", "Anyone who hates boring cardio"],
-        "gettingStarted": [
-          { "number": 1, "headline": "Book a free consultation", "body": "Tell us your goals." },
-          { "number": 2, "headline": "Try a class", "body": "Feel the energy." },
-          { "number": 3, "headline": "Pick your plan", "body": "Month to month." }
+        "hero": {
+          "headline": "Cardio Bootcamp",
+          "subheading": "Beginner-friendly workouts adjusted to any fitness level.",
+          "ctaLabel": "Book your free intro",
+          "ctaUrl": "/contact",
+          "backgroundImageUrl": "__NO_IMAGE__"
+        },
+        "whatIsIt": {
+          "headline": "Why it works",
+          "body": "Structured circuit training that blends strength and cardio for conditioning and weight loss."
+        },
+        "whatMakesUsDifferent": [
+          "Beginner-friendly by design",
+          "No barbell complexity",
+          "Coached, not just supervised",
+          "Fun, loud, motivating"
         ],
-        "testimonials": [ { "quote": "I look forward to 6am now. Who am I?", "name": "Dana K.", "program": "Cardio Bootcamp" } ],
-        "faq": [ { "question": "Is Cardio Bootcamp the same as Group Strength?", "answer": "No. Cardio Bootcamp is circuit-based with no barbell work — it's our most beginner-friendly program." } ]
+        "whatToExpect": {
+          "headline": "What you'll do in class",
+          "steps": [
+            "Warm-Up",
+            "Circuit Training",
+            "Cool Down & Stretch"
+          ]
+        },
+        "whoIsItFor": [
+          "Fitness newcomers",
+          "People who want to lose weight",
+          "Anyone who hates boring cardio"
+        ],
+        "gettingStarted": [
+          {
+            "number": 1,
+            "headline": "Book a free consultation",
+            "body": "Tell us your goals."
+          },
+          {
+            "number": 2,
+            "headline": "Try a class",
+            "body": "Feel the energy."
+          },
+          {
+            "number": 3,
+            "headline": "Pick your plan",
+            "body": "Month to month."
+          }
+        ],
+        "testimonials": [
+          {
+            "quote": "I look forward to 6am now. Who am I?",
+            "name": "Dana K.",
+            "program": "Cardio Bootcamp"
+          }
+        ],
+        "faq": [
+          {
+            "question": "Is Cardio Bootcamp the same as Group Strength?",
+            "answer": "No. Cardio Bootcamp is circuit-based with no barbell work \u2014 it's our most beginner-friendly program."
+          }
+        ]
       },
       {
         "slug": "personal-training",
         "name": "Personal Training",
         "shortDescription": "A 360-degree approach: training, lifestyle, and nutrition.",
         "coverImageUrl": "/assets/impact/program-nutrition.webp",
-        "hero": { "headline": "Try our Personal Training", "subheading": "A 360-degree approach to health and fitness.", "ctaLabel": "Book your free intro", "ctaUrl": "/contact", "backgroundImageUrl": "__NO_IMAGE__" },
-        "whatIsIt": { "headline": "Life without limitations", "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery — with a baseline assessment and personalized tracking." },
-        "whatMakesUsDifferent": ["Baseline health assessment", "Lifestyle and nutrition coaching included", "Personalized tracking", "VIP experience"],
-        "whatToExpect": { "headline": "How it works", "steps": ["Assessment", "Personal plan", "Weekly sessions", "Ongoing adjustments"] },
-        "whoIsItFor": ["People with specific goals", "Post-rehab athletes", "Anyone who wants full attention"],
-        "gettingStarted": [
-          { "number": 1, "headline": "Free consultation", "body": "Meet your coach." },
-          { "number": 2, "headline": "Baseline assessment", "body": "Know your starting point." },
-          { "number": 3, "headline": "Start training", "body": "Your plan, your pace." }
+        "hero": {
+          "headline": "Try our Personal Training",
+          "subheading": "A 360-degree approach to health and fitness.",
+          "ctaLabel": "Book your free intro",
+          "ctaUrl": "/contact",
+          "backgroundImageUrl": "__NO_IMAGE__"
+        },
+        "whatIsIt": {
+          "headline": "Life without limitations",
+          "body": "One-on-one coaching covering training, lifestyle, nutrition, sleep, stress, and recovery \u2014 with a baseline assessment and personalized tracking."
+        },
+        "whatMakesUsDifferent": [
+          "Baseline health assessment",
+          "Lifestyle and nutrition coaching included",
+          "Personalized tracking",
+          "VIP experience"
         ],
-        "testimonials": [ { "quote": "My trainer rebuilt my squat after knee surgery.", "name": "Chris B.", "program": "Personal Training" } ],
-        "faq": [ { "question": "How much does personal training cost?", "answer": "Pricing depends on session frequency — book a free consultation for exact rates." } ]
+        "whatToExpect": {
+          "headline": "How it works",
+          "steps": [
+            "Assessment",
+            "Personal plan",
+            "Ongoing adjustments"
+          ]
+        },
+        "whoIsItFor": [
+          "People with specific goals",
+          "Post-rehab athletes",
+          "Anyone who wants full attention"
+        ],
+        "gettingStarted": [
+          {
+            "number": 1,
+            "headline": "Free consultation",
+            "body": "Meet your coach."
+          },
+          {
+            "number": 2,
+            "headline": "Baseline assessment",
+            "body": "Know your starting point."
+          },
+          {
+            "number": 3,
+            "headline": "Start training",
+            "body": "Your plan, your pace."
+          }
+        ],
+        "testimonials": [
+          {
+            "quote": "My trainer rebuilt my squat after knee surgery.",
+            "name": "Chris B.",
+            "program": "Personal Training"
+          }
+        ],
+        "faq": [
+          {
+            "question": "How much does personal training cost?",
+            "answer": "Pricing depends on session frequency \u2014 book a free consultation for exact rates."
+          }
+        ]
       }
     ],
     "about": {
-      "hero": { "headline": "Meet our team", "subheading": "Our mission is to help you succeed.", "backgroundImageUrl": "__NO_IMAGE__" },
-      "gymStory": "Your Gym Name is a fitness center in Your City, Your State helping busy adults build strength, improve conditioning, and stay consistent with their health. Members travel from Your City and the surrounding area.",
+      "hero": {
+        "headline": "Built around people, not machines",
+        "subheading": "Since 2018, Ironwood Strength has helped Torrance neighbors build strength and confidence side by side.",
+        "ctaLabel": "Book a free tour",
+        "ctaUrl": "/contact",
+        "backgroundImageUrl": "__NO_IMAGE__"
+      },
+      "gymStory": "Ironwood Strength opened in 2018 when two Torrance coaches noticed that big-box gyms were leaving everyday athletes behind. They wanted a place where beginners felt welcome and experienced members still had room to grow.",
+      "story": {
+        "headline": "How Ironwood Strength started",
+        "subheadline": "Two coaches, one empty warehouse, and a belief that fitness should be accessible.",
+        "imageUrl": "__NO_IMAGE__",
+        "imageAlt": "The original Ironwood Strength space in Torrance",
+        "blocks": [
+          {
+            "type": "text",
+            "html": "<p>Marcus Chen and Dana Ortiz met while coaching at a commercial gym in Torrance. They kept watching new members sign up, wander the floor for a few weeks, and quietly stop showing up. The equipment was there, but the guidance wasn't.</p>"
+          },
+          {
+            "type": "text",
+            "html": "<p>In 2018 they leased a small warehouse off Hawthorne Boulevard and built Ironwood Strength around one idea: coaching first. No sales pressure, no cardio theater, just structured strength and conditioning with a coach in every class.</p>"
+          },
+          {
+            "type": "text",
+            "html": "<p>What started as a handful of evening classes grew into a full gym community. Today Ironwood trains busy adults from Torrance, Redondo Beach, and Palos Verdes, focusing on long-term strength, conditioning, and health habits that stick.</p>"
+          }
+        ]
+      },
+      "communityHeadline": "A community that keeps you showing up",
+      "communityBody": "<p>At Ironwood Strength, the workout is only part of the draw. The room is filled with teachers, parents, nurses, and engineers who all have the same goal: show up, do the work, and get a little better than yesterday. Coaches know your name, ask about your injuries, and adjust the plan when life gets busy.</p><p>We program in 4-week blocks so you can see progress without guessing. And when you miss a week, someone texts to check in. That accountability is why our members stay for years, not months.</p>",
+      "communityProps": [],
+      "ctaHeadline": "Come see what makes Ironwood different",
       "team": [
-        { "name": "Alex Morgan", "title": "Owner", "photoUrl": "__NO_IMAGE__" },
-        { "name": "Jordan Smith", "title": "Owner & Founder", "photoUrl": "__NO_IMAGE__" },
-        { "name": "Taylor Lee", "title": "Fitness Instructor", "photoUrl": "__NO_IMAGE__" },
-        { "name": "Morgan Chen", "title": "Fitness Instructor", "photoUrl": "__NO_IMAGE__" }
+        {
+          "name": "Marcus Chen",
+          "title": "Co-founder & Head Coach",
+          "photoUrl": "__NO_IMAGE__",
+          "bio": "CSCS-certified. Former collegiate strength coach. Specializes in beginner barbell technique and post-rehab return to training."
+        },
+        {
+          "name": "Dana Ortiz",
+          "title": "Co-founder & Coach",
+          "photoUrl": "__NO_IMAGE__",
+          "bio": "NASM-CPT with 10 years in South Bay fitness. Runs Ironwood's nutrition and lifestyle coaching program."
+        },
+        {
+          "name": "Sam Park",
+          "title": "Strength Coach",
+          "photoUrl": "__NO_IMAGE__",
+          "bio": "USA Weightlifting L1 coach. Known for detailed warm-ups and making the barbell feel approachable."
+        },
+        {
+          "name": "Riley Brooks",
+          "title": "Conditioning Coach",
+          "photoUrl": "__NO_IMAGE__",
+          "bio": "Former track athlete who builds conditioning workouts that don't destroy your knees."
+        }
+      ],
+      "testimonials": [
+        {
+          "quote": "I walked in intimidated by barbells and walked out with a plan. Marcus never made me feel behind.",
+          "name": "Teresa N.",
+          "program": "Group Strength"
+        },
+        {
+          "quote": "The 6am crew is why I get out of bed. It's the first gym where people actually talk to each other.",
+          "name": "David K.",
+          "program": "Cardio Bootcamp"
+        }
+      ],
+      "faq": [
+        {
+          "question": "Who is Ironwood Strength best for?",
+          "answer": "Busy adults in Torrance and the South Bay who want structured coaching, scalable workouts, and a supportive community."
+        },
+        {
+          "question": "Do I need to be fit before I start?",
+          "answer": "No. Every class is coach-led and scaled to your current ability. Beginners are the majority of our new members."
+        },
+        {
+          "question": "What makes Ironwood different from a regular gym?",
+          "answer": "Coach-led classes, 4-week programming blocks, and a community that holds you accountable. You don't figure it out alone."
+        },
+        {
+          "question": "Where is Ironwood Strength located?",
+          "answer": "We're at 24444 Hawthorne Blvd in Torrance, CA 90505, easy to reach from Redondo Beach and Palos Verdes."
+        },
+        {
+          "question": "Can I try a class before joining?",
+          "answer": "Yes. Your first intro session is free. Book through the contact page and we'll pair you with a coach."
+        },
+        {
+          "question": "Do you offer personal training?",
+          "answer": "Yes. We offer 1-on-1 training plus nutrition and lifestyle coaching for members who want a fully customized plan."
+        }
       ]
     },
     "pricing": {
-      "hero": { "headline": "Membership Pricing", "subheading": "There is a plan here for you." },
+      "hero": {
+        "headline": "Membership Pricing",
+        "subheading": "There is a plan here for you."
+      },
       "grid": {
         "headline": "Simple plans, no surprises",
         "plans": [
-          { "name": "Drop-in", "price": "$25", "period": "/class", "features": ["Any class", "No commitment"], "cta": { "label": "Book a class", "url": "/schedule" } },
-          { "name": "Monthly Unlimited", "price": "$149", "period": "/month", "features": ["Unlimited classes", "All programs", "App access"], "cta": { "label": "Join now", "url": "/contact" }, "highlighted": true, "badge": "Most Popular" },
-          { "name": "Personal Training", "price": "Contact us", "features": ["1-on-1 coaching", "Nutrition included"], "cta": { "label": "Free consultation", "url": "/contact" } }
+          {
+            "name": "Drop-in",
+            "price": "$25",
+            "period": "/class",
+            "features": [
+              "Any class",
+              "No commitment"
+            ],
+            "cta": {
+              "label": "Book a class",
+              "url": "/schedule"
+            }
+          },
+          {
+            "name": "Monthly Unlimited",
+            "price": "$149",
+            "period": "/month",
+            "features": [
+              "Unlimited classes",
+              "All programs",
+              "App access"
+            ],
+            "cta": {
+              "label": "Join now",
+              "url": "/contact"
+            },
+            "highlighted": true,
+            "badge": "Most popular"
+          },
+          {
+            "name": "Personal Training",
+            "price": "Contact us",
+            "features": [
+              "1-on-1 coaching",
+              "Nutrition included"
+            ],
+            "cta": {
+              "label": "Free consultation",
+              "url": "/contact"
+            }
+          }
         ]
       },
-      "form": { "headline": "Get our full rate sheet", "intro": "Fill out the form below and we'll send complete membership rates and cost information." }
+      "form": {
+        "headline": "Get our full rate sheet",
+        "intro": "Fill out the form below and we'll send complete membership rates and cost information."
+      }
     },
     "contact": {
-      "hero": { "headline": "Say hi to the team", "subheading": "We will get back to you as soon as we can." },
+      "hero": {
+        "headline": "Say hi to the team",
+        "subheading": "We will get back to you as soon as we can."
+      },
       "intro": "Prefer to talk? Call us or stop by for a tour."
     },
     "schedule": {
-      "hero": { "headline": "Class Schedule", "subheading": "Reserve your spot — classes fill up." },
+      "hero": {
+        "headline": "Class Schedule",
+        "subheading": "Reserve your spot \u2014 classes fill up."
+      },
       "iframes": [
-        { "src": "https://example.pushpress.com/schedule?site=fixture", "title": "Class schedule", "variant": "schedule" }
+        {
+          "src": "https://example.pushpress.com/schedule?site=fixture",
+          "title": "Class schedule",
+          "variant": "schedule"
+        }
       ],
       "note": "First time? Book a free consultation and we'll walk you in."
     },
@@ -227,43 +708,74 @@
       "heroHeadline": "Fitness Tips & News",
       "posts": [
         {
-          "slug": "top-10-reasons-to-join-a-gym-in-your-city",
-          "title": "The Top 10 Reasons to Join a Gym in Your City",
+          "slug": "top-10-reasons-to-join-a-gym-in-torrance",
+          "title": "The Top 10 Reasons to Join a Gym in Torrance",
           "publishedAt": "2026-05-01",
-          "excerpt": "Thinking about joining a gym in Your City? Here are ten reasons to start now.",
+          "excerpt": "Thinking about joining a gym in Torrance? Here are ten reasons to start now.",
           "category": "Education",
           "coverImageUrl": "__NO_IMAGE__",
-          "author": "Jordan Smith",
-          "body": "## Why now?\n\nJoining a gym is the highest-leverage health decision most adults make.\n\n1. **Coaching** beats guessing.\n2. **Community** beats willpower.\n\n![Members training]()\n\nCome see us in Your City."
+          "author": "Dana Ortiz",
+          "body": "## Why now?\n\nJoining a gym is the highest-leverage health decision most adults make.\n\n1. **Coaching** beats guessing.\n2. **Community** beats willpower.\n\n![Members training]()\n\nCome see us in Torrance."
         },
         {
           "slug": "5-healthy-restaurant-tips",
           "title": "5 Healthy Restaurant Tips for Active Lifestyles",
-          "publishedAt": "2026-04-15",
-          "excerpt": "Eat out without falling off your nutrition plan — our top picks.",
-          "category": "Recipes",
-          "body": "Eating well while staying active is easy if you know what to look for.\n\n### Our picks\n\n- Spot one\n- Spot two\n- Spot three"
-        },
-        {
-          "slug": "this-week-at-the-club",
-          "title": "This Week at the Club",
-          "publishedAt": "2026-06-20",
-          "excerpt": "Events, celebrations, and what's coming up.",
-          "category": "Newsletters",
-          "body": "Saturday partner workout, new coach spotlight, and holiday hours."
+          "publishedAt": "2026-04-20",
+          "excerpt": "You don't have to cook every meal to eat well. Here are five tips for dining out without derailing your progress.",
+          "category": "Nutrition",
+          "coverImageUrl": "__NO_IMAGE__",
+          "author": "Marcus Chen",
+          "body": "## Eat out, stay on track\n\n1. **Protein first.**\n2. **Veggies second.**\n3. **Carbs with purpose.**\n\n![Healthy meal]()"
         }
       ]
     },
     "localGuide": {
-      "hero": { "headline": "The Your City Local Guide", "subheading": "Where to train, eat, and recover in Your City, YS." },
+      "hero": {
+        "headline": "The Torrance Local Guide",
+        "subheading": "Where to train, eat, and recover in Torrance, CA."
+      },
       "sections": [
-        { "headline": "Best parks to work out", "blocks": [ { "type": "text", "html": "<p>Your City has outstanding outdoor training spots — here are our favorites.</p>" } ] },
-        { "headline": "Coffee after class", "blocks": [ { "type": "text", "html": "<p>The post-workout coffee spots our members swear by.</p>" }, { "type": "callout", "text": "Members get 10% off at our partner cafe.", "style": "tip" } ] }
+        {
+          "headline": "Best parks to work out",
+          "blocks": [
+            {
+              "type": "text",
+              "html": "<p>Torrance has outstanding outdoor training spots \u2014 here are our favorites.</p>"
+            }
+          ]
+        },
+        {
+          "headline": "Healthy restaurants near the gym",
+          "blocks": [
+            {
+              "type": "text",
+              "html": "<p>Fuel up after training with these spots within 10 minutes of Ironwood Strength.</p>"
+            }
+          ]
+        }
       ]
     },
     "legal": [
-      { "slug": "privacy-policy", "title": "Privacy Policy", "blocks": [ { "type": "text", "html": "<p>Fixture privacy policy text.</p>" } ] },
-      { "slug": "terms-of-use", "title": "Terms of Use", "blocks": [ { "type": "text", "html": "<p>Fixture terms of use text.</p>" } ] }
+      {
+        "slug": "privacy-policy",
+        "title": "Privacy Policy",
+        "blocks": [
+          {
+            "type": "text",
+            "html": "<p>We respect your privacy. This page describes how we collect, use, and protect your information.</p>"
+          }
+        ]
+      },
+      {
+        "slug": "terms-of-use",
+        "title": "Terms of Use",
+        "blocks": [
+          {
+            "type": "text",
+            "html": "<p>By using this website you agree to these terms.</p>"
+          }
+        ]
+      }
     ]
   }
 }

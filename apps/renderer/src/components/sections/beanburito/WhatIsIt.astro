@@ -1,0 +1,12 @@
+---
+import SectionHeading from "../../ui/SectionHeading.astro";
+const { headline, body } = Astro.props as { headline: string; body: string };
+if (!headline && !body) return;
+---
+
+<section data-section="whatIsIt" data-section-tag="content-block" class="section-skew bg-white py-16 text-black lg:py-24">
+  <div class="section-inner mx-auto max-w-3xl px-6 text-center lg:px-10">
+    {headline && <SectionHeading title={headline} />}
+    {body && <p class="text-lg leading-relaxed text-black/80 lg:text-xl">{body}</p>}
+  </div>
+</section>

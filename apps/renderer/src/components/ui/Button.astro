@@ -1,6 +1,11 @@
 ---
-const { href, variant = "primary", track, size = "default", ...rest } = Astro.props as { href: string; variant?: "primary" | "outline"; track?: string; size?: "default" | "lg" };
-const sizeClasses = size === "lg" ? "px-8 py-4 text-base" : "px-6 py-3 text-sm";
+const { href, variant = "primary", track, size = "default", ...rest } = Astro.props as { href: string; variant?: "primary" | "outline"; track?: string; size?: "default" | "lg" | "sm" };
+const sizeClasses =
+  size === "lg"
+    ? "px-8 py-4 text-base"
+    : size === "sm"
+      ? "px-4 py-2 text-xs lg:px-5 lg:py-2.5 lg:text-sm xl:px-6 xl:py-3"
+      : "px-6 py-3 text-sm";
 const cls = variant === "primary"
   ? `inline-block rounded-lg bg-accent font-heading font-semibold text-white hover:opacity-90 ${sizeClasses}`
   : `inline-block rounded-lg border-2 border-white font-heading font-semibold text-white hover:bg-white hover:text-primary ${sizeClasses}`;

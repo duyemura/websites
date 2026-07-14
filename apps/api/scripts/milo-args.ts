@@ -62,7 +62,7 @@ export function parseArgs(): MiloCommand {
     return {
       cmd: "eval",
       site,
-      path: get("path") ?? "/",
+      path: get("path"),
       url: get("url"),
       keywords: keywords ? keywords.split(",").map((s) => s.trim()) : undefined,
       ...bool,
@@ -75,9 +75,6 @@ export function parseArgs(): MiloCommand {
     const path = get("path");
     const url = get("url");
     const keywords = get("keywords");
-    if (!evalUuid && !path) {
-      throw new Error("milo eval-fix requires --site <uuid> with --eval-uuid <uuid> or --path /slug");
-    }
     const scoreThresholdStr = get("score-threshold");
     const maxLoopsStr = get("max-loops");
     return {
@@ -138,7 +135,7 @@ export function parseArgs(): MiloCommand {
     `  milo publish --site <uuid>\n` +
     `  milo page    --site <uuid> --path /slug\n` +
     `  milo eval    --site <uuid> [--path /slug] [--url <url>] [--keywords k1,k2]\n` +
-    `  milo eval-fix --site <uuid> --eval-uuid <uuid> | --path /slug [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
+    `  milo eval-fix --site <uuid> [--eval-uuid <uuid>] [--path /slug] [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
     `  milo nav     --site <uuid>\n` +
     `  milo restore --site <uuid> --version <n>\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,

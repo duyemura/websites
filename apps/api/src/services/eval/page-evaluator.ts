@@ -1,13 +1,14 @@
 // apps/api/src/services/eval/page-evaluator.ts
 // Standalone per-page QA evaluator for any Milo site.
 
-import { chromium } from "playwright";
+import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { GymSiteContent } from "@milo/shared-types";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import { buildGymJson } from "../template/content-mapper.js";
+import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
 import {
   checkAccessibility,
   checkSeo,
@@ -31,6 +32,8 @@ export interface PageEvalInput {
   url?: string;
   keywords?: string[];
   log?: (msg: string) => void;
+  /** Optional shared browser instance. When provided the evaluator creates a context but does not close the browser. */
+  browser?: Browser;
 }
 
 function sitePublicUrl(site: {
@@ -66,6 +69,18 @@ async function loadSite(db: Kysely<DB>, siteUuid: string, workspaceUuid: string)
 
 async function loadGymJson(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<GymSiteContent | undefined> {
   try {
+    // Tier 2/managed sites render from the spec-driven generate artifact. Use that
+    // as the source of truth for fidelity checks so eval matches the deployed page.
+    const generateArtifact = await loadArtifact<GymSiteContent>(
+      db,
+      { siteUuid, workspaceUuid },
+      "generate" as any,
+    ).catch(() => null);
+    if (generateArtifact?.payload) {
+      return generateArtifact.payload;
+    }
+
+    // Fall back to reconstructing gym.json from docgen docs for Tier 1 clone sites.
     const { content } = await buildGymJson(
       db,
       siteUuid,
@@ -123,12 +138,14 @@ export async function evaluatePage(input: PageEvalInput): Promise<PageEvalReport
   const content = await loadGymJson(input.db, input.siteUuid, input.workspaceUuid);
   if (content) log("Loaded gym.json for business context");
 
-  const browser = await chromium.launch({
+  const sharedBrowser = input.browser;
+  const browser = sharedBrowser ?? await chromium.launch({
     args: ["--remote-debugging-port=0"],
   });
 
+  let context: BrowserContext | undefined;
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
 
     const start = Date.now();
@@ -176,6 +193,10 @@ export async function evaluatePage(input: PageEvalInput): Promise<PageEvalReport
 
     return finalizeReport([accessibility, seo, links, interactivity, performance, contentResult, visual], metadata);
   } finally {
-    await browser.close().catch(() => {});
+    if (!sharedBrowser) {
+      await browser.close().catch(() => {});
+    } else {
+      await context?.close().catch(() => {});
+    }
   }
 }

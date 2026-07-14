@@ -126,4 +126,84 @@ describe("buildScrapedWebsiteDataFromCrawl", () => {
       heading: "What our members say",
     });
   });
+
+  test("extracts team members with photos from coach/team sections", async () => {
+    const html = `
+      <html><body>
+        <section class="team-section">
+          <h2>Meet our coaches</h2>
+          <div class="team-grid">
+            <article>
+              <img src="/img/coach-alex.jpg" alt="Alex Rivera" />
+              <h3>Alex Rivera</h3>
+              <p class="role">Head coach</p>
+              <p>Former competitive athlete with 10 years of coaching experience.</p>
+            </article>
+            <article>
+              <img src="https://example.com/img/coach-jordan.jpg" alt="Jordan Lee" />
+              <h3>Jordan Lee</h3>
+              <p class="role">Assistant coach</p>
+            </article>
+          </div>
+        </section>
+      </body></html>
+    `;
+    const { crawl, s3, config } = makeCrawl(html);
+    const data = await buildScrapedWebsiteDataFromCrawl(crawl, s3, config);
+
+    expect(data.team).toHaveLength(2);
+    expect(data.team).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Alex Rivera",
+          role: "Head coach",
+          photoUrl: "https://example.com/img/coach-alex.jpg",
+        }),
+        expect.objectContaining({
+          name: "Jordan Lee",
+          role: "Assistant coach",
+          photoUrl: "https://example.com/img/coach-jordan.jpg",
+        }),
+      ]),
+    );
+  });
+
+  test("drops unsafe URLs from nav links, CTAs, images, and team photos", async () => {
+    const html = `
+      <html><body>
+        <header>
+          <nav>
+            <a href="/safe">Home</a>
+            <a href="javascript:alert(1)">Bad link</a>
+            <a href="data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;">Data link</a>
+          </nav>
+        </header>
+        <section class="team-section">
+          <article>
+            <img src="javascript:alert(1)" alt="Unsafe" />
+            <h3>Mallory</h3>
+            <a href="data:text/html,unsafe">Bad CTA</a>
+          </article>
+          <article>
+            <img src="/img/safe.jpg" alt="Safe" />
+            <h3>Sam</h3>
+          </article>
+        </section>
+        <img src="data:image/svg+xml,..." alt="Unsafe image" />
+      </body></html>
+    `;
+    const { crawl, s3, config } = makeCrawl(html);
+    const data = await buildScrapedWebsiteDataFromCrawl(crawl, s3, config);
+
+    expect(data.navLinks).toEqual([{ label: "Home", href: "/safe" }]);
+    expect(data.images).toEqual(
+      expect.arrayContaining([expect.objectContaining({ url: "/img/safe.jpg" })]),
+    );
+    expect(data.images.some((i) => i.url.startsWith("data:"))).toBe(false);
+    expect(data.team).toHaveLength(2);
+    const mallory = data.team.find((m) => m.name === "Mallory");
+    expect(mallory?.photoUrl).toBeUndefined();
+    const sam = data.team.find((m) => m.name === "Sam");
+    expect(sam?.photoUrl).toBe("https://example.com/img/safe.jpg");
+  });
 });

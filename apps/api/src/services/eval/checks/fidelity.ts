@@ -3,6 +3,7 @@
 
 import * as cheerio from "cheerio";
 import type { GymSiteContent } from "@milo/shared-types";
+import { NO_IMAGE } from "@milo/shared-types";
 import { loadSiteHierarchyDoc } from "../../../utils/site-hierarchy-io.js";
 import type { SiteHierarchy, HierarchyPage, CanonicalSectionTag } from "../../../types/site-hierarchy.js";
 import { getTemplateSpec, pageKeyByPath, pageComponents } from "@milo/shared-types";
@@ -256,6 +257,15 @@ function renderedSectionIds(html: string): string[] {
     .filter(Boolean);
 }
 
+function isMissingOrPlaceholder(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string" && (value === "" || value === NO_IMAGE || value.includes("__PLACEHOLDER__"))) {
+    return true;
+  }
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
+}
+
 function checkRegistryStructureFidelity(
   html: string,
   templateTheme: string,
@@ -283,6 +293,7 @@ function checkRegistryStructureFidelity(
     return issues;
   }
 
+  const pageSpec = spec.pages[pageKey];
   const expectedIds = pageComponents(spec, pageKey);
   const actualIds = renderedSectionIds(html);
 
@@ -307,6 +318,23 @@ function checkRegistryStructureFidelity(
         fix: `Add the "${componentId}" section to the rendered page or update the template spec.`,
         sectionId: componentId,
       });
+    }
+  }
+
+  // Check required fields declared by the page spec. Missing or placeholder
+  // values are publish blockers for pages with placeholderPolicy "block-publish".
+  if (pageSpec?.requiredFields?.length) {
+    for (const fieldPath of pageSpec.requiredFields) {
+      const value = resolvePageField(content, pageKey, fieldPath);
+      if (isMissingOrPlaceholder(value)) {
+        issues.push({
+          severity: "critical",
+          category: "content",
+          message: `Required field ${fieldPath} is missing or uses a placeholder`,
+          fix: `Provide real content for ${fieldPath}.`,
+          sectionId: fieldPath,
+        });
+      }
     }
   }
 

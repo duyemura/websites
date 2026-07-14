@@ -67,7 +67,7 @@ export interface ScrapedWebsiteData {
   faqs: { question: string; answer: string }[];
   testimonials: { quote: string; author?: string; role?: string }[];
   locations: { name?: string; address?: string; hours?: string }[];
-  team: { name?: string; role?: string; bio?: string }[];
+  team: { name?: string; role?: string; bio?: string; photoUrl?: string }[];
   offerings: { name?: string; description?: string; price?: string }[];
   contact: { phone?: string; email?: string; social?: { platform: string; url: string }[] };
   sections?: ScrapedSection[];

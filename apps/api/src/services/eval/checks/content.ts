@@ -24,6 +24,51 @@ function extractVisibleText(html: string): { text: string; wordCount: number } {
   return { text, wordCount };
 }
 
+interface SectionDepth {
+  heading: string;
+  bodyWordCount: number;
+  hasBody: boolean;
+}
+
+/**
+ * Find sections where a heading is present but little or no body copy follows it.
+ * This catches the common generated-page failure: section shells with only headings.
+ */
+function findShallowSections(html: string): SectionDepth[] {
+  const $ = cheerio.load(html);
+  $("script, style, noscript, iframe, [aria-hidden='true']").remove();
+  const shallow: SectionDepth[] = [];
+
+  // Sections marked by semantic <section> or explicit data-section/data-section-tag.
+  // This is the generated-page failure we care about: a section shell with only a heading.
+  // Hero bands and page H1 headers are normal shells, not missing content.
+  $("section:not([data-section='hero']), [data-section]:not([data-section='hero']), [data-section-tag]")
+    .each((_, el) => {
+    const $el = $(el);
+    const headingEl = $el.find("h1, h2, h3").first();
+    const heading = headingEl.text().trim();
+    if (!heading || heading.split(/\s+/).length > 12) return; // only plausible section headings
+    // A page hero that only contains the H1 is a normal header band, not an empty shell.
+    if (headingEl.prop("tagName")?.toLowerCase() === "h1") return;
+    // Count visible body words inside the same section, excluding the heading text.
+    const fullText = $el.text().replace(/\s+/g, " ").trim();
+    const bodyText = fullText.replace(heading, "").trim();
+    const bodyWordCount = bodyText.split(/\s+/).filter(Boolean).length;
+    if (bodyWordCount < 15) {
+      // A section that is just a heading + one CTA link/button is a call-out band,
+      // not an empty content section. Skip it so we don't flag legitimate CTAs.
+      const hasBodyCopy = $el.find("p, ul, ol, dl, blockquote").length > 0;
+      const interactiveCount = $el.find("a, button").length;
+      if (!hasBodyCopy && interactiveCount <= 2) {
+        return;
+      }
+      shallow.push({ heading, bodyWordCount, hasBody: false });
+    }
+  });
+
+  return shallow;
+}
+
 /** Truncate text at a safe boundary for the LLM prompt. */
 function truncateForLlm(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -39,6 +84,29 @@ function truncateForLlm(text: string, max: number): string {
     }
   }
   return text.slice(0, cut).trim() + "\n\n[Page text continues beyond this point.]";
+}
+
+/** Reject LLM issues that duplicate deterministic checks or stray into layout/visual territory. */
+function isLlmCopyIssue(message: string): boolean {
+  const lower = message.toLowerCase();
+  const blocked = [
+    "sections have headings but almost no body copy",
+    "heading is very close",
+    "heading appears to be too close",
+    "navigation links",
+    "navigation menu",
+    "button text is cut off",
+    "button is partially obscured",
+    "button text is wrapping",
+    "copyright year",
+    "future",
+    "cut off",
+    "obscured",
+    "visual design",
+    "layout",
+    "spacing",
+  ];
+  return !blocked.some((b) => lower.includes(b));
 }
 
 function deriveKeywords(content: CheckContext["content"], path: string): string[] {
@@ -98,6 +166,8 @@ async function llmContentReview(
               "You are a senior agency copy editor evaluating a single gym website page. " +
               "Score readability (0-100), keyword usage (0-100), and whether the words make sense (0-100). " +
               "Detect placeholder text, nonsense phrases, grammar problems, and missing business context. " +
+              "Only report copy-quality issues (placeholder text, grammar, factual oddities, keyword usage). " +
+              "Do NOT report section length, heading-to-body spacing, layout, navigation, buttons, copyright years, or visual design — those are checked by separate tools. " +
               "Return strictly valid JSON with keys: readability, keywordUsage, senseMaking, issues. " +
               "Each issue must have severity (critical/major/minor/info) and message. Optional fix string.",
           },
@@ -145,6 +215,39 @@ export async function checkContent(ctx: CheckContext, config: Config): Promise<P
     });
   }
 
+  const shallowSections = findShallowSections(html);
+  if (shallowSections.length > 0) {
+    const sampleHeadings = shallowSections.slice(0, 3).map((s) => `"${s.heading}"`).join(", ");
+    issues.push({
+      severity: "critical",
+      category: "content",
+      message: `${shallowSections.length} section${shallowSections.length === 1 ? "" : "s"} have headings but almost no body copy (${sampleHeadings}${shallowSections.length > 3 ? "…" : ""}). Page looks empty to visitors and search engines.`,
+      fix: "Write 2–4 sentences under each heading explaining the section topic for this specific page.",
+    });
+  }
+
+  // Program landing pages should answer the core questions; generic shells fail.
+  if (ctx.path.startsWith("/programs/") && !ctx.path.endsWith("/programs/")) {
+    const $ = cheerio.load(html);
+    $("script, style, noscript, iframe, [aria-hidden='true']").remove();
+    const headings = $("section, [data-section], [data-section-tag]")
+      .map((_, el) => $(el).find("h1, h2, h3").first().text().trim())
+      .get()
+      .filter(Boolean)
+      .map((h) => h.toLowerCase());
+    const hasWhat = headings.some((h) => h.includes("what is") || h.includes("about") || h.includes("program"));
+    const hasWho = headings.some((h) => h.includes("who") || h.includes("for"));
+    const hasExpect = headings.some((h) => h.includes("expect") || h.includes("what to") || h.includes("how it"));
+    if (!hasWhat || !hasWho || !hasExpect) {
+      issues.push({
+        severity: "major",
+        category: "content",
+        message: "Program page is missing one or more core explanatory sections: what the program is, who it is for, or what to expect.",
+        fix: "Add clear sections that explain the program, the ideal member, and the experience/schedule.",
+      });
+    }
+  }
+
   // Deterministic business/placeholder audit if we have gym.json
   if (ctx.content) {
     const allowedPaths = buildAllowedPaths(ctx.content);
@@ -190,6 +293,7 @@ export async function checkContent(ctx: CheckContext, config: Config): Promise<P
     const llmAvg = Math.round((llm.readability + llm.keywordUsage + llm.senseMaking) / 3);
     score = Math.round(score * 0.6 + llmAvg * 0.4);
     for (const issue of llm.issues) {
+      if (!isLlmCopyIssue(issue.message)) continue;
       issues.push({
         severity: issue.severity,
         category: "content",

@@ -13,6 +13,19 @@ import type { ScrapedSection, ScrapedWebsiteData } from "../scrape-docs";
 import type { SectionVisualEvidenceRow } from "../../types/section-visual-evidence";
 import { findMostSaturatedColor, hexSaturation, isDarkNeutral } from "../site-blueprint";
 
+const ALLOWED_URL_SCHEMES = new Set(["http:", "https:"]);
+
+function isSafeUrl(href: string): boolean {
+  // Allow root-relative paths that start with '/' (same-origin, no scheme).
+  if (href.startsWith("/")) return true;
+  try {
+    const url = new URL(href);
+    return ALLOWED_URL_SCHEMES.has(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
 interface S3Config {
   S3_ENDPOINT?: string;
   S3_REGION: string;
@@ -174,7 +187,7 @@ function extractNavLinks($: cheerio.CheerioAPI): { label: string; href: string }
       return { label, href };
     })
     .get();
-  return links.filter((l) => l.label.length > 0 && l.href.length > 0 && !l.href.startsWith("#"));
+  return links.filter((l) => l.label.length > 0 && l.href.length > 0 && !l.href.startsWith("#") && isSafeUrl(l.href));
 }
 
 function extractBusinessName($: cheerio.CheerioAPI, url: string): string {
@@ -245,7 +258,7 @@ function extractImages($: cheerio.CheerioAPI): ScrapedImage[] {
   const out: ScrapedImage[] = [];
   $("img").each((_, el) => {
     const src = $(el).attr("src");
-    if (!src) return;
+    if (!src || !isSafeUrl(src)) return;
     out.push({ url: src, alt: $(el).attr("alt") ?? undefined, context: "other" });
   });
   return out.slice(0, 30);
@@ -320,6 +333,67 @@ function extractIframeSections($: cheerio.CheerioAPI): ScrapedSection[] {
   return sections;
 }
 
+function extractTeam($: cheerio.CheerioAPI, baseUrl: string): { name: string; role?: string; bio?: string; photoUrl?: string }[] {
+  const out: { name: string; role?: string; bio?: string; photoUrl?: string }[] = [];
+  const seen = new Set<string>();
+
+  const sectionSelectors = [
+    "body > section",
+    "main > section",
+    "[class*='team']",
+    "[class*='coach']",
+    "[class*='staff']",
+    "[class*='trainer']",
+  ];
+
+  $(sectionSelectors.join(", ")).each((_, section) => {
+    const $section = $(section);
+    // Prefer semantic containers (article/li) or explicitly styled cards. Only fall back
+    // to generic team/staff wrapper divs when no finer-grained cards exist — otherwise a
+    // single .team-grid wrapper swallows all members and only the first name is extracted.
+    const semanticCards = $section.find("article, li").toArray();
+    const styledCards = $section
+      .find("[class*='card'], [class*='member'], [class*='coach'], [class*='trainer'], [class*='person']")
+      .toArray();
+    const cards =
+      semanticCards.length > 0
+        ? semanticCards
+        : styledCards.length > 0
+          ? styledCards
+          : $section.find("[class*='team'] > div, [class*='staff'] > div").toArray();
+    // If no dedicated cards, treat direct children divs as cards.
+    const targets = cards.length > 0 ? cards : $section.children("div").toArray();
+
+    for (const child of targets) {
+      const $child = $(child);
+      const name = $child.find("h3, h4, [class*='name'], [class*='title']").first().text().trim();
+      if (!name || name.length < 2 || name.length > 80) continue;
+      if (seen.has(name)) continue;
+      seen.add(name);
+
+      const role =
+        $child.find("[class*='role'], [class*='position']").first().text().trim() || undefined;
+      const bioText = $child.find("p").map((__, p) => $(p).text().trim()).get().filter(Boolean);
+      const bio = bioText.find((t) => role && t !== role && t.length > 10) ?? bioText[0] ?? undefined;
+      const rawImg = $child.find("img").first().attr("src");
+      const photoUrl =
+        rawImg && isSafeUrl(rawImg) ? (toAbsoluteUrl(rawImg, baseUrl) ?? rawImg) : undefined;
+
+      out.push({ name, role, bio, photoUrl });
+    }
+  });
+
+  return out;
+}
+
+function toAbsoluteUrl(raw: string, baseUrl: string): string | undefined {
+  try {
+    return new URL(raw, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function extractSections($: cheerio.CheerioAPI): ScrapedSection[] {
   const selectors = [
     "body > section",
@@ -363,7 +437,7 @@ function extractSections($: cheerio.CheerioAPI): ScrapedSection[] {
       const $a = $(a);
       const t = $a.text().trim();
       const href = $a.attr("href") ?? "#";
-      if (!cta && t.length > 0 && t.length <= 60 && !href.startsWith("tel:") && !href.startsWith("mailto:")) {
+      if (!cta && t.length > 0 && t.length <= 60 && !href.startsWith("tel:") && !href.startsWith("mailto:") && isSafeUrl(href)) {
         cta = { label: t, href };
       }
     });
@@ -476,7 +550,7 @@ export async function buildScrapedWebsiteDataFromCrawl(
     faqs: [],
     testimonials: [],
     locations: [],
-    team: [],
+    team: extractTeam($, crawl.origin),
     offerings: [],
     contact,
     sections: [...iframeSections, ...extractSections($)],

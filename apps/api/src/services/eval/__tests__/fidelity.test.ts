@@ -3,6 +3,7 @@
 import { describe, test, expect, vi } from "vitest";
 import type { CheckContext } from "../checks/check-context.js";
 import { checkTemplateFidelity, checkStructureFidelity } from "../checks/fidelity.js";
+import { NO_IMAGE } from "@milo/shared-types";
 import type { GymSiteContent } from "@milo/shared-types";
 
 vi.mock("../../../utils/site-hierarchy-io.js", () => ({
@@ -363,5 +364,77 @@ describe("checkStructureFidelity", () => {
     const ctx = makeCtx(baseContent(), "/", html, "template");
     const issues = await checkStructureFidelity(ctx);
     expect(issues.some((i) => i.message.includes("extraWidget"))).toBe(true);
+  });
+});
+
+
+describe("checkStructureFidelity about-page required fields", () => {
+  function makeAboutContent(overrides: Partial<GymSiteContent["pages"]["about"]> = {}): GymSiteContent {
+    const base = baseContent();
+    base.pages.about = {
+      hero: { headline: "About Test Gym", ctaLabel: "Contact", ctaUrl: "/contact", backgroundImageUrl: NO_IMAGE },
+      gymStory: "",
+      team: [{ name: "Alex Reed", title: "Head Coach", photoUrl: NO_IMAGE, bio: "" }],
+      communityHeadline: "A Community",
+      communityProps: [],
+      communityBody: "<p>We are a community.</p>",
+      story: {
+        headline: "How We Started",
+        subheadline: "",
+        imageUrl: "/_assets/story.webp",
+        imageAlt: "",
+        blocks: [{ type: "text" as const, html: "<p>We started in 2018.</p>" }],
+      },
+      ctaHeadline: "Come Train With Us",
+      testimonials: [{ quote: "Great gym", name: "Jamie" }],
+      faq: [{ question: "Where are you?", answer: "Torrance." }],
+      ...overrides,
+    } as any;
+    return base;
+  }
+
+  const aboutHtml = `
+    <html><body>
+      <section data-section="hero"><h1>About Test Gym</h1></section>
+      <section data-section="story"></section>
+      <section data-section="community"></section>
+      <section data-section="team"></section>
+      <section data-section="testimonials"></section>
+      <section data-section="faq"></section>
+      <section data-section="ctaBand"></section>
+      <section data-section="location"></section>
+    </body></html>
+  `;
+
+  test("passes when all required about fields are populated", async () => {
+    mockedLoadSiteHierarchyDoc.mockResolvedValue(null);
+    const ctx = makeCtx(makeAboutContent(), "/about", aboutHtml, "template");
+    const issues = await checkStructureFidelity(ctx);
+    const critical = issues.filter((i) => i.severity === "critical");
+    expect(critical).toHaveLength(0);
+  });
+
+  test("flags missing or placeholder about required fields as critical", async () => {
+    mockedLoadSiteHierarchyDoc.mockResolvedValue(null);
+    const badAbout = makeAboutContent({
+      hero: { headline: "__PLACEHOLDER__", ctaLabel: "", ctaUrl: "/contact", backgroundImageUrl: NO_IMAGE },
+      story: { headline: "", subheadline: "", imageUrl: NO_IMAGE, imageAlt: "", blocks: [] },
+      team: [],
+      ctaHeadline: "",
+      faq: [],
+    });
+    const ctx = makeCtx(badAbout, "/about", aboutHtml, "template");
+    const issues = await checkStructureFidelity(ctx);
+
+    const requiredMessages = issues
+      .filter((i) => i.severity === "critical" && i.message.includes("Required field"))
+      .map((i) => i.message);
+
+    expect(requiredMessages.some((m) => m.includes("hero.headline"))).toBe(true);
+    expect(requiredMessages.some((m) => m.includes("story.blocks"))).toBe(true);
+    expect(requiredMessages.some((m) => m.includes("story.imageUrl"))).toBe(true);
+    expect(requiredMessages.some((m) => m.includes("team"))).toBe(true);
+    expect(requiredMessages.some((m) => m.includes("ctaHeadline"))).toBe(true);
+    expect(requiredMessages.some((m) => m.includes("faq"))).toBe(true);
   });
 });

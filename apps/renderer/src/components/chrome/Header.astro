@@ -20,7 +20,7 @@ const { navigation, business, brand } = content;
       }
     </a>
     <nav aria-label="Main">
-      <ul class="hidden items-center gap-6 lg:flex">
+      <ul class="hidden items-center gap-4 lg:flex xl:gap-6">
         {navigation.header.map((item) => (
           <li class="group relative">
             <a href={item.href} aria-haspopup={item.children ? "true" : undefined} class="font-heading font-medium text-white hover:text-accent">{item.label}</a>
@@ -36,8 +36,8 @@ const { navigation, business, brand } = content;
       </ul>
     </nav>
     <div class="flex items-center gap-3">
-      {business.trialCta && <Button href={business.trialCta.url} variant="outline" track="trial">{business.trialCta.label}</Button>}
-      <Button href={business.primaryCta.url} track="contact">{business.primaryCta.label}</Button>
+      {business.trialCta && <Button href={business.trialCta.url} variant="outline" track="trial" size="sm">{business.trialCta.label}</Button>}
+      <Button href={business.primaryCta.url} track="contact" size="sm">{business.primaryCta.label}</Button>
     </div>
   </div>
   <!-- Mobile nav: CSS-only details/summary, keyboard accessible via Enter/Space -->

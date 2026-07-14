@@ -3,10 +3,10 @@ import GymLayout from "../layouts/GymLayout.astro";
 import HomeBaseline from "../components/pages/HomeBaseline.astro";
 import HomeImpact from "../components/pages/HomeImpact.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
-import { content, geoTitle } from "../lib/content";
+import { content } from "../lib/content";
 const home = content.pages.home;
 const theme = content.meta.templateTheme ?? "baseline";
 ---
-<GymLayout title={geoTitle("Personal Training")} description={content.meta.defaultDescription} path="/" image={home.hero.backgroundImageUrl}>
+<GymLayout title={content.meta.defaultTitle} description={content.meta.defaultDescription} path="/" image={home.hero.backgroundImageUrl}>
   {theme === "beanburito" ? <PageRenderer pageKey="home" /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
 </GymLayout>

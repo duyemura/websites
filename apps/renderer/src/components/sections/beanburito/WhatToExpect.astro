@@ -1,0 +1,18 @@
+---
+import SectionHeading from "../../ui/SectionHeading.astro";
+const { steps, headline = "What to expect" } = Astro.props as { steps: string[]; headline?: string };
+if (!steps?.length) return;
+---
+
+<section data-section="whatToExpect" data-section-tag="steps-band" class="section-skew bg-black py-16 text-white lg:py-24">
+  <div class="section-inner mx-auto max-w-4xl px-6 text-center lg:px-10">
+    <SectionHeading title={headline} variant="dark" />
+    <ol class="mt-10 flex flex-wrap justify-center gap-4">
+      {steps.map((s, i) => (
+        <li class="rounded-full bg-accent px-6 py-3 font-heading text-sm font-black uppercase tracking-wide text-white">
+          {i + 1}. {s}
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

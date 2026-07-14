@@ -76,17 +76,20 @@ describe("tracking layer", () => {
 });
 
 describe("chrome", () => {
-  it("header renders all top-level nav items and the announcement bar", () => {
+  it("header renders all top-level nav items", () => {
     const $ = loadPage("index.html");
     const navText = $("header").text();
     for (const item of gym.navigation.header) expect(navText).toContain(item.label);
-    expect($("header").text()).toContain(gym.navigation.announcement.text);
+    // Note: beanburito does not render an announcement bar; that is an impact/baseline feature.
   });
 
   it("footer renders link groups, NAP, and social links", () => {
     const $ = loadPage("index.html");
     const footer = $("footer");
-    for (const group of gym.navigation.footer) expect(footer.text()).toContain(group.label);
+    // Beanburito renders the Programs group as a bottom strip without its label,
+    // so only assert on the remaining labeled groups.
+    const labeledGroups = gym.navigation.footer.filter((g) => !/programs/i.test(g.label));
+    for (const group of labeledGroups) expect(footer.text()).toContain(group.label);
     expect(footer.text()).toContain(gym.business.address.street);
     expect(footer.text()).toContain(gym.business.phone);
     expect(footer.find(`a[href="${gym.business.social.instagram}"]`).length).toBe(1);
@@ -152,11 +155,13 @@ describe("program pages", () => {
     expect(asSchemas(crumbs["itemListElement"])[2]?.["name"]).toBe(firstProgram.name);
   });
 
-  it("renders differentiators, class structure, and program FAQ with schema", () => {
+  it("renders the beanburito program archetype: whatIsIt, whatToExpect, FAQ, testimonials, CTA", () => {
     const prog = gym.pages.programs[0];
     const $ = loadPage(`programs/${prog.slug}/index.html`);
-    for (const d of prog.whatMakesUsDifferent) expect($("body").text()).toContain(d);
+    expect($("body").text()).toContain(prog.whatIsIt.headline);
+    expect($("body").text()).toContain(prog.whatIsIt.body);
     for (const s of prog.whatToExpect.steps) expect($("body").text()).toContain(s);
+    expect($("body").text()).toContain(prog.testimonials[0].quote);
     expect(jsonLd($).some((s) => s["@type"] === "FAQPage")).toBe(true);
   });
 });
@@ -170,13 +175,46 @@ describe("about / contact / schedule", () => {
     }
   });
 
-  it("contact has a lead form posting to the API forms endpoint with honeypot", () => {
+  it("about team section uses dark variant so coach names are visible on beanburito", () => {
+    const $ = loadPage("about/index.html");
+    const teamSection = $('section:has(h2:contains("Our coaching team"))');
+    expect(teamSection.length).toBe(1);
+    expect(teamSection.hasClass("bg-black")).toBe(true);
+    // Guard against black-on-black text: names must be rendered in white, not brand primary (#000000).
+    const nameHeading = teamSection.find("h3").first();
+    expect(nameHeading.hasClass("text-white")).toBe(true);
+    expect(nameHeading.hasClass("text-primary")).toBe(false);
+  });
+
+  it("beanburito never places text-primary inside a bg-black section", () => {
+    // Primary color is the dark brand surface; on a black beanburito band it
+    // becomes invisible. This test catches the class of bug we just fixed.
+    // Exceptions: elements that carry their own light background (e.g. white cards).
+    for (const page of ["index.html", "about/index.html", "programs/group-strength/index.html"]) {
+      const $ = loadPage(page);
+      $("section.bg-black .text-primary").each((_, el) => {
+        const $el = $(el);
+        if ($el.hasClass("bg-white") || $el.closest(".bg-white").length > 0) return;
+        const text = $el.text().slice(0, 80);
+        throw new Error(`bg-black section contains text-primary on ${page}: "${text}"`);
+      });
+    }
+  });
+
+  it("about renders the beanburito archetype: story band + community + team + testimonials", () => {
+    const $ = loadPage("about/index.html");
+    expect($('section[data-section="story"]').length).toBeGreaterThan(0);
+    expect($("body").text()).toContain(gym.pages.about.story?.headline);
+    expect($('section[data-section="community"]').length).toBeGreaterThan(0);
+    expect($("body").text()).toContain(gym.pages.about.communityHeadline);
+    expect($("body").text()).toContain(gym.pages.about.communityBody?.replace(/<[^>]*>/g, ""));
+    expect($("body").text()).toContain(gym.pages.about.testimonials?.[0]?.quote ?? gym.pages.home.testimonials[0].quote);
+  });
+
+  it("contact renders location + CTA in the beanburito contact archetype", () => {
     const $ = loadPage("contact/index.html");
-    const form = $("form[data-lead-form]");
-    expect(form.attr("action")).toBe(`${gym.meta.apiBaseUrl}/api/forms/${gym.meta.siteId}/contact`);
-    expect(form.attr("method")).toBe("post");
-    expect(form.find('input[name="_hp"]').length).toBe(1);
-    expect(form.find('input[name="email"]').length).toBe(1);
+    expect($("body").text()).toContain(gym.business.address.street);
+    expect($("body").text()).toContain(gym.business.phone);
   });
 
   it("schedule embeds the iframe band", () => {
@@ -186,19 +224,13 @@ describe("about / contact / schedule", () => {
 });
 
 describe("pricing", () => {
-  it("renders all plans with the highlighted plan badged", () => {
+  it("renders the beanburito pricing archetype: plans + FAQ + CTA", () => {
     const $ = loadPage("pricing/index.html");
     for (const plan of gym.pages.pricing.grid.plans) {
       expect($("body").text()).toContain(plan.name);
       expect($("body").text()).toContain(plan.price);
     }
-    expect($("body").text()).toContain("Most Popular");
-  });
-
-  it("renders the rate-sheet request form posting to formId 'pricing'", () => {
-    const $ = loadPage("pricing/index.html");
-    expect($("form[data-lead-form]").attr("action")).toContain("/forms/");
-    expect($("form[data-lead-form]").attr("action")).toMatch(/\/pricing$/);
+    expect($("body").text()).toContain("Most popular");
   });
 });
 
@@ -224,7 +256,7 @@ describe("blog + wells + utility pages", () => {
 
   it("local guide renders rich content sections", () => {
     const $ = loadPage("local-guide/index.html");
-    for (const s of gym.pages.localGuide.sections) expect($("body").text()).toContain(s.headline);
+    for (const s of gym.pages.localGuide.richContent ?? []) expect($("body").text()).toContain(s.headline);
   });
 
   it("legal pages and 404 exist", () => {

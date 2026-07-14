@@ -8,6 +8,7 @@ import {
   classifyPage,
   sanitizeInternalUrl,
   sanitizeContentCtas,
+  mergeGeneratedAboutContent,
 } from "../content-mapper";
 import type { DesignSystemV2 } from "../../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../../types/site-hierarchy";
@@ -93,7 +94,7 @@ describe("extractBrand", () => {
     const warnings: string[] = [];
     const brand = extractBrand(DS, warnings);
     expect(brand.primaryColor).toBe("#0d0d0d");
-    expect(brand.secondaryColor).toBe("#0d0d0d");
+    expect(brand.secondaryColor).toBe("#171717");
     expect(brand.accentColor).toBe("#e63946");
     expect(brand.headingFont).toBe("Barlow Condensed");
     expect(brand.bodyFont).toBe("Inter");
@@ -519,5 +520,79 @@ describe("extractPages", () => {
     expect(pages.contact.iframes?.[0].variant).toBe("map");
 
     expect(warnings.some((w) => w.includes("unsafe"))).toBe(false);
+  });
+});
+
+
+describe("mergeGeneratedAboutContent", () => {
+  function makeAbout() {
+    return {
+      hero: { headline: "About KSA", ctaLabel: "Join", ctaUrl: "/contact", backgroundImageUrl: "__NO_IMAGE__" },
+      gymStory: "",
+      team: [],
+      communityHeadline: "",
+      communityProps: [{ icon: "star", headline: "Old prop", body: "body" }],
+      communityBody: "",
+      story: { headline: "Old story", subheadline: "", imageUrl: "__NO_IMAGE__", imageAlt: "", blocks: [] },
+      ctaHeadline: "Old CTA",
+      testimonials: [],
+      faq: [],
+    } as any;
+  }
+
+  test("merges generated fields and keeps base fields when not generated", () => {
+    const generated = {
+      hero: { headline: "Built Around People" },
+      story: { headline: "How We Started", imageUrl: "/_assets/story.webp" },
+      ctaHeadline: "Come Train With Us",
+    };
+    const merged = mergeGeneratedAboutContent(makeAbout(), generated, []);
+    expect(merged.hero.headline).toBe("Built Around People");
+    expect(merged.story.headline).toBe("How We Started");
+    expect(merged.story.imageUrl).toBe("/_assets/story.webp");
+    expect(merged.ctaHeadline).toBe("Come Train With Us");
+    expect(merged.communityProps).toHaveLength(1);
+  });
+
+  test("replaces communityProps with generated communityBody", () => {
+    const generated = {
+      communityHeadline: "A Community That Keeps You Going",
+      communityBody: "<p>Training here means you're never alone.</p>",
+    };
+    const merged = mergeGeneratedAboutContent(makeAbout(), generated, []);
+    expect(merged.communityHeadline).toBe("A Community That Keeps You Going");
+    expect(merged.communityBody).toBe("<p>Training here means you're never alone.</p>");
+    expect(merged.communityProps).toBeUndefined();
+  });
+
+  test("replaces base team with generated team", () => {
+    const generated = {
+      team: [{ name: "Alex Reed", title: "Head Coach", photoUrl: "__NO_IMAGE__", bio: undefined }],
+    };
+    const merged = mergeGeneratedAboutContent(makeAbout(), generated, []);
+    expect(merged.team).toHaveLength(1);
+    expect(merged.team?.[0].name).toBe("Alex Reed");
+  });
+
+  test("preserves real extracted coach photos when generated output uses placeholder", () => {
+    const base = {
+      ...makeAbout(),
+      team: [{ name: "Alex Reed", title: "Head Coach", photoUrl: "/_assets/coach-alex.webp", bio: "Original bio" }],
+    };
+    const generated = {
+      team: [{ name: "Alex Reed", title: "Head Coach", photoUrl: "__NO_IMAGE__", bio: "Generated bio" }],
+    };
+    const merged = mergeGeneratedAboutContent(base, generated, []);
+    expect(merged.team?.[0].photoUrl).toBe("/_assets/coach-alex.webp");
+    expect(merged.team?.[0].bio).toBe("Generated bio");
+  });
+
+  test("uses generated FAQ when provided and falls back to home FAQ otherwise", () => {
+    const generatedFaq = [{ question: "About FAQ", answer: "Answer" }];
+    const merged = mergeGeneratedAboutContent(makeAbout(), { faq: generatedFaq }, []);
+    expect(merged.faq).toEqual(generatedFaq);
+
+    const fallback = mergeGeneratedAboutContent(makeAbout(), {}, [{ question: "Fallback FAQ", answer: "Answer" }]);
+    expect(fallback.faq).toEqual([{ question: "Fallback FAQ", answer: "Answer" }]);
   });
 });

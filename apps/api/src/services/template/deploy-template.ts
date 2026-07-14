@@ -9,6 +9,7 @@ import { buildRedirectHtml } from "../../utils/mirror/site-meta";
 import { pathToFileKey } from "../mirror/snapshot";
 import { computeRedirects } from "../../utils/template/redirects";
 import { recordSiteVersion } from "../site-versions";
+import { discoverRoutes, walk } from "../../utils/template/route-discovery.js";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
 import type { PipelineStage } from "../../types/pipeline-artifacts";
 
@@ -49,21 +50,6 @@ const MIME: Record<string, string> = {
 };
 const mimeFor = (file: string) => MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream";
 
-async function walk(dir: string): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = await Promise.all(entries.map((e) => {
-    const full = path.join(dir, e.name);
-    return e.isDirectory() ? walk(full) : Promise.resolve([full]);
-  }));
-  return files.flat();
-}
-
-/** dist file → route ("index.html" → "/", "about/index.html" → "/about") */
-function fileToRoute(rel: string): string | null {
-  if (!rel.endsWith("index.html")) return null;
-  const p = "/" + rel.slice(0, -"index.html".length).replace(/\/$/, "");
-  return p === "" ? "/" : p === "/" ? "/" : p.replace(/\/$/, "");
-}
 
 export interface TemplateLocalBuildInput {
   rendererDir: string;
@@ -225,9 +211,7 @@ export async function deployTemplateDist(input: DeployTemplateDistInput) {
     (await loadArtifact<MirrorCrawlArtifact>(db, { siteUuid, workspaceUuid }, "crawl")) ??
     (await loadArtifact<MirrorCrawlArtifact>(db, { siteUuid, workspaceUuid }, "mirror-crawl" as PipelineStage));
   const oldPaths = crawl?.payload.pages.map((p) => p.path) ?? [];
-  const newRoutes = files
-    .map((f) => fileToRoute(path.relative(distDir, f).split(path.sep).join("/")))
-    .filter((r): r is string => r !== null);
+  const newRoutes = await discoverRoutes(distDir);
   const redirects = computeRedirects(oldPaths, newRoutes);
   for (const r of redirects) {
     await sendWithRetry(

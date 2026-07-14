@@ -47,11 +47,47 @@ export interface ComponentSpec {
   props: Record<string, ComponentPropSpec>;
 }
 
+export type PageArchetype =
+  | "home"
+  | "program"
+  | "programIndex"
+  | "about"
+  | "contact"
+  | "schedule"
+  | "pricing"
+  | "blogIndex"
+  | "blogPost"
+  | "content"
+  | "team"
+  | "form";
+
 export interface PageSpec {
   /** Canonical path ("/" for home, "/about", etc.). */
   path: string;
+  /** Logical page archetype. Future pages choose an existing archetype instead of inventing a layout. */
+  archetype: PageArchetype;
   /** Component IDs in render order. */
   components: string[];
+  /** What this page must accomplish for the visitor and the business. Used in LLM prompts and QA. */
+  goal?: string;
+  /** The single action the page should drive (e.g. "Book a free intro"). Used in CTAs and copy. */
+  idealAction?: string;
+  /** Where the visitor is in the decision journey. */
+  visitorStage?: "awareness" | "consideration" | "conversion" | "retention";
+  /** The search intent this page should satisfy. */
+  searchIntent?: "informational" | "transactional" | "navigational" | "local";
+  /** Objections or anxieties this page must address with proof. */
+  objectionsToOvercome?: string[];
+  /** Trust assets or proof points this page should display. */
+  evidenceTypes?: string[];
+  /** Primary search query this page is optimized for. */
+  seoPrimaryQuery?: string;
+  /** List of facts, themes, or assets the content generator should extract or synthesize for this page. */
+  contentSignals?: string[];
+  /** Paths into GymSiteContent that must be present and non-placeholder for publish to be allowed. */
+  requiredFields?: string[];
+  /** Whether a publish may proceed while placeholders remain on this page. */
+  placeholderPolicy?: "allow" | "block-publish";
   /** Optional page-level chrome overrides. */
   slots?: {
     /** Extra components rendered inside <head> (e.g. schema markup). */
@@ -83,6 +119,8 @@ export interface TemplateSpec {
   description: string;
   /** Content sections the generate stage should fill. */
   sections: Record<string, SectionSpec>;
+  /** Per-page-type content generation specs. Key is a page key (e.g. "program"). */
+  pageSections?: Record<string, Record<string, SectionSpec>>;
   /** Reusable Astro components this template provides. */
   components: Record<string, ComponentSpec>;
   /** Page layouts defined as ordered component sequences. */

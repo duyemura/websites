@@ -77,7 +77,7 @@ const description = `${program.name} classes in ${city}, ${business.geo.stateAbb
   </section>
 
   {program.whatIsIt?.body && (
-    <section class="py-16">
+    <section data-section="whatIsIt" data-section-tag="content-block" class="py-16">
       <Container>
         <SectionHeading title={program.whatIsIt.headline} />
         <p class="mx-auto max-w-3xl text-center text-lg text-secondary">{program.whatIsIt.body}</p>
@@ -86,13 +86,37 @@ const description = `${program.name} classes in ${city}, ${business.geo.stateAbb
   )}
 
   {program.whatMakesUsDifferent?.length > 0 && (
-    <section class="bg-slate-50 py-16">
+    <section data-section="whatMakesUsDifferent" data-section-tag="content-block" class="bg-slate-50 py-16">
       <Container>
         <SectionHeading title={`What makes our ${program.name} different?`} />
         <ul class="mx-auto max-w-2xl space-y-3">
           {program.whatMakesUsDifferent.map((d) => (
             <li class="flex gap-3"><span class="text-accent">✔</span><span>{d}</span></li>
           ))}
+        </ul>
+      </Container>
+    </section>
+  )}
+
+  {program.whatToExpect?.steps?.length > 0 && (
+    <section data-section="whatToExpect" data-section-tag="steps-band" class="py-16">
+      <Container>
+        <SectionHeading title={program.whatToExpect.headline} />
+        <ol class="mx-auto flex max-w-3xl flex-wrap justify-center gap-4">
+          {program.whatToExpect.steps.map((s, i) => (
+            <li class="rounded-full bg-accent px-5 py-2 font-heading text-white">{i + 1}. {s}</li>
+          ))}
+        </ol>
+      </Container>
+    </section>
+  )}
+
+  {program.whoIsItFor?.length > 0 && (
+    <section data-section="whoIsItFor" data-section-tag="content-block" class="bg-slate-50 py-16">
+      <Container>
+        <SectionHeading title={`Who is ${program.name} for?`} />
+        <ul class="mx-auto max-w-2xl list-disc space-y-2 pl-6">
+          {program.whoIsItFor.map((w) => <li>{w}</li>)}
         </ul>
       </Container>
     </section>

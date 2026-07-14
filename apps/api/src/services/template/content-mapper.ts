@@ -22,6 +22,7 @@ import type {
   Navigation, NavItem, FooterGroup, PageContent, HomeContent,
   ProgramContent, AboutContent, PricingContent, ContactContent,
   ScheduleContent, BlogContent, LocalGuideContent, LegalPage, HeroContent, Feature,
+  ContentBlock, FAQItem,
 } from "@milo/shared-types";
 import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import { hexSaturation } from "../../utils/site-blueprint";
@@ -98,6 +99,21 @@ function pickAccentColor(
     return saturated.sort((a, b) => hexSaturation(b) - hexSaturation(a))[0]!;
   }
   return c.primary ?? c.foreground ?? baseline.mutedForeground;
+}
+
+/** Pick a readable body-text color for light template backgrounds.
+ *  We prefer the source's foreground (text) token when it is already dark.
+ *  If the source uses a light foreground on a dark theme, fall back to the
+ *  baseline dark foreground so body copy remains legible on white/slate sections.
+ */
+function pickSecondaryColor(
+  c: DesignSystemV2["global"]["tokens"]["colors"],
+  baseline: (typeof DEFAULT_TEMPLATE_TOKENS)["colors"],
+): string {
+  if (isValidHex(c.foreground) && hexLuminance(c.foreground) < DARK_LUMINANCE_THRESHOLD) {
+    return c.foreground;
+  }
+  return baseline.foreground;
 }
 
 function stripSeoSuffix(name: string | undefined | null): string | undefined {
@@ -181,6 +197,59 @@ function formatGmbHours(listingHours: { day: string; open?: string; close?: stri
     opens: h.isOpen24Hours ? "00:00" : (h.open ?? ""),
     closes: h.isOpen24Hours ? "23:59" : (h.close ?? ""),
   }));
+}
+
+// ── Generated about-page merge ───────────────────────────────────────────────
+
+/**
+ * Merge LLM-generated about-page content into the base about page. Keeps
+ * source-extracted values when the generator did not produce a given field,
+ * falls back to the homepage FAQ when the about page has none, and clears
+ * communityProps when a generated long-form community body is present.
+ */
+export function mergeGeneratedAboutContent(
+  about: AboutContent,
+  generated: Partial<AboutContent> | null,
+  homeFaq: FAQItem[],
+): AboutContent {
+  const merged: AboutContent = { ...about };
+  if (generated?.hero) {
+    merged.hero = { ...merged.hero, ...generated.hero };
+  }
+  if (generated?.story) {
+    merged.story = { ...merged.story, ...generated.story };
+  }
+  if (generated?.communityBody) {
+    merged.communityHeadline = generated.communityHeadline;
+    merged.communityBody = generated.communityBody;
+    merged.communityProps = undefined;
+  }
+  if (generated?.team?.length) {
+    // Preserve any real extracted coach photos already present on the base page.
+    // Generated output may have used NO_IMAGE because the LLM cannot see the
+    // captured asset URLs; the original extracted photoUrl is authoritative.
+    const existingPhotos = new Map(merged.team?.map((m) => [m.name, m.photoUrl]) ?? []);
+    merged.team = generated.team.map((m) => {
+      const existing = existingPhotos.get(m.name);
+      if (existing && existing !== NO_IMAGE) {
+        return { ...m, photoUrl: existing };
+      }
+      return m;
+    });
+  }
+  if (generated?.testimonials?.length) {
+    merged.testimonials = generated.testimonials;
+  }
+  if (generated?.ctaHeadline) {
+    merged.ctaHeadline = generated.ctaHeadline;
+  }
+  if (generated?.faq?.length) {
+    merged.faq = generated.faq;
+  }
+  if (!merged.faq?.length) {
+    merged.faq = homeFaq;
+  }
+  return merged;
 }
 
 // ── CTA URL sanitizer ───────────────────────────────────────────────────────
@@ -408,10 +477,11 @@ export function extractBrand(
   // and also improves baseline/impact contrast.
   const inferredPrimary = pickPrimaryColor(c, baseline.colors);
   const inferredAccent = pickAccentColor(c, baseline.colors);
+  const inferredSecondary = pickSecondaryColor(c, baseline.colors);
 
   return {
     primaryColor: fallback(inferredPrimary, baseline.colors.primary, warnings, "primaryColor"),
-    secondaryColor: fallback(c.background, baseline.colors.foreground, warnings, "secondaryColor"),
+    secondaryColor: fallback(inferredSecondary, baseline.colors.foreground, warnings, "secondaryColor"),
     accentColor: fallback(inferredAccent, baseline.colors.mutedForeground, warnings, "accentColor"),
     headingFont: fallback(f.heading, baseline.fonts.heading, warnings, "headingFont"),
     bodyFont: fallback(f.body, baseline.fonts.body, warnings, "bodyFont"),
@@ -578,6 +648,39 @@ export function extractPages(
     "personal-training": "One-on-one coaching built around your goals, schedule, and starting point.",
   };
 
+  /** Fallback program-page content so pages are never empty heading shells if LLM/extraction fails. */
+  function defaultProgramContent(name: string): Pick<ProgramContent, "whatIsIt" | "whatMakesUsDifferent" | "whatToExpect" | "whoIsItFor" | "gettingStarted"> {
+    return {
+      whatIsIt: {
+        headline: `What is ${name.toLowerCase()}?`,
+        body: `Coach-led ${name.toLowerCase()} sessions designed for real results. Your coach scales every session to your level so you progress safely.`,
+      },
+      whatMakesUsDifferent: [
+        "Coaches scale every session to your starting point.",
+        "A supportive community that keeps you showing up.",
+        "Programming built around real-world strength and conditioning.",
+      ],
+      whatToExpect: {
+        headline: "What to expect",
+        steps: [
+          "Arrive a few minutes early to meet your coach.",
+          "A structured warm-up and coached workout.",
+          "Cool down, ask questions, and plan your next visit.",
+        ],
+      },
+      whoIsItFor: [
+        "Anyone ready to commit to their fitness.",
+        "People who want expert coaching without guesswork.",
+        "Members looking for a supportive training environment.",
+      ],
+      gettingStarted: [
+        { number: 1, headline: "Book a free intro", body: "Schedule a time to meet a coach and see the gym." },
+        { number: 2, headline: "Meet your coach", body: "We'll discuss your goals and recommend the right starting point." },
+        { number: 3, headline: "Start training", body: "Show up for your first session and begin building momentum." },
+      ],
+    };
+  }
+
   const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
     slug: p.slug,
     name: p.name,
@@ -590,11 +693,7 @@ export function extractPages(
       ctaUrl: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.url,
       backgroundImageUrl: NO_IMAGE,
     },
-    whatIsIt: { headline: `What is ${p.name.toLowerCase()}?`, body: "" },
-    whatMakesUsDifferent: [],
-    whatToExpect: { headline: "What to expect", steps: [] },
-    whoIsItFor: [],
-    gettingStarted: [],
+    ...defaultProgramContent(p.name),
     testimonials: [],
     faq: [],
   }));
@@ -609,11 +708,7 @@ export function extractPages(
           ...heroFromPage(p),
           backgroundImageUrl: p.heroImageUrl || placeholderImage(p.title, 1600, 900),
         },
-        whatIsIt: { headline: "", body: "" },
-        whatMakesUsDifferent: [],
-        whatToExpect: { headline: "", steps: [] },
-        whoIsItFor: [],
-        gettingStarted: [],
+        ...defaultProgramContent(p.title),
         testimonials: [],
         faq: [],
       }))
@@ -657,6 +752,10 @@ export function extractPages(
     hero: pageHeroFallback("about"),
     gymStory: "",
     team: [],
+    communityHeadline: "",
+    communityProps: [],
+    communityBody: "",
+    story: { headline: "", subheadline: "", imageUrl: NO_IMAGE, imageAlt: "", blocks: [] },
   };
 
   const pricing: PricingContent = {
@@ -674,6 +773,7 @@ export function extractPages(
   const localGuide: LocalGuideContent = {
     hero: pageHeroFallback("localGuide"),
     sections: [],
+    richContent: [],
   };
 
   const blog: BlogContent = { heroHeadline: "Our Blog", posts: [] };
@@ -733,10 +833,22 @@ function buildDefaultDescription(business: BusinessInfo, home: HomeContent): str
     : combined;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // Generic fallback legal pages so the cookie-banner privacy link and any footer
 // legal references always resolve. Replace with gym-specific docs once available.
 function defaultLegalPages(business: BusinessInfo): LegalPage[] {
-  const name = business.name;
+  const name = escapeHtml(business.name);
+  const email = escapeHtml(business.email || "");
+  const privacyEmail = email || `privacy@${business.name.toLowerCase().replace(/\s+/g, "")}.com`;
+  const supportEmail = email || `support@${business.name.toLowerCase().replace(/\s+/g, "")}.com`;
   const year = new Date().getFullYear();
   return [
     {
@@ -755,7 +867,7 @@ function defaultLegalPages(business: BusinessInfo): LegalPage[] {
           <h2>Third-party services</h2>
           <p>We may share information with trusted service providers who help us operate our business (for example, payment processors and scheduling platforms). We do not sell your personal information.</p>
           <h2>Contact us</h2>
-          <p>If you have questions about this Privacy Policy, please contact us at ${business.email || "privacy@" + name.toLowerCase().replace(/\s+/g, "") + ".com"}.</p>
+          <p>If you have questions about this Privacy Policy, please contact us at ${privacyEmail}.</p>
           <p>Last updated: ${year}.</p>`,
         },
       ],
@@ -772,7 +884,7 @@ function defaultLegalPages(business: BusinessInfo): LegalPage[] {
           <h2>Health and safety</h2>
           <p>You acknowledge that physical exercise involves risk. Consult a physician before beginning any fitness program and follow coach instructions to reduce the chance of injury.</p>
           <h2>Contact</h2>
-          <p>For questions about these terms, contact us at ${business.email || "support@" + name.toLowerCase().replace(/\s+/g, "") + ".com"}.</p>
+          <p>For questions about these terms, contact us at ${supportEmail}.</p>
           <p>Last updated: ${year}.</p>`,
         },
       ],
@@ -788,11 +900,11 @@ function inferTemplateTheme(contract: ContractArtifact | null, _home: HomeConten
 
   // Beanburito signal: dark, bold, community-focused template. Detect a sticky
   // headline panel paired with a dark program-card layout.
-  const hasBeanburitoSignal = homeSections.some((s) =>
-    s.layout.archetype === "program-cards-sticky" &&
-    s.layout.background.color?.toLowerCase() === "#000000" ||
-    s.layout.background.color?.toLowerCase() === "black"
-  );
+  const hasBeanburitoSignal = homeSections.some((s) => {
+    if (s.layout.archetype !== "program-cards-sticky") return false;
+    const color = s.layout.background.color?.toLowerCase();
+    return color === "#000000" || color === "black";
+  });
   if (hasBeanburitoSignal) return "beanburito";
 
   // Impact signal: bold bento feature grid or sticky program cards without the
@@ -1052,6 +1164,49 @@ export async function buildGymJson(
           return { name: String(item.name ?? ""), title: String(item.title ?? ""), photoUrl: "", bio: item.bio ? String(item.bio) : undefined };
         });
       }
+
+      // Seed a founder story from extracted about content. gymStory feeds only
+      // the story section; community gets its own generated content later.
+      const storyEx = aboutEx.story as Record<string, unknown> | undefined;
+      if (pages.about.gymStory || storyEx) {
+        pages.about.story = {
+          headline: storyEx?.headline ? String(storyEx.headline) : `How ${business.name} started`,
+          subheadline: storyEx?.subheadline ? String(storyEx.subheadline) : undefined,
+          imageUrl: storyEx?.imageUrl ? String(storyEx.imageUrl) : undefined,
+          imageAlt: storyEx?.imageAlt ? String(storyEx.imageAlt) : undefined,
+          blocks: Array.isArray(storyEx?.blocks) && storyEx.blocks.length > 0
+            ? (storyEx.blocks.map((b: unknown) => {
+                const item = b as Record<string, unknown>;
+                return { type: String(item.type ?? "text"), html: String(item.html ?? "") };
+              }) as ContentBlock[])
+            : [{ type: "text" as const, html: pages.about.gymStory }],
+        };
+      }
+      if (aboutEx.communityHeadline) {
+        pages.about.communityHeadline = String(aboutEx.communityHeadline);
+      }
+      if (Array.isArray(aboutEx.communityProps) && aboutEx.communityProps.length > 0) {
+        pages.about.communityProps = aboutEx.communityProps.map((v: unknown) => {
+          const item = v as Record<string, unknown>;
+          return { icon: String(item.icon ?? ""), headline: String(item.headline ?? ""), body: String(item.body ?? "") };
+        });
+      }
+    } else if (hierarchy.pages.some((p) => classifyPage(p) === "about")) {
+      // No extracted about content, but the site has an about page. Insert
+      // explicit placeholders so the publish validator can block until real
+      // content is generated or supplied.
+      pages.about.hero.headline = "__PLACEHOLDER__";
+      pages.about.story = {
+        headline: `How ${business.name} started`,
+        subheadline: "We're still gathering the full story for this gym.",
+        imageUrl: "__PLACEHOLDER__",
+        imageAlt: "",
+        blocks: [{ type: "text" as const, html: "<p>__PLACEHOLDER__</p>" }],
+      };
+      pages.about.team = [
+        { name: "__PLACEHOLDER__", title: "Team member", photoUrl: NO_IMAGE, bio: "Team details are being collected for this gym." },
+      ];
+      pages.about.ctaHeadline = "__PLACEHOLDER__";
     }
 
     // Contact — also patch business NAP

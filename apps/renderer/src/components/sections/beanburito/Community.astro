@@ -2,9 +2,10 @@
 import { content } from "../../../lib/content";
 import type { ValueProp } from "../../../types/gym-content";
 const NO_IMAGE = "__NO_IMAGE__";
-const { items, headline, imageUrl } = Astro.props as { items: ValueProp[]; headline?: string; imageUrl?: string };
-if (!items?.length && !headline) return;
+const { items, headline, imageUrl, body } = Astro.props as { items: ValueProp[]; headline?: string; imageUrl?: string; body?: string };
+if (!items?.length && !headline && !body) return;
 const hasImage = imageUrl && imageUrl !== NO_IMAGE;
+const hasItems = items?.length > 0;
 ---
 <section data-section="community" data-section-tag="content-block" class="section-skew bg-black text-white">
   <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
@@ -15,7 +16,7 @@ const hasImage = imageUrl && imageUrl !== NO_IMAGE;
             {headline}
           </h2>
         )}
-        {items?.length ? (
+        {hasItems ? (
           <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-1">
             {items.map((item) => (
               <div class="space-y-2">
@@ -24,6 +25,8 @@ const hasImage = imageUrl && imageUrl !== NO_IMAGE;
               </div>
             ))}
           </div>
+        ) : body ? (
+          <div class="space-y-5 text-lg leading-relaxed text-white/80" set:html={body} />
         ) : (
           <div class="space-y-5 text-lg leading-relaxed text-white/80">
             <p>

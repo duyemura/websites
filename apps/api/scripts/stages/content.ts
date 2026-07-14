@@ -5,6 +5,7 @@ import { saveArtifact, loadArtifact } from "../../src/utils/pipeline/artifact-st
 import { pathToOutlineKey } from "../../src/services/mirror/snapshot";
 import type { StageRunner, StageContext, StageResult } from "./types";
 import type { PipelineStage } from "../../src/types/pipeline-artifacts";
+import type { PageBrief, ContentArtifact, PageBriefVisitorRole } from "@milo/shared-types";
 
 const MAX_CONTENT_PAGES = 20;
 
@@ -44,7 +45,7 @@ const PAGE_TYPE_FIELDS: Record<string, string> = {
   "faq": [{"question": string, "answer": string}]`,
 
   about: `"gymStory": string | null,
-  "team": [{"name": string, "title": string, "bio": string | null}]`,
+  "team": [{"name": string, "title": string, "bio": string | null, "photoUrl": string | null}]`,
 
   contact: `"phone": string | null,
   "email": string | null,
@@ -131,47 +132,6 @@ Return ONLY valid JSON:
 }`;
 }
 
-// Guaranteed shape — every field always present after normalization.
-// Null means "not found", empty array means "none found". Never undefined.
-export interface PageBrief {
-  path: string;
-  pageType: string;
-  purpose: string;
-  visitorRole: "awareness" | "consideration" | "conversion" | "retention" | "utility";
-  sectionsNeeded: string[];
-  contentFound: {
-    // Always present on every page
-    hero: { headline: string | null; subheading: string | null; ctaLabel: string | null };
-    body: string;
-    cta: string | null;
-    // Home + program
-    valueProps: Array<{ headline: string; body: string }>;
-    testimonials: Array<{ quote: string; name: string; program: string | null }>;
-    faq: Array<{ question: string; answer: string }>;
-    communityHeadline: string | null;
-    trustHeadline: string | null;
-    // Program
-    shortDescription: string | null;
-    whoIsItFor: string[];
-    whatMakesUsDifferent: string[];
-    // About
-    gymStory: string | null;
-    team: Array<{ name: string; title: string; bio: string | null }>;
-    // Contact
-    phone: string | null;
-    email: string | null;
-    address: string | null;
-    city: string | null;
-    state: string | null;
-    zip: string | null;
-    hours: string | null;
-    // Pricing
-    plans: Array<{ name: string; price: string; period: string | null; description: string | null; features: string[] }>;
-  };
-  contentMissing: string[];
-  generationHint: string;
-}
-
 /** Enforce the guaranteed shape after LLM output — fill every missing field with its typed zero value. */
 export function normalizeBrief(raw: unknown, path: string, pageType: string): PageBrief {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -182,7 +142,7 @@ export function normalizeBrief(raw: unknown, path: string, pageType: string): Pa
     pageType,
     purpose: String(r.purpose ?? ""),
     visitorRole: (["awareness","consideration","conversion","retention","utility"].includes(r.visitorRole as string)
-      ? r.visitorRole : "conversion") as PageBrief["visitorRole"],
+      ? r.visitorRole : "conversion") as PageBriefVisitorRole,
     sectionsNeeded: Array.isArray(r.sectionsNeeded) ? r.sectionsNeeded.map(String) : (PAGE_SECTIONS[pageType] ?? PAGE_SECTIONS.other),
     contentFound: {
       hero: {
@@ -201,7 +161,12 @@ export function normalizeBrief(raw: unknown, path: string, pageType: string): Pa
       whoIsItFor: Array.isArray(cf.whoIsItFor) ? cf.whoIsItFor.map(String) : [],
       whatMakesUsDifferent: Array.isArray(cf.whatMakesUsDifferent) ? cf.whatMakesUsDifferent.map(String) : [],
       gymStory: String(cf.gymStory ?? "") || null,
-      team: Array.isArray(cf.team) ? cf.team.map((m: any) => ({ name: String(m.name ?? ""), title: String(m.title ?? ""), bio: String(m.bio ?? "") || null })) : [],
+      team: Array.isArray(cf.team) ? cf.team.map((m: any) => ({
+        name: String(m.name ?? ""),
+        title: String(m.title ?? ""),
+        bio: String(m.bio ?? "") || null,
+        photoUrl: m.photoUrl ? String(m.photoUrl) : undefined,
+      })) : [],
       phone: String(cf.phone ?? "") || null,
       email: String(cf.email ?? "") || null,
       address: String(cf.address ?? "") || null,
@@ -220,12 +185,6 @@ export function normalizeBrief(raw: unknown, path: string, pageType: string): Pa
 export function mergeBriefs(existing: PageBrief[], incoming: PageBrief[]): PageBrief[] {
   const incomingPaths = new Set(incoming.map((b) => b.path));
   return [...existing.filter((b) => !incomingPaths.has(b.path)), ...incoming];
-}
-
-export interface ContentArtifact {
-  siteUuid: string;
-  createdAt: string;
-  pages: PageBrief[];
 }
 
 export const contentStage: StageRunner = {

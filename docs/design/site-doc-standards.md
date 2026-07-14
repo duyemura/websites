@@ -120,6 +120,7 @@ Each standard lists: **key**, **purpose**, **required sections**, **optional sec
 
 **Optional sections:**
 
+- `## Site playbook` — conversion brief for the site: primary goal, ideal first action, ICP summary, top differentiators, offer/hook, trust assets, voice rules, and cross-page conversion patterns. This section is read by page generators to keep every page aligned on intent and action.
 - `## Build conventions` — cross-page rules the editor should enforce (e.g. every page has a primary CTA, hero aspect ratio, max section count).
 - `## Page templates` — reusable section patterns discovered in the source site.
 - `## Launch checklist` — domain, DNS, meta, favicon, analytics, redirects.

@@ -50,11 +50,10 @@ function resolveSlot(
   section: string,
   _slot: string,
   content: GymSiteContent,
-  pageKey: string,
+  pageData: Record<string, unknown> | undefined,
 ): unknown {
   // Slots in the beanburito spec map to single-value fields on the page (or home).
   // Examples: communityHeadline, trustHeadline, howItWorksHeadline.
-  const pageData = getPageData(content, pageKey);
   if (pageData && typeof pageData[section] === "string") return pageData[section];
   const home = content.pages.home as unknown as Record<string, unknown>;
   if (typeof home[section] === "string") return home[section];
@@ -64,9 +63,8 @@ function resolveSlot(
 function resolveComputed(
   fn: Extract<ComponentPropSource, { kind: "computed" }>["fn"],
   content: GymSiteContent,
-  pageKey: string,
+  pageData: Record<string, unknown> | undefined,
 ): unknown {
-  const pageData = getPageData(content, pageKey);
   switch (fn) {
     case "valueProps":
       return (pageData?.valueProps as ValueProp[]) ?? content.pages.home.valueProps;
@@ -96,9 +94,9 @@ function resolveComputed(
 function resolvePropValue(
   propName: string,
   propSpec: ComponentPropSpec,
-  componentId: string,
+  _componentId: string,
   content: GymSiteContent,
-  pageKey: string,
+  pageData: Record<string, unknown> | undefined,
 ): unknown {
   const source = propSpec.source;
   if (!source) return undefined;
@@ -108,7 +106,6 @@ function resolvePropValue(
       return getPath(content as unknown as Record<string, unknown>, source.path);
     }
     case "pageField": {
-      const pageData = getPageData(content, pageKey);
       const value = pageData ? getPath(pageData, source.path) : undefined;
       if (value !== undefined && value !== null && value !== "") return value;
       // Fallback to the home page for shared sections (testimonials, faq, community, etc.).
@@ -118,9 +115,9 @@ function resolvePropValue(
       return undefined;
     }
     case "slot":
-      return resolveSlot(source.section, source.slot, content, pageKey);
+      return resolveSlot(source.section, source.slot, content, pageData);
     case "computed":
-      return resolveComputed(source.fn, content, pageKey);
+      return resolveComputed(source.fn, content, pageData);
     default:
       return undefined;
   }
@@ -154,6 +151,11 @@ function applyComponentDefaults(
       ctaUrl: props.ctaUrl ?? content.business.primaryCta.url,
     };
   }
+  // Beanburito is a dark template; shared section components that were built
+  // for a light background need an explicit dark variant so text remains visible.
+  if (componentId === "team" && content.meta.templateTheme === "beanburito") {
+    return { ...props, variant: props.variant ?? "dark" };
+  }
   return props;
 }
 
@@ -162,10 +164,12 @@ export function resolvePageComponents(
   pageKey: string,
   content: GymSiteContent,
   componentMap: Record<string, AstroComponent>,
+  pageData?: Record<string, unknown>,
 ): ResolvedComponent[] {
   const page = spec.pages[pageKey];
   if (!page) return [];
 
+  const effectivePageData = pageData ?? getPageData(content, pageKey);
   const resolved: ResolvedComponent[] = [];
 
   for (const componentId of page.components) {
@@ -177,7 +181,7 @@ export function resolvePageComponents(
 
     const props: Record<string, unknown> = {};
     for (const [propName, propSpec] of Object.entries(componentSpec.props)) {
-      props[propName] = resolvePropValue(propName, propSpec, componentId, content, pageKey);
+      props[propName] = resolvePropValue(propName, propSpec, componentId, content, effectivePageData);
     }
 
     const finalProps = applyComponentDefaults(componentId, props, content);

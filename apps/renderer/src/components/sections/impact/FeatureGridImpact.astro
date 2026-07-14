@@ -6,7 +6,7 @@ type FeatureGridItem = Feature & {
   background?: "accent" | "dark" | "transparent" | "image";
 };
 
-const { items, headline } = Astro.props as { items: FeatureGridItem[]; headline?: string };
+const { items, headline, subheadline } = Astro.props as { items: FeatureGridItem[]; headline?: string; subheadline?: string };
 if (!items?.length) return;
 
 const KNOWN_ICONS = new Set([
@@ -36,7 +36,8 @@ const iconFor = (label: string, explicitIcon?: string) => {
 ---
 <section class="bg-primary py-16 lg:py-24">
   <div class="mx-auto max-w-7xl px-4 lg:px-6">
-    {headline && <h2 class="mx-auto mb-14 max-w-4xl text-center font-heading text-3xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white md:text-4xl lg:text-5xl">{headline}</h2>}
+    {headline && <h2 class="mx-auto mb-6 max-w-4xl text-center font-heading text-3xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white md:text-4xl lg:text-5xl">{headline}</h2>}
+    {subheadline && <p class="mx-auto mb-14 max-w-3xl text-center text-lg text-white/80">{subheadline}</p>}
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-3 md:grid-rows-2 md:gap-0">
       {items.slice(0, 6).map((f, i) => {

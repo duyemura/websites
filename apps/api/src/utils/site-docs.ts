@@ -45,6 +45,7 @@ import {
   WORKSPACE_MEMORY_DOC_TITLE,
   type WorkspaceMemoryContext,
 } from "./workspace-memory";
+import type { WorkspaceMemory } from "@milo/shared-types";
 
 export interface GeneratedSiteDoc {
   key: string;
@@ -292,7 +293,8 @@ function makeFallbackBusinessInfoDoc(ctx: DocGenerationContext): GeneratedSiteDo
       "",
       ...scraped.team.map((t) => {
         const parts = [t.name, t.role, t.bio].filter(Boolean);
-        return `- ${parts.join(" — ")}`;
+        const line = `- ${parts.join(" — ")}`;
+        return t.photoUrl ? `${line} (photo: ${t.photoUrl})` : line;
       }),
     );
   }
@@ -351,7 +353,106 @@ async function makeBusinessInfoDoc(
   return makeFallbackBusinessInfoDoc(ctx);
 }
 
-function makeSiteStrategyDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
+function buildSitePlaybookSection(
+  ctx: DocGenerationContext,
+  workspaceMemory?: WorkspaceMemory,
+  extracted?: BusinessInfoExtractionResult | null,
+): string {
+  const { scraped, gmb } = ctx;
+
+  const conversionGoal = extracted?.conversionSignals.primaryCta
+    ? `Drive ${extracted.conversionSignals.primaryCta.toLowerCase()}`
+    : "Drive the primary conversion action on every page.";
+
+  const idealAction = extracted?.conversionSignals.signupMethod
+    ? `${extracted.conversionSignals.primaryCta ?? "Take the next step"} via ${extracted.conversionSignals.signupMethod.toLowerCase()}`
+    : extracted?.conversionSignals.primaryCta ?? "Book a free intro or tour";
+
+  const offer = extracted?.conversionSignals.offer ?? "Free intro or trial class";
+
+  const icpSummary = workspaceMemory?.targetMember
+    ? workspaceMemory.targetMember
+    : "Prospects researching local fitness options";
+
+  const topObjections = workspaceMemory?.targetMembers
+    ?.flatMap((p) => p.commonObjections)
+    .filter(Boolean)
+    .slice(0, 3) ?? [];
+
+  const differentiators = workspaceMemory?.differentiators?.slice(0, 3)
+    ?? extracted?.messagingThemes?.slice(0, 3)
+    ?? [];
+
+  const trustAssets: string[] = [];
+  if (extracted?.trustSignals?.gmbRating != null && extracted.trustSignals.reviewCount != null) {
+    trustAssets.push(`${extracted.trustSignals.gmbRating}/5 on Google (${extracted.trustSignals.reviewCount} reviews)`);
+  } else if (gmb?.rating != null) {
+    trustAssets.push(`${gmb.rating}/5 on Google${gmb.userRatingCount != null ? ` (${gmb.userRatingCount} reviews)` : ""}`);
+  }
+  if (extracted?.trustSignals?.teamCredentials && extracted.trustSignals.teamCredentials.length > 0) {
+    trustAssets.push(...extracted.trustSignals.teamCredentials.slice(0, 2));
+  } else if (scraped.team.length > 0) {
+    trustAssets.push(`${scraped.team.length} coach profile(s) available`);
+  }
+  if (scraped.testimonials.length > 0) {
+    trustAssets.push(`${scraped.testimonials.length} member testimonial(s) available`);
+  }
+
+  const voice = workspaceMemory?.brandVoice ?? "Friendly, credible, and action-oriented.";
+
+  const lines: string[] = [
+    "## Site playbook",
+    "",
+    "This section is the conversion brief for the site. Every page generator should read it before writing copy.",
+    "",
+    "### Conversion goal",
+    "",
+    `- ${conversionGoal}`,
+    "",
+    "### Ideal first action",
+    "",
+    `- ${idealAction}`,
+    "",
+    "### Offer / hook",
+    "",
+    `- ${offer}`,
+    "",
+    "### Ideal customer profile",
+    "",
+    `- ${icpSummary}`,
+  ];
+
+  if (topObjections.length > 0) {
+    lines.push("", "### Common objections to overcome", "", ...topObjections.map((o) => `- ${o}`));
+  }
+
+  if (differentiators.length > 0) {
+    lines.push("", "### Differentiators to echo on every page", "", ...differentiators.map((d) => `- ${d}`));
+  }
+
+  lines.push(
+    "",
+    "### Trust assets available",
+    "",
+    trustAssets.length > 0 ? trustAssets.map((a) => `- ${a}`).join("\n") : "- No verified trust assets captured yet.",
+    "",
+    "### Voice rules",
+    "",
+    `- ${voice}`,
+    "- Use sentence case for buttons, labels, and body copy.",
+    "- Mention the gym name and city naturally, at most once per section.",
+    "- Never promise specific results or invent prices, schedules, or guarantees.",
+    "- Every page should end with one clear call to action.",
+  );
+
+  return lines.join("\n");
+}
+
+function makeSiteStrategyDoc(
+  ctx: DocGenerationContext,
+  workspaceMemory?: WorkspaceMemory,
+  extracted?: BusinessInfoExtractionResult | null,
+): GeneratedSiteDoc {
   const { scraped, gmb } = ctx;
   const businessName = gmb?.name ?? scraped.businessName ?? scraped.title;
 
@@ -368,13 +469,17 @@ function makeSiteStrategyDoc(ctx: DocGenerationContext): GeneratedSiteDoc {
   }
   if (scraped.url) sourceFacts.push(`Source website: ${scraped.url}.`);
 
+  const playbook = buildSitePlaybookSection(ctx, workspaceMemory, extracted);
+
   return {
     key: "site-strategy",
     title: "Site strategy",
     content: `# Site strategy for ${businessName}
 
 ## Goal
-Build an Astro static site that accurately represents ${businessName} and gives the gym a reliable, editable foundation for future pages.
+Build an Astro static site that accurately represents ${businessName}, converts visitors into leads, and gives the gym a reliable, editable foundation for future pages.
+
+${playbook}
 
 ## Verified source facts
 
@@ -1010,7 +1115,7 @@ export async function generateSiteDocs(
       source: "ai_extracted",
     },
     await makeBusinessInfoDoc(businessInfoCtx, config, memoryCtx),
-    makeSiteStrategyDoc(ctx),
+    makeSiteStrategyDoc(ctx, workspaceMemory, extracted),
     makeDesignSystemDoc(ctx, screenshotUrl, mode),
     makeSiteHierarchyDoc(ctx, mode),
     makeSectionVisualEvidenceDoc(ctx),

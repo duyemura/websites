@@ -107,9 +107,19 @@ describe("parseArgs additional edge cases", () => {
     expect((cmd as any).keywords).toEqual(["gym", "torrance"]);
   });
 
-  test("eval-fix requires --site and either --eval-uuid or --path", () => {
+  test("eval defaults to full-site mode when no path or url is given", () => {
+    const cmd = parseArgsFrom(["eval", "--site", "abc-123"]);
+    expect(cmd.cmd).toBe("eval");
+    expect((cmd as any).site).toBe("abc-123");
+    expect((cmd as any).path).toBeUndefined();
+    expect((cmd as any).url).toBeUndefined();
+  });
+
+  test("eval-fix requires --site", () => {
     expect(() => parseArgsFrom(["eval-fix"])).toThrow("--site");
-    expect(() => parseArgsFrom(["eval-fix", "--site", "abc-123"])).toThrow("--eval-uuid");
+    const fullSite = parseArgsFrom(["eval-fix", "--site", "abc-123"]);
+    expect(fullSite.cmd).toBe("eval-fix");
+    expect((fullSite as any).site).toBe("abc-123");
   });
 
   test("eval-fix parses eval-uuid and path", () => {

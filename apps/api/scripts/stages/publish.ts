@@ -2,12 +2,42 @@
 import type { StageRunner, StageContext, StageResult } from "./types";
 import { publishLatestStagingToProduction } from "../../src/services/site-versions";
 import { getS3Client } from "../../src/s3";
+import { getTemplateSpec } from "@milo/shared-types";
+import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
+import { validateContentPlaceholders } from "../../src/services/template/placeholder-validator.js";
 
 export const publishStage: StageRunner = {
   label: "publish",
   requires: [],
   produces: "",
   async run(ctx: StageContext): Promise<StageResult> {
+    const theme = ctx.templateTheme ?? "beanburito";
+    const spec = getTemplateSpec(theme);
+    const generateArtifact = await loadArtifact(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+      "generate" as unknown as Parameters<typeof loadArtifact>[2],
+    );
+    if (spec && generateArtifact?.payload) {
+      const report = validateContentPlaceholders(
+        generateArtifact.payload as Record<string, unknown>,
+        spec,
+      );
+      if (report.blocking) {
+        const lines = report.issues
+          .filter((i) => i.severity === "error")
+          .map((i) => `  - ${i.pageKey}: ${i.field} — ${i.message}`);
+        return {
+          stage: "publish",
+          status: "fail",
+          durationMs: 0,
+          metrics: { blockingIssues: lines.length },
+          warnings: [],
+          error: `Publish blocked by unfilled required placeholders:\n${lines.join("\n")}`,
+        };
+      }
+    }
+
     const bucket = ctx.config.S3_DEPLOYMENTS_BUCKET ?? ctx.config.S3_ASSETS_BUCKET;
     const s3Client = getS3Client({
       endpoint: ctx.config.S3_ENDPOINT,
