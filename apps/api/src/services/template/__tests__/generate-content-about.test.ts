@@ -176,4 +176,26 @@ describe("generateAboutContent", () => {
     expect(prompt).toContain("=== SECTION: STORY ===");
     expect(prompt).toContain("=== SECTION: TEAM ===");
   });
+
+  test("rewrites dry 'How {Gym} started' story headlines to warmer labels", async () => {
+    mockedChatCompletion.mockResolvedValueOnce({
+      content: JSON.stringify(makeAboutJson({ story: { headline: "How Acme Gym started" } })),
+    });
+
+    const result = await generateAboutContent({
+      config: makeConfig(),
+      spec: beanburitoSpec,
+      businessInfo: "",
+      brandGuidelines: "",
+      siteStrategy: "",
+      siteHierarchy: "",
+      artifactContext: "",
+      brief: undefined,
+      sitePlaybook: "",
+      conversionBrief: "",
+      log: () => {},
+    });
+
+    expect(result?.story?.headline).toBe("Our story");
+  });
 });

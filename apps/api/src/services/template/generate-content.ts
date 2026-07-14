@@ -908,6 +908,13 @@ export async function generateAboutContent(ctx: {
     }
     try {
       const parsed = JSON.parse(jsonText) as GeneratedAboutPage;
+
+      // Rewrite dry, formulaic story headlines into warmer narrative labels.
+      const storyHeadline = parsed.story?.headline?.trim();
+      if (storyHeadline && /^how\s+.*\s+started$/i.test(storyHeadline)) {
+        parsed.story!.headline = "Our story";
+      }
+
       const result: Partial<AboutContent> = {};
       if (parsed.hero?.headline) {
         result.hero = {

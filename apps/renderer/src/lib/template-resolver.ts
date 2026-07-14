@@ -176,7 +176,17 @@ export function resolvePageComponents(
     const componentSpec = spec.components[componentId];
     if (!componentSpec) continue;
 
-    const Component = componentMap[componentId];
+    // The spec's `component` field is the authoritative component reference;
+    // the page-level `componentId` is just the section slot name. Using the
+    // spec reference lets templates swap in theme-specific wrappers (e.g.
+    // beanburito's `teamBeanburito`) without changing page definitions.
+    const componentRef = componentSpec.component ?? componentId;
+    let Component = componentMap[componentRef];
+    // Fall back to the page slot name so older specs that use the slot id as
+    // the component id continue to resolve.
+    if (!Component && componentRef !== componentId) {
+      Component = componentMap[componentId];
+    }
     if (!Component) continue;
 
     const props: Record<string, unknown> = {};
