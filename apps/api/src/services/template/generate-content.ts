@@ -665,6 +665,7 @@ ${aboutSpecPrompt}
 - Keep every field within the max word count in the spec.
 - For team members, only include people documented in the gym docs. Do not invent coaches.
 - ctaBand.headline is REQUIRED. It must be a real, action-oriented headline (4-8 words) that matches the page's conversion goal. Never leave it empty.
+- Story headline: prefer warm, narrative labels such as "Our story", "How we began", "Why we built this gym", "The gym we imagined", or "Where it all started". Avoid dry, formulaic phrases like "How {Gym Name} started".
 
 ---
 
@@ -681,7 +682,7 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
     "ctaUrl": "string (use /contact if unknown)"
   },
   "story": {
-    "headline": "string (4-8 words)",
+    "headline": "string (4-8 words, warm narrative label — prefer 'Our story', 'How we began', 'Why we built this gym', 'The gym we imagined', or 'Where it all started')",
     "subheadline": "string (1 sentence)",
     "imageUrl": "string (real image path or empty)",
     "imageAlt": "string",

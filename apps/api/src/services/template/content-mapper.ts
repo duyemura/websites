@@ -1197,7 +1197,7 @@ export async function buildGymJson(
       // content is generated or supplied.
       pages.about.hero.headline = "__PLACEHOLDER__";
       pages.about.story = {
-        headline: `How ${business.name} started`,
+        headline: "Our story",
         subheadline: "We're still gathering the full story for this gym.",
         imageUrl: "__PLACEHOLDER__",
         imageAlt: "",
