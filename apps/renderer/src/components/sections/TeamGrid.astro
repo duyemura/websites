@@ -3,7 +3,7 @@ import Container from "../ui/Container.astro";
 import SectionHeading from "../ui/SectionHeading.astro";
 const NO_IMAGE = "__NO_IMAGE__";
 import type { TeamMember } from "../../types/gym-content";
-const { team, variant = "light" } = Astro.props as { team: TeamMember[]; variant?: "light" | "dark" };
+const { team, variant = "light", title = "Our coaching team", subtitle = "Meet the coaches who guide every workout, answer your questions, and help you reach your goals." } = Astro.props as { team: TeamMember[]; variant?: "light" | "dark"; title?: string; subtitle?: string };
 
 const isDark = variant === "dark";
 const sectionBg = isDark ? "bg-black" : "bg-white";
@@ -15,8 +15,8 @@ const avatarFg = isDark ? "text-primary" : "text-secondary";
 <section class={`py-16 ${sectionBg}`}>
   <Container>
     <SectionHeading
-      title="Our coaching team"
-      subtitle="Meet the coaches who guide every workout, answer your questions, and help you reach your goals."
+      title={title}
+      subtitle={subtitle}
       variant={isDark ? "dark" : "light"}
     />
     <div class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-4">

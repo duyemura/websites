@@ -928,8 +928,8 @@ export const beanburitoSpec: TemplateSpec = {
     },
 
     team: {
-      component: "TeamGrid",
-      purpose: "Coach / team member grid.",
+      component: "teamBeanburito",
+      purpose: "Coach / team member grid (beanburito dark skewed band).",
       props: {
         team: {
           purpose: "Array of team members.",

@@ -38,6 +38,30 @@ import type { SiteHierarchy } from "../../types/site-hierarchy.js";
 import { mergeGeneratedAboutContent } from "./content-mapper.js";
 import { buildImageMatcher, makeRoundRobin } from "../mirror/image-matcher.js";
 import { sanitizeHtml, sanitizeContentBlocks } from "@milo/shared-types";
+
+/**
+ * Rewrite mirror asset paths to absolute URLs so template builds can load images
+ * captured during the original crawl. Mirror assets live under a separate S3
+ * deploy prefix; without this, `/_assets/...` paths in generated content 404 in
+ * the template staging/preview URLs.
+ */
+function rewriteMirrorAssetUrls(value: unknown, mirrorBaseUrl: string): unknown {
+  if (typeof value === "string" && value.startsWith("/_assets/")) {
+    return `${mirrorBaseUrl}${value}`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteMirrorAssetUrls(item, mirrorBaseUrl));
+  }
+  if (value && typeof value === "object" && !Buffer.isBuffer(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = rewriteMirrorAssetUrls(v, mirrorBaseUrl);
+    }
+    return out;
+  }
+  return value;
+}
+
 export interface GenerateContentInput {
   db: Kysely<DB>;
   config: Config;
@@ -1668,5 +1692,13 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   const { sanitizeContentCtas } = await import("./content-mapper.js");
   sanitizeContentCtas(mergedContent.pages, mergedContent.business, []);
 
-  return mergedContent;
+  // Rewrite mirror asset paths to absolute URLs so images captured during the
+  // original crawl continue to load from the mirror deploy in template builds.
+  const mirrorBaseUrl = mirrorDeployPrefix
+    ? `${config.CDN_BASE_URL.replace(/\/$/, "")}/${mirrorDeployPrefix.replace(/^\//, "").replace(/\/$/, "")}`
+    : config.CDN_BASE_URL;
+  if (mirrorDeployPrefix) {
+    log(`  Resolving mirror assets against ${mirrorBaseUrl}`);
+  }
+  return rewriteMirrorAssetUrls(mergedContent, mirrorBaseUrl) as GymSiteContent;
 }

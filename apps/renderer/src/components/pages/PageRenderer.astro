@@ -29,6 +29,7 @@ import BlogGrid from "../sections/beanburito/BlogGrid.astro";
 import PricingGrid from "../sections/PricingGrid.astro";
 import RichContent from "../sections/RichContent.astro";
 import Story from "../sections/beanburito/Story.astro";
+import Team from "../sections/beanburito/Team.astro";
 import TeamGrid from "../sections/TeamGrid.astro";
 
 const COMPONENT_MAP: Record<string, AstroComponent> = {
@@ -52,6 +53,7 @@ const COMPONENT_MAP: Record<string, AstroComponent> = {
   richContent: RichContent as unknown as AstroComponent,
   story: Story as unknown as AstroComponent,
   team: TeamGrid as unknown as AstroComponent,
+  teamBeanburito: Team as unknown as AstroComponent,
 };
 
 interface Props {
