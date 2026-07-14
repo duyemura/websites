@@ -664,6 +664,7 @@ ${aboutSpecPrompt}
 - If a specific fact is unknown, describe the gym's identity in general terms or omit the field. NEVER invent years, prices, schedules, numbers, or guarantees.
 - Keep every field within the max word count in the spec.
 - For team members, only include people documented in the gym docs. Do not invent coaches.
+- ctaBand.headline is REQUIRED. It must be a real, action-oriented headline (4-8 words) that matches the page's conversion goal. Never leave it empty.
 
 ---
 
@@ -1653,6 +1654,12 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   }
   if (!about.communityHeadline) {
     about.communityHeadline = `About ${mergedContent.business.name}`;
+  }
+
+  // Ensure the about-page CTA band has a real headline; fall back to the business
+  // name when the LLM omits it so the template's required field is satisfied.
+  if (!about.ctaHeadline || about.ctaHeadline === "__PLACEHOLDER__") {
+    about.ctaHeadline = `Book your free intro at ${mergedContent.business.name}`;
   }
 
   // LLM-generated or source-captured CTAs may point to pages that won't be rendered.
