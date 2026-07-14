@@ -1226,8 +1226,16 @@ export async function buildGymJson(
     const pricingEx = cf([...byPath.values()].find(p => p.pageType === "pricing"));
     if (pricingEx && Array.isArray(pricingEx.plans) && pricingEx.plans.length > 0) {
       const pricingHero = pricingEx.hero as Record<string, unknown> | undefined;
+      let pricingHeadline = pricingHero?.headline ? String(pricingHero.headline) : undefined;
+      // Source crawlers sometimes capture placeholder text like "Beta Gym Pricing".
+      // Replace it with a real, gym-specific headline so the page never ships
+      // with obvious placeholder copy.
+      if (!pricingHeadline || /^beta\s+gym\s+pricing/i.test(pricingHeadline)) {
+        pricingHeadline = `Memberships and rates at ${business.name}`;
+        warnings.push("pricing headline placeholder replaced with gym-specific headline");
+      }
       pages.pricing.grid = {
-        headline: pricingHero?.headline ? String(pricingHero.headline) : undefined,
+        headline: pricingHeadline,
         plans: pricingEx.plans.map((plan: unknown) => {
           const item = plan as Record<string, unknown>;
           return {
