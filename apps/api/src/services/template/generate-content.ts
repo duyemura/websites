@@ -32,11 +32,11 @@ import {
 } from "@milo/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
 import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
-import type { MirrorAssetsArtifact } from "../../types/mirror.js";
+import type { MirrorAsset, MirrorAssetsArtifact } from "../../types/mirror.js";
 import type { ExtractArtifact } from "../../types/pipeline-artifacts.js";
 import type { SiteHierarchy } from "../../types/site-hierarchy.js";
 import { mergeGeneratedAboutContent } from "./content-mapper.js";
-import { buildImageMatcher, makeRoundRobin } from "../mirror/image-matcher.js";
+import { buildImageMatcher, makeRoundRobin, type ImageMatcher } from "../mirror/image-matcher.js";
 import { sanitizeHtml, sanitizeContentBlocks } from "@milo/shared-types";
 
 /**
@@ -301,6 +301,58 @@ async function listMirrorAssets(
   } catch {
     return [];
   }
+}
+
+// ── Hero image helpers ───────────────────────────────────────────────────────
+
+const HERO_MIN_WIDTH = 600;
+const HERO_MIN_HEIGHT = 300;
+
+function findMirrorAssetByUrl(url: string, assets: MirrorAsset[]): MirrorAsset | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/_assets/")) {
+    return assets.find((a) => a.localPath === url);
+  }
+  const suffixMatch = url.match(/\/_assets\/[^/?#]+/);
+  if (suffixMatch) {
+    return assets.find((a) => a.localPath === suffixMatch[0]);
+  }
+  return assets.find((a) => a.originalUrl === url);
+}
+
+function isUsableHeroImage(url: string, assets: MirrorAsset[]): boolean {
+  if (!url || url === NO_IMAGE) return false;
+  const asset = findMirrorAssetByUrl(url, assets);
+  if (!asset) return true; // external or legacy URLs we don't have metadata for — be permissive
+  if (!asset.width || !asset.height) return true;
+  return asset.width >= HERO_MIN_WIDTH && asset.height >= HERO_MIN_HEIGHT;
+}
+
+function findHeroImage(opts: {
+  candidate?: string | null;
+  context: string;
+  imageMatcher: ImageMatcher;
+  assets: MirrorAsset[];
+  used: Set<string>;
+}): string {
+  const { candidate, context, imageMatcher, assets, used } = opts;
+  if (candidate && isUsableHeroImage(candidate, assets)) {
+    return candidate;
+  }
+
+  const exclude = candidate ? new Set([...used, candidate]) : new Set(used);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const matched = imageMatcher.match({ query: context, exclude, preferredSectionType: "hero" });
+    if (!matched) break;
+    if (isUsableHeroImage(matched, assets)) return matched;
+    exclude.add(matched);
+  }
+
+  const usable = imageMatcher.photos.filter(
+    (a) => isUsableHeroImage(a.localPath, assets) && !exclude.has(a.localPath),
+  );
+  if (usable.length > 0) return usable[0]!.localPath;
+  return candidate || NO_IMAGE;
 }
 
 // ── Context builder ──────────────────────────────────────────────────────────
@@ -1048,30 +1100,39 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     log(`  Nav [${navSource}]: ${capturedNav.map(i => i.label).join(", ")}`);
   }
 
-  // Load hero image URL captured during clone (saved as hero-image.txt alongside outline.txt)
-  let heroImageUrl: string | undefined;
+  // Load per-page hero image URLs captured during clone (saved as hero-image.txt alongside outline.txt).
+  // Deploy saves one per page; older snapshots may only have the homepage file.
+  const pageHeroImages = new Map<string, string>();
   if (mirrorDeployPrefix) {
-    try {
-      const bucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
-      const obj = await input.s3Client.send(new GetObjectCommand({
-        Bucket: bucket,
-        Key: `${mirrorDeployPrefix}/hero-image.txt`,
-      }));
-      const relativeUrl = (await obj.Body?.transformToString() ?? "").trim();
-      if (relativeUrl.startsWith("/_assets/")) {
-        // Use the immutable mirror deploy prefix — stays valid even after template replaces staging
-        heroImageUrl = relativeUrl; // relative /_assets/ path — template deploy copies assets in
-        log(`  Hero image: ${heroImageUrl}`);
-      }
-    } catch { /* hero-image.txt not yet present — run clone again to capture */ }
+    const heroBucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
+    const heroPaths = ["/", "/about", "/pricing", "/contact", "/schedule", "/blog"];
+    await Promise.all(
+      heroPaths.map(async (path) => {
+        const suffix = path === "/" ? "hero-image.txt" : `${path.replace(/^\//, "")}/hero-image.txt`;
+        try {
+          const obj = await input.s3Client.send(new GetObjectCommand({
+            Bucket: heroBucket,
+            Key: `${mirrorDeployPrefix}/${suffix}`,
+          }));
+          const relativeUrl = (await obj.Body?.transformToString() ?? "").trim();
+          if (relativeUrl.startsWith("/_assets/")) {
+            pageHeroImages.set(path, relativeUrl);
+          }
+        } catch { /* no hero-image.txt for this page yet */ }
+      }),
+    );
+    if (pageHeroImages.size > 0) {
+      log(`  Hero images captured: ${[...pageHeroImages.entries()].map(([p, u]) => `${p}=${u}`).join(", ")}`);
+    }
   }
+  const homeHeroUrl = pageHeroImages.get("/");
 
   // Build a pool of scraped gym photos for program covers and amenity backgrounds.
-  // Exclude the hero image so it isn't reused as a generic box background.
+  // Exclude the homepage hero image so it isn't reused as a generic box background.
   let mirrorAssets: string[] = [];
   if (mirrorDeployPrefix) {
     mirrorAssets = (await listMirrorAssets(input.s3Client, bucket, mirrorDeployPrefix))
-      .filter((a) => a !== heroImageUrl)
+      .filter((a) => a !== homeHeroUrl)
       .sort();
     if (mirrorAssets.length > 0) {
       log(`  Mirror assets available: ${mirrorAssets.length}`);
@@ -1338,16 +1399,25 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // Build merged home page content
   const baseHero = baseContent.pages.home.hero;
   const heroContext = `hero ${generated.hero?.headline ?? baseHero.headline} ${generated.hero?.subheading ?? baseHero.subheading ?? ""} ${baseContent.business.name}`.trim();
-  const matchedHeroImage = !heroImageUrl
-    ? imageMatcher.match({ query: heroContext, preferredSectionType: "hero" })
-    : undefined;
+
+  // Track hero images across all pages so interior pages don't all reuse the same photo.
+  const usedHeroImages = new Set<string>();
+  const homeHeroImage = findHeroImage({
+    candidate: homeHeroUrl || baseHero.backgroundImageUrl,
+    context: heroContext,
+    imageMatcher,
+    assets: taggedAssets,
+    used: usedHeroImages,
+  });
+  if (homeHeroImage && homeHeroImage !== NO_IMAGE) usedHeroImages.add(homeHeroImage);
+
   const generatedHero: HeroContent = {
     headline: generated.hero?.headline || baseHero.headline,
     subheading: generated.hero?.subheading || baseHero.subheading,
     intro: generated.hero?.intro || baseHero.intro,
     ctaLabel: generated.hero?.ctaLabel || baseHero.ctaLabel || baseContent.business.primaryCta.label,
     ctaUrl: generated.hero?.ctaUrl || baseHero.ctaUrl || baseContent.business.primaryCta.url,
-    backgroundImageUrl: heroImageUrl || matchedHeroImage || baseHero.backgroundImageUrl,
+    backgroundImageUrl: homeHeroImage,
   };
 
   const generatedValueProps: ValueProp[] = (generated.valueProps ?? [])
@@ -1498,8 +1568,18 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     if (coverImageUrl) usedProgramImages.add(coverImageUrl);
 
     // Hero: prefer source-extracted headline, then LLM, then base.
+    // Validate the cover/hero image size so program pages never show a tiny icon.
     const extractedHeroHeadline = brief?.contentFound.hero.headline;
     const genHero = generatedProgram?.hero;
+    const programHeroImage = findHeroImage({
+      candidate: coverImageUrl || p.hero.backgroundImageUrl,
+      context: `${p.name} ${baseContent.business.name} program workout hero`,
+      imageMatcher,
+      assets: taggedAssets,
+      used: usedHeroImages,
+    });
+    if (programHeroImage && programHeroImage !== NO_IMAGE) usedHeroImages.add(programHeroImage);
+
     const finalHero: HeroContent = {
       ...p.hero,
       headline: extractedHeroHeadline || genHero?.headline || p.hero.headline || `Try our ${p.name}`,
@@ -1507,7 +1587,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       intro: genHero?.intro || p.hero.intro,
       ctaLabel: genHero?.ctaLabel || p.hero.ctaLabel || baseContent.business.primaryCta.label,
       ctaUrl: genHero?.ctaUrl || p.hero.ctaUrl || baseContent.business.primaryCta.url,
-      backgroundImageUrl: coverImageUrl || p.hero.backgroundImageUrl,
+      backgroundImageUrl: programHeroImage,
     };
 
     // What is it: generated wins, then extracted body, then base.
@@ -1588,11 +1668,19 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   }
 
   const aboutPage = baseContent.pages.about;
+  const aboutHeroImage = findHeroImage({
+    candidate: aboutPage.hero.backgroundImageUrl,
+    context: `${aboutPage.hero.headline} ${baseContent.business.name} about hero`,
+    imageMatcher,
+    assets: taggedAssets,
+    used: usedHeroImages,
+  });
+  if (aboutHeroImage && aboutHeroImage !== NO_IMAGE) {
+    aboutPage.hero.backgroundImageUrl = aboutHeroImage;
+    usedHeroImages.add(aboutHeroImage);
+  }
   if (!aboutPage.hero.backgroundImageUrl || aboutPage.hero.backgroundImageUrl === NO_IMAGE) {
-    aboutPage.hero.backgroundImageUrl = imageMatcher.match({
-      query: `${aboutPage.hero.headline} ${baseContent.business.name} about hero`,
-      preferredSectionType: "hero",
-    }) || NO_IMAGE;
+    aboutPage.hero.backgroundImageUrl = NO_IMAGE;
   }
   if (!aboutPage.story?.imageUrl || aboutPage.story.imageUrl === NO_IMAGE) {
     aboutPage.story = {
@@ -1615,6 +1703,39 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       if (matched) usedTeamPhotos.add(matched);
       return { ...member, photoUrl: matched || NO_IMAGE };
     });
+  }
+
+  // Assign real, appropriately sized hero images to every static page. Interior pages
+  // often don't have a captured hero image, so fall back to contextually matched
+  // scraped photos (and skip anything too small to render full-width).
+  const staticHeroTargets: Array<{ key: keyof GymSiteContent["pages"]; path: string; context: string }> = [
+    { key: "pricing", path: "/pricing", context: `${baseContent.pages.pricing.hero.headline} ${baseContent.business.name} pricing membership hero` },
+    { key: "contact", path: "/contact", context: `${baseContent.pages.contact.hero.headline} ${baseContent.business.name} contact location hero` },
+    { key: "schedule", path: "/schedule", context: `${baseContent.pages.schedule.hero.headline} ${baseContent.business.name} schedule classes hero` },
+    { key: "blog", path: "/blog", context: `blog fitness news ${baseContent.business.name} hero` },
+  ];
+  if (baseContent.pages.localGuide) {
+    staticHeroTargets.push({
+      key: "localGuide",
+      path: "/local-guide",
+      context: `${baseContent.pages.localGuide.hero.headline} ${baseContent.business.geo?.city ?? baseContent.business.name} local guide hero`,
+    });
+  }
+
+  for (const target of staticHeroTargets) {
+    const page = baseContent.pages[target.key] as { hero?: HeroContent } | undefined;
+    if (!page?.hero) continue;
+    const matched = findHeroImage({
+      candidate: pageHeroImages.get(target.path) || page.hero.backgroundImageUrl,
+      context: target.context,
+      imageMatcher,
+      assets: taggedAssets,
+      used: usedHeroImages,
+    });
+    if (matched && matched !== NO_IMAGE) {
+      page.hero.backgroundImageUrl = matched;
+      usedHeroImages.add(matched);
+    }
   }
 
   // Generate 10 long-tail local SEO FAQs for every templated static page.
@@ -1709,6 +1830,19 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       backgroundImageUrl: NO_IMAGE,
     };
   }
+  if (blog.hero) {
+    const blogHeroImage = findHeroImage({
+      candidate: pageHeroImages.get("/blog") || blog.hero.backgroundImageUrl,
+      context: `blog fitness news ${mergedContent.business.name} hero`,
+      imageMatcher,
+      assets: taggedAssets,
+      used: usedHeroImages,
+    });
+    if (blogHeroImage && blogHeroImage !== NO_IMAGE) {
+      blog.hero.backgroundImageUrl = blogHeroImage;
+      usedHeroImages.add(blogHeroImage);
+    }
+  }
   if (!blog.ctaHeadline) {
     blog.ctaHeadline = `Ready to train with ${mergedContent.business.name}?`;
   }
@@ -1741,3 +1875,6 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   }
   return rewriteMirrorAssetUrls(mergedContent, mirrorBaseUrl) as GymSiteContent;
 }
+
+// Exported for unit tests
+export { HERO_MIN_WIDTH, HERO_MIN_HEIGHT, findMirrorAssetByUrl, isUsableHeroImage, findHeroImage };

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import sharp from "sharp";
 import { extractCssUrls, rewriteCssUrls } from "../../utils/mirror/rewrite-css";
 import { extractImageContexts } from "../../utils/mirror/extract-image-contexts";
 import type { AssetAppearance, MirrorAsset, MirrorAssetsArtifact, MirrorCrawlArtifact } from "../../types/mirror";
@@ -110,6 +111,23 @@ async function fetchBinary(url: string): Promise<{ buffer: Buffer; contentType: 
   };
 }
 
+async function readImageDimensions(
+  buffer: Buffer,
+  contentType: string,
+): Promise<{ width: number; height: number } | undefined> {
+  if (!contentType.startsWith("image/")) return undefined;
+  // sharp can read SVG dimensions, but the raster size check is what matters for photos.
+  try {
+    const meta = await sharp(buffer).metadata();
+    if (meta.width && meta.height) {
+      return { width: meta.width, height: meta.height };
+    }
+  } catch {
+    // Not a readable image; ignore silently.
+  }
+  return undefined;
+}
+
 export async function captureAssets(
   crawl: MirrorCrawlArtifact,
   deps: CaptureDeps,
@@ -186,12 +204,15 @@ export async function captureAssets(
 
     const tags = visionTags.get(url);
     const appearances = appearancesByUrl.get(url);
+    const dimensions = await readImageDimensions(body, dl.contentType);
 
     assets.push({
       originalUrl: url,
       storageKey,
       localPath: `/_assets/${localName}`,
       contentType: dl.contentType,
+      width: dimensions?.width,
+      height: dimensions?.height,
       appearances: appearances && appearances.length > 0 ? appearances : undefined,
       visionTags: tags?.tags,
       visionDescription: tags?.description,

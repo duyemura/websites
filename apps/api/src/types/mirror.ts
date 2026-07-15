@@ -100,6 +100,9 @@ export interface MirrorAsset {
   /** Path used inside the rewritten site, e.g. "/_assets/ab12cd.css" */
   localPath: string;
   contentType: string;
+  /** Image dimensions, when the asset is a raster image and we were able to read them. */
+  width?: number;
+  height?: number;
   /** Every page/section where this asset was found during crawl. */
   appearances?: AssetAppearance[];
   /** Vision-generated content tags for matching to generated sections. */
