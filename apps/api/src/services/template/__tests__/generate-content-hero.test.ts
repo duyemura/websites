@@ -60,6 +60,21 @@ describe("isUsableHeroImage", () => {
   it("is permissive for external URLs without a matching asset record", () => {
     expect(isUsableHeroImage("https://example.com/photo.jpg", assets)).toBe(true);
   });
+
+  it("rejects logo/branding assets even if dimensions are large", () => {
+    const logoAssets: MirrorAsset[] = [photo("/_assets/logo.png", 1200, 600, ["logo", "branding"])];
+    expect(isUsableHeroImage("/_assets/logo.png", logoAssets)).toBe(false);
+  });
+
+  it("rejects non-image assets", () => {
+    const nonImageAssets: MirrorAsset[] = [{
+      originalUrl: "https://example.com/file.bin",
+      localPath: "/_assets/file.bin",
+      storageKey: "file.bin",
+      contentType: "application/octet-stream",
+    }];
+    expect(isUsableHeroImage("/_assets/file.bin", nonImageAssets)).toBe(false);
+  });
 });
 
 describe("findHeroImage", () => {
@@ -119,5 +134,23 @@ describe("findHeroImage", () => {
         used,
       }),
     ).toBe(NO_IMAGE);
+  });
+
+  it("never falls back to a logo asset", () => {
+    const assets: MirrorAsset[] = [
+      photo("/_assets/logo.png", 1200, 600, ["logo"]),
+      photo("/_assets/gym-floor.jpg", 1200, 600, ["facility"]),
+    ];
+    const matcher = buildImageMatcher(assets);
+    const used = new Set<string>();
+    expect(
+      findHeroImage({
+        candidate: undefined,
+        context: "about page hero",
+        imageMatcher: matcher,
+        assets,
+        used,
+      }),
+    ).toBe("/_assets/gym-floor.jpg");
   });
 });

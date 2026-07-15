@@ -320,10 +320,21 @@ function findMirrorAssetByUrl(url: string, assets: MirrorAsset[]): MirrorAsset |
   return assets.find((a) => a.originalUrl === url);
 }
 
+const HERO_REJECT_TAGS = new Set(["logo", "branding", "icon", "favicon", "badge", "watermark"]);
+
+const HERO_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
+
 function isUsableHeroImage(url: string, assets: MirrorAsset[]): boolean {
   if (!url || url === NO_IMAGE) return false;
   const asset = findMirrorAssetByUrl(url, assets);
   if (!asset) return true; // external or legacy URLs we don't have metadata for — be permissive
+  // Only real raster images make sense as full-width hero backgrounds.
+  const ct = asset.contentType.toLowerCase();
+  if (!ct.startsWith("image/") || ct.includes("svg")) return false;
+  const ext = asset.localPath.toLowerCase().slice(asset.localPath.lastIndexOf("."));
+  if (!HERO_IMAGE_EXTENSIONS.has(ext)) return false;
+  const tags = asset.visionTags?.map((t) => t.toLowerCase()) ?? [];
+  if (tags.some((t) => HERO_REJECT_TAGS.has(t))) return false;
   if (!asset.width || !asset.height) return true;
   return asset.width >= HERO_MIN_WIDTH && asset.height >= HERO_MIN_HEIGHT;
 }
@@ -1101,29 +1112,31 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   }
 
   // Load per-page hero image URLs captured during clone (saved as hero-image.txt alongside outline.txt).
-  // Deploy saves one per page; older snapshots may only have the homepage file.
+  // Deploy writes one for every page; discover them dynamically instead of hardcoding paths.
   const pageHeroImages = new Map<string, string>();
   if (mirrorDeployPrefix) {
     const heroBucket = input.config.S3_DEPLOYMENTS_BUCKET ?? input.config.S3_ASSETS_BUCKET;
-    const heroPaths = ["/", "/about", "/pricing", "/contact", "/schedule", "/blog"];
-    await Promise.all(
-      heroPaths.map(async (path) => {
-        const suffix = path === "/" ? "hero-image.txt" : `${path.replace(/^\//, "")}/hero-image.txt`;
-        try {
-          const obj = await input.s3Client.send(new GetObjectCommand({
-            Bucket: heroBucket,
-            Key: `${mirrorDeployPrefix}/${suffix}`,
-          }));
-          const relativeUrl = (await obj.Body?.transformToString() ?? "").trim();
-          if (relativeUrl.startsWith("/_assets/")) {
-            pageHeroImages.set(path, relativeUrl);
-          }
-        } catch { /* no hero-image.txt for this page yet */ }
-      }),
-    );
-    if (pageHeroImages.size > 0) {
-      log(`  Hero images captured: ${[...pageHeroImages.entries()].map(([p, u]) => `${p}=${u}`).join(", ")}`);
-    }
+    try {
+      const listed = await input.s3Client.send(new ListObjectsV2Command({
+        Bucket: heroBucket,
+        Prefix: `${mirrorDeployPrefix}/`,
+      }));
+      const prefixLen = `${mirrorDeployPrefix}/`.length;
+      for (const obj of listed.Contents ?? []) {
+        const key = obj.Key ?? "";
+        if (!key.endsWith("/hero-image.txt")) continue;
+        const rel = key.slice(prefixLen);
+        const path = rel === "hero-image.txt" ? "/" : `/${rel.slice(0, -"hero-image.txt".length - 1)}`;
+        const raw = await input.s3Client.send(new GetObjectCommand({ Bucket: heroBucket, Key: key }));
+        const relativeUrl = (await raw.Body?.transformToString() ?? "").trim();
+        if (relativeUrl.startsWith("/_assets/")) {
+          pageHeroImages.set(path, relativeUrl);
+        }
+      }
+      if (pageHeroImages.size > 0) {
+        log(`  Hero images captured: ${[...pageHeroImages.entries()].map(([p, u]) => `${p}=${u}`).join(", ")}`);
+      }
+    } catch { /* no hero-image.txt files discovered */ }
   }
   const homeHeroUrl = pageHeroImages.get("/");
 
@@ -1709,15 +1722,19 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // often don't have a captured hero image, so fall back to contextually matched
   // scraped photos (and skip anything too small to render full-width).
   const staticHeroTargets: Array<{ key: keyof GymSiteContent["pages"]; path: string; context: string }> = [
+    { key: "about", path: "/about", context: `${baseContent.pages.about.hero.headline} ${baseContent.business.name} about hero` },
     { key: "pricing", path: "/pricing", context: `${baseContent.pages.pricing.hero.headline} ${baseContent.business.name} pricing membership hero` },
     { key: "contact", path: "/contact", context: `${baseContent.pages.contact.hero.headline} ${baseContent.business.name} contact location hero` },
     { key: "schedule", path: "/schedule", context: `${baseContent.pages.schedule.hero.headline} ${baseContent.business.name} schedule classes hero` },
     { key: "blog", path: "/blog", context: `blog fitness news ${baseContent.business.name} hero` },
   ];
   if (baseContent.pages.localGuide) {
+    // Source local-guide paths vary (e.g. /torrance-local-guide). Match the captured
+    // hero-image.txt path so we use the real scraped hero when one exists.
+    const capturedLocalGuidePath = [...pageHeroImages.keys()].find((k) => /local[-_]?guide/i.test(k));
     staticHeroTargets.push({
       key: "localGuide",
-      path: "/local-guide",
+      path: capturedLocalGuidePath ?? "/local-guide",
       context: `${baseContent.pages.localGuide.hero.headline} ${baseContent.business.geo?.city ?? baseContent.business.name} local guide hero`,
     });
   }
@@ -1797,6 +1814,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       programs: mergedPrograms,
     },
   };
+  mergedContent.meta.templateTheme = theme;
 
   // About page community fallback: use homepage community content when the about
   // page has none of its own.

@@ -246,6 +246,33 @@ describe("extractHeroImageUrl", () => {
     expect(extractHeroImageUrl(html)).toBeUndefined();
   });
 
+  test("extracts CSS background-image from hero section when asset map is provided", () => {
+    const html = `<html><body>
+      <section class="hero-section" style="background-image:url('https://cdn.example.com/hero.jpg')">
+        <h1>Welcome</h1>
+      </section>
+      <section class="other">
+        <img src="/_assets/other.jpg" alt="Other" />
+      </section>
+    </body></html>`;
+    const assetMap = new Map([
+      ["https://cdn.example.com/hero.jpg", { originalUrl: "https://cdn.example.com/hero.jpg", localPath: "/_assets/hero.jpg", storageKey: "hero.jpg", contentType: "image/jpeg", width: 1200, height: 800 } as any],
+    ]);
+    expect(extractHeroImageUrl(html, assetMap)).toBe("/_assets/hero.jpg");
+  });
+
+  test("skips logos in body fallback", () => {
+    const html = `<html><body>
+      <header><img src="https://cdn.example.com/logo.png" alt="Logo" /></header>
+      <section><img src="https://cdn.example.com/gym-floor.jpg" alt="Gym" /></section>
+    </body></html>`;
+    const assetMap = new Map([
+      ["https://cdn.example.com/logo.png", { originalUrl: "https://cdn.example.com/logo.png", localPath: "/_assets/logo.png", storageKey: "logo.png", contentType: "image/png", width: 1200, height: 600, visionTags: ["logo"] } as any],
+      ["https://cdn.example.com/gym-floor.jpg", { originalUrl: "https://cdn.example.com/gym-floor.jpg", localPath: "/_assets/gym-floor.jpg", storageKey: "gym-floor.jpg", contentType: "image/jpeg", width: 1200, height: 800 } as any],
+    ]);
+    expect(extractHeroImageUrl(html, assetMap)).toBe("/_assets/gym-floor.jpg");
+  });
+
   test("returns undefined for empty HTML", () => {
     expect(extractHeroImageUrl("")).toBeUndefined();
     expect(extractHeroImageUrl("<html><body></body></html>")).toBeUndefined();

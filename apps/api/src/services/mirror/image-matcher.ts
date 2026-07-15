@@ -2,6 +2,8 @@ import type { MirrorAsset } from "../../types/mirror";
 
 const PHOTO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
 
+const NON_PHOTO_TAGS = new Set(["logo", "branding", "icon", "favicon", "badge", "watermark"]);
+
 function isPhotoAsset(asset: MirrorAsset): boolean {
   const ct = asset.contentType.toLowerCase();
   if (!ct.startsWith("image/")) return false;
@@ -9,7 +11,12 @@ function isPhotoAsset(asset: MirrorAsset): boolean {
   const localLower = asset.localPath.toLowerCase();
   const lastDot = localLower.lastIndexOf(".");
   const ext = lastDot >= 0 ? localLower.slice(lastDot) : "";
-  return PHOTO_EXTENSIONS.has(ext);
+  if (!PHOTO_EXTENSIONS.has(ext)) return false;
+  // Exclude decorative branding assets (logos, icons, favicons) from photo pools.
+  // They are not suitable as hero/section imagery even if they are PNG files.
+  const tags = asset.visionTags?.map((t) => t.toLowerCase()) ?? [];
+  if (tags.some((t) => NON_PHOTO_TAGS.has(t))) return false;
+  return true;
 }
 
 function normalize(text: string): string[] {

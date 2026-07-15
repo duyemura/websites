@@ -12,9 +12,10 @@ import type { DB } from "../../types/db";
 import { applyTransforms, pageGlobMatches } from "../../utils/mirror/apply-transforms";
 import { buildRedirectHtml, generateRobots, generateSitemap } from "../../utils/mirror/site-meta";
 import { pathToFileKey, pathToOutlineKey } from "./snapshot";
-import type { MirrorSnapshotArtifact, SiteTransformRecord, TransformType } from "../../types/mirror";
+import type { MirrorAsset, MirrorAssetsArtifact, MirrorSnapshotArtifact, SiteTransformRecord, TransformType } from "../../types/mirror";
 import { INTERCEPTOR_SCRIPT } from "../../utils/mirror/interceptor";
 import * as cheerio from "cheerio";
+import { loadArtifact } from "../../utils/pipeline/artifact-store";
 
 async function bounded<T>(
   items: T[],
@@ -122,26 +123,101 @@ export function extractNavStructure(html: string, origin: string): CapturedNavIt
   return items.slice(0, 12); // cap at 12 top-level items
 }
 
+const HERO_MIN_WIDTH = 600;
+const HERO_MIN_HEIGHT = 300;
+const HERO_REJECT_TAGS = new Set(["logo", "branding", "icon", "favicon", "badge", "watermark"]);
+
+function resolveOriginalUrl(url: string, assetByUrl?: Map<string, MirrorAsset>): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/_assets/")) return url;
+  const asset = assetByUrl?.get(url);
+  if (asset) return asset.localPath;
+  return undefined;
+}
+
+function isUsableHeroAsset(asset: MirrorAsset | undefined): boolean {
+  if (!asset) return true; // unknown asset: permissive
+  const tags = asset.visionTags?.map((t) => t.toLowerCase()) ?? [];
+  if (tags.some((t) => HERO_REJECT_TAGS.has(t))) return false;
+  if (asset.width && asset.height) {
+    return asset.width >= HERO_MIN_WIDTH && asset.height >= HERO_MIN_HEIGHT;
+  }
+  return true;
+}
+
+function extractBackgroundUrl(style: string | undefined): string | undefined {
+  if (!style) return undefined;
+  const match = style.match(/background-image\s*:\s*url\((['"]?)(.+?)\1\)/i);
+  return match?.[2];
+}
+
 /**
  * Extract the hero background image URL from page HTML.
  * Returns the `/_assets/...` relative URL of the first prominent image
  * found in the hero section, or undefined if none found.
+ *
+ * When an `assetByUrl` map is supplied, og:image and CSS background-image URLs
+ * are translated back to the captured `/_assets/...` path. This is essential
+ * because source sites often render hero images as `background-image` on a div
+ * rather than as an `img` tag, and the raw URLs are the original CDN links.
  */
-export function extractHeroImageUrl(html: string): string | undefined {
+export function extractHeroImageUrl(html: string, assetByUrl?: Map<string, MirrorAsset>): string | undefined {
   const $ = cheerio.load(html);
 
-  // Check og:image meta first — most reliable signal for the hero image
+  // Check og:image meta first — most reliable signal for the hero image.
   const ogImage = $("meta[property='og:image']").attr("content");
-  if (ogImage?.startsWith("/_assets/")) return ogImage;
+  if (ogImage) {
+    const resolved = resolveOriginalUrl(ogImage, assetByUrl);
+    if (resolved && isUsableHeroAsset(assetByUrl?.get(ogImage))) return resolved;
+  }
 
-  // Then look for the first <img> in a hero-ish section
-  const heroSelectors = "[class*='hero'], [class*='banner'], section:first-of-type";
-  const heroImg = $(heroSelectors).find("img[src^='/_assets/']").first().attr("src");
-  if (heroImg) return heroImg;
+  // Hero-ish section selectors, in order of preference.
+  const heroSelectors = [
+    "[class*='hero-section']",
+    "[class*='hero-banner']",
+    "[class*='banner-section']",
+    "[class*='about-hero']",
+    "[class*='hero']",
+    "[class*='banner']",
+    "section:first-of-type",
+    "header:first-of-type",
+  ].join(", ");
 
-  // Finally any large img anywhere in the page body (first one, above-fold)
-  const firstImg = $("body").find("img[src^='/_assets/']").first().attr("src");
-  return firstImg ?? undefined;
+  const $hero = $(heroSelectors).first();
+  if ($hero.length) {
+    // Prefer CSS background-image on the hero or any of its ancestors/children.
+    // Source sites (Webflow, Squarespace, Wix) commonly use this for hero photos.
+    const candidates = [$hero, ...$hero.find("*").toArray()];
+    for (const el of candidates) {
+      const style = $(el).attr("style");
+      const bgUrl = extractBackgroundUrl(style);
+      if (bgUrl) {
+        const resolved = resolveOriginalUrl(bgUrl, assetByUrl);
+        if (resolved && isUsableHeroAsset(assetByUrl?.get(bgUrl))) return resolved;
+      }
+    }
+
+    // Then look for the first real <img> inside the hero section.
+    const heroImgs = $hero.find("img").toArray();
+    for (const el of heroImgs) {
+      const src = $(el).attr("src");
+      if (!src) continue;
+      const resolved = resolveOriginalUrl(src, assetByUrl);
+      if (resolved && isUsableHeroAsset(assetByUrl?.get(src))) return resolved;
+    }
+  }
+
+  // Last resort: any prominent image in the body. Skip logos/icons when metadata
+  // is available so we don't accidentally use a tiny header logo as the hero.
+  const bodyImgs = $("body").find("img").toArray();
+  for (const el of bodyImgs) {
+    const src = $(el).attr("src");
+    if (!src) continue;
+    const resolved = resolveOriginalUrl(src, assetByUrl);
+    if (resolved && isUsableHeroAsset(assetByUrl?.get(src))) return resolved;
+  }
+
+  return undefined;
 }
 
 export function extractContentOutline(html: string): string {
@@ -342,6 +418,28 @@ export async function deploySnapshot(
   const DEPLOY_CONCURRENCY = 12;
   const pages = snapshot.pages;
 
+  // Build an original URL -> asset map so we can translate hero background-image URLs
+  // (still pointing at the source CDN in the snapshot HTML) to captured `/_assets/...` paths.
+  let assetByUrl: Map<string, MirrorAsset> = new Map();
+  try {
+    const site = await deps.db
+      .selectFrom("sites")
+      .select("workspaceUuid")
+      .where("uuid", "=", deps.siteUuid)
+      .executeTakeFirst();
+    const assetsArtifact = await loadArtifact<MirrorAssetsArtifact>(
+      deps.db,
+      { siteUuid: deps.siteUuid, workspaceUuid: site?.workspaceUuid ?? "" },
+      "mirror-assets",
+    );
+    for (const asset of assetsArtifact?.payload?.assets ?? []) {
+      assetByUrl.set(asset.originalUrl, asset);
+      assetByUrl.set(asset.localPath, asset);
+    }
+  } catch {
+    // Non-fatal: extraction falls back to the old src-only behavior.
+  }
+
   await bounded(pages, DEPLOY_CONCURRENCY, async (page) => {
     const fileKey = pathToFileKey(page.path);
     const replace = pageReplaces.find((t) => pageGlobMatches(t.pageGlob, page.path));
@@ -450,7 +548,7 @@ export async function deploySnapshot(
       }
       // Save hero image URL so the generate stage can use it as backgroundImageUrl
       let heroImageUrl = "";
-      try { heroImageUrl = extractHeroImageUrl(result.html) ?? ""; }
+      try { heroImageUrl = extractHeroImageUrl(result.html, assetByUrl) ?? ""; }
       catch { /* non-fatal */ }
       if (heroImageUrl) {
         const heroImageKey = `${deployPrefix}/${pathToOutlineKey(page.path).replace("outline.txt", "hero-image.txt")}`;
