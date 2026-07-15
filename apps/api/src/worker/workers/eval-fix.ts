@@ -141,6 +141,7 @@ export function evalFixProcessor(fastify: FastifyInstance) {
       config.CLOUDFRONT_DISTRIBUTION_ID,
       config.CLOUDFRONT_KVS_ARN,
       config.MILO_PREVIEW_DOMAIN,
+      config,
     );
 
     fastify.log.info(

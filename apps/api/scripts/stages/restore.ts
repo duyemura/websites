@@ -38,7 +38,13 @@ export const restoreStage: StageRunner = {
     }
 
     ctx.log(`  Restoring v${versionArg} → staging/ then → production/ …`);
-    const result = await publishSiteVersion(ctx.db, s3Client, bucket, ctx.siteUuid, versionArg);
+    const result = await publishSiteVersion(
+      ctx.db, s3Client, bucket, ctx.siteUuid, versionArg,
+      ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
+      ctx.config.CLOUDFRONT_KVS_ARN,
+      ctx.config.MILO_PREVIEW_DOMAIN,
+      ctx.config,
+    );
 
     return {
       stage: "restore",

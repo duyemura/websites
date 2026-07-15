@@ -50,7 +50,15 @@ function deployTemplateSiteProcessor(fastify: FastifyInstance) {
 
     // Promote the immutable deploy to staging so the preview URL reflects the latest build.
     await promoteDeploy(s3Client, bucket, siteUuid, result.deployPrefix);
-    await invalidatePreviewCache(config.CLOUDFRONT_DISTRIBUTION_ID);
+    const invalidationId = await invalidatePreviewCache(
+      config.CLOUDFRONT_DISTRIBUTION_ID,
+      config,
+    );
+    if (invalidationId) {
+      fastify.log.info({ invalidationId }, "preview cache invalidated");
+    } else {
+      fastify.log.warn("preview cache invalidation failed");
+    }
     fastify.log.info(
       { jobId: job.id, siteUuid, version: result.version, deployPrefix: result.deployPrefix },
       "deploy-template worker finished; staging promoted and preview cache invalidated",

@@ -218,6 +218,7 @@ describe("eval-fix worker", () => {
       undefined,
       undefined,
       "preview.example.com",
+      expect.objectContaining({ CDN_BASE_URL: "https://cdn.example.com", MILO_PREVIEW_DOMAIN: "preview.example.com", S3_DEPLOYMENTS_BUCKET: "milo-deployments" }),
     );
     expect(evaluatePage).toHaveBeenCalledWith(
       expect.objectContaining({

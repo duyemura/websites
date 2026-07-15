@@ -55,6 +55,8 @@ export const ConfigSchema = z.object({
   CLOUDFRONT_KVS_ARN: z.string().optional(),
   /** CloudFront distribution ID — used to invalidate the cache on publish */
   CLOUDFRONT_DISTRIBUTION_ID: z.string().optional(),
+  /** AWS profile that owns CloudFront/KVS resources. Default: unicorn. */
+  CLOUDFRONT_PROFILE: z.string().optional().default("unicorn"),
   /** Domain for auto-generated preview subdomains, e.g. "mygymseo.com" → {uuid}-preview.mygymseo.com */
   MILO_PREVIEW_DOMAIN: z.string().optional(),
   /** Minimum per-field similarity (0–1) required for a section-diff field to be

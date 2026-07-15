@@ -898,6 +898,9 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
       const result = await publishLatestStagingToProduction(
         fastify.db, s3Client, bucket, siteUuid,
         fastify.config.CLOUDFRONT_DISTRIBUTION_ID,
+        fastify.config.CLOUDFRONT_KVS_ARN,
+        fastify.config.MILO_PREVIEW_DOMAIN,
+        fastify.config,
       );
       fastify.log.info({ siteUuid, version: result.version }, "site published to production");
       return reply.code(200).send({ ok: true, version: result.version });

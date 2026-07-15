@@ -60,7 +60,13 @@ const app: FastifyPluginCallbackZodOpenApi = (fastify, _, done) => {
         accessKeyId: config.S3_ACCESS_KEY, secretAccessKey: config.S3_SECRET_KEY,
       });
       try {
-        return await publishSiteVersion(fastify.db, s3Client, bucket, siteUuid, version);
+        return await publishSiteVersion(
+          fastify.db, s3Client, bucket, siteUuid, version,
+          config.CLOUDFRONT_DISTRIBUTION_ID,
+          config.CLOUDFRONT_KVS_ARN,
+          config.MILO_PREVIEW_DOMAIN,
+          config,
+        );
       } catch (err) {
         return reply.code(404).send({ error: err instanceof Error ? err.message : String(err) });
       }

@@ -79,7 +79,15 @@ export const templateStage: StageRunner = {
     await promoteDeploy(ctx.s3Client, bucket, ctx.siteUuid, result.deployPrefix);
 
     // Ensure the preview URL reflects the new build immediately.
-    await invalidatePreviewCache(ctx.config.CLOUDFRONT_DISTRIBUTION_ID);
+    const invalidationId = await invalidatePreviewCache(
+      ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
+      ctx.config,
+    );
+    if (invalidationId) {
+      ctx.log(`  CloudFront invalidation ${invalidationId} created`);
+    } else {
+      ctx.log(`  ⚠️  CloudFront invalidation failed — preview may be stale`);
+    }
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
     const shortId = ctx.siteUuid.slice(0, 8);

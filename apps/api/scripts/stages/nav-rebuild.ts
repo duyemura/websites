@@ -146,6 +146,9 @@ export const navRebuildStage: StageRunner = {
     await publishLatestStagingToProduction(
       ctx.db, ctx.s3Client, bucket, site.uuid,
       ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
+      ctx.config.CLOUDFRONT_KVS_ARN,
+      ctx.config.MILO_PREVIEW_DOMAIN,
+      ctx.config,
     );
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;

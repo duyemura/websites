@@ -52,6 +52,7 @@ export const publishStage: StageRunner = {
       ctx.config.CLOUDFRONT_DISTRIBUTION_ID,
       ctx.config.CLOUDFRONT_KVS_ARN,
       ctx.config.MILO_PREVIEW_DOMAIN,
+      ctx.config,
     );
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
