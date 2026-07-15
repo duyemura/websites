@@ -1,0 +1,89 @@
+---
+/**
+ * Beanburito-style coach card.
+ *
+ * Layout inspired by the source template about page:
+ * - angled photo on the left
+ * - white info panel on the right with role, name, and a skewed arrow button
+ *
+ * Accepts the standard TeamMember data shape from GymSiteContent.
+ */
+
+const NO_IMAGE = "__NO_IMAGE__";
+const { name, title, photoUrl, bio, href = "#" } = Astro.props as {
+  name: string;
+  title: string;
+  photoUrl?: string;
+  bio?: string;
+  href?: string;
+};
+
+const hasPhoto = !!photoUrl && photoUrl !== NO_IMAGE;
+const initials = name
+  .split(" ")
+  .map((p) => p[0])
+  .join("")
+  .slice(0, 2)
+  .toUpperCase();
+---
+
+<a
+  href={href}
+  class="group relative flex w-full flex-col overflow-hidden bg-white text-black shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl sm:flex-row"
+>
+  {/* Photo side — clipped at an angle on desktop */}
+  <div
+    class="relative h-56 w-full flex-shrink-0 overflow-hidden bg-black sm:h-auto sm:w-[45%] lg:w-[42%]"
+  >
+    {hasPhoto ? (
+      <img
+        src={photoUrl}
+        alt={name}
+        loading="lazy"
+        class="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+      />
+    ) : (
+      <div class="flex h-full w-full items-center justify-center bg-[var(--color-primary)] text-white">
+        <span class="font-heading text-3xl font-black uppercase tracking-tight">{initials}</span>
+      </div>
+    )}
+    {/* Desktop clip-path diagonal edge */}
+    <div
+      class="absolute inset-y-0 right-0 hidden w-12 bg-white sm:block"
+      style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"
+    >
+    </div>
+  </div>
+
+  {/* Info side */}
+  <div class="relative flex flex-1 flex-col justify-center p-6 sm:p-8 lg:p-10">
+    <div class="max-w-xs">
+      {title && (
+        <p class="mb-1 font-heading text-xs font-black uppercase tracking-widest text-black/60">
+          {title}
+        </p>
+      )}
+      <h3 class="font-heading text-2xl font-black uppercase leading-[0.95] tracking-tight text-black sm:text-3xl">
+        {name}
+      </h3>
+      {bio && <p class="mt-3 text-sm leading-relaxed text-black/70">{bio}</p>}
+    </div>
+
+    {/* Skewed arrow button */}
+    <div class="absolute bottom-4 right-4 sm:bottom-auto sm:right-6 sm:top-1/2 sm:-translate-y-1/2">
+      <div class="flex h-10 w-10 items-center justify-center bg-[var(--color-accent)] text-white transition-transform duration-300 group-hover:scale-110 sm:h-12 sm:w-12">
+        <svg
+          width="14"
+          height="20"
+          viewBox="0 0 8 12"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          aria-hidden="true"
+        >
+          <path d="M1 1l5 5-5 5"></path>
+        </svg>
+      </div>
+    </div>
+  </div>
+</a>

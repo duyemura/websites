@@ -1,0 +1,93 @@
+---
+/**
+ * Beanburito coaching team section.
+ *
+ * Renders a dark skewed band with a 2-column grid of angled coach cards.
+ * Accepts the same team data shape as TeamGrid/Team.
+ */
+
+import CoachCard from "./CoachCard.astro";
+const NO_IMAGE = "__NO_IMAGE__";
+const { team, title = "A team of coaches that get results, consistently", subtitle } = Astro.props as {
+  team: Array<{ name: string; title: string; photoUrl?: string; bio?: string }>;
+  title?: string;
+  subtitle?: string;
+};
+
+if (!team?.length) return;
+
+const hasSingleCoach = team.length === 1;
+const featured = hasSingleCoach ? team[0] : null;
+const defaultSubtitle = hasSingleCoach
+  ? `Every class is led by a coach who scales the workout to your level, answers your questions, and helps you stay consistent.`
+  : undefined;
+const sectionSubtitle = subtitle ?? defaultSubtitle;
+---
+
+<section data-section="team" data-section-tag="content-block" class="section-skew bg-black text-white">
+  <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
+    <header class="mb-10 text-center sm:mb-14">
+      <h2 class="font-heading text-3xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-4xl md:text-5xl">
+        {title}
+      </h2>
+      {sectionSubtitle && <p class="mx-auto mt-4 max-w-2xl text-lg text-white/80">{sectionSubtitle}</p>}
+    </header>
+
+    {hasSingleCoach && featured ? (
+      <div class="mx-auto max-w-4xl">
+        <a href="#" class="group relative flex w-full flex-col overflow-hidden bg-white text-black shadow-2xl transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl sm:flex-row">
+          <div class="relative h-72 w-full flex-shrink-0 overflow-hidden bg-black sm:h-auto sm:w-[48%] lg:w-[45%]">
+            {featured.photoUrl && featured.photoUrl !== NO_IMAGE ? (
+              <img
+                src={featured.photoUrl}
+                alt={featured.name}
+                loading="lazy"
+                class="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+              />
+            ) : (
+              <div class="flex h-full w-full items-center justify-center bg-[var(--color-primary)] text-white">
+                <span class="font-heading text-4xl font-black uppercase tracking-tight">
+                  {featured.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <div class="absolute inset-y-0 right-0 hidden w-16 bg-white sm:block" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
+          </div>
+          <div class="relative flex flex-1 flex-col justify-center p-8 sm:p-10 lg:p-14">
+            <div class="max-w-sm">
+              <p class="mb-2 font-heading text-sm font-black uppercase tracking-widest text-black/60">
+                {featured.title}
+              </p>
+              <h3 class="font-heading text-3xl font-black uppercase leading-[0.95] tracking-tight text-black sm:text-4xl lg:text-5xl">
+                {featured.name}
+              </h3>
+              {featured.bio && <p class="mt-4 text-base leading-relaxed text-black/70">{featured.bio}</p>}
+              <p class="mt-4 text-sm font-semibold text-[var(--color-accent)]">
+                Meet {featured.name.split(" ")[0]} at your free intro.
+              </p>
+            </div>
+            <div class="absolute bottom-4 right-4 sm:bottom-auto sm:right-8 sm:top-1/2 sm:-translate-y-1/2">
+              <div class="flex h-12 w-12 items-center justify-center bg-[var(--color-accent)] text-white transition-transform duration-300 group-hover:scale-110">
+                <svg width="16" height="22" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M1 1l5 5-5 5"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
+    ) : (
+      <div class="grid gap-6 sm:grid-cols-2 lg:gap-8">
+        {team.map((member) => (
+          <CoachCard
+            name={member.name}
+            title={member.title}
+            photoUrl={member.photoUrl}
+            bio={member.bio}
+            href="#"
+          />
+        ))}
+      </div>
+    )}
+  </div>
+</section>
