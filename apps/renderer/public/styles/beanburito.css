@@ -421,6 +421,41 @@
   transform: rotate(180deg);
 }
 
+.theme-beanburito .prose {
+  --tw-prose-links: var(--color-accent);
+}
+
+/* Beanburito is a dark theme, so `.prose` blocks inside dark sections
+   (story, community) need inverted typography colors. Without this,
+   Tailwind typography renders dark-gray headings/body on the black
+   background and fails WCAG contrast. */
+.theme-beanburito [data-section="story"] .prose,
+.theme-beanburito [data-section="community"] .prose {
+  --tw-prose-body: rgb(255 255 255 / 0.8);
+  --tw-prose-headings: white;
+  --tw-prose-bold: white;
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-counters: rgb(255 255 255 / 0.8);
+  --tw-prose-bullets: var(--color-accent);
+  color: rgb(255 255 255 / 0.8);
+}
+.theme-beanburito [data-section="story"] .prose :is(h1, h2, h3, h4, h5, h6, strong),
+.theme-beanburito [data-section="community"] .prose :is(h1, h2, h3, h4, h5, h6, strong) {
+  color: white;
+}
+
+/* Pricing page renders the shared PricingGrid on beanburito's black page
+   background. Give the grid section a white band so `text-primary` and
+   `text-secondary` remain legible without touching the shared component. */
+.theme-beanburito .pricing-grid {
+  background-color: white;
+  color: black;
+}
+
+.theme-beanburito [data-section="blogGrid"] .text-accent {
+  color: color-mix(in srgb, white 70%, var(--color-accent));
+}
+
 /* Keep the fixed navbar from overlapping the in-page anchors. */
 .theme-beanburito [id] {
   scroll-margin-top: 6rem;

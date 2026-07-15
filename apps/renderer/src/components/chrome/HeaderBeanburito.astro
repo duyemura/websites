@@ -15,13 +15,13 @@ const headerCtaLabel = business.primaryCta.label.length > 18 ? "Book intro" : bu
       }
     </a>
 
-    <nav aria-label="Main" class="hidden items-center gap-5 pr-4 xl:flex 2xl:gap-7">
+    <nav aria-label="Main" class="hidden items-center gap-3 pr-4 xl:flex xl:flex-wrap xl:justify-end 2xl:gap-5">
       {navigation.header.map((item) => (
         <div class="group relative">
           <a
             href={item.href}
             aria-haspopup={item.children ? "true" : undefined}
-            class="header-nav-link flex items-center gap-1 px-3 py-3.5 font-heading text-sm font-bold uppercase tracking-tight transition hover:text-accent"
+            class="header-nav-link flex items-center gap-1 px-2 py-3.5 font-heading text-xs font-bold uppercase tracking-tight transition hover:text-accent xl:text-sm 2xl:px-3"
           >
             {item.label}
             {item.children && (
@@ -31,7 +31,7 @@ const headerCtaLabel = business.primaryCta.label.length > 18 ? "Book intro" : bu
             )}
           </a>
           {item.children && (
-            <ul class="invisible absolute left-0 top-full z-20 min-w-48 border border-black/10 bg-white py-2 shadow-xl group-hover:visible group-focus-within:visible">
+            <ul class="absolute left-0 top-full z-20 hidden min-w-48 border border-black/10 bg-white py-2 shadow-xl group-hover:block group-focus-within:block">
               {item.children.map((c) => (
                 <li>
                   <a href={c.href} class="block px-4 py-2 text-sm font-semibold uppercase tracking-tight text-black hover:bg-accent hover:text-white">

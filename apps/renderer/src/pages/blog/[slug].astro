@@ -21,7 +21,7 @@ const path = `/blog/${post.slug}`;
     <BlogPostingSchema post={post} />
     <BreadcrumbSchema crumbs={[{ name: "Blog", path: "/blog" }, { name: post.title, path }]} />
   </Fragment>
-  <article class="py-16">
+  <article class="bg-white py-16 text-black" data-section="blogPost" data-section-tag="content-block">
     <Container>
       <div class="mx-auto max-w-2xl">
         {post.category && <span class="text-xs font-bold uppercase tracking-wide text-accent">{post.category}</span>}

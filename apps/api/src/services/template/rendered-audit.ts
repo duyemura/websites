@@ -79,6 +79,9 @@ export function buildAllowedPaths(content: GymSiteContent): Set<string> {
   for (const l of content.pages.legal) {
     paths.add(`/legal/${l.slug}`);
   }
+  for (const post of content.pages.blog.posts) {
+    paths.add(`/blog/${post.slug}`);
+  }
   return paths;
 }
 

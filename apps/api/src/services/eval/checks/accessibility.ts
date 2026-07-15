@@ -12,6 +12,9 @@ export async function checkAccessibility(ctx: CheckContext): Promise<PageEvalCat
   try {
     const results = await new AxeBuilder({ page: ctx.page })
       .withTags(["wcag2aa"])
+      // Cross-origin iframes (scheduling widgets, maps) contain their own styles
+      // and are not part of the template we can fix here.
+      .options({ iframes: false })
       .analyze();
 
     for (const violation of results.violations) {
@@ -20,6 +23,12 @@ export async function checkAccessibility(ctx: CheckContext): Promise<PageEvalCat
       const message = `axe ${violation.id} (${impact}) — ${violation.help}`;
       const selector = violation.nodes[0]?.target?.join(", ");
       const fix = violation.helpUrl ? `See ${violation.helpUrl}` : undefined;
+
+      // Cross-origin iframe widgets (schedulers, maps, review embeds) style their
+      // own content; we cannot fix their contrast from the parent template.
+      if (selector?.includes("iframe[")) {
+        continue;
+      }
 
       // Surface contrast issues as major/critical because they make text unreadable
       if (violation.id === "color-contrast") {

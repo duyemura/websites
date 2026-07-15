@@ -130,13 +130,25 @@ function applyComponentDefaults(
 ): Record<string, unknown> {
   // Beanburito-specific defaults that keep the existing home-page behavior intact
   // until the content generator can populate these values itself.
-  if (componentId === "valueProps") {
-    return { ...props, sectionId: "valueProps" };
+  if (componentId === "valueProps" || componentId === "benefits") {
+    return {
+      ...props,
+      sectionId: componentId,
+      variant: props.variant ?? "valueProps",
+      headline: props.headline ?? "Why train with us",
+    };
   }
   if (componentId === "amenities") {
     return {
       ...props,
       headline: props.headline ?? "Everything you need to crush your fitness goals",
+      variant: props.variant ?? "amenities",
+    };
+  }
+  if (componentId === "blogGrid") {
+    return {
+      ...props,
+      headline: props.headline ?? "Latest posts",
     };
   }
   if (componentId === "community") {
@@ -195,6 +207,13 @@ export function resolvePageComponents(
     }
 
     const finalProps = applyComponentDefaults(componentId, props, content);
+
+    // IconCardGrid is a shared rendering primitive used by several page slots
+    // (amenities, valueProps, benefits). Make the rendered `data-section` match
+    // the page slot id so fidelity checks know which registry component produced it.
+    if (componentSpec.component === "IconCardGrid") {
+      finalProps.sectionId = componentId;
+    }
 
     // Skip sections whose required props are missing and which have no sensible default.
     let shouldRender = true;

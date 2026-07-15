@@ -9,7 +9,7 @@ const hasDesktopImage = !!hero.backgroundImageUrl && hero.backgroundImageUrl !==
 const safeBgUrl = hero.backgroundImageUrl ?? "";
 const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.webp") : "";
 ---
-<section data-section="hero" data-section-tag="hero" class="relative h-[46rem] w-full overflow-hidden bg-black text-white lg:h-[52rem]">
+<section data-section="hero" data-section-tag="hero" class="relative min-h-[46rem] w-full overflow-hidden bg-black text-white lg:min-h-[52rem]">
   {hasDesktopImage && (
     <>
       <img
@@ -30,7 +30,7 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
   )}
 
   <div class="section-inner relative z-10 mx-auto flex h-full max-w-[90rem] flex-col justify-center px-8 pb-24 pt-36 sm:px-12 md:px-16 lg:px-20 lg:pb-28 lg:pt-44 xl:px-24">
-    <article class="max-w-3xl">
+    <article class="max-w-3xl lg:max-w-4xl">
       {hero.subheading && (
         <div class="mb-6">
           <span
@@ -41,7 +41,10 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
           </span>
         </div>
       )}
-      <HeadlineTag data-testid="hero-headline" class="font-heading text-4xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl md:text-6xl lg:text-7xl">
+      <HeadlineTag
+        data-testid="hero-headline"
+        class="font-heading text-4xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl md:text-6xl lg:text-7xl break-words text-balance lg:leading-[0.98]"
+      >
         {hero.headline}
       </HeadlineTag>
       {hero.intro && (

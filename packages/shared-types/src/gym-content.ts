@@ -192,6 +192,10 @@ export interface BlogContent {
   heroHeadline: string;
   posts: BlogPost[];
   faq?: FAQItem[];
+  /** Optional dark hero for templates that render the blog index as a full page. */
+  hero?: HeroContent;
+  /** Optional bottom-of-page CTA headline for templates with a ctaBand. */
+  ctaHeadline?: string;
 }
 export interface BlogPost {
   slug: string; title: string; publishedAt: string; excerpt: string;

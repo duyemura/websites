@@ -2,8 +2,10 @@
 import type { ValueProp } from "../../../types/gym-content";
 import IconCardGrid from "../IconCardGrid.astro";
 
-const { items, sectionId = "benefits" } = Astro.props as {
+const { items, headline = "Why train with us", variant = "valueProps", sectionId = "benefits" } = Astro.props as {
   items: ValueProp[];
+  headline?: string;
+  variant?: "valueProps" | "amenities" | "benefits" | "generic";
   sectionId?: string;
 };
 if (!items?.length) return;
@@ -11,9 +13,8 @@ if (!items?.length) return;
 
 <IconCardGrid
   items={items}
-  variant="valueProps"
+  variant={variant}
   sectionId={sectionId}
   sectionTag="feature-grid"
-  headline="Why train with us"
-  headlineHidden
+  headline={headline}
 />

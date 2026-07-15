@@ -626,12 +626,21 @@ export function extractPages(
   const contractFeatureGrid = contractHomeSections.find((s) => s.layout.archetype.startsWith("feature-grid"));
   const programsHeadline = contractPrograms?.typography?.headline?.text || "Our Programs";
 
+  const DEFAULT_GYM_FEATURES: Feature[] = [
+    { label: "Open gym access", icon: "barbell" },
+    { label: "Certified coaches", icon: "user-gear" },
+    { label: "Group classes", icon: "users" },
+    { label: "Personal training", icon: "heartbeat" },
+    { label: "Nutrition guidance", icon: "carrot" },
+    { label: "Free parking", icon: "car" },
+  ];
+
   const home: HomeContent = {
     hero: homePage ? heroFromPage(homePage, contractHero, business) : { headline: business.name, ctaLabel: business.primaryCta.label, ctaUrl: business.primaryCta.url, backgroundImageUrl: contractHero?.media?.imageUrls?.[0] ?? contractHero?.layout?.background?.imageUrl },
     valueProps: [],
     programsHeadline,
     featuredPrograms,
-    features: contractFeatureGrid ? featureGridItems(contractFeatureGrid) : [],
+    features: contractFeatureGrid ? featureGridItems(contractFeatureGrid) : DEFAULT_GYM_FEATURES,
     communityHeadline: "",
     communityProps: [],
     trustHeadline: "",

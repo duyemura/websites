@@ -5,7 +5,7 @@ import Button from "../ui/Button.astro";
 import type { PricingGridContent } from "../../types/gym-content";
 const { grid } = Astro.props as { grid: PricingGridContent };
 ---
-<section class="py-16">
+<section class="py-16 pricing-grid" data-section="pricing">
   <Container>
     {grid.headline && <SectionHeading title={grid.headline} subtitle={grid.subheading} />}
     <!-- pt-4 gives the badge room above the card top edge; overflow-visible ensures

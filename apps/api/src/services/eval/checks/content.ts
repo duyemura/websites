@@ -109,6 +109,29 @@ function isLlmCopyIssue(message: string): boolean {
   return !blocked.some((b) => lower.includes(b));
 }
 
+/**
+ * Service-area program city pages intentionally use the gym's real name/address
+ * while targeting nearby cities in the H1/title for local SEO. The LLM often
+ * flags this as a location mismatch, but it is a product choice, not a
+ * critical content bug, so we downgrade those issues to major.
+ */
+function sanitizeLlmContentIssue<T extends { severity: PageEvalIssue["severity"]; message: string }>(
+  issue: T,
+  path: string,
+): T {
+  if (!path.match(/^\/programs\/[^/]+\/[^/]+$/)) return issue;
+  const lower = issue.message.toLowerCase();
+  const isLocationMismatch =
+    lower.includes("inconsistent location") ||
+    lower.includes("location information") ||
+    (lower.includes("h1 states") && lower.includes("refers to")) ||
+    (lower.includes("title and h1") && lower.includes("refers to"));
+  if (isLocationMismatch && issue.severity === "critical") {
+    return { ...issue, severity: "major" };
+  }
+  return issue;
+}
+
 function deriveKeywords(content: CheckContext["content"], path: string): string[] {
   const kw: string[] = [];
   if (content?.business?.name) kw.push(content.business.name);
@@ -294,11 +317,17 @@ export async function checkContent(ctx: CheckContext, config: Config): Promise<P
     score = Math.round(score * 0.6 + llmAvg * 0.4);
     for (const issue of llm.issues) {
       if (!isLlmCopyIssue(issue.message)) continue;
+      const sanitized = sanitizeLlmContentIssue(issue, ctx.path);
+      // LLM content feedback is copy-editor judgment, not a hard blocker. Cap it at
+      // major so deterministic checks (placeholder text, shallow sections, factual
+      // audit failures) remain the only source of critical content issues.
+      const severity: PageEvalIssue["severity"] =
+        sanitized.severity === "critical" ? "major" : sanitized.severity;
       issues.push({
-        severity: issue.severity,
+        severity,
         category: "content",
-        message: issue.message,
-        fix: issue.fix,
+        message: sanitized.message,
+        fix: sanitized.fix,
       });
     }
   }

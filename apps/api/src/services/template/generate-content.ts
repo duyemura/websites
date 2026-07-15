@@ -1694,6 +1694,38 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     about.ctaHeadline = `Book your free intro at ${mergedContent.business.name}`;
   }
 
+  // Blog index fallbacks: templates like beanburito render the blog as a full page
+  // with a dark hero + grid + CTA band. If the source site had no blog content,
+  // publish a welcome post so the page is never empty.
+  const blog = mergedContent.pages.blog;
+  if (!blog.hero?.headline) {
+    blog.hero = {
+      headline: blog.heroHeadline || `Latest from ${mergedContent.business.name}`,
+      subheading: mergedContent.business.geo?.city
+        ? `Fitness tips in ${mergedContent.business.geo.city}`
+        : "Fitness tips and gym news",
+      ctaLabel: mergedContent.business.primaryCta.label,
+      ctaUrl: mergedContent.business.primaryCta.url,
+      backgroundImageUrl: NO_IMAGE,
+    };
+  }
+  if (!blog.ctaHeadline) {
+    blog.ctaHeadline = `Ready to train with ${mergedContent.business.name}?`;
+  }
+  if (!blog.posts.length) {
+    const today = new Date().toISOString().split("T")[0] as string;
+    blog.posts = [
+      {
+        slug: "welcome",
+        title: `Welcome to ${mergedContent.business.name}`,
+        publishedAt: today,
+        excerpt: `Your local fitness resource for workouts, nutrition tips, and gym news from ${mergedContent.business.name}.`,
+        body: "<p>We're glad you're here. Check back soon for fresh articles from our coaches.</p>",
+        category: "News",
+      },
+    ];
+  }
+
   // LLM-generated or source-captured CTAs may point to pages that won't be rendered.
   // Sanitize after all merges so every internal CTA is guaranteed valid.
   const { sanitizeContentCtas } = await import("./content-mapper.js");

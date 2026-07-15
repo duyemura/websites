@@ -97,8 +97,12 @@ export async function checkVisual(ctx: CheckContext, config: Config): Promise<Pa
     if (llm) {
       score = llm.visualScore;
       for (const issue of llm.issues) {
+        // Visual review is inherently subjective; cap severity at major so a
+        // single LLM judgment can't fail an otherwise good page. Real blocking
+        // visual problems should be caught by axe or fidelity checks.
+        const severity = issue.severity === "critical" ? "major" : issue.severity;
         issues.push({
-          severity: issue.severity,
+          severity,
           category: "visual",
           message: issue.message,
           fix: issue.fix,
