@@ -1169,8 +1169,15 @@ export async function buildGymJson(
       // the story section; community gets its own generated content later.
       const storyEx = aboutEx.story as Record<string, unknown> | undefined;
       if (pages.about.gymStory || storyEx) {
+        const rawStoryHeadline = storyEx?.headline ? String(storyEx.headline) : "";
+        const warmStoryHeadline = rawStoryHeadline && !/^how\s+.*\s+started$/i.test(rawStoryHeadline)
+          ? rawStoryHeadline
+          : "Our story";
+        if (rawStoryHeadline && warmStoryHeadline !== rawStoryHeadline) {
+          warnings.push("about story headline placeholder replaced with warm narrative label");
+        }
         pages.about.story = {
-          headline: storyEx?.headline ? String(storyEx.headline) : `How ${business.name} started`,
+          headline: warmStoryHeadline,
           subheadline: storyEx?.subheadline ? String(storyEx.subheadline) : undefined,
           imageUrl: storyEx?.imageUrl ? String(storyEx.imageUrl) : undefined,
           imageAlt: storyEx?.imageAlt ? String(storyEx.imageAlt) : undefined,
