@@ -20,6 +20,7 @@ export function inferIframeVariant(src: string): string {
   if (/youtube|vimeo|wistia/.test(src)) return "video";
   if (/calendly|schedule|booking/.test(src)) return "schedule";
   if (/typeform|jotform|forms\./.test(src)) return "form";
+  if (/(?:reputation|trustpilot|birdeye|embedsocial|review[-_]?widget|widgets\.trustpilot)/.test(src)) return "review";
   return "default";
 }
 

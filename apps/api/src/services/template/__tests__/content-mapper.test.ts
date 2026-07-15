@@ -511,7 +511,7 @@ describe("extractPages", () => {
 
     expect(pages.home.iframes).toHaveLength(1);
     expect(pages.home.iframes?.[0].src).toBe("https://widgets.trustpilot.com/reviews/123");
-    expect(pages.home.iframes?.[0].variant).toBe("default");
+    expect(pages.home.iframes?.[0].variant).toBe("review");
 
     expect(pages.schedule.iframes).toHaveLength(1);
     expect(pages.schedule.iframes?.[0].variant).toBe("schedule");

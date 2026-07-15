@@ -1063,7 +1063,7 @@ export const beanburitoSpec: TemplateSpec = {
         "pages.about.faq",
       ],
       placeholderPolicy: "block-publish",
-      components: ["hero", "story", "community", "team", "testimonials", "faq", "ctaBand", "location"],
+      components: ["hero", "story", "community", "team", "iframeBand", "faq", "ctaBand", "location"],
     },
     contact: {
       path: "/contact",

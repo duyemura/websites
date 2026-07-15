@@ -52,7 +52,7 @@ describe("template registry", () => {
       "story",
       "community",
       "team",
-      "testimonials",
+      "iframeBand",
       "faq",
       "ctaBand",
       "location",

@@ -33,8 +33,15 @@ describe("inferIframeVariant", () => {
     expect(inferIframeVariant("https://forms.gle/abc123")).toBe("form");
   });
 
+  it("infers review for reputation and testimonial widgets", () => {
+    expect(inferIframeVariant("https://widgets.trustpilot.com/reviews/...")).toBe("review");
+    expect(
+      inferIframeVariant("https://reputationhub.site/reputation/widgets/review_widget/1uZTf3N5tL5JS8cNOdpb"),
+    ).toBe("review");
+  });
+
   it("falls back to default for unknown iframe sources", () => {
-    expect(inferIframeVariant("https://widgets.trustpilot.com/reviews/...")).toBe("default");
+    expect(inferIframeVariant("https://sidebar.bugherd.com/sidebar/embed_html?apikey=...")).toBe("default");
     expect(inferIframeVariant("https://example.com/widget")).toBe("default");
   });
 });

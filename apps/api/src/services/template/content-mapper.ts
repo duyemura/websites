@@ -582,6 +582,10 @@ function targetPageKeyForIframe(variant: string): "home" | "about" | "pricing" |
       return "about";
     case "form":
       return "contact";
+    case "review":
+      // Review widgets are shared social proof; keep them on the home page so the
+      // schedule and about pages can both render them through the iframeBand fallback.
+      return "home";
     default:
       return "home";
   }
