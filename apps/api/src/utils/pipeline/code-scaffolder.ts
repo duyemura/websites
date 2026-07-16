@@ -64,6 +64,7 @@ export const ${name}Docs = {
 
 function patchRegistry(registryPath: string, name: string): void {
   let src = fs.readFileSync(registryPath, "utf8");
+  if (src.includes(`from "./${name}"`)) return; // already patched
   // Add import after the last import block (the contiguous block at the top of the file)
   src = src.replace(/^((?:import .+;\n)+)/m, `$1import { ${name}Spec } from "./${name}.js";\n`);
   // Add new entry before the closing `};` of the registry object
@@ -74,6 +75,7 @@ function patchRegistry(registryPath: string, name: string): void {
 
 function patchTemplateTypes(typesPath: string, name: string): void {
   let src = fs.readFileSync(typesPath, "utf8");
+  if (src.includes(`"${name}"`)) return; // already patched
   // TemplateTheme union: append | "name" before the semicolon
   src = src.replace(
     /(export type TemplateTheme = (?:"[^"]*"(?: \| "[^"]*")*));/,
