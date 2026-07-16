@@ -243,6 +243,29 @@ export const SegmentArtifactSchema = z.object({
 });
 export type SegmentArtifact = z.infer<typeof SegmentArtifactSchema>;
 
+// ---------- synthesize ----------
+export const ComponentResultSchema = z.object({
+  name: z.string(),       // PascalCase, e.g. "HeroLeft"
+  tag: CanonicalSectionTagSchema,
+  archetype: z.string(),  // e.g. "hero-left"
+  code: z.string(),       // complete .astro file content
+});
+export type ComponentResult = z.infer<typeof ComponentResultSchema>;
+
+export const SynthesizeArtifactSchema = z.object({
+  templateName: z.string(),
+  components: z.array(ComponentResultSchema),
+  specSource: z.string(),  // TypeScript source for packages/shared-types/src/templates/[name].ts
+  docs: z.object({
+    personality: z.string(),
+    components: z.string(),
+    pageArchetypes: z.string(),
+  }),
+  cssSource: z.string(),   // design token CSS file content
+  pageMap: z.record(z.string(), z.array(z.string())), // path → component names[]
+});
+export type SynthesizeArtifact = z.infer<typeof SynthesizeArtifactSchema>;
+
 // ---------- verify ----------
 export const CheckSchema = z.object({
   id: z.string(),

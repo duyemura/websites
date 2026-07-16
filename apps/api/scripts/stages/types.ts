@@ -23,6 +23,8 @@ export interface StageContext {
    * the resulting briefs into the existing content artifact. Used by `milo page`.
    */
   pageFilter?: string[];
+  /** Set when running milo template --name <x>. Used by synthesize and component-eval stages. */
+  newTemplateName?: string;
 }
 
 export interface StageResult {
