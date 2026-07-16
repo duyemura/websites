@@ -1,10 +1,10 @@
-import type { ContractArtifact, SectionContract } from "../../types/section-contract";
+import type { ContractArtifact, SectionContract, SectionLayoutArchetype } from "../../types/section-contract";
 import type { SegmentArtifact, CanonicalSectionTag } from "../../types/pipeline-artifacts";
 
 export interface ComponentGroup {
   name: string;
   tag: CanonicalSectionTag;
-  archetype: string;
+  archetype: SectionLayoutArchetype;
   exemplar: {
     page: string;
     contract: SectionContract;
@@ -30,12 +30,14 @@ export function groupSections(
     const segPage = segment.pages.find((p) => p.path === contractPage.path);
     if (!segPage) continue;
 
+    // Contract and segment sections are positionally aligned: the contract stage
+    // builds one SectionContract per SegmentSection in the same order.
     for (let i = 0; i < contractPage.sections.length; i++) {
       const section = contractPage.sections[i];
       const segSection = segPage.sections[i];
-      if (!segSection) continue;
+      if (!section || !segSection) continue;
 
-      const archetype: string = (section.layout as { archetype?: string })?.archetype ?? "unknown";
+      const archetype = section.layout.archetype;
       const key = `${section.tag}::${archetype}`;
       const area = segSection.boundingBox.width * segSection.boundingBox.height;
       const existing = groups.get(key);

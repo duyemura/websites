@@ -68,4 +68,22 @@ describe("groupSections", () => {
     expect(groups.find(g => g.name === "HeroLeft")!.exemplar.cropDesktop).toBe("s3://hero-home-d");
     expect(groups.find(g => g.name === "HeroCenter")!.exemplar.cropDesktop).toBe("s3://hero-about-d");
   });
+  it("skips pages with no matching segment page", () => {
+    const contractWithExtra = {
+      pages: [
+        ...mockContract.pages,
+        { path: "/missing", sections: [makeSection("hero", "hero-left")] },
+      ],
+    } as unknown as ContractArtifact;
+    // Should not throw — the /missing page has no segment counterpart
+    expect(() => groupSections(contractWithExtra, mockSegment)).not.toThrow();
+    const groups = groupSections(contractWithExtra, mockSegment);
+    // Still only 3 groups (the /missing page is skipped)
+    expect(groups).toHaveLength(3);
+  });
+  it("handles empty pages array", () => {
+    const empty = { pages: [] } as unknown as ContractArtifact;
+    const emptySegment = { ...mockSegment, pages: [] } as unknown as SegmentArtifact;
+    expect(groupSections(empty, emptySegment)).toEqual([]);
+  });
 });
