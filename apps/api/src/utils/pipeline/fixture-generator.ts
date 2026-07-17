@@ -2,14 +2,39 @@ import type { GymSiteContent } from "@milo/shared-types";
 import type { SynthesizeArtifact } from "../../types/pipeline-artifacts";
 
 /**
+ * Returns true for component tags that need richer placeholder content to render
+ * meaningfully during eval builds.
+ */
+function needsRichContent(tag: string): boolean {
+  return [
+    "hero",
+    "feature-grid",
+    "testimonial-band",
+    "social-proof-band",
+    "steps-band",
+    "faq-block",
+    "team",
+  ].includes(tag);
+}
+
+/**
  * Builds a minimal GymSiteContent fixture from synthesized template metadata.
- * Used exclusively for component-eval builds — fills all required slots with
- * placeholder text so the Astro template renders without errors.
+ * Used exclusively for component-eval builds — fills required slots with
+ * placeholder text so the Astro template renders without errors. Sections that
+ * were not detected in the synthesize artifact receive empty arrays / stubs
+ * instead of hardcoded mock data.
  */
 export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
   const gymName = "Placeholder Gym";
   const city = "Springfield";
   const stateAbbr = "CA";
+
+  // Build a quick lookup of detected tags for O(1) checks below.
+  const detectedTags = new Set(
+    (synthesize.components ?? []).map((c) => c.tag as string),
+  );
+
+  const hasTag = (tag: string): boolean => detectedTags.has(tag);
 
   const hero = {
     headline: "Placeholder headline",
@@ -47,6 +72,110 @@ export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
   });
 
   const legalBlock = { type: "text" as const, html: "<p>Placeholder legal content.</p>" };
+
+  // --- Component-aware section decisions ---
+
+  // Programs: only include mock data if a feature-grid or program-cards-sticky was detected.
+  const hasProgramSection =
+    hasTag("feature-grid") || hasTag("program-cards-sticky");
+
+  const featuredPrograms = hasProgramSection
+    ? ["group-fitness", "personal-training"]
+    : [];
+
+  const programPages: GymSiteContent["pages"]["programs"] = hasProgramSection
+    ? [
+        {
+          slug: "group-fitness",
+          name: "Group fitness",
+          shortDescription: "Coach-led group classes for all levels.",
+          coverImageUrl: "__NO_IMAGE__",
+          hero: { ...hero, headline: "Group fitness" },
+          whatIsIt: {
+            headline: "What is group fitness?",
+            body: "High-energy classes led by expert coaches.",
+          },
+          whatMakesUsDifferent: ["Expert coaches", "Small class sizes", "Supportive community"],
+          whatToExpect: {
+            headline: "What to expect",
+            steps: ["Book your first class", "Meet your coach", "Start training"],
+          },
+          whoIsItFor: ["Beginners", "Intermediate athletes", "Advanced athletes"],
+          gettingStarted: [step(1), step(2), step(3)],
+          testimonials: hasTag("testimonial-band") ? [testimonial] : [],
+          faq: hasTag("faq-block") ? [faqItem(1), faqItem(2)] : [],
+        },
+        {
+          slug: "personal-training",
+          name: "Personal training",
+          shortDescription: "One-on-one coaching tailored to your goals.",
+          coverImageUrl: "__NO_IMAGE__",
+          hero: { ...hero, headline: "Personal training" },
+          whatIsIt: {
+            headline: "What is personal training?",
+            body: "Dedicated 1:1 sessions with a certified coach.",
+          },
+          whatMakesUsDifferent: ["Custom programming", "Flexible scheduling", "Accountability"],
+          whatToExpect: {
+            headline: "What to expect",
+            steps: ["Assessment session", "Custom program built", "Train and progress"],
+          },
+          whoIsItFor: ["Anyone with specific goals", "People returning from injury", "Athletes"],
+          gettingStarted: [step(1), step(2), step(3)],
+          testimonials: hasTag("testimonial-band") ? [testimonial] : [],
+          faq: hasTag("faq-block") ? [faqItem(1), faqItem(2)] : [],
+        },
+      ]
+    : [];
+
+  // Testimonials: only include mock data if a testimonial-band was detected.
+  const homeTestimonials = hasTag("testimonial-band") ? [testimonial] : [];
+
+  // FAQ: only include mock items if a faq-block was detected.
+  const homeFaq = hasTag("faq-block") ? [faqItem(1), faqItem(2)] : [];
+
+  // Features (feature-grid): only include mock items if detected.
+  const homeFeatures = hasTag("feature-grid")
+    ? [feature(1), feature(2), feature(3), feature(4)]
+    : [];
+
+  // Schedule iframe: only include if an iframe component was detected.
+  const scheduleIframes = hasTag("iframe")
+    ? [{ src: "https://placeholder.example.com/schedule", variant: "schedule", title: "Class schedule" }]
+    : undefined;
+
+  // Team/coaches: richer placeholders if a team component was detected.
+  const aboutTeam: GymSiteContent["pages"]["about"]["team"] = hasTag("team")
+    ? [
+        {
+          name: "Coach Alex",
+          title: "Head coach",
+          photoUrl: "__NO_IMAGE__",
+          bio: "10 years coaching experience.",
+        },
+        {
+          name: "Coach Jordan",
+          title: "Strength coach",
+          photoUrl: "__NO_IMAGE__",
+          bio: "Former collegiate athlete.",
+        },
+      ]
+    : [
+        {
+          name: "Coach Alex",
+          title: "Head coach",
+          photoUrl: "__NO_IMAGE__",
+          bio: "10 years of coaching experience.",
+        },
+      ];
+
+  // About-page testimonials: optional field, only populate if testimonial-band detected.
+  const aboutTestimonials = hasTag("testimonial-band") ? [testimonial] : undefined;
+
+  // About-page FAQ: optional field, only populate if faq-block detected.
+  const aboutFaq = hasTag("faq-block") ? [faqItem(1), faqItem(2)] : undefined;
+
+  void needsRichContent; // exported for future callers; silence unused-var lint
 
   const fixture: GymSiteContent = {
     meta: {
@@ -114,71 +243,26 @@ export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
         hero,
         valueProps: [valueProp(1), valueProp(2), valueProp(3)],
         programsHeadline: "Our programs",
-        featuredPrograms: ["group-fitness", "personal-training"],
-        features: [feature(1), feature(2), feature(3), feature(4)],
+        featuredPrograms,
+        features: homeFeatures,
         communityHeadline: "A community that keeps you going",
         communityProps: [valueProp(1), valueProp(2), valueProp(3)],
         trustHeadline: "Join hundreds of members",
         howItWorksHeadline: "How it works",
-        howItWorks: [step(1), step(2), step(3)],
-        testimonials: [testimonial],
-        faq: [faqItem(1), faqItem(2)],
+        howItWorks: hasTag("steps-band") ? [step(1), step(2), step(3)] : [],
+        testimonials: homeTestimonials,
+        faq: homeFaq,
+        ...(scheduleIframes !== undefined && { iframes: scheduleIframes }),
       },
 
-      programs: [
-        {
-          slug: "group-fitness",
-          name: "Group fitness",
-          shortDescription: "Coach-led group classes for all levels.",
-          coverImageUrl: "__NO_IMAGE__",
-          hero: { ...hero, headline: "Group fitness" },
-          whatIsIt: {
-            headline: "What is group fitness?",
-            body: "High-energy classes led by expert coaches.",
-          },
-          whatMakesUsDifferent: ["Expert coaches", "Small class sizes", "Supportive community"],
-          whatToExpect: {
-            headline: "What to expect",
-            steps: ["Book your first class", "Meet your coach", "Start training"],
-          },
-          whoIsItFor: ["Beginners", "Intermediate athletes", "Advanced athletes"],
-          gettingStarted: [step(1), step(2), step(3)],
-          testimonials: [testimonial],
-          faq: [faqItem(1), faqItem(2)],
-        },
-        {
-          slug: "personal-training",
-          name: "Personal training",
-          shortDescription: "One-on-one coaching tailored to your goals.",
-          coverImageUrl: "__NO_IMAGE__",
-          hero: { ...hero, headline: "Personal training" },
-          whatIsIt: {
-            headline: "What is personal training?",
-            body: "Dedicated 1:1 sessions with a certified coach.",
-          },
-          whatMakesUsDifferent: ["Custom programming", "Flexible scheduling", "Accountability"],
-          whatToExpect: {
-            headline: "What to expect",
-            steps: ["Assessment session", "Custom program built", "Train and progress"],
-          },
-          whoIsItFor: ["Anyone with specific goals", "People returning from injury", "Athletes"],
-          gettingStarted: [step(1), step(2), step(3)],
-          testimonials: [testimonial],
-          faq: [faqItem(1), faqItem(2)],
-        },
-      ],
+      programs: programPages,
 
       about: {
         hero: { ...hero, headline: "About us" },
         gymStory: "We started this gym because we believe everyone deserves great coaching.",
-        team: [
-          {
-            name: "Coach Alex",
-            title: "Head coach",
-            photoUrl: "__NO_IMAGE__",
-            bio: "10 years of coaching experience.",
-          },
-        ],
+        team: aboutTeam,
+        ...(aboutTestimonials !== undefined && { testimonials: aboutTestimonials }),
+        ...(aboutFaq !== undefined && { faq: aboutFaq }),
       },
 
       pricing: {
@@ -201,12 +285,13 @@ export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
       contact: {
         hero: { ...hero, headline: "Contact us" },
         intro: "We'd love to hear from you. Reach out anytime.",
-        faq: [faqItem(1), faqItem(2)],
+        ...(homeFaq.length > 0 && { faq: homeFaq }),
       },
 
       schedule: {
         hero: { ...hero, headline: "Schedule" },
         note: "View our current class schedule below.",
+        ...(scheduleIframes !== undefined && { iframes: scheduleIframes }),
       },
 
       blog: {
