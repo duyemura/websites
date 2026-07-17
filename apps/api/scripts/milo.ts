@@ -628,12 +628,12 @@ async function runTemplateEval(
 ): Promise<StageResult[]> {
   // Find the most recent site that synthesized this template
   const row = await db
-    .selectFrom("pipeline_artifacts")
-    .innerJoin("sites", "sites.uuid", "pipeline_artifacts.site_uuid")
-    .select(["sites.uuid as siteUuid", "sites.workspace_uuid as workspaceUuid"])
-    .where("pipeline_artifacts.artifact_type", "=", "synthesize")
-    .where(sql`pipeline_artifacts.payload->>'templateName'`, "=", cmd.name)
-    .orderBy("pipeline_artifacts.created_at", "desc")
+    .selectFrom("pipelineArtifacts")
+    .innerJoin("sites", "sites.uuid", "pipelineArtifacts.siteUuid")
+    .select(["sites.uuid as siteUuid", "sites.workspaceUuid"])
+    .where("pipelineArtifacts.stage", "=", "synthesize")
+    .where(sql`"pipelineArtifacts"."payload"->>'templateName'`, "=", cmd.name)
+    .orderBy("pipelineArtifacts.createdAt", "desc")
     .limit(1)
     .executeTakeFirst();
 
