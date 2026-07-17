@@ -356,5 +356,8 @@ export type EnrichmentStage = (typeof ENRICHMENT_STAGES)[number];
 export const CONTENT_STAGES = ["content"] as const;
 export type ContentStage = (typeof CONTENT_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES] as const;
+export const VISION_STAGES = ["extract", "segment", "contract", "synthesize"] as const;
+export type VisionStage = (typeof VISION_STAGES)[number];
+
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];

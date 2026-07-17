@@ -39,11 +39,14 @@ export async function runEvalLoop(
   let issues: VisionIssue[] = [];
   let iterations = 0;
 
+  const hybridLoadFn = (url: string): Promise<string> =>
+    url.startsWith("data:") ? Promise.resolve(url) : loadImageFn(url);
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     iterations = i + 1;
 
     // 1. Build
-    await execAsync("pnpm build", { cwd: rendererDir });
+    await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
 
     // 2. Screenshot rendered page (returns data URI directly)
     const renderedDataUri = await screenshotPage(target.pagePath, rendererDir);
@@ -51,10 +54,6 @@ export async function runEvalLoop(
     // 3. Diff — wrap loadImageFn so the rendered data URI is returned as-is
     // (visionDiff calls loadImageFn for both images; the rendered image is already
     //  a data URI so we bypass the S3 fetch for it)
-    const hybridLoadFn = async (url: string): Promise<string> => {
-      if (url.startsWith("data:")) return url;
-      return loadImageFn(url);
-    };
     const diff = await visionDiff(
       target.originalCropDesktop,
       renderedDataUri,
@@ -99,12 +98,15 @@ async function screenshotPage(
       : path.join(distDir, pagePath.replace(/^\//, ""), "index.html");
 
   const browser = await chromium.launch();
-  const page = await browser.newPage();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`file://${htmlFile}`, { waitUntil: "networkidle" });
-  const buf = await page.screenshot({ fullPage: true });
-  await browser.close();
-  return `data:image/png;base64,${buf.toString("base64")}`;
+  try {
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`file://${htmlFile}`, { waitUntil: "networkidle" });
+    const buf = await page.screenshot({ fullPage: true });
+    return `data:image/png;base64,${buf.toString("base64")}`;
+  } finally {
+    await browser.close();
+  }
 }
 
 function extractMedia(uri: string): { mediaType: string; data: string } {
