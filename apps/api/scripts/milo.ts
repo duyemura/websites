@@ -291,7 +291,7 @@ async function runPipeline(
 function buildCtx(
   siteUuid: string,
   workspaceUuid: string,
-  opts: { verbose: boolean; quiet: boolean; tier?: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; pageFilter?: string[] },
+  opts: { verbose: boolean; quiet: boolean; tier?: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; pageFilter?: string[]; awsProfile?: string },
 ): StageContext {
   return {
     db,
@@ -301,6 +301,7 @@ function buildCtx(
       region: config.S3_REGION,
       accessKeyId: config.S3_ACCESS_KEY,
       secretAccessKey: config.S3_SECRET_KEY,
+      ...(opts.awsProfile ? { profile: opts.awsProfile } : {}),
     }),
     siteUuid,
     workspaceUuid,
@@ -626,7 +627,7 @@ async function runTemplate(
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
   const { siteUuid, workspaceUuid } = await createNewSite(cmd.url, cmd.force);
-  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free" });
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", awsProfile: "unicorn" });
   ctx.newTemplateName = cmd.name;
   if (!cmd.quiet) console.log(`\nMilo template — ${cmd.url} (site: ${siteUuid}, name: ${cmd.name})`);
   const totalStart = Date.now();

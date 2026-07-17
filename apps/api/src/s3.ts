@@ -8,6 +8,7 @@ import {
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { fromIni } from "@aws-sdk/credential-provider-ini";
 import path from "node:path";
 import type { StorageProvider, UploadUrl } from "./storage";
 
@@ -19,19 +20,24 @@ export interface S3ClientConfig {
   accessKeyId: string;
   secretAccessKey: string;
   sessionToken?: string;
+  /** When set, loads credentials from ~/.aws/credentials using this profile name instead of accessKeyId/secretAccessKey. */
+  profile?: string;
 }
 
 export function getS3Client(config: S3ClientConfig): S3Client {
   if (!client) {
     const isCustomEndpoint = Boolean(config.endpoint);
+    const credentials = config.profile
+      ? fromIni({ profile: config.profile })
+      : {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+          ...(config.sessionToken ? { sessionToken: config.sessionToken } : {}),
+        };
     client = new S3Client({
       ...(isCustomEndpoint ? { endpoint: config.endpoint } : {}),
       region: config.region,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-        ...(config.sessionToken ? { sessionToken: config.sessionToken } : {}),
-      },
+      credentials,
       forcePathStyle: isCustomEndpoint,
     });
   }
