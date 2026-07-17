@@ -446,6 +446,79 @@ function extractOffer(extract: ExtractArtifact): string {
   return "Free intro or trial class";
 }
 
+/**
+ * Extract city and state abbreviation from JSON-LD LocalBusiness entries
+ * embedded in the extract pages. Returns empty strings when not found.
+ */
+function extractCityStateFromExtract(extract: ExtractArtifact): { city: string; stateAbbr: string } {
+  for (const page of extract.pages) {
+    for (const item of page.content.jsonLd) {
+      const entry = item as Record<string, unknown>;
+      const type = entry["@type"];
+      const isLocalBusiness =
+        type === "LocalBusiness" ||
+        type === "GymOrHealthClub" ||
+        type === "HealthAndBeautyBusiness" ||
+        type === "SportsActivityLocation" ||
+        (Array.isArray(type) && type.some((t) => typeof t === "string" && t.includes("Business")));
+      if (!isLocalBusiness) continue;
+      const addr = entry["address"] as Record<string, unknown> | undefined;
+      if (!addr) continue;
+      const city = typeof addr["addressLocality"] === "string" ? addr["addressLocality"].trim() : "";
+      const state = typeof addr["addressRegion"] === "string" ? addr["addressRegion"].trim() : "";
+      if (city) return { city, stateAbbr: state };
+    }
+  }
+  return { city: "", stateAbbr: "" };
+}
+
+/**
+ * Extract trust signal snippets from the extract's JSON-LD (AggregateRating,
+ * Review items) and fall back to the [[business-info]] cross-reference when
+ * no structured data is present.
+ */
+function extractTrustSnippets(extract: ExtractArtifact): string[] {
+  const snippets: string[] = [];
+
+  for (const page of extract.pages) {
+    for (const item of page.content.jsonLd) {
+      const entry = item as Record<string, unknown>;
+
+      // AggregateRating at the root level (e.g. on a LocalBusiness entity)
+      const aggRating = entry["aggregateRating"] as Record<string, unknown> | undefined;
+      if (aggRating && !snippets.some((s) => s.includes("★"))) {
+        const val = aggRating["ratingValue"];
+        const count = aggRating["reviewCount"] ?? aggRating["ratingCount"];
+        if (val && count) {
+          snippets.push(`${val}★ average (${count} reviews on Google)`);
+        }
+      }
+
+      // Individual Review items
+      const type = entry["@type"];
+      if (type === "Review" || type === "UserReview") {
+        const body = entry["reviewBody"] ?? (entry["reviewRating"] as Record<string, unknown>)?.["description"];
+        if (typeof body === "string" && body.length > 20) {
+          const ranked = body.slice(0, 120).trim();
+          // Prefer reviews with specific result language
+          if (/\d+|lost|gained|pr\b|first|never|finally|six.?month|year/i.test(ranked)) {
+            snippets.unshift(`"${ranked}"`);
+          } else {
+            snippets.push(`"${ranked}"`);
+          }
+        }
+      }
+    }
+  }
+
+  // Dedupe and cap at 3
+  const unique = [...new Set(snippets)].slice(0, 3);
+  if (unique.length === 0) {
+    unique.push("See [[business-info]] for verified testimonials, ratings, and credentials.");
+  }
+  return unique;
+}
+
 function buildSitePlaybookSection(
   extract: ExtractArtifact,
   workspaceMemory?: WorkspaceMemory,
@@ -461,9 +534,7 @@ function buildSitePlaybookSection(
     ?? workspaceMemory?.businessPriorities?.slice(0, 3)
     ?? [];
 
-  const trustAssets: string[] = [];
-  // Extract artifact does not carry review count directly; business-info doc holds trust signals.
-  trustAssets.push("See [[business-info]] for verified testimonials, ratings, and credentials.");
+  const trustAssets = extractTrustSnippets(extract);
 
   const voice = workspaceMemory?.brandVoice ?? "Friendly, credible, and action-oriented.";
 
@@ -511,6 +582,29 @@ function buildSitePlaybookSection(
     "- Never promise specific results or invent prices, schedules, or guarantees.",
     "- Every page should end with one clear call to action.",
   );
+
+  // Gap 3: Local keyword targets derived from JSON-LD location + industry
+  const { city, stateAbbr } = extractCityStateFromExtract(extract);
+  if (city) {
+    const category = workspaceMemory?.industry ?? "fitness gym";
+    const localKeywords = [
+      `${category} ${city}`,
+      `${category} in ${city}${stateAbbr ? `, ${stateAbbr}` : ""}`,
+      `gym near me ${city}`,
+      `best ${category} ${city}`,
+      `${city} fitness classes`,
+    ].slice(0, 5);
+
+    lines.push(
+      "",
+      "### Local keyword targets",
+      "",
+      "- Include the city name naturally on every page — not keyword-stuffed, but present.",
+      `- Primary location: **${city}${stateAbbr ? `, ${stateAbbr}` : ""}**`,
+      "- Target search phrases:",
+      ...localKeywords.map((k) => `  - "${k}"`),
+    );
+  }
 
   return lines.join("\n");
 }
