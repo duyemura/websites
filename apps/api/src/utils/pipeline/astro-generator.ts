@@ -114,10 +114,33 @@ export function validateAstroComponent(code: string, componentName: string): str
     throw new Error(`[astro-generator] ${componentName}: <style> tag not closed — component was truncated`);
   }
 
-  // Strip <script> blocks that import third-party packages not installed in the renderer.
-  // Warn-and-continue is not enough — these break the build, so auto-remove the block.
+  // Strip forbidden third-party imports from BOTH frontmatter and <script> blocks.
+  // These packages are not installed in the renderer and break the build.
   const FORBIDDEN_IMPORTS = ["astro-icon", "@iconify", "lucide-react", "react-icons"];
   let cleaned = code;
+
+  // Strip from frontmatter — lines like `import { Icon } from 'astro-icon'`
+  const frontmatterClose = cleaned.indexOf("---", 3);
+  if (frontmatterClose !== -1) {
+    const fmSlice = cleaned.slice(3, frontmatterClose);
+    const fmCleaned = fmSlice
+      .split("\n")
+      .filter((line) => {
+        const matched = FORBIDDEN_IMPORTS.find(
+          (pkg) => line.includes(`"${pkg}"`) || line.includes(`'${pkg}'`),
+        );
+        if (matched) {
+          console.warn(`[astro-generator] ${componentName}: removed frontmatter import of "${matched}" — not installed in renderer`);
+        }
+        return !matched;
+      })
+      .join("\n");
+    if (fmCleaned !== fmSlice) {
+      cleaned = `---${fmCleaned}${cleaned.slice(frontmatterClose)}`;
+    }
+  }
+
+  // Strip <script> blocks that import third-party packages
   cleaned = cleaned.replace(/<script[^>]*>([\s\S]*?)<\/script>/g, (fullMatch, scriptBody: string) => {
     const hasForbidden = FORBIDDEN_IMPORTS.some(
       (pkg) => scriptBody.includes(`"${pkg}"`) || scriptBody.includes(`'${pkg}'`),

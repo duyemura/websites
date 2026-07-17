@@ -5,8 +5,36 @@
  * component-eval harness. Applied both at scaffold time (code-scaffolder.ts) and
  * after every agent-fix write (eval-loop.ts).
  */
+const FORBIDDEN_RENDERER_PACKAGES = ["astro-icon", "@iconify", "lucide-react", "react-icons"];
+
 export function sanitizeAstroComponent(code: string, componentName: string): string {
   let s = code;
+
+  // 0. Strip forbidden third-party imports from frontmatter.
+  //    These packages are not installed in the renderer and break the build.
+  const fmStart = s.indexOf("---");
+  const fmEnd = fmStart !== -1 ? s.indexOf("---", fmStart + 3) : -1;
+  if (fmStart !== -1 && fmEnd !== -1) {
+    const fmSlice = s.slice(fmStart + 3, fmEnd);
+    const fmCleaned = fmSlice
+      .split("\n")
+      .filter((line) => {
+        const matched = FORBIDDEN_RENDERER_PACKAGES.find(
+          (pkg) => line.includes(`"${pkg}"`) || line.includes(`'${pkg}'`),
+        );
+        if (matched) {
+          console.warn(`[sanitize] ${componentName}: stripped forbidden import of "${matched}" from frontmatter`);
+        }
+        return !matched;
+      })
+      .join("\n");
+    if (fmCleaned !== fmSlice) {
+      s = `---${fmCleaned}${s.slice(fmEnd)}`;
+      // Also remove <Icon ...> usages left behind after stripping the import
+      s = s.replace(/<Icon\s[^/]*/g, "<!-- icon removed --> <span");
+      s = s.replace(/\/>(\s*<!-- icon removed -->)/g, "></span>");
+    }
+  }
 
   // 1. Fix `<style scoped>` → `<style>` (Vue syntax, invalid in Astro).
   s = s.replace(/<style\s+scoped>/g, "<style>");

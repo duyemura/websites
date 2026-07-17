@@ -175,7 +175,12 @@ CURRENT CODE:
 ${componentCode}
 \`\`\`
 
-Return ONLY the corrected .astro file content starting with ---.`,
+RULES:
+- Return ONLY the corrected .astro file content starting with ---
+- Do NOT add any new import statements — this component is self-contained
+- Do NOT import astro-icon, @iconify, lucide-react, react-icons, or any other package
+- Fix ONLY CSS and layout — do not change the Props interface or template structure
+- Apply exact colors, fonts, and spacing from the original screenshot`,
     },
   ];
 
