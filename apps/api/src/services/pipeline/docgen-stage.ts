@@ -405,12 +405,53 @@ export function mapEvidenceForHybrid(
   return { version: designEvidence.version, rows: mapped };
 }
 
+function extractIdealAction(extract: ExtractArtifact): string {
+  const homePage = extract.pages.find((p) => p.path === "/" || p.path === "/index" || p.path === "");
+  const homeCtaLabel = homePage?.content.primaryCta?.label;
+  if (homeCtaLabel && homeCtaLabel.length > 2 && homeCtaLabel.length < 60) {
+    return homeCtaLabel;
+  }
+  for (const page of extract.pages) {
+    const label = page.content.primaryCta?.label;
+    if (label && label.length > 2 && label.length < 60) return label;
+  }
+  return "Book a free intro or tour";
+}
+
+const OFFER_PATTERNS = [
+  /\bfree\s+(?:intro|class|week|trial|session|consultation)\b/i,
+  /\b\d+[-\s]day\s+(?:free\s+)?trial\b/i,
+  /\bno\s+(?:contract|commitment|obligation)\b/i,
+  /\bclaim\s+your\s+free\b/i,
+  /\btry\s+(?:us\s+)?free\b/i,
+];
+
+function extractOffer(extract: ExtractArtifact): string {
+  const allHeadings = extract.pages.flatMap((p) => p.content.headings.map((h) => h.text));
+  const allMeta = extract.pages.flatMap((p) => Object.values(p.content.meta));
+
+  for (const text of [...allHeadings, ...allMeta]) {
+    for (const pattern of OFFER_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) {
+        const matchIndex = text.indexOf(match[0]);
+        const start = Math.max(0, matchIndex - 10);
+        const end = Math.min(text.length, matchIndex + match[0].length + 20);
+        const excerpt = text.slice(start, end).trim().replace(/^[^a-zA-Z]+/, "");
+        if (excerpt.length > 5 && excerpt.length < 80) return excerpt;
+      }
+    }
+  }
+
+  return "Free intro or trial class";
+}
+
 function buildSitePlaybookSection(
   extract: ExtractArtifact,
   workspaceMemory?: WorkspaceMemory,
 ): string {
-  const idealAction = "Book a free intro or tour";
-  const offer = "Free intro or trial class";
+  const idealAction = extractIdealAction(extract);
+  const offer = extractOffer(extract);
   const icpSummary = workspaceMemory?.targetMember ?? "Prospects researching local fitness options";
   const topObjections = workspaceMemory?.targetMembers
     ?.flatMap((p) => p.commonObjections)
