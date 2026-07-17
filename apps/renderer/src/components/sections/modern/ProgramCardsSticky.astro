@@ -1,120 +1,120 @@
 ---
-// Items are ProgramContent objects from GymSiteContent:
-// { slug, name, shortDescription, coverImageUrl, hero, ... }
 export interface ProgramCardsStickyProps {
-  id?: string;
   headline?: string;
-  items?: Array<{
-    slug?: string;
-    name?: string;
-    shortDescription?: string;
+  items: Array<{
+    slug: string;
+    name: string;
     coverImageUrl?: string;
+    shortDescription?: string;
   }>;
 }
 
-const { id, headline, items = [] } = Astro.props;
+const NO_IMAGE = "__NO_IMAGE__";
+const { headline, items = [] } = Astro.props as ProgramCardsStickyProps;
 ---
 
-<section data-eval-component="ProgramCardsSticky" id={id} class="program-cards-sticky">
+<section data-eval-component="ProgramCardsSticky" class="program-cards-sticky">
   {headline && <h2 class="section-headline">{headline}</h2>}
-  <div class="program-cards-sticky-container">
-    <div class="program-cards-sticky-grid">
-      {items.map((item) => {
-        const imageUrl = item.coverImageUrl && item.coverImageUrl !== "__NO_IMAGE__" ? item.coverImageUrl : undefined;
-        return (
-          <a
-            href={item.slug ? `/programs/${item.slug}` : "#"}
-            class="program-card"
-            style={imageUrl ? `background-image: url(${imageUrl});` : ""}
-          >
-            <div class="program-card-overlay"></div>
-            <h3 class="program-card-title">{item.name}</h3>
-            {item.shortDescription && <p class="program-card-desc">{item.shortDescription}</p>}
-          </a>
-        );
-      })}
-    </div>
+  <div class="card-grid">
+    {items.map((item) => {
+      const hasCover =
+        !!item.coverImageUrl &&
+        item.coverImageUrl !== NO_IMAGE &&
+        !item.coverImageUrl.includes("placehold.co");
+      return (
+        <div
+          class="card"
+          style={hasCover ? `background-image: url(${item.coverImageUrl})` : ""}
+        >
+          <h3 class="card-title">{item.name}</h3>
+          {item.shortDescription && (
+            <p class="card-desc">{item.shortDescription}</p>
+          )}
+        </div>
+      );
+    })}
   </div>
 </section>
 
 <style>
   .program-cards-sticky {
-    padding: 2rem 1rem;
+    padding: 48px 20px;
+    background-color: #f7f7f7;
   }
 
   .section-headline {
-    text-align: center;
     font-size: 2rem;
     font-weight: 700;
-    margin-bottom: 1.5rem;
+    text-align: center;
+    margin-bottom: 32px;
+    color: #111;
   }
 
-  .program-cards-sticky-container {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .program-cards-sticky-grid {
+  .card-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
-    padding: 0 1rem;
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
   }
 
-  .program-card {
+  .card {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: flex-start;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
+    min-height: 300px;
     background-size: cover;
     background-position: center;
-    background-color: #1a1a1a;
-    min-height: 15rem;
+    background-color: #222;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 24px;
     color: white;
     overflow: hidden;
-    text-decoration: none;
   }
 
-  .program-card-overlay {
+  .card::before {
+    content: '';
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.1));
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.1) 60%);
     z-index: 1;
   }
 
-  .program-card-title {
+  .card-title {
     position: relative;
     z-index: 2;
     font-size: 1.5rem;
-    line-height: 1.3;
     font-weight: 700;
-    margin: 0 0 0.25rem;
+    margin: 0 0 6px;
   }
 
-  .program-card-desc {
+  .card-desc {
     position: relative;
     z-index: 2;
-    font-size: 0.9rem;
-    line-height: 1.4;
+    font-size: 0.95rem;
+    opacity: 0.85;
     margin: 0;
-    opacity: 0.9;
+    max-width: 40ch;
   }
 
   @media (min-width: 768px) {
-    .program-cards-sticky-grid {
+    .card-grid {
       grid-template-columns: repeat(2, 1fr);
     }
   }
 
-  @media (min-width: 1200px) {
-    .program-cards-sticky-grid {
+  @media (min-width: 1024px) {
+    .card-grid {
       grid-template-columns: repeat(3, 1fr);
+    }
+
+    .card {
+      min-height: 360px;
     }
   }
 </style>

@@ -71,7 +71,7 @@ export async function visionDiff(
         },
       );
     } catch (err) {
-      console.warn("[visual-diff] Failed to load images for comparison:", err);
+      console.warn("[visual-diff] Failed to load images for comparison:", err instanceof Error ? err.message : String(err));
       return { score: 0, issues: [], failed: true };
     }
   }
@@ -87,7 +87,8 @@ export async function visionDiff(
       score: typeof parsed.score === "number" ? parsed.score : 0,
       issues: Array.isArray(parsed.issues) ? (parsed.issues as VisionIssue[]) : [],
     };
-  } catch {
+  } catch (err) {
+    console.warn("[visual-diff] Failed to parse LLM response as JSON:", err instanceof Error ? err.message : String(err));
     return { score: 0, issues: [], failed: true };
   }
 }
