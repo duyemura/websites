@@ -2,7 +2,7 @@ import type { ComponentGroup } from "./section-grouper";
 import { imageUrlToDataUri, type S3Context } from "./image-to-data-url";
 
 type ChatFn = (req: {
-  messages: Array<{ role: "user"; content: unknown }>;
+  messages: Array<{ role: "user" | "assistant"; content: unknown }>;
   maxTokens?: number;
 }) => Promise<string>;
 

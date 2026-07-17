@@ -48,7 +48,7 @@ export async function runSynthesizeStage(input: SynthesizeStageInput) {
   const visionModel = modelForTask("vision", input.config);
 
   // chatFn for astro-generator: accepts arbitrary content (text + image parts).
-  const visionChatFn = (req: { messages: Array<{ role: "user"; content: unknown }>; maxTokens?: number }) =>
+  const visionChatFn = (req: { messages: Array<{ role: "user" | "assistant"; content: unknown }>; maxTokens?: number }) =>
     chatCompletion(
       { model: visionModel, messages: req.messages as Parameters<typeof chatCompletion>[0]["messages"], maxTokens: req.maxTokens },
       input.config,
