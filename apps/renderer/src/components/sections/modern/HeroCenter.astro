@@ -2,201 +2,470 @@
 interface Props {
   headline: string;
   subheadline: string;
-  ctaButton1Text: string;
-  ctaButton1Link: string;
-  ctaButton2Text: string;
-  ctaButton2Link: string;
-  imageSrc: string;
-  imageAlt: string;
+  ctaText: string;
+  ctaHref: string;
+  imageUrl: string;
 }
 
-const {
-  headline,
-  subheadline,
-  ctaButton1Text,
-  ctaButton1Link,
-  ctaButton2Text,
-  ctaButton2Link,
-  imageSrc,
-  imageAlt,
-} = Astro.props;
+const { headline, subheadline, ctaText, ctaHref, imageUrl } = Astro.props;
 ---
 
-<section data-eval-component="HeroCenter" class="hero-center-section">
-  <div class="container">
-    <div class="content-wrapper">
-      <h1 class="headline">{headline}</h1>
-      <p class="subheadline">{subheadline}</p>
-      <div class="button-group">
-        <a href={ctaButton1Link} class="button primary">{ctaButton1Text}</a>
-        <a href={ctaButton2Link} class="button secondary">{ctaButton2Text}</a>
+<header data-eval-component="HeroCenter" class="header">
+  <nav class="navbar">
+    <a href="#" class="nav-brand">MySite</a>
+    <ul class="nav-links">
+      <li><a href="#">Home</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Services</a></li>
+      <li><a href="#">Contact</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="page-wrapper">
+  <aside class="sidebar">
+    <nav class="sidebar-nav">
+      <h3 class="sidebar-title">Categories</h3>
+      <ul>
+        <li><a href="#">Category 1</a></li>
+        <li><a href="#">Category 2</a></li>
+        <li><a href="#">Category 3</a></li>
+        <li><a href="#">Category 4</a></li>
+      </ul>
+      <h3 class="sidebar-title">Recent Posts</h3>
+      <ul>
+        <li><a href="#">Post Title 1</a></li>
+        <li><a href="#">Post Title 2</a></li>
+        <li><a href="#">Post Title 3</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    <section class="hero-section">
+      <div class="hero-content">
+        <h1 class="hero-headline">{headline}</h1>
+        <p class="hero-subheadline">{subheadline}</p>
+        <a href={ctaHref} class="hero-cta-button">{ctaText}</a>
       </div>
-    </div>
-    <div class="image-wrapper">
-      <img src={imageSrc} alt={imageAlt} class="hero-image" />
-    </div>
+      <div class="hero-image-wrapper">
+        <img src={imageUrl} alt="Hero image" class="hero-image" />
+      </div>
+    </section>
+
+    <section class="content-block">
+      <h2 class="section-title">What is Lorem Ipsum?</h2>
+      <p>
+        Lorem Ipsum is simply dummy text of the printing and typesetting
+        industry. Lorem Ipsum has been the industry's standard dummy text ever
+        since the 1500s, when an unknown printer took a galley of type and
+        scrambled it to make a type specimen book. It has survived not only five
+        centuries, but also the leap into electronic typesetting, remaining
+        essentially unchanged. It was popularised in the 1960s with the release
+        of Letraset sheets containing Lorem Ipsum passages, and more recently
+        with desktop publishing software like Aldus PageMaker including versions
+        of Lorem Ipsum.
+      </p>
+      <p>
+        Contrary to popular belief, Lorem Ipsum is not simply random text. It
+        has roots in a piece of classical Latin literature from 45 BC, making it
+        over 2000 years old. Richard McClintock, a Latin professor at
+        Hampden-Sydney College in Virginia, looked up one of the more obscure
+        Latin words, consectetur, from a Lorem Ipsum passage, and going through
+        the cites of the word in classical literature, discovered the
+        undoubtable source. Lorem Ipsum comes from sections 1.10.32 and 1.10.33
+        of "de Finibus Bonorum et Malorum" (The Extremes of Good and Evil) by
+        Cicero, written in 45 BC. This book is a treatise on the theory of
+        ethics, very popular during the Renaissance. The first line of Lorem
+        Ipsum, "Lorem ipsum dolor sit amet..", comes from a line in section
+        1.10.32.
+      </p>
+    </section>
+
+    <section class="content-block">
+      <h2 class="section-title">Why do we use it?</h2>
+      <p>
+        It is a long established fact that a reader will be distracted by the
+        readable content of a page when looking at its layout. The point of
+        using Lorem Ipsum is that it has a more-or-less normal distribution of
+        letters, as opposed to using 'Content here, content here', making it
+        look like readable English. Many desktop publishing packages and web
+        page editors now use Lorem Ipsum as their default model text, and a
+        search for 'lorem ipsum' will uncover many web sites still in their
+        infancy. Various versions have evolved over the years, sometimes by
+        accident, sometimes on purpose (injected humour and the like).
+      </p>
+    </section>
+  </main>
+</div>
+
+<section class="signup-section">
+  <div class="signup-content">
+    <h2 class="signup-title">Sign Up for Our Newsletter</h2>
+    <p class="signup-description">
+      Stay updated with the latest news and offers.
+    </p>
+    <form class="signup-form">
+      <input
+        type="email"
+        placeholder="Email address"
+        aria-label="Email address"
+        class="email-input"
+      />
+      <button type="submit" class="signup-button">Sign Up</button>
+    </form>
   </div>
 </section>
 
-<style>
-  .hero-center-section {
-    padding-top: 0px;
-    padding-bottom: 0px;
-    background-color: rgb(241, 241, 241);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh; /* Ensure it takes full viewport height for centering */
-    text-align: center;
+<style is:global>
+  /* Global styles for better reset and consistency */
+  :root {
+    --primary-color: #007bff;
+    --primary-dark: #0056b3;
+    --text-dark: #1a1a1a;
+    --text-medium: #4a4a4a;
+    --text-light: #6c757d;
+    --bg-light: #f8f9fa; /* Slightly off-white */
+    --bg-white: #ffffff;
+    --border-color: #dee2e6;
+    --spacing-xs: 8px;
+    --spacing-sm: 16px;
+    --spacing-md: 24px;
+    --spacing-lg: 40px;
+    --spacing-xl: 60px;
+    --spacing-xxl: 80px;
+    --font-family-base: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    --line-height-base: 1.6;
+    --border-radius: 8px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 
-  .container {
+  body {
+    font-family: var(--font-family-base);
+    line-height: var(--line-height-base);
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-white); /* Overall page background */
+    color: var(--text-medium);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--text-dark);
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    line-height: 1.2;
+  }
+
+  p {
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+  }
+
+  a {
+    color: var(--primary-color);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+</style>
+
+<style>
+  /* Header/Navbar Styles */
+  .header {
+    background-color: var(--bg-white);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .navbar {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    gap: 40px; /* Space between text content and image */
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
   }
 
-  .content-wrapper {
+  .nav-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--text-dark);
+  }
+
+  .nav-links {
+    display: flex;
+    gap: var(--spacing-md);
+  }
+
+  .nav-links a {
+    color: var(--text-medium);
+    font-size: 1rem;
+    font-weight: 500;
+    padding: var(--spacing-xs) 0;
+    transition: color 0.2s ease;
+  }
+
+  .nav-links a:hover {
+    color: var(--primary-color);
+    text-decoration: none;
+  }
+
+  /* Page Wrapper for Two-Column Layout */
+  .page-wrapper {
+    display: flex;
+    gap: var(--spacing-lg);
+    max-width: 1200px;
+    margin: var(--spacing-xxl) auto var(--spacing-xl) auto; /* More space between header and main content */
+    padding: 0 var(--spacing-lg);
+    align-items: flex-start; /* Align items to the top */
+  }
+
+  /* Sidebar Styles */
+  .sidebar {
+    flex: 0 0 250px; /* Fixed width sidebar */
+    padding: var(--spacing-md);
+    background-color: var(--bg-white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    box-sizing: border-box;
+    position: sticky; /* Makes sidebar stick when scrolling */
+    top: var(--spacing-lg); /* Adjust as needed for header height */
+  }
+
+  .sidebar-nav ul {
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .sidebar-nav li {
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .sidebar-nav a {
+    display: block;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    color: var(--text-medium);
+    font-size: 0.95rem;
+    font-weight: 400;
+    border-radius: var(--border-radius);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .sidebar-nav a:hover {
+    background-color: var(--bg-light);
+    color: var(--primary-color);
+    text-decoration: none;
+  }
+
+  .sidebar-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-dark);
+    padding-left: var(--spacing-sm);
+  }
+
+  /* Main Content Area */
+  .main-content {
+    flex: 1; /* Takes remaining space */
+    background-color: var(--bg-light); /* Slightly off-white background */
+    padding: var(--spacing-xl); /* More padding around content */
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-md); /* Subtle box-shadow */
+    box-sizing: border-box;
+  }
+
+  /* Hero Section within Main Content */
+  .hero-section {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px; /* Space between headline, subheadline, and buttons */
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-lg); /* Padding within the hero section */
+    background-color: var(--bg-white); /* White background for hero */
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
   }
 
-  .headline {
-    font-family: sans-serif; /* Placeholder, adjust as needed */
-    font-size: 48px;
-    line-height: 1.2;
+  .hero-content {
+    margin-bottom: var(--spacing-lg);
+    max-width: 600px;
+  }
+
+  .hero-headline {
+    font-size: 2.8rem; /* Larger font size */
+    line-height: 1.1;
     font-weight: 700;
-    color: #333;
-    margin: 0;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-dark);
   }
 
-  .subheadline {
-    font-family: sans-serif; /* Placeholder, adjust as needed */
-    font-size: 18px;
+  .hero-subheadline {
+    font-size: 1.15rem;
     line-height: 1.5;
-    color: #555;
-    max-width: 700px;
-    margin: 0;
+    margin-bottom: var(--spacing-lg);
+    color: var(--text-medium);
   }
 
-  .button-group {
-    display: flex;
-    gap: 15px; /* Space between buttons */
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .button {
+  .hero-cta-button {
     display: inline-block;
-    padding: 12px 25px;
-    border-radius: 8px;
+    padding: 14px 28px;
+    background-color: var(--primary-color);
+    color: var(--bg-white);
     text-decoration: none;
-    font-family: sans-serif; /* Placeholder, adjust as needed */
-    font-size: 16px;
+    border-radius: var(--border-radius);
+    font-size: 1.1rem;
     font-weight: 600;
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    border: none;
+    cursor: pointer;
   }
 
-  .button.primary {
-    background-color: #007bff; /* Example primary color */
-    color: #fff;
-    border: 1px solid #007bff;
+  .hero-cta-button:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+    text-decoration: none;
   }
 
-  .button.primary:hover {
-    background-color: #0056b3;
-    border-color: #0056b3;
-  }
-
-  .button.secondary {
-    background-color: transparent;
-    color: #007bff; /* Example secondary color */
-    border: 1px solid #007bff;
-  }
-
-  .button.secondary:hover {
-    background-color: #e6f2ff;
-    color: #0056b3;
-    border-color: #0056b3;
-  }
-
-  .image-wrapper {
+  .hero-image-wrapper {
     width: 100%;
-    max-width: 800px; /* Adjust as needed */
-    margin-top: 20px;
+    max-width: 700px;
+    margin-top: var(--spacing-md);
   }
 
   .hero-image {
     width: 100%;
     height: auto;
     display: block;
-    border-radius: 8px; /* Optional: adds rounded corners to the image */
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* Optional: adds a subtle shadow */
+    object-fit: cover;
+    border-radius: var(--border-radius);
   }
 
-  /* Mobile-first styles (375px base) */
-  @media (max-width: 375px) {
-    .container {
-      gap: 30px;
-      padding: 15px;
+  @media (min-width: 768px) {
+    .hero-section {
+      flex-direction: row;
+      text-align: left;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--spacing-xl);
     }
 
-    .headline {
-      font-size: 32px;
+    .hero-content {
+      margin-bottom: 0;
+      margin-right: var(--spacing-xl);
+      flex: 1;
     }
 
-    .subheadline {
-      font-size: 16px;
-      max-width: 100%;
-    }
-
-    .button-group {
-      flex-direction: column;
-      gap: 10px;
-      width: 100%;
-    }
-
-    .button {
-      width: 100%;
-      padding: 10px 20px;
-    }
-
-    .image-wrapper {
-      margin-top: 15px;
+    .hero-image-wrapper {
+      flex: 1;
+      margin-top: 0;
+      max-width: 50%;
     }
   }
 
-  /* Desktop styles (1440px) */
-  @media (min-width: 1440px) {
-    .container {
-      gap: 60px;
-      padding: 40px;
-    }
+  /* Content Blocks */
+  .content-block {
+    background-color: var(--bg-white);
+    padding: var(--spacing-xl); /* More padding */
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm); /* Subtle box-shadow */
+    margin-bottom: var(--spacing-xl);
+  }
 
-    .headline {
-      font-size: 64px;
-    }
+  .section-title {
+    font-size: 2rem; /* Larger font size */
+    font-weight: 700; /* Bolder font weight */
+    margin-bottom: var(--spacing-lg);
+    line-height: 1.3;
+    color: var(--text-dark);
+  }
 
-    .subheadline {
-      font-size: 20px;
-    }
+  /* Sign Up Section (Full Width) */
+  .signup-section {
+    background-color: var(--primary-color);
+    color: var(--bg-white);
+    padding: var(--spacing-xl) var(--spacing-lg);
+    text-align: center;
+    margin-top: var(--spacing-xxl); /* Separates it from main content */
+  }
 
-    .button-group {
-      gap: 20px;
-    }
+  .signup-content {
+    max-width: 700px;
+    margin: 0 auto;
+  }
 
-    .button {
-      padding: 15px 30px;
-    }
+  .signup-title {
+    color: var(--bg-white);
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: var(--spacing-md);
+  }
 
-    .image-wrapper {
-      margin-top: 30px;
-    }
+  .signup-description {
+    font-size: 1.1rem;
+    margin-bottom: var(--spacing-lg);
+    line-height: 1.5;
+  }
+
+  .signup-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    align-items: center;
+  }
+
+  .email-input {
+    padding: 12px 18px;
+    border: 2px solid var(--bg-white); /* Clear border */
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    width: 100%;
+    max-width: 350px;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: var(--text-dark);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .email-input::placeholder {
+    color: var(--text-light);
+  }
+
+  .email-input:focus {
+    outline: none;
+    border-color: var(--primary-dark);
+    background-color: var(--bg-white);
+  }
+
+  .signup-button {
+    padding: 12px 28px;
+    background-color: var(--primary-dark); /* Distinct button style */
+    color: var(--bg-white);
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  .signup-button:hover {
+    background-color: var(--primary-color);
   }
 </style>
