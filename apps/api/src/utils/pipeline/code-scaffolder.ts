@@ -84,24 +84,25 @@ export const ${name}Docs = {
 `;
 }
 
-function patchRegistry(registryPath: string, name: string): void {
-  const src = fs.readFileSync(registryPath, "utf8");
-  if (src.includes(`from "./${name}.js"`)) return; // already patched
-
+export function applyRegistryPatch(src: string, name: string): string {
+  if (src.includes(`from "./${name}.js"`)) return src; // already patched
   const withImport = src.replace(/^((?:import .+;\n)+)/m, `$1import { ${name}Spec } from "./${name}.js";\n`);
   if (withImport === src) {
-    throw new Error(`[code-scaffolder] patchRegistry: failed to find import block in ${registryPath}`);
+    throw new Error(`[code-scaffolder] patchRegistry: failed to find import block`);
   }
-
   const withEntry = withImport.replace(
     /(\n(\s+)\S.+,\n)(\};)/,
     `$1$2${name}: ${name}Spec,\n$3`,
   );
   if (withEntry === withImport) {
-    throw new Error(`[code-scaffolder] patchRegistry: failed to find insertion point in ${registryPath}`);
+    throw new Error(`[code-scaffolder] patchRegistry: failed to find insertion point`);
   }
+  return withEntry;
+}
 
-  fs.writeFileSync(registryPath, withEntry, "utf8");
+function patchRegistry(registryPath: string, name: string): void {
+  const src = fs.readFileSync(registryPath, "utf8");
+  fs.writeFileSync(registryPath, applyRegistryPatch(src, name), "utf8");
 }
 
 function patchPackageIndex(indexPath: string, name: string): void {
@@ -119,25 +120,26 @@ function patchPackageIndex(indexPath: string, name: string): void {
   fs.writeFileSync(indexPath, withExport, "utf8");
 }
 
-function patchTemplateTypes(typesPath: string, name: string): void {
-  const src = fs.readFileSync(typesPath, "utf8");
-  if (src.includes(`"${name}"`)) return; // already patched
-
+export function applyTypesPatch(src: string, name: string): string {
+  if (src.includes(`"${name}"`)) return src; // already patched
   const withUnion = src.replace(
     /(export type TemplateTheme = (?:"[^"]*"(?: \| "[^"]*")*));/,
     `$1 | "${name}";`,
   );
   if (withUnion === src) {
-    throw new Error(`[code-scaffolder] patchTemplateTypes: failed to find TemplateTheme union in ${typesPath}`);
+    throw new Error(`[code-scaffolder] patchTemplateTypes: failed to find TemplateTheme union`);
   }
-
   const withArray = withUnion.replace(
     /(TEMPLATE_THEMES: TemplateTheme\[\] = \[[^\]]+)(\];)/,
     `$1, "${name}"$2`,
   );
   if (withArray === withUnion) {
-    throw new Error(`[code-scaffolder] patchTemplateTypes: failed to find TEMPLATE_THEMES array in ${typesPath}`);
+    throw new Error(`[code-scaffolder] patchTemplateTypes: failed to find TEMPLATE_THEMES array`);
   }
+  return withArray;
+}
 
-  fs.writeFileSync(typesPath, withArray, "utf8");
+function patchTemplateTypes(typesPath: string, name: string): void {
+  const src = fs.readFileSync(typesPath, "utf8");
+  fs.writeFileSync(typesPath, applyTypesPatch(src, name), "utf8");
 }
