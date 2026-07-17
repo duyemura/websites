@@ -61,7 +61,7 @@ Every component on a gym website serves a conversion goal. For each component be
 Key rules to apply across all components:
 - Hero headlines: outcome-focused, not feature-focused ("Get your first pull-up in 8 weeks" beats "State-of-the-art CrossFit facility"). Include the city name naturally in the hero headline or subheadline — this signals local relevance to both visitors and search engines.
 - Testimonials: must include a specific result or named before/after change, not generic praise ("Changed my life" is weak; "I lost 18 lbs and finally did a muscle-up" is strong)
-- CTA copy: every CTA button must use \`business.primaryCta.label\` as the label and \`business.primaryCta.href\` as the destination — never hardcode text or links. Reduce perceived commitment ("Book a free intro class" beats "Join now" or "Contact us").
+- CTA copy: every CTA button must use \`business.primaryCta.label\` as the label and \`business.primaryCta.url\` as the destination — never hardcode text or links. Reduce perceived commitment ("Book a free intro class" beats "Join now" or "Contact us").
 - Program cards: lead with the benefit the member gets, not the workout type or class name. Body copy for each program/service card should be 3–5 sentences — Google needs content depth to rank program pages for searches like "[program type] gym [city]", and thin cards don't rank.
 
 Components:
