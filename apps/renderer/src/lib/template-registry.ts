@@ -3,12 +3,12 @@
 // New templates only need to register their spec in packages/shared-types; this
 // file rebuilds the renderer-side registry from the shared-types exports.
 
-import { getTemplateSpec, TEMPLATE_THEMES, type TemplateSpec } from "@milo/shared-types";
+import { getTemplateSpec, TEMPLATE_THEMES, type TemplateSpec, type TemplateTheme } from "@milo/shared-types";
 
 export const SPEC_REGISTRY: Record<string, TemplateSpec> = Object.fromEntries(
   TEMPLATE_THEMES
-    .map((theme) => [theme, getTemplateSpec(theme)] as const)
-    .filter(([, spec]) => spec !== null),
+    .map((theme) => [theme, getTemplateSpec(theme)] as [TemplateTheme, TemplateSpec | null])
+    .filter((entry): entry is [TemplateTheme, TemplateSpec] => entry[1] !== null),
 );
 
 /** Look up a registered template spec by its canonical name. */

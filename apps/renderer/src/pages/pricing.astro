@@ -10,10 +10,13 @@ import Container from "../components/ui/Container.astro";
 import SectionHeading from "../components/ui/SectionHeading.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
 const p = content.pages.pricing;
 const { business } = content;
 const title = `Membership Pricing | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasPricingPage = !!spec?.pages?.pricing;
 const hasGrid = p.grid?.plans && p.grid.plans.length > 0;
 const hasForm = !!p.form;
 ---
@@ -23,7 +26,7 @@ const hasForm = !!p.form;
     <BreadcrumbSchema crumbs={[{ name: "Pricing", path: "/pricing" }]} />
     {hasGrid && <OfferSchema plans={p.grid!.plans} />}
   </Fragment>
-  {theme === "beanburito" ? (
+  {hasPricingPage ? (
     <PageRenderer pageKey="pricing" />
   ) : (
     <>

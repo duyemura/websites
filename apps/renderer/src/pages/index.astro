@@ -4,9 +4,12 @@ import HomeBaseline from "../components/pages/HomeBaseline.astro";
 import HomeImpact from "../components/pages/HomeImpact.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
 const home = content.pages.home;
 const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasHomePage = !!spec?.pages?.home;
 ---
 <GymLayout title={content.meta.defaultTitle} description={content.meta.defaultDescription} path="/" image={home.hero.backgroundImageUrl}>
-  {theme === "beanburito" ? <PageRenderer pageKey="home" /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
+  {hasHomePage ? <PageRenderer pageKey="home" /> : theme === "impact" ? <HomeImpact /> : <HomeBaseline />}
 </GymLayout>

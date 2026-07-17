@@ -7,19 +7,22 @@ import ClassEventSchema from "../components/seo/ClassEventSchema.astro";
 import Container from "../components/ui/Container.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
 const s = content.pages.schedule;
 const { business, pages } = content;
 const title = `Class Schedule | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const programNames = pages.programs.slice(0, 2).map(p => p.name).join(", ");
 const scheduleDesc = `View the class schedule at ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}. ${programNames ? `${programNames} and more — ` : ""}find a class that works for you.`;
 const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasSchedulePage = !!spec?.pages?.schedule;
 ---
 <GymLayout title={title} description={scheduleDesc} path="/schedule">
   <Fragment slot="head">
     <BreadcrumbSchema crumbs={[{ name: "Schedule", path: "/schedule" }]} />
     <ClassEventSchema programs={content.pages.programs} />
   </Fragment>
-  {theme === "beanburito" ? (
+  {hasSchedulePage ? (
     <PageRenderer pageKey="schedule" />
   ) : (
     <>

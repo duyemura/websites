@@ -6,6 +6,7 @@ import CTABand from "../components/sections/CTABand.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
 const guide = content.pages.localGuide;
 const { business } = content;
 
@@ -13,10 +14,12 @@ const { business } = content;
 // emitting a blank HTML document (which confuses crawlers and hurts SEO).
 if (!guide) return Astro.rewrite("/404");
 const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasLocalGuidePage = !!spec?.pages?.localGuide;
 ---
 <GymLayout title={`${business.geo.city} Local Guide | ${business.name}`} description={guide.hero.subheading ?? `The ${business.geo.city} local guide by ${business.name}.`} path="/local-guide">
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Local Guide", path: "/local-guide" }]} /></Fragment>
-  {theme === "beanburito" ? (
+  {hasLocalGuidePage ? (
     <PageRenderer pageKey="localGuide" />
   ) : (
     <>
