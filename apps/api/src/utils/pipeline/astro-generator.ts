@@ -114,23 +114,32 @@ export function validateAstroComponent(code: string, componentName: string): str
     throw new Error(`[astro-generator] ${componentName}: <style> tag not closed — component was truncated`);
   }
 
-  // Check for third-party imports that won't resolve in the renderer
+  // Strip <script> blocks that import third-party packages not installed in the renderer.
+  // Warn-and-continue is not enough — these break the build, so auto-remove the block.
   const FORBIDDEN_IMPORTS = ["astro-icon", "@iconify", "lucide-react", "react-icons"];
-  const scriptMatches = code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g);
-  for (const match of scriptMatches) {
-    const scriptBody = match[1] ?? "";
-    for (const forbidden of FORBIDDEN_IMPORTS) {
-      if (scriptBody.includes(`"${forbidden}"`) || scriptBody.includes(`'${forbidden}'`)) {
-        warnings.push(`<script> imports "${forbidden}" which is not installed in the renderer — remove this import`);
-      }
+  let cleaned = code;
+  cleaned = cleaned.replace(/<script[^>]*>([\s\S]*?)<\/script>/g, (fullMatch, scriptBody: string) => {
+    const hasForbidden = FORBIDDEN_IMPORTS.some(
+      (pkg) => scriptBody.includes(`"${pkg}"`) || scriptBody.includes(`'${pkg}'`),
+    );
+    if (hasForbidden) {
+      console.warn(`[astro-generator] ${componentName}: removed <script> block with unresolvable import — it would break the renderer build`);
+      return "";
     }
+    return fullMatch;
+  });
+
+  // Also strip inline <Icon> JSX usages left behind after removing the import
+  if (cleaned !== code) {
+    cleaned = cleaned.replace(/<Icon\s[^/]*/g, "<!-- icon removed --> <span");
+    cleaned = cleaned.replace(/\/>(\s*<!-- icon removed -->)/g, "></span>");
   }
 
   if (warnings.length > 0) {
     console.warn(`[astro-generator] ${componentName}: ${warnings.join("; ")}`);
   }
 
-  return code;
+  return cleaned;
 }
 
 function isValidAstroOutput(code: string): boolean {
