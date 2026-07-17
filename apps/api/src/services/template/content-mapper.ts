@@ -29,6 +29,8 @@ import { hexSaturation } from "../../utils/site-blueprint";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 import type { EnrichArtifact } from "../../types/enrich-artifact";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
+import { chatCompletion } from "../../ai/llm-client";
+import type { Config } from "../../plugins/env";
 
 // ── Static page fallback headlines ───────────────────────────────────────────
 
@@ -1071,12 +1073,53 @@ export interface MapperResult {
   warnings: string[];
 }
 
+// ── Service area inference ───────────────────────────────────────────────────
+
+/**
+ * Asks the LLM for 4-6 nearby neighborhoods/suburbs that residents of a given
+ * city commonly travel from to visit a gym. Used to populate the `areaServed`
+ * field in LocalBusiness schema for local SEO.
+ *
+ * Returns an empty array on any failure so the caller can fall back gracefully.
+ */
+async function inferServiceArea(
+  city: string,
+  state: string,
+  category: string,
+  config: Config,
+): Promise<string[]> {
+  const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${category} (gym/fitness business). Include only real place names, no commentary.
+
+Return a JSON array of strings only, e.g.: ["Round Rock", "Cedar Park", "Pflugerville", "Buda"]`;
+
+  try {
+    const response = await chatCompletion(
+      {
+        model: config.DEFAULT_LLM_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 100,
+      },
+      config,
+    );
+    const match = response.content.match(/\[[^\]]+\]/);
+    if (!match) return [];
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
 export interface MapperConfig {
   apiBaseUrl: string;
   siteUrl: string;
   workspaceUuid?: string;
   /** Google Maps API key used to build embed URLs from GMB place IDs. */
   googleMapsApiKey?: string;
+  /** Optional app config passed through for LLM-backed features such as
+   *  service-area neighborhood inference. When omitted, those features are skipped. */
+  appConfig?: Config;
 }
 
 const VALID_TEMPLATE_THEMES = new Set<string>(["baseline", "impact", "beanburito"]);
@@ -1157,6 +1200,30 @@ export async function buildGymJson(
   }) as SiteHierarchy;
 
   let business = extractBusiness(bizDoc?.content ?? "", ds, warnings, enrichArtifact?.payload ?? null);
+
+  // If the service area is still just the fallback city-only seed, try to infer
+  // nearby neighborhoods via LLM so that `areaServed` in LocalBusiness schema
+  // covers the realistic travel-from area rather than a single city name.
+  const serviceAreaIsOnlyCity =
+    !business.serviceArea?.length ||
+    (business.serviceArea.length === 1 && business.serviceArea[0] === business.geo.city);
+  if (serviceAreaIsOnlyCity && config.appConfig && business.geo.city && business.geo.state) {
+    const neighborhoods = await inferServiceArea(
+      business.geo.city,
+      business.geo.state,
+      business.category ?? "gym",
+      config.appConfig,
+    );
+    if (neighborhoods.length > 0) {
+      const primaryCity = business.geo.city;
+      // Prepend the primary city so it's always first in the list.
+      business = {
+        ...business,
+        serviceArea: [primaryCity, ...neighborhoods.filter((n) => n !== primaryCity)],
+      };
+    }
+  }
+
   const brand = extractBrand(ds, warnings, business.name);
 
   // Build a Google Maps embed URL from the business name + address. We use the

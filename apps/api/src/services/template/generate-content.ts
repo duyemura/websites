@@ -1238,7 +1238,12 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
   log(`  Building base content from docs...`);
   const { buildGymJson } = await import("./content-mapper.js");
   const { content: baseContent, warnings: mapperWarnings } = await buildGymJson(
-    db, siteUuid, { apiBaseUrl, siteUrl, googleMapsApiKey: config.GOOGLE_PLACES_API_KEY }, workspaceUuid,
+    db, siteUuid, {
+      apiBaseUrl,
+      siteUrl,
+      googleMapsApiKey: config.GOOGLE_PLACES_API_KEY,
+      appConfig: config,
+    }, workspaceUuid,
   );
   if (mapperWarnings.length > 0) {
     log(`  [mapper] ${mapperWarnings.slice(0, 3).join(", ")}${mapperWarnings.length > 3 ? ` (+${mapperWarnings.length - 3} more)` : ""}`);
