@@ -35,6 +35,9 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
     ["template-eval", "./stages/template-eval.js"],
     ["publish", "./stages/publish.js"],
     ["restore", "./stages/restore.js"],
+    ["extract", "./stages/extract.js"],
+    ["segment", "./stages/segment.js"],
+    ["contract", "./stages/contract.js"],
     ["synthesize", "./stages/synthesize.js"],
     ["component-eval", "./stages/component-eval.js"],
   ];

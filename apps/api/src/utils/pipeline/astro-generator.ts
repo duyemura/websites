@@ -28,8 +28,9 @@ REQUIREMENTS:
 5. Prop names should be semantic: headline, subheadline, ctaText, ctaHref, imageUrl, items[], etc.
 6. Add \`data-eval-component="[ComponentName]"\` to the outermost HTML element (e.g. <section data-eval-component="HeroLeft"> or <div data-eval-component="CtaBand">). Use the actual component name from COMPONENT NAME above.
 7. Reproduce the layout exactly as shown in the attached screenshots
+8. NEVER use React/Preact hooks or JSX-style functions — Astro components are static frontmatter + template HTML only
 
-Return ONLY the .astro file content, starting with ---.`;
+Return ONLY the .astro file content, starting with ---. Do not wrap the code in markdown fences.`;
 }
 
 export async function generateAstroComponent(
@@ -63,6 +64,49 @@ export async function generateAstroComponent(
     }
   }
 
-  const response = await chatFn({ messages: [{ role: "user", content }], maxTokens: 4096 });
-  return response.trim();
+  let response = await chatFn({ messages: [{ role: "user", content }], maxTokens: 4096 });
+  let code = stripAstroFences(response.trim());
+
+  // Basic guard: the output must be an Astro frontmatter + template file. If the
+  // model returned React/Preact JSX or omitted the frontmatter fence, retry once
+  // with an explicit correction prompt.
+  if (!isValidAstroOutput(code)) {
+    const correction = `That was not a valid Astro component. Astro components use frontmatter (---) and static HTML templates only — no React hooks, no JSX functions, no preact/imports. Return ONLY the corrected .astro file starting with ---.`;
+    response = await chatFn({
+      messages: [
+        { role: "user", content },
+        { role: "assistant", content: response },
+        { role: "user", content: correction },
+      ],
+      maxTokens: 4096,
+    });
+    code = stripAstroFences(response.trim());
+  }
+
+  return code;
+}
+
+function isValidAstroOutput(code: string): boolean {
+  if (!code.startsWith("---")) return false;
+  const afterFrontmatter = code.slice(3);
+  // Reject React/Preact functional components and hooks.
+  if (/\buseState\b/.test(afterFrontmatter)) return false;
+  if (/Astro\.Component\b/.test(afterFrontmatter)) return false;
+  if (/\bconst\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*return\s*\(/.test(afterFrontmatter)) return false;
+  return true;
+}
+
+/** Strip markdown code fences that some LLMs wrap around the .astro file. */
+function stripAstroFences(raw: string): string {
+  // Some models return fences with the language tag on a separate line or with
+  // leading whitespace. Try the common patterns and fall back to a broader strip.
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("---")) return trimmed;
+
+  const fenced = trimmed
+    .replace(/^```[a-z]*\s*/im, "")
+    .replace(/\s*```\s*$/im, "")
+    .trim();
+
+  return fenced.startsWith("---") ? fenced : trimmed;
 }

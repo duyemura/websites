@@ -25,6 +25,7 @@ export function groupSections(
   segment: SegmentArtifact,
 ): ComponentGroup[] {
   const groups = new Map<string, ComponentGroup>();
+  const usedNames = new Set<string>();
 
   for (const contractPage of contract.pages) {
     const segPage = segment.pages.find((p) => p.path === contractPage.path);
@@ -43,8 +44,18 @@ export function groupSections(
       const existing = groups.get(key);
 
       if (!existing) {
+        let name = deriveComponentName(section.tag, archetype);
+        if (usedNames.has(name)) {
+          // Disambiguate by tag when archetype-derived names collide across tags.
+          const tagSuffix = section.tag
+            .split("-")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join("");
+          name = `${name}${tagSuffix}`;
+        }
+        usedNames.add(name);
         groups.set(key, {
-          name: deriveComponentName(section.tag, archetype),
+          name,
           tag: section.tag,
           archetype,
           exemplar: {

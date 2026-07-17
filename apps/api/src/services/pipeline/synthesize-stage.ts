@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+import path from "node:path";
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
@@ -91,6 +93,15 @@ export async function runSynthesizeStage(input: SynthesizeStageInput) {
     cssSource,
     repoRoot: input.repoRoot,
   });
+
+  // Rebuild the shared-types package so the renderer can resolve the new spec
+  // from @milo/shared-types at build time.
+  const sharedTypesDir = path.join(input.repoRoot, "packages/shared-types");
+  try {
+    execSync("pnpm build", { cwd: sharedTypesDir, stdio: "pipe" });
+  } catch (err) {
+    console.warn("[synthesize] shared-types rebuild failed:", err instanceof Error ? err.message : String(err));
+  }
 
   await saveArtifact(input.db, ctx, "synthesize", {
     templateName: input.templateName,

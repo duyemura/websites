@@ -10,7 +10,7 @@ export const componentEvalStage: StageRunner = {
   async run(ctx: StageContext): Promise<StageResult> {
     const start = Date.now();
     if (!ctx.newTemplateName) throw new Error("component-eval requires --name <templatename>");
-    const repoRoot = path.resolve(ctx.rendererDir, "../../..");
+    const repoRoot = path.resolve(ctx.rendererDir, "../..");
     const { results, reportPath } = await runComponentEvalStage({
       db: ctx.db,
       config: ctx.config,
