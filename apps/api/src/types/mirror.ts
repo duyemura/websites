@@ -35,6 +35,9 @@ export interface MirrorPage {
   embeds: string[];
   /** UGC pages are discovered (in registry, in redirect map) but not captured on free tier */
   category: "structural" | "ugc";
+  /** Normalized same-origin links found on this page, stored as absolute URLs. Used for
+   *  canonical page selection (e.g. which pricing URL the site navigation actually points to). */
+  links?: string[];
 }
 
 // ---- Tier configuration ----

@@ -47,16 +47,7 @@ describe("template registry", () => {
 
   test("about page component list matches beanburito reference order", () => {
     const spec = getTemplateSpec("beanburito")!;
-    expect(pageComponents(spec, "about")).toEqual([
-      "hero",
-      "story",
-      "community",
-      "team",
-      "iframeBand",
-      "faq",
-      "ctaBand",
-      "location",
-    ]);
+    expect(pageComponents(spec, "about")).toEqual(["hero", "story", "team", "ctaBand"]);
   });
 
   test("hero component is registered and uses pageField source", () => {

@@ -337,6 +337,14 @@ export async function crawlSite(
             selector: f.selector,
           }));
 
+        // Persist the same-origin links found on this page. This lets downstream
+        // mappers distinguish nav-linked canonical pages from stale sitemap-only pages.
+        const pageLinks = [...new Set(
+          evidence.links
+            .map((link) => normalizeCrawlUrl(link, origin, finalUrl))
+            .filter((link): link is string => !!link),
+        )];
+
         pages.push({
           url: finalUrl,
           path: pagePath,
@@ -346,6 +354,7 @@ export async function crawlSite(
           dynamicRegions: evidence.dynamicRegions,
           embeds: [...new Set(evidence.embeds)],
           category: pageCategory,
+          links: pageLinks,
         });
 
         deps.log.info({ url, pageCount: pages.length, concurrency: CRAWL_CONCURRENCY }, "mirror crawl: page captured");

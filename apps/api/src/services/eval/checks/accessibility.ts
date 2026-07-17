@@ -25,8 +25,9 @@ export async function checkAccessibility(ctx: CheckContext): Promise<PageEvalCat
       const fix = violation.helpUrl ? `See ${violation.helpUrl}` : undefined;
 
       // Cross-origin iframe widgets (schedulers, maps, review embeds) style their
-      // own content; we cannot fix their contrast from the parent template.
-      if (selector?.includes("iframe[")) {
+      // own content; we cannot fix their contrast, alt text, or button labels
+      // from the parent template. Skip any violation whose target involves an iframe.
+      if (selector?.includes("iframe")) {
         continue;
       }
 

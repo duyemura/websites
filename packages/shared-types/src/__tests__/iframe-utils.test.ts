@@ -21,16 +21,18 @@ describe("inferIframeVariant", () => {
     expect(inferIframeVariant("https://fast.wistia.net/embed/iframe/abc")).toBe("video");
   });
 
-  it("infers schedule for calendly/schedule/booking patterns", () => {
+  it("infers schedule for calendly/schedule/booking/calendar patterns", () => {
     expect(inferIframeVariant("https://calendly.com/gym/intro")).toBe("schedule");
     expect(inferIframeVariant("https://app.acuityscheduling.com/schedule.php")).toBe("schedule");
     expect(inferIframeVariant("https://booking.pushpress.com/...")).toBe("schedule");
+    expect(inferIframeVariant("https://fitlab.pushpress.com/open/calendar?framed=1")).toBe("schedule");
   });
 
-  it("infers form for typeform/jotform/forms patterns", () => {
+  it("infers form for typeform/jotform/forms/widget-form patterns", () => {
     expect(inferIframeVariant("https://form.typeform.com/to/abc")).toBe("form");
     expect(inferIframeVariant("https://form.jotform.com/123456")).toBe("form");
     expect(inferIframeVariant("https://forms.gle/abc123")).toBe("form");
+    expect(inferIframeVariant("https://api.grow.pushpress.com/widget/form/2JdtcQGgU0sX79Cy5sjt")).toBe("form");
   });
 
   it("infers review for reputation and testimonial widgets", () => {

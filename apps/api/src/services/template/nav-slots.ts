@@ -277,7 +277,6 @@ export function buildNavigation(
   contentBriefs: Array<{ path: string; pageType: string }> = [],
 ): Navigation {
   const types = new Set(contentBriefs.map((b) => b.pageType));
-  const hasLegalPage = contentBriefs.some((b) => b.pageType === "legal");
 
   // ── Header ──────────────────────────────────────────────────────────────────
   let header: NavItem[];
@@ -317,10 +316,10 @@ export function buildNavigation(
     .filter((i) => i.href !== "/") // skip Home
     .map((i) => ({ label: i.label, href: i.href }));
 
-  // Only link to a privacy policy if the site actually generated one.
-  if (hasLegalPage) {
-    footerCompanyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
-  }
+  // Privacy and terms are always generated as fallbacks, so always link them in
+  // the footer so the cookie banner and any compliance reference resolve.
+  footerCompanyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
+  footerCompanyLinks.push({ label: "Terms of Service", href: "/legal/terms-of-service" });
 
   const footer: FooterGroup[] = [
     {

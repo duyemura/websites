@@ -447,26 +447,6 @@ export const beanburitoSpec: TemplateSpec = {
         },
       },
 
-      community: {
-        purpose: "Emotional community section describing what it feels like to train here.",
-        slots: {
-          headline: {
-            purpose: "Community section heading.",
-            type: "string",
-            maxWords: 8,
-            guidance: "4-8 words. Focus on belonging and people.",
-            example: "A Community That Keeps You Going",
-          },
-          body: {
-            purpose: "Long-form HTML body for the community section.",
-            type: "string",
-            maxWords: 120,
-            guidance: "2-4 paragraphs. Specific to this gym's culture. Avoid generic gym clichés. Use the gym name and city at most once each.",
-            example: "<p>At [Gym], the workout is only part of the draw...</p>",
-          },
-        },
-      },
-
       team: {
         purpose: "Introduce the coaching staff so visitors feel safe investing in training.",
         slots: {
@@ -486,35 +466,16 @@ export const beanburitoSpec: TemplateSpec = {
         },
       },
 
-      testimonials: {
-        purpose: "Real member testimonials that build trust.",
-        slots: {
-          headline: {
-            purpose: "Social-proof banner headline.",
-            type: "string",
-            maxWords: 10,
-            guidance: "5-10 words. Quantify if possible.",
-            example: "Trusted by 500+ Members in Torrance",
-          },
-          items: {
-            purpose: "Member testimonial objects.",
-            type: "object",
-            guidance: "Return an array of { quote, name }. Use only real testimonials from the extracted website content. Never invent names or quotes.",
-            example: "[{ quote: '...', name: 'Jamie' }]",
-          },
-        },
-      },
-
       ctaBand: {
-        purpose: "Final call-to-action band on the about page.",
+        purpose: "Final call-to-action band on the about page. Matches the template's primary-color band with white text and decorative white artwork.",
         slots: {
           headline: {
             purpose: "Bottom CTA headline.",
             type: "string",
             required: true,
             maxWords: 8,
-            guidance: "4-8 words. Action-oriented. e.g. 'Come See What Makes Us Different'.",
-            example: "Come See What Makes Us Different",
+            guidance: "4-8 words. Action-oriented. e.g. 'Ready to See What We Are About?'.",
+            example: "Ready to See What We Are About?",
           },
           ctaLabel: {
             purpose: "CTA button text.",
@@ -528,28 +489,6 @@ export const beanburitoSpec: TemplateSpec = {
             type: "string",
             guidance: "Use '/contact' if unknown.",
             example: "/contact",
-          },
-        },
-      },
-
-      faq: faqSectionSpec,
-
-      location: {
-        purpose: "Location context for the about page.",
-        slots: {
-          headline: {
-            purpose: "Location section heading.",
-            type: "string",
-            maxWords: 8,
-            guidance: "4-8 words. e.g. 'Find Us in [City]'.",
-            example: "Find Us in Torrance",
-          },
-          body: {
-            purpose: "Location description.",
-            type: "string",
-            maxWords: 40,
-            guidance: "1-2 sentences. Reference the neighborhood or address if known.",
-            example: "We are located in Torrance, easy to reach from...",
           },
         },
       },
@@ -681,7 +620,7 @@ export const beanburitoSpec: TemplateSpec = {
           type: "string",
           required: true,
           maxWords: 8,
-          guidance: "Short, outcome-focused. Uses the page's ctaHeadline, falling back to trustHeadline or a generic CTA.",
+          guidance: "Short, outcome-focused. Uses the page's ctaHeadline or ctaBand.headline, falling back to trustHeadline or a generic CTA.",
           example: "Start Your Transformation Today",
           source: { kind: "pageField", path: "ctaHeadline" },
         },
@@ -707,6 +646,13 @@ export const beanburitoSpec: TemplateSpec = {
           guidance: "Internal path or external URL. Falls back to business.primaryCta.url.",
           example: "/contact",
           source: { kind: "field", path: "business.primaryCta.url" },
+        },
+        artwork: {
+          purpose: "Optional background artwork for the CTA band. Omit to use the template default; set to null to remove artwork.",
+          type: "object",
+          guidance: "CtaArtwork shape: { kind: 'svg'|'image', value: string, position?, size?, opacity? }. Templates that provide a default will render it when this is omitted.",
+          example: "{ kind: 'svg', value: '<svg>...</svg>', position: '97% 60%', size: 'auto 169%', opacity: 0.5 }",
+          source: { kind: "pageField", path: "ctaBand.artwork" },
         },
       },
     },
@@ -838,13 +784,14 @@ export const beanburitoSpec: TemplateSpec = {
 
     pricingGrid: {
       component: "PricingGrid",
-      purpose: "Membership / pricing plan cards.",
+      purpose: "Membership / pricing plan cards. Only rendered when the source site provides concrete prices. Never generated or invented.",
+      conditional: true,
       props: {
         grid: {
           purpose: "Pricing grid object with plans array.",
           type: "object",
           required: true,
-          guidance: "Rendered from pages.pricing.grid.",
+          guidance: "Rendered from pages.pricing.grid. If no real prices are documented, this component is omitted and the page should show a lead/request-rates form instead.",
           example: "{ headline: 'Memberships', plans: [...] }",
           source: { kind: "field", path: "pages.pricing.grid" },
         },
@@ -1060,10 +1007,9 @@ export const beanburitoSpec: TemplateSpec = {
         "pages.about.story.imageUrl",
         "pages.about.team",
         "pages.about.ctaHeadline",
-        "pages.about.faq",
       ],
       placeholderPolicy: "block-publish",
-      components: ["hero", "story", "community", "team", "iframeBand", "faq", "ctaBand", "location"],
+      components: ["hero", "story", "team", "ctaBand"],
     },
     contact: {
       path: "/contact",
@@ -1087,7 +1033,7 @@ export const beanburitoSpec: TemplateSpec = {
       objectionsToOvercome: ["Is it worth the cost?", "Are there hidden fees?", "Which plan is right for me?"],
       evidenceTypes: ["plan features", "testimonials", "coach credentials", "value props"],
       seoPrimaryQuery: "gym membership cost in [city]",
-      components: ["hero", "pricingGrid", "faq", "ctaBand"],
+      components: ["hero", "pricingGrid", "iframeBand", "faq", "ctaBand"],
     },
     schedule: {
       path: "/schedule",

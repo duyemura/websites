@@ -16,6 +16,10 @@ interface VariantConfig {
   containerClasses?: string;
   /** Whether this embed should preserve a video aspect ratio. */
   video?: boolean;
+  /** Break the container out of the section padding to the full viewport width. */
+  fullWidth?: boolean;
+  /** Whether the third-party widget resizes the iframe itself (e.g. PushPress forms). */
+  resizable?: boolean;
 }
 
 const { iframes } = Astro.props as { iframes?: IframeEmbed[] };
@@ -43,14 +47,20 @@ const variants: Record<string, VariantConfig> = {
   schedule: {
     title: "Book your spot",
     iframeTitle: "Class schedule and booking widget",
-    height: "720px",
+    // PushPress/Grow scheduling widgets render a full calendar + class list;
+    // give it enough vertical room so the widget content is not visually clipped.
+    height: "1200px",
     sandbox: "allow-scripts allow-same-origin allow-forms allow-popups",
+    fullWidth: true,
   },
   form: {
     title: "Get in touch",
     iframeTitle: "Contact form",
-    height: "640px",
+    // Lead-capture forms often stack many fields; a taller default keeps the
+    // submit button and fine print inside the visible iframe.
+    height: "840px",
     sandbox: "allow-scripts allow-same-origin allow-forms allow-popups",
+    resizable: true,
   },
   video: {
     title: "Watch",
@@ -63,7 +73,7 @@ const variants: Record<string, VariantConfig> = {
   review: {
     title: "What our members say",
     iframeTitle: "Member reviews widget",
-    height: "720px",
+    height: "800px",
     sandbox: "allow-scripts allow-same-origin allow-popups",
   },
   default: {
@@ -98,6 +108,8 @@ function resolveConfig(embed: IframeEmbed) {
     containerClasses: variant.containerClasses ?? "",
     video: variant.video ?? false,
     loading: embed.loading ?? "lazy",
+    fullWidth: variant.fullWidth ?? false,
+    resizable: variant.resizable ?? false,
   };
 }
 
@@ -107,15 +119,21 @@ const filtered = (iframes ?? [])
 if (filtered.length === 0) return;
 ---
 
-<section data-section="iframeBand" data-section-tag="iframe-band" class="section-skew bg-black text-white">
+<section data-section="iframeBand" data-section-tag="iframe-band" class="bg-black text-white">
   <div class="section-inner mx-auto max-w-[90rem] px-6 lg:px-10">
     <div class="flex flex-col gap-16">
       {filtered.map((embed) => {
         const cfg = resolveConfig(embed);
         const containerStyleParts: string[] = [];
         if (cfg.width) containerStyleParts.push(`max-width: ${cfg.width};`);
-        if (cfg.height && !cfg.video) containerStyleParts.push(`height: ${cfg.height};`);
+        if (cfg.height && !cfg.video) {
+          containerStyleParts.push(cfg.resizable ? `min-height: ${cfg.height};` : `height: ${cfg.height};`);
+        }
         const containerStyle = containerStyleParts.length > 0 ? containerStyleParts.join(" ") : undefined;
+        const iframeStyleParts: string[] = [];
+        if (cfg.style) iframeStyleParts.push(cfg.style);
+        if (cfg.resizable && cfg.height && !cfg.video) iframeStyleParts.push(`height: ${cfg.height};`);
+        const iframeStyle = iframeStyleParts.length > 0 ? iframeStyleParts.join(" ") : undefined;
         return (
           <div class="w-full">
             {cfg.title && (
@@ -124,19 +142,25 @@ if (filtered.length === 0) return;
               </h2>
             )}
             <div
-              class={`relative mx-auto w-full overflow-hidden bg-white/5 ${cfg.containerClasses}`.trim()}
+              class={[
+                "relative mx-auto w-full bg-white/5",
+                cfg.fullWidth ? "-mx-6 lg:-mx-10 max-w-none" : "",
+                cfg.resizable ? "overflow-visible" : "overflow-hidden",
+                cfg.containerClasses,
+              ].filter(Boolean).join(" ")}
               style={containerStyle}
             >
               <iframe
                 src={cfg.src}
-                class="h-full w-full border-0"
+                class={cfg.resizable ? "w-full border-0" : "h-full w-full border-0"}
                 title={cfg.iframeTitle}
                 loading={cfg.loading}
                 referrerpolicy={(embed.referrerpolicy ?? "no-referrer-when-downgrade") as any}
                 sandbox={cfg.sandbox}
                 allow={cfg.allow}
-                style={cfg.style}
+                style={iframeStyle}
                 allowfullscreen={cfg.video ? true : undefined}
+                scrolling={cfg.resizable ? "no" : undefined}
               />
             </div>
           </div>

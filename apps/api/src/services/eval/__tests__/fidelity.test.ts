@@ -365,6 +365,23 @@ describe("checkStructureFidelity", () => {
     const issues = await checkStructureFidelity(ctx);
     expect(issues.some((i) => i.message.includes("extraWidget"))).toBe(true);
   });
+
+  test("does not flag missing conditional pricingGrid when no pricing data exists", async () => {
+    mockedLoadSiteHierarchyDoc.mockResolvedValue(null);
+    const content = baseContent();
+    // Ensure no pricing grid data is present.
+    content.pages.pricing = { hero: { headline: "Memberships and rates" } };
+    const html = `
+      <html><body>
+        <section data-section="hero"></section>
+        <section data-section="faq"></section>
+        <section data-section="ctaBand"></section>
+      </body></html>
+    `;
+    const ctx = makeCtx(content, "/pricing", html, "template");
+    const issues = await checkStructureFidelity(ctx);
+    expect(issues.some((i) => i.message.includes("pricingGrid"))).toBe(false);
+  });
 });
 
 
@@ -435,6 +452,5 @@ describe("checkStructureFidelity about-page required fields", () => {
     expect(requiredMessages.some((m) => m.includes("story.imageUrl"))).toBe(true);
     expect(requiredMessages.some((m) => m.includes("team"))).toBe(true);
     expect(requiredMessages.some((m) => m.includes("ctaHeadline"))).toBe(true);
-    expect(requiredMessages.some((m) => m.includes("faq"))).toBe(true);
   });
 });

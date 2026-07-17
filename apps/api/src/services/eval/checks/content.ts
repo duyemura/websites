@@ -18,7 +18,7 @@ const MAX_LLM_TEXT = 12000;
 
 function extractVisibleText(html: string): { text: string; wordCount: number } {
   const $ = cheerio.load(html);
-  $("script, style, noscript, iframe, [aria-hidden='true']").remove();
+  $("script, style, noscript, iframe, [aria-hidden='true'], [data-eval-ignore]").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return { text, wordCount };
@@ -34,9 +34,9 @@ interface SectionDepth {
  * Find sections where a heading is present but little or no body copy follows it.
  * This catches the common generated-page failure: section shells with only headings.
  */
-function findShallowSections(html: string): SectionDepth[] {
+export function findShallowSections(html: string): SectionDepth[] {
   const $ = cheerio.load(html);
-  $("script, style, noscript, iframe, [aria-hidden='true']").remove();
+  $("script, style, noscript, iframe, [aria-hidden='true'], [data-eval-ignore]").remove();
   const shallow: SectionDepth[] = [];
 
   // Sections marked by semantic <section> or explicit data-section/data-section-tag.
@@ -45,6 +45,12 @@ function findShallowSections(html: string): SectionDepth[] {
   $("section:not([data-section='hero']), [data-section]:not([data-section='hero']), [data-section-tag]")
     .each((_, el) => {
     const $el = $(el);
+    // CTA bands are intentionally short call-to-action shells (heading + one line + button).
+    // They are not content sections and should never be flagged as shallow.
+    const sectionTag = $el.attr("data-section-tag") ?? "";
+    const sectionName = $el.attr("data-section") ?? "";
+    const isCtaBand = sectionTag === "cta-band" || sectionName === "ctaBand" || sectionName === "cta";
+    if (isCtaBand) return;
     const headingEl = $el.find("h1, h2, h3").first();
     const heading = headingEl.text().trim();
     if (!heading || heading.split(/\s+/).length > 12) return; // only plausible section headings
@@ -252,7 +258,7 @@ export async function checkContent(ctx: CheckContext, config: Config): Promise<P
   // Program landing pages should answer the core questions; generic shells fail.
   if (ctx.path.startsWith("/programs/") && !ctx.path.endsWith("/programs/")) {
     const $ = cheerio.load(html);
-    $("script, style, noscript, iframe, [aria-hidden='true']").remove();
+    $("script, style, noscript, iframe, [aria-hidden='true'], [data-eval-ignore]").remove();
     const headings = $("section, [data-section], [data-section-tag]")
       .map((_, el) => $(el).find("h1, h2, h3").first().text().trim())
       .get()

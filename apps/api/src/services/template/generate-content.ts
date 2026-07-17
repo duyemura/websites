@@ -32,10 +32,11 @@ import {
 } from "@milo/shared-types";
 import { chatCompletion } from "../../ai/llm-client.js";
 import { loadArtifact } from "../../utils/pipeline/artifact-store.js";
-import type { MirrorAsset, MirrorAssetsArtifact } from "../../types/mirror.js";
+import type { MirrorAsset, MirrorAssetsArtifact, MirrorCrawlArtifact } from "../../types/mirror.js";
 import type { ExtractArtifact } from "../../types/pipeline-artifacts.js";
 import type { SiteHierarchy } from "../../types/site-hierarchy.js";
-import { mergeGeneratedAboutContent } from "./content-mapper.js";
+import { mergeGeneratedAboutContent, STATIC_PAGE_FALLBACK_HEADLINES } from "./content-mapper.js";
+import { extractCrawlPageIframes } from "../../utils/mirror/crawl-to-scraped.js";
 import { buildImageMatcher, makeRoundRobin, type ImageMatcher } from "../mirror/image-matcher.js";
 import { sanitizeHtml, sanitizeContentBlocks } from "@milo/shared-types";
 
@@ -173,6 +174,15 @@ async function loadExtractArtifact(db: Kysely<DB>, siteUuid: string, workspaceUu
   return artifact?.payload ?? null;
 }
 
+async function loadCrawlArtifact(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<MirrorCrawlArtifact | null> {
+  const artifact = await loadArtifact<MirrorCrawlArtifact>(
+    db,
+    { siteUuid, workspaceUuid },
+    "crawl",
+  ).catch(() => null);
+  return artifact?.payload ?? null;
+}
+
 interface IframeConfigFile {
   iframes?: IframeEmbed[];
 }
@@ -257,7 +267,7 @@ export function mergeExtractIframesIntoPages(
     { page: pages.home, paths: ["/"] },
     { page: pages.about, paths: ["/about"] },
     { page: pages.contact, paths: ["/contact"] },
-    { page: pages.pricing, paths: ["/pricing", "/membership", "/join"] },
+    { page: pages.pricing, paths: ["/pricing", "/membership-pricing", "/membership", "/join"] },
     { page: pages.schedule, paths: ["/schedule", "/classes", "/book"] },
     ...pages.programs.map((p) => ({
       page: p,
@@ -777,40 +787,20 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
       { "type": "text", "html": "string (paragraph)" }
     ]
   },
-  "community": {
-    "headline": "string (4-8 words)",
-    "body": "string (2-4 paragraphs, HTML)"
-  },
   "team": {
     "headline": "string (4-8 words)",
     "members": [
       { "name": "string", "title": "string", "photoUrl": "string or empty", "bio": "string (optional)" }
     ]
   },
-  "testimonials": {
-    "headline": "string (5-10 words)",
-    "items": [
-      { "quote": "string", "name": "string" }
-    ]
-  },
   "ctaBand": {
     "headline": "string (4-8 words, action-oriented)",
     "ctaLabel": "string (2-4 words)",
     "ctaUrl": "string (use /contact if unknown)"
-  },
-  "faq": [
-    { "question": "string (long-tail local search question)", "answer": "string (1-3 sentences)" },
-    ... exactly 10 items
-  ],
-  "location": {
-    "headline": "string (4-8 words)",
-    "body": "string (1-2 sentences)"
   }
 }
 
-Guidance for FAQ: generate exactly 10 questions and answers. Each question should be a realistic long-tail search query about this gym: "about [Gym] in [city]", "who owns [Gym] in [city]", "[Gym] reviews [city]", "what makes [Gym] different", "is [Gym] good for beginners in [city]", "where is [Gym] located in [neighborhood]". Use only documented facts; invite contact for unknowns.
-
-Guidance for testimonials: use the extracted about page content above when available. If none is documented, return an empty items array. Never invent member names or fake quotes.`;
+Guidance for team members: only include coaches/owners/founders documented in the gym docs. Use a real captured image path for photoUrl when available; otherwise leave it empty. Do not invent people.`;
 }
 
 /** Build a prompt that generates 10 long-tail local SEO FAQs for any page archetype. */
@@ -1034,6 +1024,81 @@ export async function generateAboutContent(ctx: {
   return null;
 }
 
+interface StaticHeadlineInput {
+  pageKey: string;
+  navLabel: string;
+  currentHeadline: string;
+}
+
+/** Build a tiny prompt that asks the LLM to produce natural H1s for static pages
+ *  from the gym's actual navigation labels. It may prefix with "Our" only when
+ *  that reads naturally (e.g. "Our Rates", "Our Schedule"), and must avoid awkward
+ *  forms like "Our About Us" or "Our Contact". */
+function buildStaticHeadlinesPrompt(ctx: {
+  businessName: string;
+  category: string;
+  city?: string;
+  inputs: StaticHeadlineInput[];
+}): string {
+  const lines = [
+    `You are writing concise H1 headlines for a gym website called ${ctx.businessName}.`,
+    "",
+    "Use the gym's actual navigation labels to decide each H1. You may prefix with \"Our \" only when it reads naturally as something the gym owns or offers.",
+    "",
+    "Rules:",
+    "- Prefer \"Our [label]\" for collection-style pages the gym provides: Rates, Schedule, Programs, Blog, Memberships, Classes, Timetable.",
+    "- Do NOT use \"Our\" for About, Contact, or labels that already feel like a page type (e.g. \"About Us\", \"Contact\", \"Get in Touch\").",
+    "- Do NOT use \"Our\" for specific program names (e.g. \"CrossFit Classes\" stays \"CrossFit Classes\", not \"Our CrossFit Classes\").",
+    "- Keep H1s short: 1–4 words, title case.",
+    "- If a label is already a natural H1, use it as-is.",
+    "",
+    "Navigation labels:",
+    ...ctx.inputs.map((i) => `- ${i.pageKey}: "${i.navLabel}"`),
+    "",
+    "Return ONLY valid JSON with this exact shape. No markdown, no explanation:",
+    "",
+    "{",
+    ...ctx.inputs.map((i) => `  "${i.pageKey}": "..."`),
+    "}",
+  ];
+  return lines.join("\n");
+}
+
+export async function generateStaticPageHeadlines(ctx: {
+  config: Config;
+  businessName: string;
+  category: string;
+  city?: string;
+  inputs: StaticHeadlineInput[];
+  log: (msg: string) => void;
+}): Promise<Record<string, string> | null> {
+  if (ctx.inputs.length === 0) return null;
+  const prompt = buildStaticHeadlinesPrompt(ctx);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const response = await chatCompletion(
+      { model: ctx.config.DEFAULT_LLM_MODEL, messages: [{ role: "user", content: prompt }], temperature: attempt === 1 ? 0.3 : 0 },
+      ctx.config,
+    );
+    const jsonText = extractJsonObject(response.content ?? "");
+    if (!jsonText) {
+      ctx.log(`  [warn] static headlines attempt ${attempt}: LLM returned no JSON${attempt < 2 ? " — retrying" : ""}`);
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(jsonText) as Record<string, string>;
+      const result: Record<string, string> = {};
+      for (const { pageKey } of ctx.inputs) {
+        const value = parsed[pageKey]?.trim();
+        if (value) result[pageKey] = value;
+      }
+      if (Object.keys(result).length > 0) return result;
+    } catch {
+      ctx.log(`  [warn] static headlines attempt ${attempt}: JSON parse failed${attempt < 2 ? " — retrying" : ""}`);
+    }
+  }
+  return null;
+}
+
 // ── Main generation ──────────────────────────────────────────────────────────
 
 export async function generateSiteContent(input: GenerateContentInput): Promise<GymSiteContent> {
@@ -1053,6 +1118,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   const contentArtifact = await loadContentArtifact(db, siteUuid);
   const extractArtifact = await loadExtractArtifact(db, siteUuid, workspaceUuid);
+  const crawlArtifact = await loadCrawlArtifact(db, siteUuid, workspaceUuid);
 
   // crawl pages no longer needed here — navigation built from capturedNav + contentBriefs
 
@@ -1488,9 +1554,29 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     finalHero.intro = "";
   }
 
-  // Merge iframe widgets discovered by the extract stage into every page, not
-  // just the home page. Configured overrides stay as the home-page source of truth.
+  // Merge iframe widgets discovered by the crawl + extract stages into every
+  // page, not just the home page. Configured overrides stay as the home-page
+  // source of truth. Vision/extract iframes take precedence over crawl-derived
+  // ones for the same src on the same source path.
   const extractIframes = iframesByPathFromExtract(extractArtifact);
+  const crawlIframes = crawlArtifact
+    ? await extractCrawlPageIframes(crawlArtifact, input.s3Client, bucket)
+    : new Map<string, IframeEmbed[]>();
+
+  const allIframesByPath = new Map<string, IframeEmbed[]>(extractIframes);
+  for (const [path, embeds] of crawlIframes) {
+    const existing = allIframesByPath.get(path) ?? [];
+    const seen = new Set(existing.map((e) => e.src));
+    const merged = [...existing];
+    for (const e of embeds) {
+      if (!seen.has(e.src)) {
+        seen.add(e.src);
+        merged.push(e);
+      }
+    }
+    allIframesByPath.set(path, merged);
+  }
+
   const safeConfiguredIframes = configuredIframes
     .filter((e) => isAllowedIframeSrc(e.src))
     .map(sanitizeIframe);
@@ -1507,7 +1593,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     baseContent.pages.home.iframes = undefined;
   }
 
-  mergeExtractIframesIntoPages(baseContent.pages, extractIframes);
+  mergeExtractIframesIntoPages(baseContent.pages, allIframesByPath);
 
   // If the source site provided its own map embed on the contact page, prefer it
   // over the synthetic GMB map so the replicated site matches the source.
@@ -1545,9 +1631,13 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     iframes: baseContent.pages.home.iframes,
   };
 
-  // Patch serviceArea into business if LLM provided real nearby cities
-  const serviceArea = generated.serviceArea?.filter((c) => c && !c.toLowerCase().includes("city"))
-    ?? baseContent.business.serviceArea;
+  // Patch serviceArea into business if LLM provided real nearby cities. Drop any
+  // placeholders from the baseline default so they never leak into rendered copy.
+  const PLACEHOLDER_CITY_RE = /nearby\s+city|\bCity\s+\d+|your\s+city/i;
+  const generatedServiceArea = generated.serviceArea?.filter((c) => c && !PLACEHOLDER_CITY_RE.test(c));
+  const serviceArea = generatedServiceArea?.length
+    ? generatedServiceArea
+    : baseContent.business.serviceArea?.filter((c) => c && !PLACEHOLDER_CITY_RE.test(c));
 
   // Build navigation — prefer captured nav from original site (real labels + hierarchy),
   // fall back to inferring from crawl pages when nav-structure.json isn't available yet.
@@ -1555,6 +1645,57 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   const navigation = buildNavigation(capturedNav, baseContent.pages.programs, contentBriefs);
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
+
+  // Derive natural H1s for static utility pages from the live navigation labels.
+  // We only override the fallback defaults set by content-mapper; source-extracted
+  // headings from the site hierarchy are preserved.
+  const staticHeadlineInputs: StaticHeadlineInput[] = [
+    { pageKey: "about", navLabel: navigation.header.find((i) => i.href === "/about")?.label ?? "About Us", currentHeadline: baseContent.pages.about.hero.headline },
+    { pageKey: "pricing", navLabel: navigation.header.find((i) => i.href === "/pricing")?.label ?? "Pricing", currentHeadline: baseContent.pages.pricing.hero.headline },
+    { pageKey: "schedule", navLabel: navigation.header.find((i) => i.href === "/schedule")?.label ?? "Schedule", currentHeadline: baseContent.pages.schedule.hero.headline },
+    { pageKey: "contact", navLabel: navigation.header.find((i) => i.href === "/contact")?.label ?? "Contact", currentHeadline: baseContent.pages.contact.hero.headline },
+    { pageKey: "blog", navLabel: navigation.header.find((i) => i.href === "/blog")?.label ?? "Blog", currentHeadline: baseContent.pages.blog.hero?.headline ?? baseContent.pages.blog.heroHeadline },
+  ];
+  if (baseContent.pages.localGuide) {
+    const localGuideHref = navigation.header.find((i) => i.href === "/local-guide")?.href;
+    const localGuideLabel = localGuideHref
+      ? navigation.header.find((i) => i.href === localGuideHref)?.label
+      : navigation.header.find((i) => /local-guide|local guide/i.test(i.label))?.label;
+    staticHeadlineInputs.push({
+      pageKey: "localGuide",
+      navLabel: localGuideLabel ?? "Local Guide",
+      currentHeadline: baseContent.pages.localGuide.hero.headline,
+    });
+  }
+
+  const staticHeadlines = await generateStaticPageHeadlines({
+    config,
+    businessName: baseContent.business.name,
+    category: baseContent.business.category || "gym",
+    city: baseContent.business.geo?.city,
+    inputs: staticHeadlineInputs,
+    log,
+  });
+  if (staticHeadlines) {
+    for (const input of staticHeadlineInputs) {
+      const newHeadline = staticHeadlines[input.pageKey];
+      if (!newHeadline) continue;
+      const fallback = STATIC_PAGE_FALLBACK_HEADLINES[input.pageKey as keyof typeof STATIC_PAGE_FALLBACK_HEADLINES];
+      const page = baseContent.pages[input.pageKey as keyof GymSiteContent["pages"]] as { hero?: HeroContent } | undefined;
+      if (!page?.hero) continue;
+      // Only replace fallback defaults or headlines that match the nav label exactly.
+      const shouldOverride = !fallback || page.hero.headline === fallback || page.hero.headline === input.navLabel;
+      if (shouldOverride) {
+        page.hero.headline = newHeadline;
+        // Keep the blog index page's legacy heroHeadline field in sync so the
+        // fallback renderer and breadcrumb both match the nav-derived H1.
+        if (input.pageKey === "blog" && "heroHeadline" in page && (page as { heroHeadline?: string }).heroHeadline !== undefined) {
+          (page as { heroHeadline?: string }).heroHeadline = newHeadline;
+        }
+      }
+    }
+    log(`  Static headlines normalized: ${Object.entries(staticHeadlines).map(([k, v]) => `${k}="${v}"`).join(", ")}`);
+  }
 
   // Merge generated per-program descriptions into program pages.
   const programsBySlug = new Map(
@@ -1806,7 +1947,9 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     navigation,
     business: {
       ...baseContent.business,
-      serviceArea: serviceArea?.length ? serviceArea : baseContent.business.serviceArea,
+      serviceArea: serviceArea?.length
+        ? serviceArea
+        : baseContent.business.serviceArea?.filter((c) => c && !PLACEHOLDER_CITY_RE.test(c)),
     },
     pages: {
       ...baseContent.pages,
@@ -1816,19 +1959,9 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   };
   mergedContent.meta.templateTheme = theme;
 
-  // About page community fallback: use homepage community content when the about
-  // page has none of its own.
-  const about = mergedContent.pages.about;
-  if (!about.communityBody && !about.communityProps?.length) {
-    about.communityHeadline = about.communityHeadline || generatedHome.communityHeadline;
-    about.communityProps = about.communityProps?.length ? about.communityProps : generatedHome.communityProps;
-  }
-  if (!about.communityHeadline) {
-    about.communityHeadline = `About ${mergedContent.business.name}`;
-  }
-
   // Ensure the about-page CTA band has a real headline; fall back to the business
   // name when the LLM omits it so the template's required field is satisfied.
+  const about = mergedContent.pages.about;
   if (!about.ctaHeadline || about.ctaHeadline === "__PLACEHOLDER__") {
     about.ctaHeadline = `Book your free intro at ${mergedContent.business.name}`;
   }
@@ -1837,17 +1970,44 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // with a dark hero + grid + CTA band. If the source site had no blog content,
   // publish a welcome post so the page is never empty.
   const blog = mergedContent.pages.blog;
-  if (!blog.hero?.headline) {
+  const blogCategory = mergedContent.business.category || "fitness";
+  const blogCity = mergedContent.business.geo?.city;
+  const blogState = mergedContent.business.geo?.stateAbbr;
+  const blogLocation = blogCity ? (blogState ? `${blogCity}, ${blogState}` : blogCity) : "";
+  // Normalize the blog hero headline. Prefer the LLM-normalized static headline,
+  // then the legacy heroHeadline (e.g. "Fitness tips & news"), and only fall back
+  // to a descriptive default. Override stale generic fallbacks so the rendered H1
+  // never stays as "Blog", "Our Blog", or the nav label when better copy is available.
+  const blogNavLabel = navigation.header.find((i) => i.href === "/blog")?.label ?? "Blog";
+  const isGenericBlogHeadline = (headline?: string): boolean => {
+    if (!headline) return true;
+    const normalized = headline.toLowerCase().trim();
+    return (
+      normalized === "blog" ||
+      normalized === blogNavLabel.toLowerCase() ||
+      normalized.startsWith("our blog") ||
+      normalized.startsWith("the blog") ||
+      normalized.startsWith("blog")
+    );
+  };
+  const rawBlogHeroHeadline = staticHeadlines?.blog ?? blog.heroHeadline;
+  const descriptiveBlogFallback = `${blogCategory.charAt(0).toUpperCase() + blogCategory.slice(1)} tips & news`;
+  const blogHeroHeadline = isGenericBlogHeadline(rawBlogHeroHeadline)
+    ? descriptiveBlogFallback
+    : (rawBlogHeroHeadline ?? "Blog");
+  if (isGenericBlogHeadline(blog.hero?.headline)) {
     blog.hero = {
-      headline: blog.heroHeadline || `Latest from ${mergedContent.business.name}`,
-      subheading: mergedContent.business.geo?.city
-        ? `Fitness tips in ${mergedContent.business.geo.city}`
-        : "Fitness tips and gym news",
-      ctaLabel: mergedContent.business.primaryCta.label,
-      ctaUrl: mergedContent.business.primaryCta.url,
-      backgroundImageUrl: NO_IMAGE,
+      ...(blog.hero ?? {}),
+      headline: blogHeroHeadline,
+      subheading: blogLocation
+        ? `${blogCategory.charAt(0).toUpperCase() + blogCategory.slice(1)} blog in ${blogLocation}`
+        : `${blogCategory.charAt(0).toUpperCase() + blogCategory.slice(1)} blog`,
+      ctaLabel: blog.hero?.ctaLabel ?? mergedContent.business.primaryCta.label,
+      ctaUrl: blog.hero?.ctaUrl ?? mergedContent.business.primaryCta.url,
+      backgroundImageUrl: blog.hero?.backgroundImageUrl ?? NO_IMAGE,
     };
   }
+  blog.heroHeadline = blog.hero?.headline ?? blogHeroHeadline;
   if (blog.hero) {
     const blogHeroImage = findHeroImage({
       candidate: pageHeroImages.get("/blog") || blog.hero.backgroundImageUrl,
@@ -1866,13 +2026,15 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   }
   if (!blog.posts.length) {
     const today = new Date().toISOString().split("T")[0] as string;
+    const blogCity = mergedContent.business.geo?.city;
+    const blogName = mergedContent.business.name;
     blog.posts = [
       {
         slug: "welcome",
-        title: `Welcome to ${mergedContent.business.name}`,
+        title: `What to expect from the ${blogName} blog`,
         publishedAt: today,
-        excerpt: `Your local fitness resource for workouts, nutrition tips, and gym news from ${mergedContent.business.name}.`,
-        body: "<p>We're glad you're here. Check back soon for fresh articles from our coaches.</p>",
+        excerpt: `Workouts, nutrition tips, and gym news for ${blogCity ? `${blogCity} and ` : ""}the ${mergedContent.business.category || "fitness"} community.`,
+        body: `<p>This blog is where our coaches share practical training advice, nutrition notes, and gym updates for the ${blogName} community${blogCity ? ` in ${blogCity}` : ""}. New articles are added regularly — bookmark this page or stop by to see what's new.</p>`,
         category: "News",
       },
     ];

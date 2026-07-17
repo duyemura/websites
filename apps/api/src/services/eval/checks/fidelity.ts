@@ -305,7 +305,11 @@ function checkRegistryStructureFidelity(
       if (componentSpec?.conditional) {
         const firstPropKey = Object.keys(componentSpec.props)[0];
         const source = firstPropKey ? componentSpec.props[firstPropKey]?.source : undefined;
-        const fieldPath = source?.kind === "pageField" ? source.path : undefined;
+        const fieldPath = source?.kind === "pageField"
+          ? source.path
+          : source?.kind === "field"
+            ? source.path
+            : undefined;
         const hasData = fieldPath
           ? Boolean(resolvePageField(content, pageKey, fieldPath))
           : true;

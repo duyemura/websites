@@ -47,12 +47,8 @@ describe("beanburito conversion metadata", () => {
     expect(prompt).toContain("IDEAL ACTION: Book a free intro or visit");
     expect(prompt).toContain("SECTION: HERO");
     expect(prompt).toContain("SECTION: STORY");
-    expect(prompt).toContain("SECTION: COMMUNITY");
     expect(prompt).toContain("SECTION: TEAM");
-    expect(prompt).toContain("SECTION: TESTIMONIALS");
     expect(prompt).toContain("SECTION: CTABAND");
-    expect(prompt).toContain("SECTION: FAQ");
-    expect(prompt).toContain("SECTION: LOCATION");
   });
 
   test("program page prompt is tailored to program archetype", () => {

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { resolvePageComponents } from "./template-resolver";
+import { resolvePageComponents, type AstroComponent } from "./template-resolver";
 import { beanburitoSpec } from "@milo/shared-types";
 import type { GymSiteContent } from "../types/gym-content";
 
@@ -69,7 +69,7 @@ describe("resolvePageComponents", () => {
   });
 
   test("falls back to the page slot id when the spec component is missing from the map", () => {
-    const mapWithoutBeanburito = { ...componentMap, teamBeanburito: undefined };
+    const mapWithoutBeanburito = { ...componentMap, teamBeanburito: undefined } as unknown as Record<string, AstroComponent>;
     const resolved = resolvePageComponents(beanburitoSpec, "about", dummyContent, mapWithoutBeanburito);
     const team = resolved.find((r) => r.componentId === "team");
     expect(team?.component).toBe("TeamGrid");

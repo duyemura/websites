@@ -10,7 +10,7 @@ const { page } = Astro.props;
 const { business } = content;
 ---
 <GymLayout title={`${page.title} | ${business.name}`} description={page.title} path={`/legal/${page.slug}`}>
-  <section class="bg-white py-16 text-black" data-section="legal" data-section-tag="content-block"><Container>
+  <section class="bg-white py-24 text-black lg:py-32" data-section="legal" data-section-tag="content-block"><Container>
     <h1 class="mb-8 font-heading text-3xl font-bold text-primary">{page.title}</h1>
     <div class="space-y-6">{page.blocks.map((b) => <Block block={b} />)}</div>
   </Container></section>

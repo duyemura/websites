@@ -179,20 +179,15 @@ describe("buildNavigation", () => {
     expect(footerLabels).toContain("Contact");
   });
 
-  test("footer includes Privacy Policy when a legal page exists", () => {
-    const briefs = [{ path: "/privacy-policy", pageType: "legal" as const }];
-    const nav = buildNavigation([], programs, briefs);
-    const companyGroup = nav.footer.find((g) => g.label === "Company");
-    const privacyLink = companyGroup?.links.find((l) => l.label === "Privacy Policy");
-    expect(privacyLink).toBeDefined();
-    expect(privacyLink?.href).toBe("/legal/privacy-policy");
-  });
-
-  test("footer omits Privacy Policy when no legal page exists", () => {
+  test("footer includes Privacy Policy and Terms of Service", () => {
     const nav = buildNavigation([], programs);
     const companyGroup = nav.footer.find((g) => g.label === "Company");
     const privacyLink = companyGroup?.links.find((l) => l.label === "Privacy Policy");
-    expect(privacyLink).toBeUndefined();
+    const termsLink = companyGroup?.links.find((l) => l.label === "Terms of Service");
+    expect(privacyLink).toBeDefined();
+    expect(privacyLink?.href).toBe("/legal/privacy-policy");
+    expect(termsLink).toBeDefined();
+    expect(termsLink?.href).toBe("/legal/terms-of-service");
   });
 
   test("footer Programs group lists all program pages", () => {

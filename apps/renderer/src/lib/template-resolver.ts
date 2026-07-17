@@ -159,8 +159,10 @@ function applyComponentDefaults(
     return {
       ...props,
       headline: props.headline ?? trust ?? "Ready to see what we are about?",
+      subtext: props.subtext,
       ctaLabel: props.ctaLabel ?? content.business.primaryCta.label,
       ctaUrl: props.ctaUrl ?? content.business.primaryCta.url,
+      artwork: props.artwork,
     };
   }
   // Beanburito is a dark template; shared section components that were built

@@ -26,6 +26,7 @@ describe("matchExtractPath", () => {
     ["/contact", "contact"],
     ["/pricing", "pricing"],
     ["/membership", "pricing"],
+    ["/membership-pricing", "pricing"],
     ["/join", "pricing"],
     ["/schedule", "schedule"],
     ["/classes", "schedule"],
@@ -90,5 +91,17 @@ describe("mergeExtractIframesIntoPages", () => {
 
     expect(pages.home.iframes).toHaveLength(1);
     expect(pages.about.iframes).toHaveLength(1);
+  });
+
+  test("places /membership-pricing iframes on the generated pricing page", () => {
+    const pages = makePages();
+    const extractIframes = new Map([
+      ["/membership-pricing", [{ src: "https://api.grow.pushpress.com/widget/form/abc123", variant: "form" }]],
+    ]);
+
+    mergeExtractIframesIntoPages(pages, extractIframes);
+
+    expect(pages.pricing.iframes).toHaveLength(1);
+    expect(pages.pricing.iframes?.[0].src).toBe("https://api.grow.pushpress.com/widget/form/abc123");
   });
 });
