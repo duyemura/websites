@@ -29,7 +29,7 @@ const schema = {
   openingHoursSpecification: business.hours.map((h) => ({
     "@type": "OpeningHoursSpecification", dayOfWeek: h.days, opens: h.opens, closes: h.closes,
   })),
-  areaServed: [business.geo.city, ...(business.serviceArea ?? [])],
+  areaServed: Array.from(new Set([business.geo.city, ...(business.serviceArea ?? [])])),
   speakable: {
     "@type": "SpeakableSpecification",
     cssSelector: ["title", "meta[name='description']"],

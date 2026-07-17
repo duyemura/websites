@@ -1,5 +1,6 @@
 // apps/api/scripts/milo-args.ts
 // Exported separately so tests can import without triggering milo.ts's top-level main() call.
+import { TEMPLATE_THEMES } from "@milo/shared-types";
 
 export type MiloCommand =
   | { cmd: "new"; url: string; theme?: "baseline" | "impact" | "beanburito"; tier: "free" | "paid"; verbose: boolean; force: boolean; quiet: boolean }
@@ -121,8 +122,7 @@ export function parseArgs(): MiloCommand {
     if (!/^[a-z][a-z0-9-]*$/.test(name)) {
       throw new Error("--name must be lowercase letters, numbers, and hyphens only");
     }
-    const RESERVED_THEME_NAMES = ["baseline", "impact", "beanburito"];
-    if (RESERVED_THEME_NAMES.includes(name)) {
+    if ((TEMPLATE_THEMES as readonly string[]).includes(name)) {
       throw new Error(`--name "${name}" conflicts with an existing template. Choose a different name.`);
     }
     return { cmd: "template", url, name, ...bool };

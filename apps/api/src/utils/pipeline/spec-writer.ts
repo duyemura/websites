@@ -11,15 +11,14 @@ const PROP_HINTS: Record<
     required: boolean;
     guidance: string;
     example: string;
-    source?: string;
   }
 > = {
-  headline: { purpose: "Main heading text", type: "string", required: true, guidance: "3-8 words, outcome-focused, active voice", example: "Transform Your Life", source: "slot:hero:headline" },
-  subheadline: { purpose: "Supporting subtitle text", type: "string", required: false, guidance: "1-2 sentences, expand on the headline", example: "Join our community and reach your goals.", source: "slot:hero:subheadline" },
-  ctaText: { purpose: "Call-to-action button label", type: "string", required: false, guidance: "2-4 words, imperative verb, low commitment", example: "Book a free class", source: "slot:hero:ctaText" },
-  ctaHref: { purpose: "Call-to-action button URL", type: "string", required: false, guidance: "Internal path, e.g. /contact", example: "/contact", source: "slot:hero:ctaHref" },
-  backgroundImageUrl: { purpose: "Background image URL", type: "string", required: false, guidance: "High-res photo, 1440px wide minimum", example: "__NO_IMAGE__", source: "slot:hero:backgroundImageUrl" },
-  items: { purpose: "Array of content items for this section", type: "object", required: false, guidance: "2-6 items, each with a title and description", example: "[]", source: "computed:features" },
+  headline: { purpose: "Main heading text", type: "string", required: true, guidance: "3-8 words, outcome-focused, active voice", example: "Transform Your Life" },
+  subheadline: { purpose: "Supporting subtitle text", type: "string", required: false, guidance: "1-2 sentences, expand on the headline", example: "Join our community and reach your goals." },
+  ctaText: { purpose: "Call-to-action button label", type: "string", required: false, guidance: "2-4 words, imperative verb, low commitment", example: "Book a free class" },
+  ctaHref: { purpose: "Call-to-action button URL", type: "string", required: false, guidance: "Internal path, e.g. /contact", example: "/contact" },
+  backgroundImageUrl: { purpose: "Background image URL", type: "string", required: false, guidance: "High-res photo, 1440px wide minimum", example: "__NO_IMAGE__" },
+  items: { purpose: "Array of content items for this section", type: "object", required: false, guidance: "2-6 items, each with a title and description", example: "[]" },
   body: { purpose: "Body/description text", type: "string", required: false, guidance: "1-3 sentences", example: "Join our community of dedicated athletes." },
 };
 
