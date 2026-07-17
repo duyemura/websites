@@ -63,10 +63,14 @@ export async function runSynthesizeStage(input: SynthesizeStageInput) {
 
   const groups = groupSections(contract.payload, segment.payload);
 
-  // Generate all Astro components in parallel.
+  // Generate all Astro components in parallel. Unknown/generic sections get a
+  // deterministic placeholder so the eval build can render even when the vision
+  // model fails to produce a valid component.
   const componentResults = await Promise.all(
     groups.map(async (group) => {
-      const code = await generateAstroComponent(group, siteCSS, visionChatFn, s3Ctx);
+      const code = group.tag === "unknown"
+        ? buildUnknownComponent(group.name)
+        : await generateAstroComponent(group, siteCSS, visionChatFn, s3Ctx);
       return {
         name: group.name,
         tag: group.tag,
@@ -131,6 +135,24 @@ function buildPageMap(
     });
   }
   return pageMap;
+}
+
+function buildUnknownComponent(name: string): string {
+  return `---
+export interface Props {
+  headline?: string;
+  body?: string;
+}
+const { headline = "", body = "" } = Astro.props;
+---
+
+<section data-eval-component="${name}" class="py-16 px-6 bg-white text-black">
+  <div class="mx-auto max-w-4xl">
+    {headline && <h2 class="text-3xl font-bold mb-4">{headline}</h2>}
+    {body && <p class="text-lg">{body}</p>}
+  </div>
+</section>
+`;
 }
 
 function deriveNameFallback(tag: string): string {

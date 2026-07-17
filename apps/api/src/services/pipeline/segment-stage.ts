@@ -28,6 +28,7 @@ import {
 } from "../../utils/pipeline/artifact-store";
 import { uploadPipelineImage } from "../../utils/pipeline/s3-upload";
 import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
+import { normalizeBasePathname, normalizePagePath } from "../../utils/pipeline/page-path";
 import { chatCompletion } from "../../ai/llm-client";
 import { modelForTask } from "../../ai/model-picker";
 
@@ -60,6 +61,8 @@ export async function runSegmentStage(
     throw new Error("No extract artifact found — run the extract stage first.");
   }
 
+  const basePathname = normalizeBasePathname(new URL(extract.payload.url).pathname);
+
   const scope = input.pages
     ? extract.payload.pages.filter((p) => input.pages!.includes(p.path))
     : extract.payload.pages;
@@ -88,6 +91,7 @@ export async function runSegmentStage(
 
   try {
     for (const extractPage of scope) {
+      const canonicalPath = normalizePagePath(extractPage.path, basePathname);
       const pageUrl = new URL(
         extractPage.path,
         extract.payload.url,
@@ -141,9 +145,9 @@ export async function runSegmentStage(
       // ---- desktop crops ----
       const prefix = `workspaces/${input.workspaceUuid}/sites/${input.siteUuid}/pipeline/segment`;
       const pageKey =
-        extractPage.path === "/"
+        canonicalPath === "/"
           ? "index"
-          : extractPage.path
+          : canonicalPath
               .replace(/^\/+|\/+$/g, "")
               .replace(/[^\w.-]+/g, "-");
       const sections: SegmentSection[] = [];
@@ -224,7 +228,7 @@ export async function runSegmentStage(
 
       await page.close();
       artifactPages.push({
-        path: extractPage.path,
+        path: canonicalPath,
         sections,
         ladder: ladderResult.ladder,
       });

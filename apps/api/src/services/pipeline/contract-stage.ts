@@ -23,6 +23,7 @@ import {
   type SectionItem,
 } from "../../types/section-contract";
 import { extractCardsFromSection, findSectionByHeading } from "../../utils/pipeline/section-diff";
+import { normalizeBasePathname, normalizePagePath } from "../../utils/pipeline/page-path";
 
 export interface ContractStageInput {
   db: Kysely<DB>;
@@ -61,12 +62,14 @@ export async function runContractStage(input: ContractStageInput): Promise<Contr
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 
   const contractPages: ContractPage[] = [];
+  const basePathname = normalizeBasePathname(new URL(extract.payload.url).pathname);
 
   try {
     for (const segmentPage of scope) {
       const extractPage = extract.payload.pages.find((p) => p.path === segmentPage.path);
       if (!extractPage) continue;
 
+      const canonicalPath = normalizePagePath(segmentPage.path, basePathname);
       const pageUrl = new URL(segmentPage.path, extract.payload.url).toString();
       const page = await context.newPage();
       await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -74,16 +77,16 @@ export async function runContractStage(input: ContractStageInput): Promise<Contr
 
       const sections: SectionContract[] = [];
       for (const segSection of segmentPage.sections) {
-        const contract = await buildSectionContract(page, segmentPage.path, segSection);
+        const contract = await buildSectionContract(page, canonicalPath, segSection);
         sections.push(contract);
       }
 
       await page.close();
 
       contractPages.push({
-        path: segmentPage.path,
-        slug: segmentPage.path === "/" ? "index" : segmentPage.path.replace(/^\/+|\/+$/g, "").replace(/[^\w.-]+/g, "-"),
-        isHomePage: segmentPage.path === "/",
+        path: canonicalPath,
+        slug: canonicalPath === "/" ? "index" : canonicalPath.replace(/^\/+|\/+$/g, "").replace(/[^\w.-]+/g, "-"),
+        isHomePage: canonicalPath === "/",
         sections,
       });
     }

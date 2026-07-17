@@ -1,14 +1,15 @@
 // apps/renderer/src/lib/template-registry.ts
 // Theme-agnostic registry of machine-readable TemplateSpec objects.
-// New templates add their spec here instead of editing page files.
-// Astro components are registered separately because TypeScript cannot resolve
-// .astro imports from plain .ts files.
+// New templates only need to register their spec in packages/shared-types; this
+// file rebuilds the renderer-side registry from the shared-types exports.
 
-import { beanburitoSpec, type TemplateSpec } from "@milo/shared-types";
+import { getTemplateSpec, TEMPLATE_THEMES, type TemplateSpec } from "@milo/shared-types";
 
-export const SPEC_REGISTRY: Record<string, TemplateSpec> = {
-  beanburito: beanburitoSpec,
-};
+export const SPEC_REGISTRY: Record<string, TemplateSpec> = Object.fromEntries(
+  TEMPLATE_THEMES
+    .map((theme) => [theme, getTemplateSpec(theme)] as const)
+    .filter(([, spec]) => spec !== null),
+);
 
 /** Look up a registered template spec by its canonical name. */
 export function getRegisteredSpec(theme: string): TemplateSpec | undefined {
