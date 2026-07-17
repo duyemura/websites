@@ -65,7 +65,14 @@ export async function runSynthesizeStage(input: SynthesizeStageInput) {
   const componentResults = await Promise.all(
     groups.map(async (group) => {
       const code = await generateAstroComponent(group, siteCSS, visionChatFn, s3Ctx);
-      return { name: group.name, tag: group.tag, archetype: group.archetype as string, code };
+      return {
+        name: group.name,
+        tag: group.tag,
+        archetype: group.archetype as string,
+        code,
+        cropDesktop: group.exemplar.cropDesktop,
+        exemplarPage: group.exemplar.page,
+      };
     }),
   );
 

@@ -5,7 +5,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import type { DB } from "../../types/db";
 import type { Config } from "../../plugins/env";
 import { loadArtifact, type ArtifactContext } from "../../utils/pipeline/artifact-store";
-import type { SynthesizeArtifact, SegmentArtifact } from "../../types/pipeline-artifacts";
+import type { SynthesizeArtifact } from "../../types/pipeline-artifacts";
 import { runEvalLoop, type EvalLoopResult, type ComponentTarget } from "../../utils/pipeline/eval-loop";
 import { buildFixture } from "../../utils/pipeline/fixture-generator";
 import { imageUrlToDataUri, type S3Context } from "../../utils/pipeline/image-to-data-url";
@@ -27,8 +27,7 @@ export interface ComponentEvalStageInput {
 export async function runComponentEvalStage(input: ComponentEvalStageInput) {
   const ctx: ArtifactContext = { siteUuid: input.siteUuid, workspaceUuid: input.workspaceUuid };
   const synthesize = await loadArtifact<SynthesizeArtifact>(input.db, ctx, "synthesize");
-  const segment = await loadArtifact<SegmentArtifact>(input.db, ctx, "segment");
-  if (!synthesize || !segment) throw new Error("synthesize and segment artifacts required");
+  if (!synthesize) throw new Error("synthesize artifact required");
 
   const s3Ctx: S3Context = {
     s3: input.s3,
@@ -55,33 +54,36 @@ export async function runComponentEvalStage(input: ComponentEvalStageInput) {
   const results: EvalLoopResult[] = [];
 
   for (const component of components) {
-    const segSection = segment.payload.pages
-      .flatMap((p) => p.sections)
-      .find((s) => s.tag === component.tag);
+    // Use the exemplar crop and page persisted on the component result
+    // (not re-derived from segment by tag, which picks the wrong exemplar
+    // when multiple components share a tag with different archetypes)
+    const pagePath = component.exemplarPage ?? "/";
 
-    if (!segSection) {
+    const target: ComponentTarget = {
+      name: component.name,
+      filePath: path.join(componentsDir, `${component.name}.astro`),
+      originalCropDesktop: component.cropDesktop,
+      pagePath,
+    };
+
+    try {
+      const result = await runEvalLoop(target, input.rendererDir, loadImageFn, chatFn);
+      results.push(result);
+    } catch (err) {
+      console.warn(`[component-eval] runEvalLoop failed for ${component.name}:`, err);
       results.push({
         componentName: component.name,
         finalScore: 0,
         iterations: 0,
         passed: false,
-        remainingIssues: [{ property: "segment", expected: "section found", actual: "not found", severity: "critical" }],
+        remainingIssues: [{
+          property: "eval-loop",
+          expected: "completed",
+          actual: err instanceof Error ? err.message : String(err),
+          severity: "critical",
+        }],
       });
-      continue;
     }
-
-    const pagePath = Object.entries(synthesize.payload.pageMap ?? {})
-      .find(([, names]) => names.includes(component.name))?.[0] ?? "/";
-
-    const target: ComponentTarget = {
-      name: component.name,
-      filePath: path.join(componentsDir, `${component.name}.astro`),
-      originalCropDesktop: segSection.crops.desktop,
-      pagePath,
-    };
-
-    const result = await runEvalLoop(target, input.rendererDir, loadImageFn, chatFn);
-    results.push(result);
   }
 
   const reportPath = writeGapReport(input.templateName, results, input.repoRoot);

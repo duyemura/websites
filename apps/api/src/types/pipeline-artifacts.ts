@@ -245,10 +245,12 @@ export type SegmentArtifact = z.infer<typeof SegmentArtifactSchema>;
 
 // ---------- synthesize ----------
 export const ComponentResultSchema = z.object({
-  name: z.string(),       // PascalCase, e.g. "HeroLeft"
+  name: z.string(),         // PascalCase, e.g. "HeroLeft"
   tag: CanonicalSectionTagSchema,
-  archetype: z.string(),  // e.g. "hero-left"
-  code: z.string(),       // complete .astro file content
+  archetype: z.string(),    // e.g. "hero-left"
+  code: z.string(),         // complete .astro file content
+  cropDesktop: z.string(),  // S3 URL of the exemplar section crop
+  exemplarPage: z.string(), // page path this component was sourced from
 });
 export type ComponentResult = z.infer<typeof ComponentResultSchema>;
 
