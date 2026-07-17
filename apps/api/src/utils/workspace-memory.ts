@@ -160,6 +160,7 @@ export async function generateWorkspaceMemory(
     businessSnapshot,
     positioning: overrides.positioning,
     industry,
+    offerings: data.offerings.map((o) => ({ name: o.name ?? "", description: o.description ?? null })),
     targetMember,
     targetMembers: [],
     antiTargetMembers: [],
@@ -196,6 +197,9 @@ export async function generateWorkspaceMemory(
     if (extracted) {
       if (extracted.industry) memory.industry = extracted.industry;
       if (extracted.positioning) memory.positioning = extracted.positioning;
+      if (extracted.offerings && extracted.offerings.length > 0) {
+        memory.offerings = extracted.offerings.map((o) => ({ name: o.name, description: o.description ?? null }));
+      }
       if (extracted.targetMembers && extracted.targetMembers.length > 0) {
         memory.targetMembers = extracted.targetMembers;
         memory.targetMember = `${extracted.targetMembers.length} ICP${

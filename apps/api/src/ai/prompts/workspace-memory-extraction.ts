@@ -30,6 +30,15 @@ export function loadIcpStandard(): string {
 const WorkspaceMemoryExtractionSchema = z.object({
   industry: z.string().nullable().optional(),
   positioning: z.string().nullable().optional(),
+  offerings: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string().nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
   targetMembers: z.array(IcpProfileSchema).nullable().optional(),
   antiTargetMembers: z.array(IcpProfileSchema).nullable().optional(),
   differentiators: z.array(z.string()).nullable().optional(),

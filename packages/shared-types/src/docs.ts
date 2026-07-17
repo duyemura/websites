@@ -128,6 +128,14 @@ export const WorkspaceMemorySchema = z.object({
   businessSnapshot: z.string(),
   positioning: z.string().optional(),
   industry: z.string().optional(),
+  offerings: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string().nullable().optional(),
+      }),
+    )
+    .default([]),
   targetMember: z.string().optional(),
   targetMembers: z.array(IcpProfileSchema).default([]),
   antiTargetMembers: z.array(IcpProfileSchema).default([]),

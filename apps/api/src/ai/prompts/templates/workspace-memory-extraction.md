@@ -26,6 +26,12 @@ Return **only** a raw JSON object matching this schema. Do not wrap the JSON in 
 {
   "industry": "string | null",
   "positioning": "string | null",
+  "offerings": [
+    {
+      "name": "string — program or service name",
+      "description": "string | null — 1-2 sentences: what it is, who it's for, what results members get. Null if not enough info."
+    }
+  ],
   "targetMembers": [
     {
       "name": "string",
@@ -97,11 +103,12 @@ For a CrossFit gym whose corpus mentions small group classes, beginner-friendly 
 
 ## Rules
 
-1. `positioning`: one-line business positioning that names the audience and the unique outcome or alternative the business offers. Example: "Semi-private personal training for busy South Bay professionals who want accountability without a big-box gym." Reject generic descriptions like "your premier personal training facility" or copy that merely restates the category. Return `null` if you cannot write a substantive positioning line.
-2. `industry`: refine the heuristic value only if the corpus clearly points to a more specific or different niche. Otherwise return the heuristic value unchanged. Use `base: niche` format.
-3. `targetMembers`: follow the ICP standard. Produce 2-4 named profiles. Each profile must be someone a marketing campaign could target, with direct evidence from the corpus. Keep every field to 1-2 short sentences. Do not turn taglines like "every body is unique" into a profile. Do not list offerings as profiles.
-4. `antiTargetMembers`: 1-2 profiles the business should actively avoid. Keep each to a short name and a one-sentence summary.
-5. `differentiators`: produce 3-5 concise bullets that describe what this gym should emphasize in **website copy, blog content, ads, and other marketing materials**. Each bullet should be a focused marketing angle: a point of view, an outcome, a refusal (what the business is not), or a proof point from testimonials, reviews, team bios, or distinctive copy. Keep each bullet to one short sentence. Return an empty array if the corpus is too thin to make claims.
-6. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Keep it to 10 words or fewer. Return `null` if the corpus is too thin.
-7. `businessPriorities`: produce 3-5 concise priorities that should guide the gym's website and marketing. Each should be a single, actionable sentence describing a conversion or messaging goal, e.g. "Drive intro-session bookings by highlighting small-group coaching." Return an empty array if the corpus is too thin.
-8. Return `null` for any field where you cannot produce a confident answer rather than fabricating.
+1. `offerings`: For each offering, capture the program name AND a 1-2 sentence description from the site copy — what the program is, who it's for, and what result or transformation members get. This is used to write deep program page content. Set `description` to `null` if the site does not provide enough information. Return an empty array if no offerings are detected.
+2. `positioning`: one-line business positioning that names the audience and the unique outcome or alternative the business offers. Example: "Semi-private personal training for busy South Bay professionals who want accountability without a big-box gym." Reject generic descriptions like "your premier personal training facility" or copy that merely restates the category. Return `null` if you cannot write a substantive positioning line.
+3. `industry`: refine the heuristic value only if the corpus clearly points to a more specific or different niche. Otherwise return the heuristic value unchanged. Use `base: niche` format.
+4. `targetMembers`: follow the ICP standard. Produce 2-4 named profiles. Each profile must be someone a marketing campaign could target, with direct evidence from the corpus. Keep every field to 1-2 short sentences. Do not turn taglines like "every body is unique" into a profile. Do not list offerings as profiles.
+5. `antiTargetMembers`: 1-2 profiles the business should actively avoid. Keep each to a short name and a one-sentence summary.
+6. `differentiators`: produce 3-5 concise bullets that describe what this gym should emphasize in **website copy, blog content, ads, and other marketing materials**. Each bullet should be a focused marketing angle: a point of view, an outcome, a refusal (what the business is not), or a proof point from testimonials, reviews, team bios, or distinctive copy. Keep each bullet to one short sentence. Return an empty array if the corpus is too thin to make claims.
+7. `brandVoice`: a one-line summary of the brand voice inferred from word choice, tone, and sentence style across headings, paragraphs, and reviews. Keep it to 10 words or fewer. Return `null` if the corpus is too thin.
+8. `businessPriorities`: produce 3-5 concise priorities that should guide the gym's website and marketing. Each should be a single, actionable sentence describing a conversion or messaging goal, e.g. "Drive intro-session bookings by highlighting small-group coaching." Return an empty array if the corpus is too thin.
+9. Return `null` for any field where you cannot produce a confident answer rather than fabricating.
