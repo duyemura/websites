@@ -38,6 +38,8 @@ export interface GmbListing {
   primaryType?: string;
   types: string[];
   address: GmbAddress;
+  /** Geographic coordinates from the Places API `location` field. */
+  location?: { lat: number; lng: number };
   phoneNumber?: string;
   websiteUri?: string;
   googleMapsUri?: string;

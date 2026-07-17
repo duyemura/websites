@@ -94,12 +94,16 @@ function normalizeReviews(reviews?: unknown[]): GmbReview[] {
 }
 
 export function normalizePlace(raw: Record<string, unknown>): GmbListing {
+  const loc = raw.location as { latitude?: number; longitude?: number } | undefined;
   return {
     placeId: (raw.id as string) || "",
     name: (raw.displayName as { text?: string })?.text || (raw.displayName as string) || "",
     primaryType: (raw.primaryTypeDisplayName as { text?: string })?.text || (raw.primaryType as string) || undefined,
     types: Array.isArray(raw.types) ? raw.types.map(String) : [],
     address: normalizeAddress(raw.addressComponents as unknown[]),
+    location: loc?.latitude != null && loc?.longitude != null
+      ? { lat: loc.latitude, lng: loc.longitude }
+      : undefined,
     phoneNumber: (raw.nationalPhoneNumber as string) || (raw.internationalPhoneNumber as string) || undefined,
     websiteUri: (raw.websiteUri as string) || undefined,
     googleMapsUri: (raw.googleMapsUri as string) || undefined,

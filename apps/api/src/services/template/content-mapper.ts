@@ -497,6 +497,19 @@ export function extractBusiness(
   const hours = enrichHours.length > 0 ? enrichHours : [];
   const category = enrichCategory || labelLine("Category") || undefined;
 
+  // Coordinates from GMB listing; absent when Places API returns no location field.
+  const coordinates = listing?.location ?? undefined;
+
+  // Service area: use baseline if populated; otherwise seed with the business city
+  // so that areaServed in LocalBusinessSchema is never empty.
+  const derivedCity = city && !/placeholder|your.?city/i.test(city) ? city : undefined;
+  const serviceArea =
+    baseline.serviceArea?.length
+      ? baseline.serviceArea
+      : derivedCity
+        ? [derivedCity]
+        : undefined;
+
   return {
     name,
     tagline,
@@ -508,7 +521,8 @@ export function extractBusiness(
     primaryCta,
     trialCta: baseline.trialCta,
     geo: { city, state: STATE_ABBRS[stateAbbr] ?? stateAbbr, stateAbbr },
-    serviceArea: baseline.serviceArea,
+    coordinates,
+    serviceArea,
     aggregateRating: enrichRating,
     social: Object.keys(social).length > 0 ? (social as BusinessInfo["social"]) : undefined,
   };
