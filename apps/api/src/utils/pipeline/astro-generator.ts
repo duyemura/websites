@@ -64,7 +64,7 @@ export async function generateAstroComponent(
     }
   }
 
-  let response = await chatFn({ messages: [{ role: "user", content }], maxTokens: 4096 });
+  let response = await chatFn({ messages: [{ role: "user", content }], maxTokens: 6144 });
   let code = stripAstroFences(response.trim());
 
   // Basic guard: the output must be an Astro frontmatter + template file. If the
@@ -78,9 +78,44 @@ export async function generateAstroComponent(
         { role: "assistant", content: response },
         { role: "user", content: correction },
       ],
-      maxTokens: 4096,
+      maxTokens: 6144,
     });
     code = stripAstroFences(response.trim());
+  }
+
+  return validateAstroComponent(code, group.name);
+}
+
+export function validateAstroComponent(code: string, componentName: string): string {
+  const warnings: string[] = [];
+
+  // Must start with ---
+  if (!code.startsWith("---")) {
+    throw new Error(`[astro-generator] ${componentName}: generated code does not start with '---' (likely empty or error response)`);
+  }
+
+  // Must have closing --- for frontmatter
+  const frontmatterEnd = code.indexOf("---", 3);
+  if (frontmatterEnd === -1) {
+    throw new Error(`[astro-generator] ${componentName}: frontmatter block never closed`);
+  }
+
+  // Check for <style> block balance — count { and } in the style block
+  const styleMatch = code.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  if (styleMatch) {
+    const css = styleMatch[1] ?? "";
+    const opens = (css.match(/\{/g) ?? []).length;
+    const closes = (css.match(/\}/g) ?? []).length;
+    if (opens !== closes) {
+      warnings.push(`CSS block mismatch: ${opens} '{' vs ${closes} '}' — may be truncated`);
+    }
+  } else if (code.includes("<style")) {
+    // <style> opened but no </style>
+    throw new Error(`[astro-generator] ${componentName}: <style> tag not closed — component was truncated`);
+  }
+
+  if (warnings.length > 0) {
+    console.warn(`[astro-generator] ${componentName}: ${warnings.join("; ")}`);
   }
 
   return code;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { generateAstroComponent, buildAstroPromptText } from "../astro-generator";
+import { generateAstroComponent, buildAstroPromptText, validateAstroComponent } from "../astro-generator";
 import type { ComponentGroup } from "../section-grouper";
 
 const mockGroup: ComponentGroup = {
@@ -35,5 +35,25 @@ describe("generateAstroComponent", () => {
     const code = await generateAstroComponent(mockGroup, "", chatFn);
     expect(chatFn).toHaveBeenCalledOnce();
     expect(code).toBe("---\nconst x = 1\n---\n<div/>");
+  });
+});
+
+describe("validateAstroComponent", () => {
+  it("accepts a valid component", () => {
+    const valid = "---\nconst x = 1;\n---\n<div/>";
+    expect(validateAstroComponent(valid, "Test")).toBe(valid);
+  });
+  it("throws when frontmatter is not closed", () => {
+    expect(() => validateAstroComponent("---\nconst x = 1;", "Test")).toThrow("frontmatter block never closed");
+  });
+  it("throws when style block is not closed", () => {
+    const code = "---\n---\n<div/>\n<style>\n.foo {\n  color: red;\n";
+    expect(() => validateAstroComponent(code, "Test")).toThrow("truncated");
+  });
+  it("warns but does not throw on CSS brace mismatch", () => {
+    const code = "---\n---\n<div/>\n<style>\n.foo { color: red; }\n.bar {\n</style>";
+    // brace mismatch — warns but returns
+    const result = validateAstroComponent(code, "Test");
+    expect(result).toBe(code);
   });
 });
