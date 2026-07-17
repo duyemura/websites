@@ -116,8 +116,10 @@ async function screenshotPage(
 
     const element = page.locator(`[data-eval-component="${target.name}"]`);
     const count = await element.count();
-    if (count === 0) {
-      console.warn(`[eval-loop] data-eval-component="${target.name}" not found, falling back to full-page screenshot`);
+    const isVisible = count > 0 && await element.first().isVisible();
+    if (count === 0 || !isVisible) {
+      const reason = count === 0 ? "not found" : "not visible";
+      console.warn(`[eval-loop] data-eval-component="${target.name}" ${reason}, falling back to full-page screenshot`);
       const buf = await page.screenshot({ fullPage: true });
       return { dataUri: `data:image/png;base64,${buf.toString("base64")}`, foundComponent: false };
     }
