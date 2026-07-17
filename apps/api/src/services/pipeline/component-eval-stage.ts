@@ -41,52 +41,70 @@ export async function runComponentEvalStage(input: ComponentEvalStageInput) {
   };
 
   // Write gym.json for the Astro build — renderer reads src/content/gym.json directly.
+  // Snapshot and restore so the eval doesn't permanently overwrite the developer's gym.json.
   const fixture = buildFixture(synthesize.payload);
   const gymJsonPath = path.join(input.rendererDir, "src/content/gym.json");
-  fs.mkdirSync(path.dirname(gymJsonPath), { recursive: true });
-  fs.writeFileSync(gymJsonPath, JSON.stringify(fixture, null, 2), "utf8");
+  let originalGymJson: string | null = null;
+  if (fs.existsSync(gymJsonPath)) {
+    originalGymJson = fs.readFileSync(gymJsonPath, "utf8");
+  }
 
   const componentsDir = path.join(input.repoRoot, "apps/renderer/src/components/sections", input.templateName);
   const components = synthesize.payload.components.filter(
     (c) => !input.componentFilter || c.name === input.componentFilter,
   );
 
-  const results: EvalLoopResult[] = [];
+  let results: EvalLoopResult[] = [];
+  let reportPath: string;
 
-  for (const component of components) {
-    // Use the exemplar crop and page persisted on the component result
-    // (not re-derived from segment by tag, which picks the wrong exemplar
-    // when multiple components share a tag with different archetypes)
-    const pagePath = component.exemplarPage ?? "/";
+  try {
+    fs.mkdirSync(path.dirname(gymJsonPath), { recursive: true });
+    fs.writeFileSync(gymJsonPath, JSON.stringify(fixture, null, 2), "utf8");
 
-    const target: ComponentTarget = {
-      name: component.name,
-      filePath: path.join(componentsDir, `${component.name}.astro`),
-      originalCropDesktop: component.cropDesktop,
-      pagePath,
-    };
+    for (const component of components) {
+      // Use the exemplar crop and page persisted on the component result
+      // (not re-derived from segment by tag, which picks the wrong exemplar
+      // when multiple components share a tag with different archetypes)
+      const pagePath = component.exemplarPage ?? "/";
 
-    try {
-      const result = await runEvalLoop(target, input.rendererDir, loadImageFn, chatFn);
-      results.push(result);
-    } catch (err) {
-      console.warn(`[component-eval] runEvalLoop failed for ${component.name}:`, err);
-      results.push({
-        componentName: component.name,
-        finalScore: 0,
-        iterations: 0,
-        passed: false,
-        remainingIssues: [{
-          property: "eval-loop",
-          expected: "completed",
-          actual: err instanceof Error ? err.message : String(err),
-          severity: "critical",
-        }],
-      });
+      const target: ComponentTarget = {
+        name: component.name,
+        filePath: path.join(componentsDir, `${component.name}.astro`),
+        originalCropDesktop: component.cropDesktop,
+        pagePath,
+      };
+
+      try {
+        const result = await runEvalLoop(target, input.rendererDir, loadImageFn, chatFn);
+        results.push(result);
+      } catch (err) {
+        console.warn(`[component-eval] runEvalLoop failed for ${component.name}:`, err);
+        results.push({
+          componentName: component.name,
+          finalScore: 0,
+          iterations: 0,
+          passed: false,
+          remainingIssues: [{
+            property: "eval-loop",
+            expected: "completed",
+            actual: err instanceof Error ? err.message : String(err),
+            severity: "critical",
+          }],
+        });
+      }
+    }
+
+    reportPath = writeGapReport(input.templateName, results, input.repoRoot);
+  } finally {
+    // Restore the original gym.json regardless of success or failure
+    if (originalGymJson !== null) {
+      fs.writeFileSync(gymJsonPath, originalGymJson, "utf8");
+    } else {
+      // We created it — remove it so we leave no trace
+      fs.unlinkSync(gymJsonPath);
     }
   }
 
-  const reportPath = writeGapReport(input.templateName, results, input.repoRoot);
   return { results, reportPath };
 }
 

@@ -65,7 +65,12 @@ export async function runEvalLoop(
 
     if (score >= PASS_THRESHOLD) break;
 
-    // 4. Agent fix — only runs when score is below threshold
+    if (diff.failed) {
+      console.warn(`[eval-loop] Vision diff failed for ${target.name}, skipping fix for this iteration`);
+      continue; // try the next iteration without patching the component
+    }
+
+    // 4. Agent fix — only runs when diff succeeded and score is below threshold
     const currentCode = fs.readFileSync(target.filePath, "utf8");
     const fixedCode = await agentFix(
       currentCode,
@@ -89,9 +94,7 @@ export async function runEvalLoop(
 
 async function screenshotPage(target: ComponentTarget, rendererDir: string): Promise<string> {
   const distDir = path.join(rendererDir, "dist");
-  const htmlFile = target.pagePath === "/"
-    ? path.join(distDir, "index.html")
-    : path.join(distDir, target.pagePath.replace(/^\//, ""), "index.html");
+  const htmlFile = resolveHtmlFile(distDir, target.pagePath);
 
   const browser = await chromium.launch();
   try {
@@ -112,6 +115,17 @@ async function screenshotPage(target: ComponentTarget, rendererDir: string): Pro
   } finally {
     await browser.close();
   }
+}
+
+export function resolveHtmlFile(distDir: string, pagePath: string): string {
+  if (pagePath === "/") return path.join(distDir, "index.html");
+  const trimmed = pagePath.replace(/^\//, "");
+  // Astro emits /foo/index.html for directory routes and /foo.html for
+  // file-like routes. The crawled source path may already end in .html.
+  if (trimmed.endsWith(".html")) {
+    return path.join(distDir, trimmed);
+  }
+  return path.join(distDir, trimmed, "index.html");
 }
 
 function extractMedia(uri: string): { mediaType: string; data: string } {

@@ -8,6 +8,7 @@ export interface VisionIssue {
 export interface VisionDiffResult {
   score: number;
   issues: VisionIssue[];
+  failed?: boolean; // true when the diff itself failed (image load error, JSON parse error)
 }
 
 type ChatFn = (req: {
@@ -71,7 +72,7 @@ export async function visionDiff(
       );
     } catch (err) {
       console.warn("[visual-diff] Failed to load images for comparison:", err);
-      return { score: 0, issues: [] };
+      return { score: 0, issues: [], failed: true };
     }
   }
 
@@ -87,6 +88,6 @@ export async function visionDiff(
       issues: Array.isArray(parsed.issues) ? (parsed.issues as VisionIssue[]) : [],
     };
   } catch {
-    return { score: 0, issues: [] };
+    return { score: 0, issues: [], failed: true };
   }
 }
