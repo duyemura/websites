@@ -1,13 +1,12 @@
 ---
+// Items are Feature objects: { icon: string, label: string, imageUrl?: string }
 export interface FeatureGridEvenProps {
   id?: string;
+  headline?: string;
   items: Array<{
-    headline: string;
-    description: string;
-    imageUrl: string;
-    imageAlt: string;
-    ctaText?: string;
-    ctaHref?: string;
+    icon?: string;
+    label?: string;
+    imageUrl?: string;
   }>;
 }
 
@@ -18,14 +17,9 @@ const { id, items = [] } = Astro.props;
   <div class="feature-grid-container">
     {items.map((item) => (
       <div class="feature-item">
-        <img src={item.imageUrl} alt={item.imageAlt} class="feature-image" />
-        <h3 class="feature-headline">{item.headline}</h3>
-        <p class="feature-description">{item.description}</p>
-        {item.ctaText && item.ctaHref && (
-          <a href={item.ctaHref} class="feature-cta">
-            {item.ctaText}
-          </a>
-        )}
+        {item.imageUrl && <img src={item.imageUrl} alt={item.label ?? ""} class="feature-icon" />}
+        {item.icon && !item.imageUrl && <span class="feature-icon-text">{item.icon}</span>}
+        <h3 class="feature-headline">{item.label}</h3>
       </div>
     ))}
   </div>
@@ -33,21 +27,22 @@ const { id, items = [] } = Astro.props;
 
 <style>
   section {
-    background-color: rgb(241, 241, 241);
     padding-top: 0px;
     padding-bottom: 0px;
+    background-color: rgb(241, 241, 241);
     display: flex;
     justify-content: center;
     align-items: center;
-    box-sizing: border-box;
-    min-height: 270px; /* Bounding box height for desktop, adjust for mobile if needed */
+    min-height: 270px; /* To ensure it matches boundingBox height even with minimal content */
   }
 
   .feature-grid-container {
-    display: grid;
-    gap: 20px; /* Adjust gap as needed */
-    padding: 20px; /* Padding around the grid */
-    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 30px; /* Spacing between items on mobile */
+    padding: 30px 20px; /* Adjust padding as needed for mobile */
+    width: 100%;
+    max-width: 375px; /* Constrain width for mobile view */
     box-sizing: border-box;
   }
 
@@ -56,85 +51,56 @@ const { id, items = [] } = Astro.props;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 10px;
+    gap: 10px;
   }
 
-  .feature-image {
-    width: 60px; /* Example size, adjust based on design */
-    height: 60px; /* Example size, adjust based on design */
+  .feature-icon {
+    width: 48px; /* Example size, adjust as per design */
+    height: 48px; /* Example size, adjust as per design */
     object-fit: contain;
-    margin-bottom: 15px;
   }
 
   .feature-headline {
-    font-size: 18px; /* Example font size */
-    font-weight: bold;
-    color: #333; /* Example color */
-    margin-bottom: 10px;
+    font-size: 18px; /* Example font size, adjust as per design */
+    font-weight: 600;
+    color: #333;
+    margin: 0;
   }
 
   .feature-description {
-    font-size: 14px; /* Example font size */
-    color: #555; /* Example color */
+    font-size: 14px; /* Example font size, adjust as per design */
+    color: #555;
     line-height: 1.5;
-    margin-bottom: 15px;
+    margin: 0;
   }
 
-  .feature-cta {
-    font-size: 14px; /* Example font size */
-    color: #007bff; /* Example link color */
-    text-decoration: none;
-    font-weight: bold;
-  }
-
-  .feature-cta:hover {
-    text-decoration: underline;
-  }
-
-  /* Mobile-first styles (375px base) */
-  @media (max-width: 767px) {
-    .feature-grid-container {
-      grid-template-columns: 1fr; /* Single column on mobile */
-      width: 100%;
-    }
-
-    .feature-headline {
-      font-size: 16px;
-    }
-
-    .feature-description {
-      font-size: 13px;
-    }
-
-    .feature-image {
-      width: 50px;
-      height: 50px;
-    }
-  }
-
-  /* Desktop styles (1440px) */
   @media (min-width: 1440px) {
     .feature-grid-container {
-      grid-template-columns: repeat(4, 1fr); /* Four even columns on desktop */
-      gap: 40px; /* Larger gap for desktop */
-      width: 1200px; /* Max width for content area */
+      flex-direction: row;
+      justify-content: space-around;
+      gap: 0; /* Items will be spaced out by justify-content */
+      max-width: 1200px; /* Max width for desktop content */
+      padding: 60px 0; /* Adjust padding for desktop */
+      height: 270px;
     }
 
     .feature-item {
-      padding: 20px;
+      flex: 1; /* Distribute space evenly */
+      max-width: 300px; /* Max width for each item on desktop */
+      gap: 15px;
     }
 
-    .feature-image {
-      width: 70px;
-      height: 70px;
+    .feature-icon {
+      width: 60px; /* Larger icon on desktop */
+      height: 60px; /* Larger icon on desktop */
     }
 
     .feature-headline {
-      font-size: 20px;
+      font-size: 20px; /* Larger headline on desktop */
     }
 
     .feature-description {
-      font-size: 15px;
+      font-size: 16px; /* Larger description on desktop */
     }
   }
 </style>

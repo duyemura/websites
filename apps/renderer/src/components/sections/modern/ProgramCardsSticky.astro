@@ -1,134 +1,120 @@
 ---
-interface Item {
-  id: string;
-  icon: string;
-  title: string;
-  position: {
-    col: number;
-    row: string;
-  };
-  background: string;
+// Items are ProgramContent objects from GymSiteContent:
+// { slug, name, shortDescription, coverImageUrl, hero, ... }
+export interface ProgramCardsStickyProps {
+  id?: string;
+  headline?: string;
+  items?: Array<{
+    slug?: string;
+    name?: string;
+    shortDescription?: string;
+    coverImageUrl?: string;
+  }>;
 }
 
-interface Props {
-  items: Item[];
-  imageUrls: string[];
-}
-
-const { items = [], imageUrls } = Astro.props;
+const { id, headline, items = [] } = Astro.props;
 ---
 
-<section data-eval-component="ProgramCardsSticky" class="program-cards-sticky">
-  <div class="card-grid">
-    {items.map((item, index) => (
-      <div class="card" style={{ gridColumn: item.position?.col, gridRow: item.position?.row }}>
-        {item.background === "image" && imageUrls[index] && (
-          <img src={imageUrls[index]} alt={item.title} class="card-background-image" />
-        )}
-        <h3 class="card-title">{item.title}</h3>
-      </div>
-    ))}
+<section data-eval-component="ProgramCardsSticky" id={id} class="program-cards-sticky">
+  {headline && <h2 class="section-headline">{headline}</h2>}
+  <div class="program-cards-sticky-container">
+    <div class="program-cards-sticky-grid">
+      {items.map((item) => {
+        const imageUrl = item.coverImageUrl && item.coverImageUrl !== "__NO_IMAGE__" ? item.coverImageUrl : undefined;
+        return (
+          <a
+            href={item.slug ? `/programs/${item.slug}` : "#"}
+            class="program-card"
+            style={imageUrl ? `background-image: url(${imageUrl});` : ""}
+          >
+            <div class="program-card-overlay"></div>
+            <h3 class="program-card-title">{item.name}</h3>
+            {item.shortDescription && <p class="program-card-desc">{item.shortDescription}</p>}
+          </a>
+        );
+      })}
+    </div>
   </div>
 </section>
 
 <style>
   .program-cards-sticky {
-    position: relative;
-    padding-top: 0px;
-    padding-bottom: 0px;
-    background-color: #f7f7f7; /* Assuming a light background for the section */
+    padding: 2rem 1rem;
   }
 
-  .card-grid {
+  .section-headline {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+  }
+
+  .program-cards-sticky-container {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .program-cards-sticky-grid {
     display: grid;
-    grid-gap: 20px; /* Adjust as needed */
-    padding: 20px; /* Padding around the grid */
-    position: sticky;
-    top: 0; /* Makes the grid sticky */
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 0 1rem;
   }
 
-  .card {
+  .program-card {
     position: relative;
-    overflow: hidden;
-    border-radius: 12px; /* Rounded corners for cards */
-    min-height: 250px; /* Minimum height for cards */
     display: flex;
-    align-items: flex-end;
-    padding: 20px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background-size: cover;
+    background-position: center;
+    background-color: #1a1a1a;
+    min-height: 15rem;
+    color: white;
+    overflow: hidden;
+    text-decoration: none;
   }
 
-  .card-background-image {
+  .program-card-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.1));
     z-index: 1;
   }
 
-  .card-title {
+  .program-card-title {
     position: relative;
     z-index: 2;
-    color: #fff; /* White text for titles on images */
     font-size: 1.5rem;
+    line-height: 1.3;
     font-weight: 700;
+    margin: 0 0 0.25rem;
+  }
+
+  .program-card-desc {
+    position: relative;
+    z-index: 2;
+    font-size: 0.9rem;
+    line-height: 1.4;
     margin: 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* Text shadow for readability */
+    opacity: 0.9;
   }
 
-  /* Mobile Styles (375px base) */
-  @media (max-width: 767px) {
-    .card-grid {
-      grid-template-columns: 1fr;
-      grid-auto-rows: minmax(250px, auto);
-      padding: 15px;
-    }
-
-    .card:nth-child(1) {
-      grid-column: 1;
-      grid-row: 1;
-    }
-
-    .card:nth-child(2) {
-      grid-column: 1;
-      grid-row: 2;
-    }
-
-    .card:nth-child(3) {
-      grid-column: 1;
-      grid-row: 3;
-    }
-  }
-
-  /* Desktop Styles (1440px) */
-  @media (min-width: 1024px) {
-    .card-grid {
+  @media (min-width: 768px) {
+    .program-cards-sticky-grid {
       grid-template-columns: repeat(2, 1fr);
-      grid-template-rows: repeat(3, minmax(250px, auto));
-      padding: 50px 100px; /* Adjust padding for desktop */
-      height: 939px; /* Matches boundingBox height */
-      align-content: start; /* Align grid items to the start */
     }
+  }
 
-    .card:nth-child(1) {
-      grid-column: 1;
-      grid-row: 1;
-    }
-
-    .card:nth-child(2) {
-      grid-column: 2;
-      grid-row: 2;
-    }
-
-    .card:nth-child(3) {
-      grid-column: 1;
-      grid-row: 3;
-    }
-
-    .card-title {
-      font-size: 2rem; /* Larger font for desktop */
+  @media (min-width: 1200px) {
+    .program-cards-sticky-grid {
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 </style>
