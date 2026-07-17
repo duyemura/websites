@@ -7,6 +7,7 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { db, config } from "../src/database";
+import { sql } from "kysely";
 import { getS3Client } from "../src/s3";
 import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageResult, StageContext } from "./stages/types";
@@ -622,6 +623,37 @@ async function runPublish(
   return runTool("publish", cmd, registry);
 }
 
+async function runTemplateEval(
+  cmd: Extract<MiloCommand, { cmd: "template-eval" }>,
+): Promise<StageResult[]> {
+  // Find the most recent site that synthesized this template
+  const row = await db
+    .selectFrom("pipeline_artifacts")
+    .innerJoin("sites", "sites.uuid", "pipeline_artifacts.site_uuid")
+    .select(["sites.uuid as siteUuid", "sites.workspace_uuid as workspaceUuid"])
+    .where("pipeline_artifacts.artifact_type", "=", "synthesize")
+    .where(sql`pipeline_artifacts.payload->>'templateName'`, "=", cmd.name)
+    .orderBy("pipeline_artifacts.created_at", "desc")
+    .limit(1)
+    .executeTakeFirst();
+
+  if (!row) {
+    throw new Error(`No synthesize artifact found for template "${cmd.name}". Run milo template --url <url> --name ${cmd.name} first.`);
+  }
+
+  const { siteUuid, workspaceUuid } = row;
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", awsProfile: "unicorn" });
+  ctx.newTemplateName = cmd.name;
+  ctx.componentFilter = cmd.component;
+
+  if (!cmd.quiet) {
+    console.log(`\nMilo template-eval — ${cmd.name}${cmd.component ? ` (component: ${cmd.component})` : ""} (site: ${siteUuid})`);
+  }
+
+  const registry = await loadRegistry();
+  return runPipeline(["component-eval"], ctx, registry, { quiet: cmd.quiet });
+}
+
 async function runTemplate(
   cmd: Extract<MiloCommand, { cmd: "template" }>,
   registry: Record<string, StageRunner>,
@@ -662,6 +694,7 @@ async function main() {
     case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
     case "restore":  results = await runRestore(cmd, registry); break;
     case "template": results = await runTemplate(cmd, registry); break;
+    case "template-eval": results = await runTemplateEval(cmd); break;
     default: {
       const c = cmd as MiloCommand;
       console.error(`Handler for "${(c as { cmd: string }).cmd}" not implemented.`);

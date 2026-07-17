@@ -13,7 +13,8 @@ export type MiloCommand =
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "template"; url: string; name: string; stages?: string[]; verbose: boolean; force: boolean; quiet: boolean };
+  | { cmd: "template"; url: string; name: string; stages?: string[]; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean };
 
 export const PIPELINES = {
   // Build pipelines stage to staging only. Publishing to production is a
@@ -130,6 +131,12 @@ export function parseArgs(): MiloCommand {
     return { cmd: "template", url, name, stages, ...bool };
   }
 
+  if (subcommand === "template-eval") {
+    const name = get("name");
+    if (!name) throw new Error("milo template-eval requires --name <templatename>");
+    return { cmd: "template-eval", name, component: get("component"), ...bool };
+  }
+
   // Legacy --stages escape hatch
   const stagesStr = get("stages");
   const url = get("url");
@@ -157,7 +164,8 @@ export function parseArgs(): MiloCommand {
     `  milo eval-fix --site <uuid> [--eval-uuid <uuid>] [--path /slug] [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
     `  milo nav      --site <uuid>\n` +
     `  milo restore  --site <uuid> --version <n>\n` +
-    `  milo template --url <url> --name <templatename>\n` +
+    `  milo template      --url <url> --name <templatename>\n` +
+    `  milo template-eval --name <templatename> [--component <ComponentName>]\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,
   );
 }

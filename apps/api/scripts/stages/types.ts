@@ -25,6 +25,8 @@ export interface StageContext {
   pageFilter?: string[];
   /** Set when running milo template --name <x>. Used by synthesize and component-eval stages. */
   newTemplateName?: string;
+  /** Set when running milo template-eval --component <name>. Limits eval to one component. */
+  componentFilter?: string;
 }
 
 export interface StageResult {

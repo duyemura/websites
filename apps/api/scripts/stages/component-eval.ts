@@ -20,6 +20,7 @@ export const componentEvalStage: StageRunner = {
       templateName: ctx.newTemplateName,
       rendererDir: ctx.rendererDir,
       repoRoot,
+      componentFilter: ctx.componentFilter,
     });
     const passed = results.filter((r) => r.passed).length;
     ctx.log(`  ${passed}/${results.length} passed ≥85 — report: ${reportPath}`);
