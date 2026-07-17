@@ -11,7 +11,7 @@ export const synthesizeStage: StageRunner = {
   async run(ctx: StageContext): Promise<StageResult> {
     const start = Date.now();
     if (!ctx.newTemplateName) throw new Error("synthesize requires --name <templatename>");
-    const repoRoot = path.resolve(ctx.rendererDir, "../../..");
+    const repoRoot = path.resolve(ctx.rendererDir, "../..");
     const result = await runSynthesizeStage({
       db: ctx.db,
       config: ctx.config,

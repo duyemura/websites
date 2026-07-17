@@ -3,79 +3,23 @@
 // Template-agnostic page body renderer.
 //
 // Consumes a TemplateSpec from the registry and renders the declared component
-// sequence for a given pageKey. Components are imported statically so Astro can
-// compile them; the resolver only determines which ones to render and what props
-// to pass.
+// sequence for a given pageKey. Theme-specific component maps are loaded from
+// `sections/{theme}/index.ts` via import.meta.glob, so new templates only need
+// to provide their own sections folder; this file does not change.
 
 import { content } from "../../lib/content";
 import { getRegisteredSpec } from "../../lib/template-registry";
 import { resolvePageComponents, type AstroComponent } from "../../lib/template-resolver";
 
-import Hero from "../sections/beanburito/Hero.astro";
-import Programs from "../sections/beanburito/Programs.astro";
-import Location from "../sections/beanburito/Location.astro";
-import Benefits from "../sections/beanburito/Benefits.astro";
-import IconCardGrid from "../sections/IconCardGrid.astro";
-import CTABand from "../sections/beanburito/CTABand.astro";
-import HowItWorks from "../sections/beanburito/HowItWorks.astro";
-import Amenities from "../sections/beanburito/Amenities.astro";
-import Community from "../sections/beanburito/Community.astro";
-import Testimonials from "../sections/beanburito/Testimonials.astro";
-import FAQ from "../sections/beanburito/FAQ.astro";
-import IframeBand from "../sections/beanburito/IframeBand.astro";
-import WhatIsIt from "../sections/beanburito/WhatIsIt.astro";
-import WhatToExpect from "../sections/beanburito/WhatToExpect.astro";
-import BlogGrid from "../sections/beanburito/BlogGrid.astro";
-import PricingGrid from "../sections/PricingGrid.astro";
-import RichContent from "../sections/RichContent.astro";
-import Story from "../sections/beanburito/Story.astro";
-import CoachList from "../sections/beanburito/CoachList.astro";
-import TeamGrid from "../sections/TeamGrid.astro";
+const themeModules = import.meta.glob("../sections/*/index.ts", { eager: true }) as Record<
+  string,
+  { COMPONENT_MAP?: Record<string, AstroComponent> }
+>;
 
-const COMPONENT_MAP: Record<string, AstroComponent> = {
-  // Component references keyed by the `component` value in each template's
-  // spec, with page-slot aliases kept for backward compatibility.
-  Hero: Hero as unknown as AstroComponent,
-  hero: Hero as unknown as AstroComponent,
-  Programs: Programs as unknown as AstroComponent,
-  programs: Programs as unknown as AstroComponent,
-  Location: Location as unknown as AstroComponent,
-  location: Location as unknown as AstroComponent,
-  Benefits: Benefits as unknown as AstroComponent,
-  benefits: Benefits as unknown as AstroComponent,
-  IconCardGrid: IconCardGrid as unknown as AstroComponent,
-  iconCardGrid: IconCardGrid as unknown as AstroComponent,
-  CTABand: CTABand as unknown as AstroComponent,
-  ctaBand: CTABand as unknown as AstroComponent,
-  valueProps: Benefits as unknown as AstroComponent,
-  HowItWorks: HowItWorks as unknown as AstroComponent,
-  howItWorks: HowItWorks as unknown as AstroComponent,
-  Amenities: Amenities as unknown as AstroComponent,
-  amenities: Amenities as unknown as AstroComponent,
-  Community: Community as unknown as AstroComponent,
-  community: Community as unknown as AstroComponent,
-  Testimonials: Testimonials as unknown as AstroComponent,
-  testimonials: Testimonials as unknown as AstroComponent,
-  FAQ: FAQ as unknown as AstroComponent,
-  faq: FAQ as unknown as AstroComponent,
-  IframeBand: IframeBand as unknown as AstroComponent,
-  iframeBand: IframeBand as unknown as AstroComponent,
-  WhatIsIt: WhatIsIt as unknown as AstroComponent,
-  whatIsIt: WhatIsIt as unknown as AstroComponent,
-  WhatToExpect: WhatToExpect as unknown as AstroComponent,
-  whatToExpect: WhatToExpect as unknown as AstroComponent,
-  BlogGrid: BlogGrid as unknown as AstroComponent,
-  blogGrid: BlogGrid as unknown as AstroComponent,
-  PricingGrid: PricingGrid as unknown as AstroComponent,
-  pricingGrid: PricingGrid as unknown as AstroComponent,
-  RichContent: RichContent as unknown as AstroComponent,
-  richContent: RichContent as unknown as AstroComponent,
-  Story: Story as unknown as AstroComponent,
-  story: Story as unknown as AstroComponent,
-  TeamGrid: TeamGrid as unknown as AstroComponent,
-  team: TeamGrid as unknown as AstroComponent,
-  teamBeanburito: CoachList as unknown as AstroComponent,
-};
+function getThemeMap(theme: string): Record<string, AstroComponent> {
+  const path = `../sections/${theme}/index.ts`;
+  return themeModules[path]?.COMPONENT_MAP ?? {};
+}
 
 interface Props {
   /** Registry page key (e.g. "home", "about", "contact", "program"). */
@@ -91,6 +35,11 @@ const theme = templateTheme ?? content.meta.templateTheme ?? "baseline";
 const spec = getRegisteredSpec(theme);
 if (!spec) {
   throw new Error(`PageRenderer: unsupported template theme "${theme}"`);
+}
+
+const COMPONENT_MAP = getThemeMap(theme);
+if (Object.keys(COMPONENT_MAP).length === 0) {
+  throw new Error(`PageRenderer: no component map found for theme "${theme}"`);
 }
 
 const components = resolvePageComponents(spec, pageKey, content, COMPONENT_MAP, pageData);
