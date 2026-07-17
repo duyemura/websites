@@ -114,6 +114,18 @@ export function validateAstroComponent(code: string, componentName: string): str
     throw new Error(`[astro-generator] ${componentName}: <style> tag not closed — component was truncated`);
   }
 
+  // Check for third-party imports that won't resolve in the renderer
+  const FORBIDDEN_IMPORTS = ["astro-icon", "@iconify", "lucide-react", "react-icons"];
+  const scriptMatches = code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g);
+  for (const match of scriptMatches) {
+    const scriptBody = match[1] ?? "";
+    for (const forbidden of FORBIDDEN_IMPORTS) {
+      if (scriptBody.includes(`"${forbidden}"`) || scriptBody.includes(`'${forbidden}'`)) {
+        warnings.push(`<script> imports "${forbidden}" which is not installed in the renderer — remove this import`);
+      }
+    }
+  }
+
   if (warnings.length > 0) {
     console.warn(`[astro-generator] ${componentName}: ${warnings.join("; ")}`);
   }
