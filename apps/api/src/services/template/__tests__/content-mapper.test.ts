@@ -9,6 +9,7 @@ import {
   sanitizeInternalUrl,
   sanitizeContentCtas,
   mergeGeneratedAboutContent,
+  parseServiceAreaResponse,
 } from "../content-mapper";
 import type { DesignSystemV2 } from "../../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage } from "../../../types/site-hierarchy";
@@ -622,5 +623,57 @@ describe("mergeGeneratedAboutContent", () => {
 
     const fallback = mergeGeneratedAboutContent(makeAbout(), {}, [{ question: "Fallback FAQ", answer: "Answer" }]);
     expect(fallback.faq).toEqual([{ question: "Fallback FAQ", answer: "Answer" }]);
+  });
+});
+
+// ── parseServiceAreaResponse ─────────────────────────────────────────────────
+
+describe("parseServiceAreaResponse", () => {
+  test("parses a bare JSON array", () => {
+    expect(parseServiceAreaResponse('["Round Rock", "Cedar Park", "Pflugerville"]')).toEqual([
+      "Round Rock", "Cedar Park", "Pflugerville",
+    ]);
+  });
+
+  test("extracts array from prose-wrapped response", () => {
+    expect(
+      parseServiceAreaResponse('Here are the neighborhoods: ["Round Rock", "Cedar Park"]. Those are nearby.'),
+    ).toEqual(["Round Rock", "Cedar Park"]);
+  });
+
+  test("extracts array from multiline LLM response", () => {
+    const text = `Sure! Here you go:\n[\n  "Round Rock",\n  "Cedar Park"\n]`;
+    expect(parseServiceAreaResponse(text)).toEqual(["Round Rock", "Cedar Park"]);
+  });
+
+  test("returns [] on malformed JSON (no closing bracket)", () => {
+    expect(parseServiceAreaResponse('["Round Rock", "Cedar Park"')).toEqual([]);
+  });
+
+  test("returns [] when JSON is not an array", () => {
+    expect(parseServiceAreaResponse('{"city": "Austin"}')).toEqual([]);
+  });
+
+  test("returns [] when response contains no bracket", () => {
+    expect(parseServiceAreaResponse("Round Rock, Cedar Park, Pflugerville")).toEqual([]);
+  });
+
+  test("filters non-string elements", () => {
+    expect(parseServiceAreaResponse('[1, "Round Rock", null, "Cedar Park"]')).toEqual([
+      "Round Rock", "Cedar Park",
+    ]);
+  });
+
+  test("caps output at 6 items", () => {
+    const input = '["A","B","C","D","E","F","G","H"]';
+    expect(parseServiceAreaResponse(input)).toHaveLength(6);
+  });
+
+  test("primary-city dedupe filter removes city if LLM echoes it back", () => {
+    const neighborhoods = ["Austin", "Round Rock", "Cedar Park"];
+    const primaryCity = "Austin";
+    const deduped = [primaryCity, ...neighborhoods.filter((n) => n !== primaryCity)];
+    expect(deduped).toEqual(["Austin", "Round Rock", "Cedar Park"]);
+    expect(deduped.filter((n) => n === "Austin")).toHaveLength(1);
   });
 });

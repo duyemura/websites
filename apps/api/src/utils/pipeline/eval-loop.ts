@@ -4,10 +4,11 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { visionDiff, type VisionIssue } from "./visual-diff";
+import { sanitizeAstroComponent } from "./astro-sanitize";
 
 const execAsync = promisify(exec);
 const PASS_THRESHOLD = 85;
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = parseInt(process.env["MILO_EVAL_MAX_ITERATIONS"] ?? "5", 10);
 
 export interface EvalLoopResult {
   componentName: string;
@@ -49,11 +50,9 @@ export async function runEvalLoop(
     await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
 
     // 2. Screenshot rendered page (returns data URI directly)
-    const renderedDataUri = await screenshotPage(target, rendererDir);
+    const { dataUri: renderedDataUri, foundComponent } = await screenshotPage(target, rendererDir);
 
     // 3. Diff — wrap loadImageFn so the rendered data URI is returned as-is
-    // (visionDiff calls loadImageFn for both images; the rendered image is already
-    //  a data URI so we bypass the S3 fetch for it)
     const diff = await visionDiff(
       target.originalCropDesktop,
       renderedDataUri,
@@ -70,9 +69,16 @@ export async function runEvalLoop(
       continue; // try the next iteration without patching the component
     }
 
-    // 4. Agent fix — only runs when diff succeeded and score is below threshold
+    // Skip agentFix when the component wasn't found — the full-page fallback screenshot
+    // gives the agent no meaningful signal, and it generates completely wrong components.
+    if (!foundComponent) {
+      console.warn(`[eval-loop] ${target.name} not on page — skipping agent fix to avoid corrupt rewrites`);
+      continue;
+    }
+
+    // 4. Agent fix — only runs when diff succeeded, score < threshold, and component was found
     const currentCode = fs.readFileSync(target.filePath, "utf8");
-    const fixedCode = await agentFix(
+    const rawFixed = await agentFix(
       currentCode,
       target.originalCropDesktop,
       renderedDataUri,
@@ -80,6 +86,9 @@ export async function runEvalLoop(
       chatFn,
       loadImageFn,
     );
+    // Apply the same sanitization as scaffoldTemplate to prevent agent-written
+    // components from introducing .map()-on-undefined or CSS syntax errors.
+    const fixedCode = sanitizeAstroComponent(rawFixed, target.name);
     fs.writeFileSync(target.filePath, fixedCode, "utf8");
   }
 
@@ -92,7 +101,10 @@ export async function runEvalLoop(
   };
 }
 
-async function screenshotPage(target: ComponentTarget, rendererDir: string): Promise<string> {
+async function screenshotPage(
+  target: ComponentTarget,
+  rendererDir: string,
+): Promise<{ dataUri: string; foundComponent: boolean }> {
   const distDir = path.join(rendererDir, "dist");
   const htmlFile = resolveHtmlFile(distDir, target.pagePath);
 
@@ -105,13 +117,13 @@ async function screenshotPage(target: ComponentTarget, rendererDir: string): Pro
     const element = page.locator(`[data-eval-component="${target.name}"]`);
     const count = await element.count();
     if (count === 0) {
-      // Fallback: full-page screenshot if attribute not found (older generated components)
       console.warn(`[eval-loop] data-eval-component="${target.name}" not found, falling back to full-page screenshot`);
       const buf = await page.screenshot({ fullPage: true });
-      return `data:image/png;base64,${buf.toString("base64")}`;
+      return { dataUri: `data:image/png;base64,${buf.toString("base64")}`, foundComponent: false };
     }
-    const buf = await element.screenshot();
-    return `data:image/png;base64,${buf.toString("base64")}`;
+    // Use .first() — the same component type may appear multiple times on the page.
+    const buf = await element.first().screenshot();
+    return { dataUri: `data:image/png;base64,${buf.toString("base64")}`, foundComponent: true };
   } finally {
     await browser.close();
   }

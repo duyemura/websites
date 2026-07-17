@@ -131,6 +131,6 @@ export interface TemplateSpec {
   bodyClasses?: string[];
 }
 
-export type TemplateTheme = "baseline" | "impact" | "beanburito";
+export type TemplateTheme = "baseline" | "impact" | "beanburito" | "modern";
 
-export const TEMPLATE_THEMES: TemplateTheme[] = ["baseline", "impact", "beanburito"];
+export const TEMPLATE_THEMES: TemplateTheme[] = ["baseline", "impact", "beanburito", "modern"];

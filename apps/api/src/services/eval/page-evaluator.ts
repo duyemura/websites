@@ -67,7 +67,7 @@ async function loadSite(db: Kysely<DB>, siteUuid: string, workspaceUuid: string)
     .executeTakeFirst();
 }
 
-async function loadGymJson(db: Kysely<DB>, siteUuid: string, workspaceUuid: string): Promise<GymSiteContent | undefined> {
+async function loadGymJson(db: Kysely<DB>, siteUuid: string, workspaceUuid: string, config: Config): Promise<GymSiteContent | undefined> {
   try {
     // Tier 2/managed sites render from the spec-driven generate artifact. Use that
     // as the source of truth for fidelity checks so eval matches the deployed page.
@@ -84,7 +84,7 @@ async function loadGymJson(db: Kysely<DB>, siteUuid: string, workspaceUuid: stri
     const { content } = await buildGymJson(
       db,
       siteUuid,
-      { apiBaseUrl: "", siteUrl: "", workspaceUuid },
+      { apiBaseUrl: "", siteUrl: "", workspaceUuid, appConfig: config },
       workspaceUuid,
     );
     return content;
@@ -135,7 +135,7 @@ export async function evaluatePage(input: PageEvalInput): Promise<PageEvalReport
 
   log(`Evaluating ${url}`);
 
-  const content = await loadGymJson(input.db, input.siteUuid, input.workspaceUuid);
+  const content = await loadGymJson(input.db, input.siteUuid, input.workspaceUuid, input.config);
   if (content) log("Loaded gym.json for business context");
 
   const sharedBrowser = input.browser;

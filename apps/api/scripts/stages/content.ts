@@ -39,6 +39,7 @@ const PAGE_TYPE_FIELDS: Record<string, string> = {
   "trustHeadline": string | null`,
 
   program: `"shortDescription": string | null,
+  "longDescription": string | null /* Full body copy from the page — what the program is, what a typical session looks like, what results members get, any special requirements or prerequisites. Copy directly from the outline where possible. Null if no substantive body text was found. */,
   "whoIsItFor": [string],
   "whatMakesUsDifferent": [string],
   "testimonials": [{"quote": string, "name": string}],
@@ -167,6 +168,7 @@ export function normalizeBrief(raw: unknown, path: string, pageType: string): Pa
       communityHeadline: String(cf.communityHeadline ?? "") || null,
       trustHeadline: String(cf.trustHeadline ?? "") || null,
       shortDescription: String(cf.shortDescription ?? "") || null,
+      longDescription: String(cf.longDescription ?? "") || null,
       whoIsItFor: Array.isArray(cf.whoIsItFor) ? cf.whoIsItFor.map(String) : [],
       whatMakesUsDifferent: Array.isArray(cf.whatMakesUsDifferent) ? cf.whatMakesUsDifferent.map(String) : [],
       gymStory: String(cf.gymStory ?? "") || null,

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ComponentResult } from "../../types/pipeline-artifacts";
 import type { TemplateDocs } from "./doc-writer";
+import { sanitizeAstroComponent } from "./astro-sanitize";
 
 export interface ScaffoldInput {
   templateName: string;
@@ -31,7 +32,7 @@ export function scaffoldTemplate(input: ScaffoldInput): ScaffoldPaths {
 
   fs.mkdirSync(componentsDir, { recursive: true });
   for (const c of input.components) {
-    fs.writeFileSync(path.join(componentsDir, `${c.name}.astro`), c.code, "utf8");
+    fs.writeFileSync(path.join(componentsDir, `${c.name}.astro`), sanitizeAstroComponent(c.code, c.name), "utf8");
   }
 
   fs.writeFileSync(path.join(componentsDir, "index.ts"), buildComponentIndex(name, input.components), "utf8");

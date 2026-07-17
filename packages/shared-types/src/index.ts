@@ -25,6 +25,7 @@ export type {
   TemplateTheme,
 } from "./templates/registry.js";
 export { beanburitoSpec, buildSpecPrompt, buildPageSpecPrompt } from "./templates/beanburito.js";
+export { modernSpec } from "./templates/modern.js";
 export {
   GYM_ICON_CATEGORIES,
   KNOWN_PHOSPHOR_ICONS,

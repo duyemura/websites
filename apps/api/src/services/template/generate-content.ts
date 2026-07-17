@@ -454,7 +454,8 @@ function buildProgramBriefContext(brief: PageBrief): string {
   lines.push(`Original page: ${brief.path} (${brief.purpose || brief.pageType})`);
   if (cf.hero.headline) lines.push(`Hero headline: "${cf.hero.headline}"`);
   if (cf.hero.subheading) lines.push(`Hero subheading: "${cf.hero.subheading}"`);
-  if (cf.body?.length > 20) lines.push(`Body text: ${cf.body.slice(0, 800)}`);
+  if (cf.body?.length > 20) lines.push(`Body text: ${cf.body.slice(0, 1500)}`);
+  if (cf.longDescription && cf.longDescription.length > 20) lines.push(`Long description: ${cf.longDescription.slice(0, 1500)}`);
   if (cf.shortDescription) lines.push(`Short description: ${cf.shortDescription}`);
   if (cf.whoIsItFor?.length) {
     lines.push("Who it's for (from source site):");
@@ -623,7 +624,7 @@ ${siteHierarchy ? siteHierarchy.slice(0, 1200) : "(not available)"}
 ${artifactContext ? artifactContext.slice(0, 1200) : ""}
 
 ### Content found on the original program page
-${briefContext.slice(0, 1500)}
+${briefContext.slice(0, 2500)}
 
 ---
 

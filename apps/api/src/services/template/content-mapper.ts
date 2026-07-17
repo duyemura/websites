@@ -15,6 +15,7 @@ import {
   inferIframeVariant,
   isAllowedIframeSrc,
   sanitizeIframe,
+  TEMPLATE_THEMES,
 } from "@milo/shared-types";
 
 import type {
@@ -1076,6 +1077,22 @@ export interface MapperResult {
 // ── Service area inference ───────────────────────────────────────────────────
 
 /**
+ * Extracts a flat string array from raw LLM text. Exported for unit testing.
+ * Returns [] on any parse failure so callers can fall back gracefully.
+ */
+export function parseServiceAreaResponse(text: string): string[] {
+  const match = text.match(/\[[\s\S]*?\]/);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Asks the LLM for 4-6 nearby neighborhoods/suburbs that residents of a given
  * city commonly travel from to visit a gym. Used to populate the `areaServed`
  * field in LocalBusiness schema for local SEO.
@@ -1088,7 +1105,8 @@ async function inferServiceArea(
   category: string,
   config: Config,
 ): Promise<string[]> {
-  const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${category} (gym/fitness business). Include only real place names, no commentary.
+  const safeCategory = category.replace(/[^\w\s-]/g, "").slice(0, 60) || "gym";
+  const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${safeCategory} (gym/fitness business). Include only real place names, no commentary.
 
 Return a JSON array of strings only, e.g.: ["Round Rock", "Cedar Park", "Pflugerville", "Buda"]`;
 
@@ -1101,11 +1119,7 @@ Return a JSON array of strings only, e.g.: ["Round Rock", "Cedar Park", "Pfluger
       },
       config,
     );
-    const match = response.content.match(/\[[^\]]+\]/);
-    if (!match) return [];
-    const parsed = JSON.parse(match[0]) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return (parsed as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 6);
+    return parseServiceAreaResponse(response.content);
   } catch {
     return [];
   }
@@ -1122,7 +1136,7 @@ export interface MapperConfig {
   appConfig?: Config;
 }
 
-const VALID_TEMPLATE_THEMES = new Set<string>(["baseline", "impact", "beanburito"]);
+const VALID_TEMPLATE_THEMES = new Set<string>(TEMPLATE_THEMES);
 
 export async function buildGymJson(
   db: Kysely<DB>,

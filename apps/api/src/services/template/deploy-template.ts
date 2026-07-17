@@ -12,6 +12,7 @@ import { recordSiteVersion } from "../site-versions";
 import { discoverRoutes, walk } from "../../utils/template/route-discovery.js";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
 import type { PipelineStage } from "../../types/pipeline-artifacts";
+import type { Config } from "../../plugins/env";
 
 const RETRYABLE_S3_CODES = new Set([
   "ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EPIPE",
@@ -91,6 +92,8 @@ export interface DeployTemplateInput {
   siteUrl?: string;
   /** Google Maps API key forwarded to the content mapper for embed URL generation. */
   googleMapsApiKey?: string;
+  /** App config forwarded to the content mapper for LLM-backed features (service-area inference). */
+  appConfig?: Config;
   /** Absolute path to apps/renderer. */
   rendererDir: string;
   label?: string;
@@ -98,7 +101,7 @@ export interface DeployTemplateInput {
 }
 
 async function resolveGymJson(
-  input: Pick<DeployTemplateInput, "db" | "siteUuid" | "workspaceUuid" | "apiBaseUrl" | "siteUrl" | "googleMapsApiKey" | "content" | "templateTheme" | "log">,
+  input: Pick<DeployTemplateInput, "db" | "siteUuid" | "workspaceUuid" | "apiBaseUrl" | "siteUrl" | "googleMapsApiKey" | "appConfig" | "content" | "templateTheme" | "log">,
 ): Promise<unknown> {
   const { db, siteUuid, workspaceUuid, log } = input;
   let gymJson = input.content;
@@ -111,6 +114,7 @@ async function resolveGymJson(
       apiBaseUrl: input.apiBaseUrl ?? "",
       siteUrl: input.siteUrl ?? "",
       googleMapsApiKey: input.googleMapsApiKey,
+      appConfig: input.appConfig,
     }, workspaceUuid);
     if (warnings.length > 0) {
       (log?.warn ?? log?.info ?? (() => undefined))({ siteUuid, warnings }, "content mapper used defaults");

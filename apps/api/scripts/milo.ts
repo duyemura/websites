@@ -630,7 +630,16 @@ async function runTemplate(
   ctx.newTemplateName = cmd.name;
   if (!cmd.quiet) console.log(`\nMilo template — ${cmd.url} (site: ${siteUuid}, name: ${cmd.name})`);
   const totalStart = Date.now();
-  const results = await runPipeline(PIPELINES.template, ctx, registry, cmd);
+  let stageList: string[];
+  if (cmd.stages?.length) {
+    const validSet = new Set<string>(PIPELINES.template);
+    const unknown = cmd.stages.filter((s) => !validSet.has(s));
+    if (unknown.length > 0) console.warn(`[template] Unknown stages ignored: ${unknown.join(", ")}. Valid: ${[...validSet].join(", ")}`);
+    stageList = (PIPELINES.template as readonly string[]).filter((s) => cmd.stages!.includes(s));
+  } else {
+    stageList = [...PIPELINES.template];
+  }
+  const results = await runPipeline(stageList, ctx, registry, cmd);
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }

@@ -88,11 +88,17 @@ export async function generateAstroComponent(
 
 function isValidAstroOutput(code: string): boolean {
   if (!code.startsWith("---")) return false;
-  const afterFrontmatter = code.slice(3);
-  // Reject React/Preact functional components and hooks.
+  const closingFence = code.indexOf("---", 3);
+  if (closingFence === -1) return false; // frontmatter never closed — truncated output
+  const frontmatter = code.slice(3, closingFence);
+  const afterFrontmatter = code.slice(closingFence + 3);
+  // Reject React/Preact patterns.
   if (/\buseState\b/.test(afterFrontmatter)) return false;
   if (/Astro\.Component\b/.test(afterFrontmatter)) return false;
   if (/\bconst\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*return\s*\(/.test(afterFrontmatter)) return false;
+  // Reject JSX in the frontmatter — LLM sometimes writes push(<svg key=...>) patterns.
+  if (/\.push\s*\(\s*<[a-z]/.test(frontmatter)) return false;
+  if (/key=\{/.test(frontmatter)) return false;
   return true;
 }
 

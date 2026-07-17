@@ -31,6 +31,7 @@ export interface PageBrief {
     communityHeadline: string | null;
     trustHeadline: string | null;
     shortDescription: string | null;
+    longDescription: string | null;
     whoIsItFor: string[];
     whatMakesUsDifferent: string[];
     gymStory: string | null;

@@ -25,4 +25,12 @@ describe("page-path normalization", () => {
     expect(normalizePagePath("/about", "/")).toBe("/about");
     expect(normalizePagePath("/about/index.html", "/")).toBe("/about");
   });
+
+  it("treats base-without-trailing-slash as root (redirect target case)", () => {
+    expect(normalizePagePath("/pushpress-site-modern", "/pushpress-site-modern/")).toBe("/");
+  });
+
+  it("does not strip a path that starts with the same prefix as a different subpath", () => {
+    expect(normalizePagePath("/pushpress-site-modern-blog/about", "/pushpress-site-modern/")).toBe("/pushpress-site-modern-blog/about");
+  });
 });

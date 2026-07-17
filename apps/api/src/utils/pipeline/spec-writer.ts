@@ -3,6 +3,9 @@ import type { ComponentGroup } from "./section-grouper";
 
 // Maps semantic prop names (as instructed in astro-generator prompt) to ComponentPropSpec fields.
 // Generated components use these names by convention — headline, subheadline, ctaText, etc.
+// The `source` field wires each prop to its location in GymSiteContent so the template resolver
+// can populate it at render time. Without a source, resolvePropValue returns undefined and the
+// component is skipped. See apps/renderer/src/lib/template-resolver.ts for how sources are consumed.
 const PROP_HINTS: Record<
   string,
   {
@@ -11,16 +14,29 @@ const PROP_HINTS: Record<
     required: boolean;
     guidance: string;
     example: string;
+    source: { kind: string; [k: string]: string };
   }
 > = {
-  headline: { purpose: "Main heading text", type: "string", required: true, guidance: "3-8 words, outcome-focused, active voice", example: "Transform Your Life" },
-  subheadline: { purpose: "Supporting subtitle text", type: "string", required: false, guidance: "1-2 sentences, expand on the headline", example: "Join our community and reach your goals." },
-  ctaText: { purpose: "Call-to-action button label", type: "string", required: false, guidance: "2-4 words, imperative verb, low commitment", example: "Book a free class" },
-  ctaHref: { purpose: "Call-to-action button URL", type: "string", required: false, guidance: "Internal path, e.g. /contact", example: "/contact" },
-  backgroundImageUrl: { purpose: "Background image URL", type: "string", required: false, guidance: "High-res photo, 1440px wide minimum", example: "__NO_IMAGE__" },
-  items: { purpose: "Array of content items for this section", type: "object", required: false, guidance: "2-6 items, each with a title and description", example: "[]" },
-  body: { purpose: "Body/description text", type: "string", required: false, guidance: "1-3 sentences", example: "Join our community of dedicated athletes." },
+  headline: { purpose: "Main heading text", type: "string", required: true, guidance: "3-8 words, outcome-focused, active voice", example: "Transform Your Life", source: { kind: "pageField", path: "hero.headline" } },
+  subheadline: { purpose: "Supporting subtitle text", type: "string", required: false, guidance: "1-2 sentences, expand on the headline", example: "Join our community and reach your goals.", source: { kind: "pageField", path: "hero.subheading" } },
+  ctaText: { purpose: "Call-to-action button label", type: "string", required: false, guidance: "2-4 words, imperative verb, low commitment", example: "Book a free class", source: { kind: "pageField", path: "hero.ctaLabel" } },
+  ctaHref: { purpose: "Call-to-action button URL", type: "string", required: false, guidance: "Internal path, e.g. /contact", example: "/contact", source: { kind: "pageField", path: "hero.ctaUrl" } },
+  backgroundImageUrl: { purpose: "Background image URL", type: "string", required: false, guidance: "High-res photo, 1440px wide minimum", example: "__NO_IMAGE__", source: { kind: "pageField", path: "hero.backgroundImageUrl" } },
+  items: { purpose: "Array of content items for this section", type: "object", required: false, guidance: "2-6 items, each with a title and description", example: "[]", source: { kind: "computed", fn: "features" } }, // default; overridden per-component by inferItemsSource()
+  body: { purpose: "Body/description text", type: "string", required: false, guidance: "1-3 sentences", example: "Join our community of dedicated athletes.", source: { kind: "pageField", path: "gymStory" } },
 };
+
+/** Picks the right computed fn for the `items` prop based on the component's name.
+ *  Using a single `features` default for all sections is wrong — testimonials,
+ *  FAQ, and program cards each need different content from GymSiteContent. */
+function inferItemsSource(componentName: string): { kind: string; [k: string]: string } {
+  const n = componentName.toLowerCase();
+  if (n.includes("testimonial") || n.includes("review")) return { kind: "computed", fn: "testimonials" };
+  if (n.includes("faq") || n.includes("question")) return { kind: "computed", fn: "faq" };
+  if (n.includes("program") || n.includes("class") || n.includes("card")) return { kind: "computed", fn: "programs" };
+  if (n.includes("how") || n.includes("steps") || n.includes("process")) return { kind: "computed", fn: "howItWorks" };
+  return { kind: "computed", fn: "features" };
+}
 
 function inferPropsForComponent(componentName: string): string {
   const name = componentName.toLowerCase();
@@ -56,7 +72,9 @@ function inferPropsForComponent(componentName: string): string {
 
   const entries = unique.map((p) => {
     const spec = PROP_HINTS[p]!;
-    return `        "${p}": { purpose: ${JSON.stringify(spec.purpose)}, type: "${spec.type}", required: ${spec.required}, guidance: ${JSON.stringify(spec.guidance)}, example: ${JSON.stringify(spec.example)} }`;
+    // For `items`, override the default source with one matched to this component.
+    const source = p === "items" ? inferItemsSource(componentName) : spec.source;
+    return `        "${p}": { purpose: ${JSON.stringify(spec.purpose)}, type: "${spec.type}", required: ${spec.required}, guidance: ${JSON.stringify(spec.guidance)}, example: ${JSON.stringify(spec.example)}, source: ${JSON.stringify(source)} }`;
   });
 
   return `props: {\n${entries.join(",\n")}\n      }`;

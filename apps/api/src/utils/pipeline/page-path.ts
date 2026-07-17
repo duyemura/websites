@@ -16,6 +16,9 @@ export function normalizePagePath(pagePath: string, basePathname: string): strin
   let normalized = pagePath;
   if (base !== "/" && normalized.startsWith(base)) {
     normalized = normalized.slice(base.length - 1); // keep leading slash
+  } else if (base !== "/" && normalized === base.slice(0, -1)) {
+    // path equals base without trailing slash (e.g. crawled as redirect target)
+    normalized = "/";
   }
   normalized = normalized.replace(/\/index\.html$/i, "/").replace(/\.html$/i, "");
   if (normalized === "" || normalized === "/") return "/";

@@ -70,6 +70,7 @@ async function loadInitialContent(
   db: Kysely<DB>,
   siteUuid: string,
   workspaceUuid: string,
+  config: Config,
 ): Promise<GymSiteContent | undefined> {
   const generateArtifact = await loadArtifact<GymSiteContent>(
     db,
@@ -83,7 +84,7 @@ async function loadInitialContent(
     const { content: mapped } = await buildGymJson(
       db,
       siteUuid,
-      { apiBaseUrl: "", siteUrl: "", workspaceUuid },
+      { apiBaseUrl: "", siteUrl: "", workspaceUuid, appConfig: config },
       workspaceUuid,
     );
     return mapped;
@@ -124,7 +125,7 @@ export async function runEvalFixLoop(input: EvalFixLoopInput): Promise<EvalFixLo
     throw new Error(`Design system v2 not found for site ${siteUuid}`);
   }
 
-  let content = await loadInitialContent(db, siteUuid, workspaceUuid);
+  let content = await loadInitialContent(db, siteUuid, workspaceUuid, config);
   let currentReport = input.report;
   let loop = 0;
   let totalAppliedHeals = 0;

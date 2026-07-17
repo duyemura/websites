@@ -3,13 +3,64 @@ import GymLayout from "../layouts/GymLayout.astro";
 import BreadcrumbSchema from "../components/seo/BreadcrumbSchema.astro";
 import PageRenderer from "../components/pages/PageRenderer.astro";
 import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
 const about = content.pages.about;
 const { business } = content;
 const title = `About ${business.name} | Gym in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const fallbackDesc = `Learn about ${business.name}, a gym in ${business.geo.city}, ${business.geo.stateAbbr}. ${business.tagline}`;
 const aboutDesc = about.gymStory?.slice(0, 157) || fallbackDesc.slice(0, 157) + (fallbackDesc.length > 157 ? "…" : "");
+const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasAboutPage = !!spec?.pages?.about;
 ---
 <GymLayout title={title} description={aboutDesc} path="/about" image={about.hero.backgroundImageUrl}>
   <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "About", path: "/about" }]} /></Fragment>
-  <PageRenderer pageKey="about" />
+  {hasAboutPage ? (
+    <PageRenderer pageKey="about" />
+  ) : (
+    <>
+      <section class="about-hero" style={`background-image: url('${about.hero.backgroundImageUrl}')`}>
+        <div class="about-hero__inner">
+          <h1>{about.hero.headline}</h1>
+          {about.hero.subheading && <p>{about.hero.subheading}</p>}
+        </div>
+      </section>
+      {about.gymStory && (
+        <section class="about-story">
+          <div class="about-story__inner">
+            <p>{about.gymStory}</p>
+          </div>
+        </section>
+      )}
+    </>
+  )}
 </GymLayout>
+
+<style>
+.about-hero {
+  min-height: 50vh;
+  display: flex;
+  align-items: center;
+  background-size: cover;
+  background-position: center;
+  padding: 4rem 1.5rem;
+}
+.about-hero__inner {
+  max-width: 56rem;
+  margin: 0 auto;
+}
+.about-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+.about-story {
+  padding: 4rem 1.5rem;
+}
+.about-story__inner {
+  max-width: 56rem;
+  margin: 0 auto;
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+</style>

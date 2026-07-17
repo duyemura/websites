@@ -13,7 +13,7 @@ export type MiloCommand =
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "template"; url: string; name: string; verbose: boolean; force: boolean; quiet: boolean };
+  | { cmd: "template"; url: string; name: string; stages?: string[]; verbose: boolean; force: boolean; quiet: boolean };
 
 export const PIPELINES = {
   // Build pipelines stage to staging only. Publishing to production is a
@@ -122,10 +122,12 @@ export function parseArgs(): MiloCommand {
     if (!/^[a-z][a-z0-9-]*$/.test(name)) {
       throw new Error("--name must be lowercase letters, numbers, and hyphens only");
     }
-    if ((TEMPLATE_THEMES as readonly string[]).includes(name)) {
-      throw new Error(`--name "${name}" conflicts with an existing template. Choose a different name.`);
+    if (!bool.force && (TEMPLATE_THEMES as readonly string[]).includes(name)) {
+      throw new Error(`--name "${name}" conflicts with an existing template. Use --force to re-run the pipeline for this template.`);
     }
-    return { cmd: "template", url, name, ...bool };
+    const stagesStr = get("stages");
+    const stages = stagesStr ? stagesStr.split(",").map((s) => s.trim()) : undefined;
+    return { cmd: "template", url, name, stages, ...bool };
   }
 
   // Legacy --stages escape hatch

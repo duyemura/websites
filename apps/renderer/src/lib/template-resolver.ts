@@ -67,15 +67,15 @@ function resolveComputed(
 ): unknown {
   switch (fn) {
     case "valueProps":
-      return (pageData?.valueProps as ValueProp[]) ?? content.pages.home.valueProps;
+      return (pageData?.valueProps as ValueProp[]) ?? content.pages.home.valueProps ?? [];
     case "features":
-      return (pageData?.features as Feature[]) ?? content.pages.home.features;
+      return (pageData?.features as Feature[]) ?? content.pages.home.features ?? [];
     case "howItWorks":
-      return (pageData?.howItWorks as Step[]) ?? content.pages.home.howItWorks;
+      return (pageData?.howItWorks as Step[]) ?? content.pages.home.howItWorks ?? [];
     case "testimonials":
-      return (pageData?.testimonials as Testimonial[]) ?? content.pages.home.testimonials;
+      return (pageData?.testimonials as Testimonial[]) ?? content.pages.home.testimonials ?? [];
     case "faq":
-      return (pageData?.faq as FAQItem[]) ?? content.pages.home.faq;
+      return (pageData?.faq as FAQItem[]) ?? content.pages.home.faq ?? [];
     case "programs": {
       // Return full program objects for the current page's featuredPrograms (or home's).
       const slugs =
@@ -85,7 +85,7 @@ function resolveComputed(
         .filter(Boolean);
     }
     case "serviceArea":
-      return content.business.serviceArea;
+      return content.business.serviceArea ?? [];
     default:
       return undefined;
   }

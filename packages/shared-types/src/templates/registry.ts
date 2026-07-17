@@ -15,6 +15,7 @@
 
 import type { TemplateSpec, TemplateTheme } from "./types.js";
 import { beanburitoSpec } from "./beanburito.js";
+import { modernSpec } from "./modern.js";
 
 export type {
   ComponentPropSource,
@@ -37,6 +38,7 @@ const registry: Record<TemplateTheme, TemplateSpec | null> = {
   baseline: null,
   impact: null,
   beanburito: beanburitoSpec,
+  modern: modernSpec,
 };
 
 /** Look up a template spec by theme. */

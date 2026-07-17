@@ -263,16 +263,29 @@ export function extractContentOutline(html: string): string {
       items.push(`  - ${tag}${childCls ? `.${childCls}` : ""}: "${text}"`);
     });
 
-    // First 3 meaningful paragraphs
+    // First 5 meaningful paragraphs (cap raised from 3; char cap raised from 400 → 600)
     let pCount = 0;
     $el.find("p").each((_, child) => {
-      if (pCount >= 3) return;
+      if (pCount >= 5) return;
       const text = $(child).text().replace(/\s+/g, " ").trim();
-      if (text && text.length > 20 && text.length < 400) {
+      if (text && text.length > 20 && text.length < 600) {
         items.push(`  - p: "${text}"`);
         pCount++;
       }
     });
+    // Fallback: when a section has fewer than 2 <p> tags, also capture text from
+    // direct child <div> and <span> elements so content-in-divs isn't silently lost.
+    if (pCount < 2) {
+      let divCount = 0;
+      $el.find("> div, > span").each((_, child) => {
+        if (divCount >= 3) return;
+        const text = $(child).text().replace(/\s+/g, " ").trim();
+        if (text && text.length > 20 && text.length < 400) {
+          items.push(`  - ${child.tagName.toLowerCase()}: "${text}"`);
+          divCount++;
+        }
+      });
+    }
 
     if (items.length > 0) {
       sections.push(`- ${type}:\n${items.join("\n")}`);
@@ -291,9 +304,9 @@ export function extractContentOutline(html: string): string {
     });
     let pCount = 0;
     $("body").find("p").each((_, child) => {
-      if (pCount >= 3) return;
+      if (pCount >= 5) return;
       const text = $(child).text().replace(/\s+/g, " ").trim();
-      if (text && text.length > 20 && text.length < 400) {
+      if (text && text.length > 20 && text.length < 600) {
         items.push(`  - p: "${text}"`);
         pCount++;
       }
