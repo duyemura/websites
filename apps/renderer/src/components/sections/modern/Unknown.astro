@@ -15,20 +15,33 @@ const { headline = "", body = "" } = Astro.props;
 
 <style>
 .unknown-section {
-  padding: 4rem 1.5rem;
-  background-color: var(--color-primary, #ffffff);
-  color: var(--color-text, #000000);
+  padding: 8rem 2rem;
+  background-color: #111111;
+  color: #ffffff;
+  text-align: center;
 }
 .unknown-section__inner {
   max-width: 56rem;
   margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .unknown-section h2 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
+  font-size: 3.5rem;
+  font-weight: 900;
+  margin: 0 0 2rem;
+  color: #ffffff;
+  line-height: 1.05;
+  text-align: center;
 }
 .unknown-section p {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+  max-width: 42rem;
+  margin: 0 auto;
+  text-align: center;
 }
 </style>

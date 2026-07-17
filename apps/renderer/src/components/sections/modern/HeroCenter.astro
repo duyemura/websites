@@ -1,98 +1,138 @@
 ---
-export interface Props {
-  headline?: string;
-  subheadline?: string;
-  ctaText?: string;
-  ctaHref?: string;
-  // Spec provides backgroundImageUrl (from hero.backgroundImageUrl)
-  backgroundImageUrl?: string;
+interface Props {
+  headline: string;
+  subheadline: string;
+  ctaText: string;
+  ctaHref: string;
+  imageUrl: string;
+  imageAlt: string;
 }
 
-const { headline, subheadline, ctaText, ctaHref, backgroundImageUrl } = Astro.props;
-const hasImage = backgroundImageUrl && backgroundImageUrl !== "__NO_IMAGE__";
+const { headline, subheadline, ctaText, ctaHref, imageUrl, imageAlt } = Astro.props;
 ---
 
-<section data-eval-component="HeroCenter" id="index-seg-1" class="hero-center" style={hasImage ? `background-image: url(${backgroundImageUrl}); background-size: cover; background-position: center;` : ""}>
-  <div class="hero-content">
-    {headline && <h1 class="headline">{headline}</h1>}
-    {subheadline && <p class="subheadline">{subheadline}</p>}
-    {ctaText && ctaHref && <a href={ctaHref} class="button">{ctaText}</a>}
+<section data-eval-component="HeroCenter" class="hero-center-section">
+  <div class="container">
+    <div class="content-wrapper">
+      <h1 class="headline">{headline}</h1>
+      <p class="subheadline">{subheadline}</p>
+      <a href={ctaHref} class="cta-button">{ctaText}</a>
+    </div>
+    <div class="image-wrapper">
+      <img src={imageUrl} alt={imageAlt} loading="eager" class="hero-image" />
+    </div>
   </div>
 </section>
 
 <style>
-  .hero-center {
+  .hero-center-section {
+    padding-top: 100px; /* Larger padding-top */
+    padding-bottom: 100px; /* Larger padding-bottom */
+    background-color: #0d0d21; /* Darker background color */
     display: flex;
     flex-direction: column;
     align-items: center;
-    text-align: center;
-    padding-top: 0px;
-    padding-bottom: 0px;
-    background-color: rgb(241, 241, 241);
-    font-family: sans-serif; /* Default font, adjust if specific font is provided in global CSS */
+    justify-content: center;
+    text-align: left; /* Aligned left */
+    min-height: 100vh;
+    box-sizing: border-box;
   }
 
-  .hero-content {
-    padding: 20px;
-    max-width: 375px;
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Align items to the start for left alignment */
+    width: 100%;
+    max-width: 1440px;
+    padding: 40px 20px;
+    box-sizing: border-box;
+  }
+
+  .content-wrapper {
+    margin-bottom: 40px;
+    max-width: 900px; /* Constrain content width */
   }
 
   .headline {
-    font-size: 36px;
-    line-height: 1.2;
-    margin-bottom: 16px;
-    color: #333; /* Placeholder, adjust if specific color is provided */
+    font-size: 3.5rem; /* Larger font-size */
+    line-height: 1.1;
+    margin-bottom: 20px;
+    color: #f0f0f0; /* Darker color (closer to white but not pure white) */
+    font-weight: 800;
   }
 
   .subheadline {
-    font-size: 18px;
-    line-height: 1.5;
-    margin-bottom: 24px;
-    color: #555; /* Placeholder, adjust if specific color is provided */
+    font-size: 20px; /* Larger font-size */
+    line-height: 1.6;
+    margin-bottom: 30px;
+    color: #b0b0b0; /* Darker color */
   }
 
-  .button {
+  .cta-button {
     display: inline-block;
-    padding: 12px 24px;
-    background-color: #007bff; /* Example color, adjust if specific color is provided */
+    padding: 18px 40px; /* Larger padding */
+    background-color: #007bff; /* Solid blue background */
     color: white;
     text-decoration: none;
-    border-radius: 5px;
-    font-weight: bold;
+    border-radius: 12px; /* Larger border-radius */
+    font-weight: 700;
+    font-size: 1.1rem; /* Larger font-size */
     transition: background-color 0.3s ease;
   }
 
-  .button:hover {
-    background-color: #0056b3; /* Example hover color */
+  .cta-button:hover {
+    background-color: #0056b3; /* Darker blue on hover */
   }
 
-  @media (min-width: 1440px) {
-    .hero-center {
-      flex-direction: column;
-      justify-content: center;
-      padding-top: 0px;
-      padding-bottom: 0px;
-      height: auto;
-    }
+  .image-wrapper {
+    width: 100%;
+    max-width: 1000px; /* Larger max-width for the image */
+    margin-top: 40px; /* Add some space above the image */
+  }
 
-    .hero-content {
-      max-width: 800px;
-      padding: 60px 40px;
-    }
+  .hero-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 16px; /* Larger border-radius */
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); /* Larger, darker shadow */
+  }
 
+  /* Mobile-first @media breakpoints */
+  @media (min-width: 375px) {
     .headline {
-      font-size: 64px;
-      margin-bottom: 24px;
+      font-size: 4rem; /* Larger font size */
     }
 
     .subheadline {
-      font-size: 22px;
-      margin-bottom: 32px;
+      font-size: 22px; /* Larger font size */
+    }
+  }
+
+  @media (min-width: 1440px) {
+    .container {
+      flex-direction: column;
+      justify-content: center;
+      padding: 120px 80px; /* Larger padding */
     }
 
-    .button {
-      padding: 16px 32px;
-      font-size: 20px;
+    .content-wrapper {
+      margin-bottom: 80px; /* Larger margin */
+    }
+
+    .headline {
+      font-size: 5.5rem; /* Larger font size */
+      margin-bottom: 40px; /* Larger margin */
+    }
+
+    .subheadline {
+      font-size: 26px; /* Larger font size */
+      margin-bottom: 50px; /* Larger margin */
+      max-width: 900px;
+    }
+
+    .image-wrapper {
+      max-width: 1200px; /* Even larger max-width for the image */
     }
   }
 </style>

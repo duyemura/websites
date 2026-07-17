@@ -79,8 +79,9 @@ export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
   const hasProgramSection =
     hasTag("feature-grid") || hasTag("program-cards-sticky");
 
+  // Use 3 programs when program-cards-sticky is detected — fills a 3-column card grid.
   const featuredPrograms = hasProgramSection
-    ? ["group-fitness", "personal-training"]
+    ? ["group-fitness", "personal-training", "open-gym"]
     : [];
 
   const programPages: GymSiteContent["pages"]["programs"] = hasProgramSection
@@ -121,6 +122,26 @@ export function buildFixture(synthesize: SynthesizeArtifact): GymSiteContent {
             steps: ["Assessment session", "Custom program built", "Train and progress"],
           },
           whoIsItFor: ["Anyone with specific goals", "People returning from injury", "Athletes"],
+          gettingStarted: [step(1), step(2), step(3)],
+          testimonials: hasTag("testimonial-band") ? [testimonial] : [],
+          faq: hasTag("faq-block") ? [faqItem(1), faqItem(2)] : [],
+        },
+        {
+          slug: "open-gym",
+          name: "Open gym",
+          shortDescription: "Train on your own schedule with full equipment access.",
+          coverImageUrl: "__NO_IMAGE__",
+          hero: { ...hero, headline: "Open gym" },
+          whatIsIt: {
+            headline: "What is open gym?",
+            body: "Unlimited access to all equipment and facilities.",
+          },
+          whatMakesUsDifferent: ["Flexible hours", "Full equipment access", "Expert staff on site"],
+          whatToExpect: {
+            headline: "What to expect",
+            steps: ["Choose your time", "Access the floor", "Train at your pace"],
+          },
+          whoIsItFor: ["Self-directed athletes", "Members with a plan", "Anyone who wants flexibility"],
           gettingStarted: [step(1), step(2), step(3)],
           testimonials: hasTag("testimonial-band") ? [testimonial] : [],
           faq: hasTag("faq-block") ? [faqItem(1), faqItem(2)] : [],

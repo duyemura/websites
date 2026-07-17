@@ -19,15 +19,25 @@ type ChatFn = (req: {
 const PROMPT = `Compare these two screenshots of the same website section.
 Image 1 is the original design. Image 2 is the generated Astro component rendered in a browser.
 
-IMPORTANT: Ignore specific text content and placeholder images — you are comparing DESIGN ONLY:
-- Layout and composition (columns, grid, alignment, proportions)
-- Background colors, gradients, and overlay opacity
-- Typography: font sizes, font weights, letter-spacing, line-height
-- Spacing: padding, margins, gaps between elements
-- Borders, border-radius, box-shadows
-- Overall visual hierarchy and structure
+SCORING RULES (read carefully before scoring):
+1. IGNORE all background images — sections that use a hero image in the original should be compared
+   as if both have the same solid color/gradient background. A missing hero photo is NOT a design
+   difference; focus only on layout, typography, and spacing that exists independent of the image.
+2. IGNORE text content differences (placeholder text vs real copy).
+3. DO compare:
+   - Section layout: columns, rows, grid structure, element alignment and proportions
+   - Typography: approximate font sizes, font weights, letter-spacing, line-height
+   - Spacing: padding, margins, gaps between elements
+   - Color treatment of UI elements: card backgrounds, button colors, text colors
+   - Borders, border-radius, box-shadows on cards, buttons, and UI elements
+   - Number and arrangement of visual blocks (how many cards, columns, rows)
 
-Score visual fidelity 0-100 (100 = identical design, ignoring placeholder content). List up to 8 of the most important DESIGN differences as specific CSS fixes. Keep each issue description brief.
+A score of 85+ means the layout structure, typography hierarchy, and spacing are a close match,
+even if the exact pixel values differ slightly.
+A score of 65 means major layout or typography differences exist.
+A score below 50 means the section type or structure is fundamentally different.
+
+Score visual fidelity 0-100. List up to 8 DESIGN differences as specific CSS fixes.
 
 Respond with JSON only — no explanation, no markdown:
 {
