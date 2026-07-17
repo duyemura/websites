@@ -35,6 +35,8 @@ async function loadRegistry(): Promise<Record<string, StageRunner>> {
     ["template-eval", "./stages/template-eval.js"],
     ["publish", "./stages/publish.js"],
     ["restore", "./stages/restore.js"],
+    ["synthesize", "./stages/synthesize.js"],
+    ["component-eval", "./stages/component-eval.js"],
   ];
   for (const [name, path] of stageModules) {
     try {
@@ -616,6 +618,20 @@ async function runPublish(
   return runTool("publish", cmd, registry);
 }
 
+async function runTemplate(
+  cmd: Extract<MiloCommand, { cmd: "template" }>,
+  registry: Record<string, StageRunner>,
+): Promise<StageResult[]> {
+  const { siteUuid, workspaceUuid } = await createNewSite(cmd.url, cmd.force);
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free" });
+  ctx.newTemplateName = cmd.name;
+  if (!cmd.quiet) console.log(`\nMilo template — ${cmd.url} (site: ${siteUuid}, name: ${cmd.name})`);
+  const totalStart = Date.now();
+  const results = await runPipeline(PIPELINES.template, ctx, registry, cmd);
+  renderReport(results, Date.now() - totalStart, cmd.quiet);
+  return results;
+}
+
 async function main() {
   const cmd = parseArgs();
   const registry = await loadRegistry();
@@ -631,7 +647,8 @@ async function main() {
     case "eval":    results = await runEval(cmd); break;
     case "eval-fix": results = await runEvalFix(cmd); break;
     case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
-    case "restore": results = await runRestore(cmd, registry); break;
+    case "restore":  results = await runRestore(cmd, registry); break;
+    case "template": results = await runTemplate(cmd, registry); break;
     default: {
       const c = cmd as MiloCommand;
       console.error(`Handler for "${(c as { cmd: string }).cmd}" not implemented.`);

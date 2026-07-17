@@ -1,29 +1,89 @@
 ---
 import { content } from "../../../lib/content";
+import type { CtaArtwork } from "../../../types/gym-content";
+
 const { business } = content;
-const props = Astro.props as { headline: string; subtext?: string; ctaLabel?: string; ctaUrl?: string };
+const props = Astro.props as {
+  headline: string;
+  subtext?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  /** Omit to use the template default artwork; set to `null` to remove it. */
+  artwork?: CtaArtwork | null;
+};
+
 const headline = props.headline;
 const subtext = props.subtext;
 const ctaLabel = props.ctaLabel ?? business.primaryCta.label;
 const ctaUrl = props.ctaUrl ?? business.primaryCta.url;
+
+// Beanburito default CTA artwork — matches the source template's Frame (4).svg.
+const DEFAULT_ARTWORK_URL = "/assets/beanburito/cta-artwork.svg";
+
+const artwork = props.artwork;
+const showArtwork = artwork !== null;
+
+function artworkStyle(a: CtaArtwork): string {
+  const position = a.position ?? "97% 60%";
+  const size = a.size ?? "auto 169%";
+  const opacity = a.opacity ?? 0.5;
+  if (a.kind === "image") {
+    return `background-image:url('${a.value}');background-position:${position};background-size:${size};background-repeat:no-repeat;opacity:${opacity};`;
+  }
+  // Inline SVG — encode as a data URI so it can be used as a CSS background.
+  const encoded = encodeURIComponent(a.value).replace(/'/g, "%27");
+  return `background-image:url('data:image/svg+xml,${encoded}');background-position:${position};background-size:${size};background-repeat:no-repeat;opacity:${opacity};`;
+}
 ---
-<section data-section="ctaBand" data-section-tag="cta-band" class="section-skew overflow-hidden bg-white text-center text-black">
-  <div class="section-inner mx-auto max-w-4xl px-6 lg:px-10">
-    <h2 class="font-heading text-3xl font-black uppercase tracking-tight md:text-4xl lg:text-5xl">{headline}</h2>
-    {subtext && <p class="mx-auto mt-4 max-w-2xl text-black/70">{subtext}</p>}
-    {ctaLabel && ctaUrl && (
-      <div class="mt-8 flex flex-wrap justify-center gap-4">
-        <a
-          href={ctaUrl}
-          data-track="contact"
-          class="cta-skew group inline-flex items-center gap-4 border-2 border-[var(--color-accent)] bg-[var(--color-accent)] px-8 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition hover:bg-transparent hover:text-black"
-        >
-          {ctaLabel}
-          <svg width="12" height="18" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" class="transition-transform group-hover:translate-x-1">
-            <path d="M1 1l5 5-5 5" />
-          </svg>
-        </a>
-      </div>
-    )}
+
+<section
+  data-section="ctaBand"
+  data-section-tag="cta-band"
+  class="section-skew relative overflow-hidden bg-[var(--color-accent)] text-center text-white"
+>
+  {
+    showArtwork && (
+      <div
+        class="pointer-events-none absolute inset-0 z-0"
+        aria-hidden="true"
+        style={
+          artwork
+            ? artworkStyle(artwork)
+            : "background-image:url('/assets/beanburito/cta-artwork.svg');background-position:97% 60%;background-size:auto 169%;background-repeat:no-repeat;opacity:0.5;"
+        }
+      />
+    )
+  }
+
+  <div class="section-inner relative z-10 mx-auto max-w-[46em] px-6 lg:px-10">
+    <h2 class="font-heading text-3xl font-black uppercase leading-[0.95] tracking-tight text-white md:text-4xl lg:text-5xl">
+      {headline}
+    </h2>
+    {subtext && <p class="mx-auto mt-4 max-w-2xl text-lg text-white/90">{subtext}</p>}
+    {
+      ctaLabel && ctaUrl && (
+        <div class="mt-8 flex flex-wrap justify-center gap-4">
+          <a
+            href={ctaUrl}
+            data-track="contact"
+            class="cta-skew group inline-flex items-center gap-4 bg-black px-10 py-4 font-heading text-sm font-black uppercase tracking-wide text-white transition-transform duration-300 hover:scale-105"
+          >
+            <span class="cta-skew-content">{ctaLabel}</span>
+            <svg
+              width="12"
+              height="18"
+              viewBox="0 0 8 12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              aria-hidden="true"
+              class="transition-transform group-hover:translate-x-1"
+            >
+              <path d="M1 1l5 5-5 5" />
+            </svg>
+          </a>
+        </div>
+      )
+    }
   </div>
 </section>

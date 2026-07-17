@@ -49,6 +49,8 @@ export interface PageBrief {
       description: string | null;
       features: string[];
     }>;
+    /** True if the source pricing page uses a lead/request-a-quote form instead of listing prices. */
+    hasPricingForm: boolean | null;
   };
   contentMissing: string[];
   generationHint: string;

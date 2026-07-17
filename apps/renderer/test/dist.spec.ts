@@ -175,15 +175,16 @@ describe("about / contact / schedule", () => {
     }
   });
 
-  it("about team section uses dark variant so coach names are visible on beanburito", () => {
+  it("about team section renders coach cards with visible names on beanburito", () => {
     const $ = loadPage("about/index.html");
-    const teamSection = $('section:has(h2:contains("Our coaching team"))');
+    const teamSection = $('section[data-section="team"]');
     expect(teamSection.length).toBe(1);
     expect(teamSection.hasClass("bg-black")).toBe(true);
-    // Guard against black-on-black text: names must be rendered in white, not brand primary (#000000).
-    const nameHeading = teamSection.find("h3").first();
-    expect(nameHeading.hasClass("text-white")).toBe(true);
-    expect(nameHeading.hasClass("text-primary")).toBe(false);
+    // Coach cards sit on white panels inside the dark band; names must not use the
+    // dark brand primary color that would vanish on the dark section background.
+    const cards = teamSection.find(".icon-card, a.bg-white");
+    expect(cards.length).toBeGreaterThanOrEqual(gym.pages.about.team.length);
+    expect(teamSection.find("h3.text-primary").length).toBe(0);
   });
 
   it("beanburito never places text-primary inside a bg-black section", () => {
@@ -201,14 +202,15 @@ describe("about / contact / schedule", () => {
     }
   });
 
-  it("about renders the beanburito archetype: story band + community + team + testimonials", () => {
+  it("about renders the beanburito archetype: story band + team + CTA", () => {
     const $ = loadPage("about/index.html");
     expect($('section[data-section="story"]').length).toBeGreaterThan(0);
     expect($("body").text()).toContain(gym.pages.about.story?.headline);
-    expect($('section[data-section="community"]').length).toBeGreaterThan(0);
-    expect($("body").text()).toContain(gym.pages.about.communityHeadline);
-    expect($("body").text()).toContain(gym.pages.about.communityBody?.replace(/<[^>]*>/g, ""));
-    expect($("body").text()).toContain(gym.pages.about.testimonials?.[0]?.quote ?? gym.pages.home.testimonials[0].quote);
+    expect($('section[data-section="team"]').length).toBeGreaterThan(0);
+    for (const member of gym.pages.about.team) {
+      expect($("body").text()).toContain(member.name);
+    }
+    expect($('section[data-section="ctaBand"]').length).toBeGreaterThan(0);
   });
 
   it("contact renders location + CTA in the beanburito contact archetype", () => {

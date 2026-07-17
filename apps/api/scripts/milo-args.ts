@@ -11,7 +11,8 @@ export type MiloCommand =
   | { cmd: "publish"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
-  | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean };
+  | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "template"; url: string; name: string; verbose: boolean; force: boolean; quiet: boolean };
 
 export const PIPELINES = {
   // Build pipelines stage to staging only. Publishing to production is a
@@ -19,6 +20,7 @@ export const PIPELINES = {
   new:     ["enrich", "crawl", "docgen", "content", "generate", "template", "template-eval", "eval"] as const,
   upgrade: ["generate", "template", "template-eval", "eval"] as const,
   rebuild: ["generate", "template", "template-eval", "eval"] as const,
+  template: ["extract", "segment", "contract", "synthesize", "component-eval"] as const,
 } as const;
 
 export function parseArgs(): MiloCommand {
@@ -111,6 +113,17 @@ export function parseArgs(): MiloCommand {
     return { cmd: "restore", site, version, ...bool };
   }
 
+  if (subcommand === "template") {
+    const url = get("url");
+    const name = get("name");
+    if (!url) throw new Error("milo template requires --url <url>");
+    if (!name) throw new Error("milo template requires --name <templatename>");
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+      throw new Error("--name must be lowercase letters, numbers, and hyphens only");
+    }
+    return { cmd: "template", url, name, ...bool };
+  }
+
   // Legacy --stages escape hatch
   const stagesStr = get("stages");
   const url = get("url");
@@ -129,15 +142,16 @@ export function parseArgs(): MiloCommand {
   throw new Error(
     `Unknown command: "${subcommand ?? "(none)"}"\n` +
     `Usage:\n` +
-    `  milo new     --url <url> [--theme x] [--tier free|paid]\n` +
-    `  milo upgrade --site <uuid> [--theme x]\n` +
-    `  milo rebuild --site <uuid> [--theme x]\n` +
-    `  milo publish --site <uuid>\n` +
-    `  milo page    --site <uuid> --path /slug\n` +
-    `  milo eval    --site <uuid> [--path /slug] [--url <url>] [--keywords k1,k2]\n` +
+    `  milo new      --url <url> [--theme x] [--tier free|paid]\n` +
+    `  milo upgrade  --site <uuid> [--theme x]\n` +
+    `  milo rebuild  --site <uuid> [--theme x]\n` +
+    `  milo publish  --site <uuid>\n` +
+    `  milo page     --site <uuid> --path /slug\n` +
+    `  milo eval     --site <uuid> [--path /slug] [--url <url>] [--keywords k1,k2]\n` +
     `  milo eval-fix --site <uuid> [--eval-uuid <uuid>] [--path /slug] [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
-    `  milo nav     --site <uuid>\n` +
-    `  milo restore --site <uuid> --version <n>\n` +
+    `  milo nav      --site <uuid>\n` +
+    `  milo restore  --site <uuid> --version <n>\n` +
+    `  milo template --url <url> --name <templatename>\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,
   );
 }

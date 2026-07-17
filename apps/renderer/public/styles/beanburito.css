@@ -159,6 +159,18 @@
   transform: skewY(calc(-1 * var(--bb-skew-angle)));
 }
 
+/* Subtle accent connector above the value-props headline so the white band
+   feels visually anchored to the preceding dark section. */
+.theme-beanburito .icon-card-grid--value-props .icon-card-grid__headline-wrap {
+  text-align: center;
+}
+.theme-beanburito .icon-card-grid--value-props .icon-card-grid__connector {
+  margin: 0 auto 1rem;
+  width: 3rem;
+  height: 4px;
+  background-color: var(--color-accent);
+}
+
 .theme-beanburito .icon-card-grid--value-props .icon-card-grid__items {
   display: grid;
   gap: 2.5rem;

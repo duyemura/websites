@@ -28,6 +28,24 @@ import { loadArtifact } from "../../utils/pipeline/artifact-store";
 import { hexSaturation } from "../../utils/site-blueprint";
 import type { ContractArtifact, SectionContract } from "../../types/section-contract";
 import type { EnrichArtifact } from "../../types/enrich-artifact";
+import type { MirrorCrawlArtifact } from "../../types/mirror";
+
+// ── Static page fallback headlines ───────────────────────────────────────────
+
+/** Hardcoded fallback H1s for static utility pages. Kept in one place so the
+ *  generation stage can tell which heroes came from fallback defaults and
+ *  replace them with nav-label-derived headlines. */
+export const STATIC_PAGE_FALLBACK_HEADLINES: Record<
+  "about" | "pricing" | "contact" | "schedule" | "localGuide" | "blog",
+  string
+> = {
+  about: "About us",
+  pricing: "Pricing",
+  contact: "Get in touch",
+  schedule: "Class schedule",
+  localGuide: "Local guide",
+  blog: "Blog",
+};
 
 // ── State abbr lookup ────────────────────────────────────────────────────────
 
@@ -199,6 +217,41 @@ function formatGmbHours(listingHours: { day: string; open?: string; close?: stri
   }));
 }
 
+const CATEGORY_TYPE_LABELS: Record<string, string> = {
+  crossfit_box: "CrossFit gym",
+  gym: "gym",
+  fitness_center: "gym",
+  yoga_studio: "yoga studio",
+  boxing_gym: "boxing gym",
+  martial_arts_school: "martial arts gym",
+  barre_studio: "barre studio",
+  pilates_studio: "Pilates studio",
+  spin_studio: "spin studio",
+  boot_camp: "boot camp",
+  health_club: "health club",
+  weightlifting_club: "weightlifting gym",
+  personal_trainer: "personal training studio",
+  sports_club: "sports club",
+  physical_therapist: "physical therapy clinic",
+  chiropractic_clinic: "chiropractic clinic",
+  massage_therapist: "massage therapy studio",
+};
+
+function friendlyCategory(primaryType: string | undefined): string | undefined {
+  if (!primaryType) return undefined;
+  const lower = primaryType.toLowerCase();
+  if (CATEGORY_TYPE_LABELS[lower]) return CATEGORY_TYPE_LABELS[lower];
+  return lower.replace(/_/g, " ");
+}
+
+function mergeHero(base: HeroContent, generated: Partial<HeroContent> | undefined): HeroContent {
+  if (!generated) return base;
+  const defined = Object.fromEntries(
+    Object.entries(generated).filter(([, v]) => v !== undefined),
+  );
+  return { ...base, ...defined } as HeroContent;
+}
+
 // ── Generated about-page merge ───────────────────────────────────────────────
 
 /**
@@ -214,7 +267,7 @@ export function mergeGeneratedAboutContent(
 ): AboutContent {
   const merged: AboutContent = { ...about };
   if (generated?.hero) {
-    merged.hero = { ...merged.hero, ...generated.hero };
+    merged.hero = mergeHero(merged.hero, generated.hero);
   }
   if (generated?.story) {
     merged.story = { ...merged.story, ...generated.story };
@@ -381,6 +434,8 @@ export function extractBusiness(
     ? { ratingValue: String(listing.rating), reviewCount: listing.userRatingCount ?? 0 }
     : baseline.aggregateRating;
 
+  const enrichCategory = friendlyCategory(listing?.primaryType);
+
   // ── Markdown fallback extraction ───────────────────────────────────────────
   const labelLine = (label: string): string =>
     markdown.match(new RegExp(`(?:-\\s+)?\\*\\*${label}\\*\\*:\\s*(.+)`, "i"))?.[1]?.trim() ?? "";
@@ -440,10 +495,12 @@ export function extractBusiness(
     : baseline.primaryCta;
 
   const hours = enrichHours.length > 0 ? enrichHours : [];
+  const category = enrichCategory || labelLine("Category") || undefined;
 
   return {
     name,
     tagline,
+    category,
     address: { street, city, state: stateAbbr, zip },
     phone,
     email,
@@ -605,7 +662,7 @@ function addIframeToPage(
 
 export function extractPages(
   hierarchy: SiteHierarchy,
-  business: Pick<BusinessInfo, "name" | "primaryCta" | "geo">,
+  business: Pick<BusinessInfo, "name" | "category" | "primaryCta" | "geo">,
   warnings: string[],
   contract: ContractArtifact | null = null,
 ): PageContent {
@@ -694,6 +751,11 @@ export function extractPages(
     };
   }
 
+  const city = business.geo?.city ?? "";
+  const stateAbbr = business.geo?.stateAbbr ?? "";
+  const location = city ? (stateAbbr ? `${city}, ${stateAbbr}` : city) : "";
+  const categoryPhrase = business.category || "gym";
+
   const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
     slug: p.slug,
     name: p.name,
@@ -701,7 +763,7 @@ export function extractPages(
     coverImageUrl: NO_IMAGE,
     hero: {
       headline: `Try our ${p.name}`,
-      subheading: "",
+      subheading: location ? `${p.name} classes in ${location}` : `${p.name} classes`,
       ctaLabel: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.label,
       ctaUrl: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.url,
       backgroundImageUrl: NO_IMAGE,
@@ -712,19 +774,26 @@ export function extractPages(
   }));
 
   const programs: ProgramContent[] = programPages.length > 0
-    ? programPages.map((p) => ({
-        slug: p.slug,
-        name: p.title,
-        shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160) || programDescriptions[p.slug] || `Coach-led ${p.title.toLowerCase()} sessions designed for real results.`.slice(0, 160),
-        coverImageUrl: p.heroImageUrl || placeholderImage(p.title, 800, 600),
-        hero: {
-          ...heroFromPage(p),
-          backgroundImageUrl: p.heroImageUrl || placeholderImage(p.title, 1600, 900),
-        },
-        ...defaultProgramContent(p.title),
-        testimonials: [],
-        faq: [],
-      }))
+    ? programPages.map((p) => {
+        const baseHero = heroFromPage(p);
+        const programEyebrow = baseHero.subheading
+          ? baseHero.subheading
+          : (location ? `${p.title} classes in ${location}` : `${p.title} classes`);
+        return {
+          slug: p.slug,
+          name: p.title,
+          shortDescription: (p.sections.find((s) => s.tag === "hero")?.content.body ?? "").slice(0, 160) || programDescriptions[p.slug] || `Coach-led ${p.title.toLowerCase()} sessions designed for real results.`.slice(0, 160),
+          coverImageUrl: p.heroImageUrl || placeholderImage(p.title, 800, 600),
+          hero: {
+            ...baseHero,
+            subheading: programEyebrow,
+            backgroundImageUrl: p.heroImageUrl || placeholderImage(p.title, 1600, 900),
+          },
+          ...defaultProgramContent(p.title),
+          testimonials: [],
+          faq: [],
+        };
+      })
     : defaultPrograms;
 
   // Helper for contextual page hero fallbacks when site-hierarchy lacks a distinct page.
@@ -734,28 +803,30 @@ export function extractPages(
       const fromHierarchy = heroFromPage(page);
       if (fromHierarchy.headline) return fromHierarchy;
     }
-    const city = business.geo?.city ?? "";
-    const stateAbbr = business.geo?.stateAbbr ?? "";
-    const location = city ? (stateAbbr ? `${city}, ${stateAbbr}` : city) : "";
     const base: HeroContent = {
       headline: business.name || DEFAULT_BUSINESS_NAME,
       backgroundImageUrl: NO_IMAGE,
     };
     switch (pageKey) {
       case "about":
-        base.headline = location ? `About ${business.name} in ${location}` : `About ${business.name}`;
+        base.subheading = location ? `About our ${categoryPhrase} in ${location}` : `About our ${categoryPhrase}`;
+        base.headline = STATIC_PAGE_FALLBACK_HEADLINES.about;
         break;
       case "pricing":
-        base.headline = location ? `Memberships and rates in ${location}` : "Memberships and rates";
+        base.subheading = location ? `Memberships and rates in ${location}` : "Memberships and rates";
+        base.headline = STATIC_PAGE_FALLBACK_HEADLINES.pricing;
         break;
       case "contact":
-        base.headline = location ? `Visit us in ${location}` : "Get in touch";
+        base.subheading = location ? `${categoryPhrase} in ${location}` : categoryPhrase;
+        base.headline = STATIC_PAGE_FALLBACK_HEADLINES.contact;
         break;
       case "schedule":
-        base.headline = location ? `Class schedule in ${location}` : "Class schedule";
+        base.subheading = location ? `${categoryPhrase} in ${location}` : categoryPhrase;
+        base.headline = STATIC_PAGE_FALLBACK_HEADLINES.schedule;
         break;
       case "localGuide":
-        base.headline = location ? `Your fitness guide to ${location}` : "Local fitness guide";
+        base.subheading = location ? `Local fitness guide to ${location}` : "Local fitness guide";
+        base.headline = STATIC_PAGE_FALLBACK_HEADLINES.localGuide;
         break;
     }
     return base;
@@ -789,7 +860,7 @@ export function extractPages(
     richContent: [],
   };
 
-  const blog: BlogContent = { heroHeadline: "Our Blog", posts: [] };
+  const blog: BlogContent = { heroHeadline: "Fitness tips & news", posts: [] };
 
   const legal: LegalPage[] = byClass("legal").map((p) => ({
     slug: p.slug,
@@ -862,7 +933,8 @@ function defaultLegalPages(business: BusinessInfo): LegalPage[] {
   const email = escapeHtml(business.email || "");
   const privacyEmail = email || `privacy@${business.name.toLowerCase().replace(/\s+/g, "")}.com`;
   const supportEmail = email || `support@${business.name.toLowerCase().replace(/\s+/g, "")}.com`;
-  const year = new Date().getFullYear();
+  const today = new Date();
+  const lastUpdated = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   return [
     {
       slug: "privacy-policy",
@@ -881,7 +953,7 @@ function defaultLegalPages(business: BusinessInfo): LegalPage[] {
           <p>We may share information with trusted service providers who help us operate our business (for example, payment processors and scheduling platforms). We do not sell your personal information.</p>
           <h2>Contact us</h2>
           <p>If you have questions about this Privacy Policy, please contact us at ${privacyEmail}.</p>
-          <p>Last updated: ${year}.</p>`,
+          <p>Last updated: ${lastUpdated}.</p>`,
         },
       ],
     },
@@ -898,7 +970,7 @@ function defaultLegalPages(business: BusinessInfo): LegalPage[] {
           <p>You acknowledge that physical exercise involves risk. Consult a physician before beginning any fitness program and follow coach instructions to reduce the chance of injury.</p>
           <h2>Contact</h2>
           <p>For questions about these terms, contact us at ${supportEmail}.</p>
-          <p>Last updated: ${year}.</p>`,
+          <p>Last updated: ${lastUpdated}.</p>`,
         },
       ],
     },
@@ -1093,11 +1165,19 @@ export async function buildGymJson(
   type ContentBrief = { contentFound?: Record<string, unknown>; data?: Record<string, unknown> };
   type ContentArtifactPayload = { pages: Array<ContentBrief & { path: string; pageType: string }> };
 
-  const contentArtifact = await loadArtifact<ContentArtifactPayload>(
-    db,
-    { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
-    "content",
-  );
+  const [contentArtifact, crawlArtifact] = await Promise.all([
+    loadArtifact<ContentArtifactPayload>(
+      db,
+      { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
+      "content",
+    ),
+    loadArtifact<MirrorCrawlArtifact>(
+      db,
+      { siteUuid, workspaceUuid: resolvedWorkspaceUuid },
+      "crawl",
+    ).catch(() => null),
+  ]);
+
 
   if (contentArtifact?.payload?.pages?.length) {
     const byPath = new Map(contentArtifact.payload.pages.map(p => [p.path, p]));
@@ -1243,9 +1323,56 @@ export async function buildGymJson(
     }
 
     // Pricing page
-    const pricingEx = cf([...byPath.values()].find(p => p.pageType === "pricing"));
-    if (pricingEx && Array.isArray(pricingEx.plans) && pricingEx.plans.length > 0) {
-      const pricingHero = pricingEx.hero as Record<string, unknown> | undefined;
+    // When multiple pricing briefs exist, prefer the one the site's navigation
+    // actually links to (canonical) over stale sitemap-only pages. We only trust
+    // prices from the canonical pricing path.
+    const allPricingBriefs = [...byPath.values()].filter((p) => p.pageType === "pricing");
+
+    // Build the canonical signal from (1) generated navigation, (2) homepage links
+    // captured during crawl. Generated navigation may be empty when the site-hierarchy
+    // doc has no content, so the crawled homepage links are the ground-truth fallback.
+    const navLinks = new Set(navigation.header.map((i) => i.href).concat(navigation.footer.flatMap((g) => g.links.map((l) => l.href))));
+    const homePage = crawlArtifact?.payload?.pages.find((p) => p.path === "/");
+    const homeLinkPaths = new Set(
+      (homePage?.links ?? [])
+        .map((url) => {
+          try { return new URL(url).pathname; } catch { return undefined; }
+        })
+        .filter((path): path is string => !!path)
+        .map((path) => path.replace(/\/$/, "") || "/"),
+    );
+
+    // navLinks use generated paths like /membership-pricing, but the content
+    // brief path may be the source path with or without trailing slash.
+    const linkSetHasPath = (linkSet: Set<string>, path: string) => {
+      const normalized = path.replace(/\/$/, "");
+      return linkSet.has(path) || linkSet.has(normalized) || linkSet.has(`${path}/`);
+    };
+
+    const canonicalPricingPath = allPricingBriefs.find((p) =>
+      linkSetHasPath(navLinks, p.path) || linkSetHasPath(homeLinkPaths, p.path),
+    )?.path ?? allPricingBriefs[0]?.path;
+    const pricingEx = canonicalPricingPath ? cf(byPath.get(canonicalPricingPath)) : null;
+    if (allPricingBriefs.length > 1 && canonicalPricingPath) {
+      warnings.push(`pricing: using canonical path ${canonicalPricingPath}`);
+    }
+
+    // Hard rule: we never invent prices. Plans only come from extracted source pricing.
+    // If the source uses a lead/request-a-quote form, or if no concrete prices are found,
+    // we render a pricing-inquiry page instead of a fake grid.
+    const PLACEHOLDER_PRICE_RE = /^\s*(\$0+\.?0*|\$x+|\$xx+|price|contact us|call for pricing|request a quote)\s*$/i;
+    // `cf()` above already returns the page's `contentFound` object, so plans and
+    // hasPricingForm live directly on pricingEx, not on pricingEx.contentFound.
+    const extractedPlans = pricingEx?.plans;
+    const hasConcretePlans = Array.isArray(extractedPlans) && extractedPlans.some((p) => {
+      const price = String(p?.price ?? "").trim();
+      return price && /^\$?\d/.test(price) && !PLACEHOLDER_PRICE_RE.test(price);
+    });
+    const hasPricingForm = pricingEx?.hasPricingForm === true
+      || (Array.isArray(extractedPlans) && extractedPlans.length === 0 && !hasConcretePlans);
+
+    if (hasConcretePlans) {
+      const pricingHero = pricingEx?.hero as Record<string, unknown> | undefined;
       let pricingHeadline = pricingHero?.headline ? String(pricingHero.headline) : undefined;
       // Source crawlers sometimes capture placeholder text like "Beta Gym Pricing".
       // Replace it with a real, gym-specific headline so the page never ships
@@ -1256,7 +1383,10 @@ export async function buildGymJson(
       }
       pages.pricing.grid = {
         headline: pricingHeadline,
-        plans: pricingEx.plans.map((plan: unknown) => {
+        plans: extractedPlans.filter((p) => {
+          const price = String(p?.price ?? "").trim();
+          return price && /^\$?\d/.test(price) && !PLACEHOLDER_PRICE_RE.test(price);
+        }).map((plan: unknown) => {
           const item = plan as Record<string, unknown>;
           return {
             name: String(item.name ?? ""),
@@ -1268,6 +1398,12 @@ export async function buildGymJson(
           };
         }),
       };
+    } else if (hasPricingForm) {
+      pages.pricing.form = {
+        headline: `Memberships and rates at ${business.name}`,
+        intro: "Fill out the form and a coach will reach out with current membership options.",
+      };
+      warnings.push("pricing page uses lead form — no prices found on source page");
     }
 
     warnings.push(`content merged: ${contentArtifact.payload.pages.length} page briefs applied`);

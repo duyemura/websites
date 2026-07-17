@@ -15,7 +15,7 @@ const headerCtaLabel = business.primaryCta.label.length > 18 ? "Book intro" : bu
       }
     </a>
 
-    <nav aria-label="Main" class="hidden items-center gap-3 pr-4 xl:flex xl:flex-wrap xl:justify-end 2xl:gap-5">
+    <nav aria-label="Main" class="hidden items-center gap-3 pr-6 xl:flex xl:flex-wrap xl:justify-end 2xl:gap-5 2xl:pr-8">
       {navigation.header.map((item) => (
         <div class="group relative">
           <a
@@ -49,7 +49,7 @@ const headerCtaLabel = business.primaryCta.label.length > 18 ? "Book intro" : bu
       <a
         href={business.primaryCta.url}
         data-track="contact"
-        class="header-cta cta-skew hidden h-10 items-center border-2 border-[var(--color-accent)] bg-[var(--color-accent)] px-5 py-2 font-heading text-sm font-bold uppercase tracking-wide text-white transition hover:bg-transparent hover:text-white sm:inline-flex"
+        class="header-cta cta-skew ml-2 hidden h-10 items-center border-2 border-[var(--color-accent)] bg-[var(--color-accent)] px-5 py-2 font-heading text-sm font-bold uppercase tracking-wide text-white transition hover:bg-transparent hover:text-white sm:inline-flex"
       >
         <span>{headerCtaLabel}</span>
       </a>

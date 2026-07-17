@@ -44,9 +44,14 @@ const variantClass = variant === "benefits" || variant === "valueProps" ? "value
   <div class="icon-card-grid__inner">
     <div class="icon-card-grid__container mx-auto max-w-[90rem] px-6 lg:px-10">
       {hasHeadline && (
-        <h2 class={`icon-card-grid__headline ${headlineHidden ? "sr-only" : ""}`}>
-          {headline}
-        </h2>
+        <div class="icon-card-grid__headline-wrap">
+          {(variant === "valueProps" || variant === "benefits") && !headlineHidden && (
+            <div class="icon-card-grid__connector" aria-hidden="true"></div>
+          )}
+          <h2 class={`icon-card-grid__headline ${headlineHidden ? "sr-only" : ""}`}>
+            {headline}
+          </h2>
+        </div>
       )}
 
       {arrows && (

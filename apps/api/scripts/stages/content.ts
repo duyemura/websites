@@ -55,7 +55,8 @@ const PAGE_TYPE_FIELDS: Record<string, string> = {
   "zip": string | null,
   "hours": string | null`,
 
-  pricing: `"plans": [{"name": string, "price": string, "period": string | null, "description": string | null, "features": [string]}]`,
+  pricing: `"plans": [{"name": string, "price": string, "period": string | null, "description": string | null, "features": [string]}],
+  "hasPricingForm": boolean | null`,
 };
 
 export function classifyPageType(
@@ -110,6 +111,14 @@ function buildPrompt(
     "cta": string | null${typeFields ? `,\n    ${typeFields}` : ""}
   }`;
 
+  const pricingRule = pageType === "pricing"
+    ? `
+
+PRICING EXTRACTION RULE — DO NOT INVENT PRICES:
+- Only include a plan in "plans" if the outline shows a concrete price (e.g. "$35", "$149/month"). Leave the array empty if prices are not listed.
+- Set "hasPricingForm": true if the original page uses a form/widget (e.g. PushPress/Grow, Calendly, "contact us for rates", "request a quote") instead of listing prices.`
+    : "";
+
   return `You are planning an Astro website page for a gym. Produce a page brief the Astro template builder will use to build this page.
 
 Business context:
@@ -119,7 +128,7 @@ Page: ${path} (type: ${pageType})
 Sections this page type needs: ${sectionsNeeded.join(", ")}
 
 Content outline from the original page:
-${outline || "(no content found — flag all sections as missing)"}
+${outline || "(no content found — flag all sections as missing)"}${pricingRule}
 
 Return ONLY valid JSON:
 {
@@ -175,6 +184,7 @@ export function normalizeBrief(raw: unknown, path: string, pageType: string): Pa
       zip: String(cf.zip ?? "") || null,
       hours: String(cf.hours ?? "") || null,
       plans: Array.isArray(cf.plans) ? cf.plans.map((p: any) => ({ name: String(p.name ?? ""), price: String(p.price ?? ""), period: String(p.period ?? "") || null, description: String(p.description ?? "") || null, features: Array.isArray(p.features) ? p.features.map(String) : [] })) : [],
+      hasPricingForm: typeof cf.hasPricingForm === "boolean" ? cf.hasPricingForm : null,
     },
     contentMissing: Array.isArray(r.contentMissing) ? r.contentMissing.map(String) : [],
     generationHint: String(r.generationHint ?? ""),

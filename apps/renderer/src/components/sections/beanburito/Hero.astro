@@ -24,8 +24,8 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
         loading="eager"
         class="absolute inset-0 h-full w-full object-cover object-center lg:hidden"
       />
-      <div class="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-black/40" />
-      <div class="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-transparent" />
+      <div class="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
+      <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent" />
     </>
   )}
 
@@ -34,8 +34,7 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
       {hero.subheading && (
         <div class="mb-6">
           <span
-            class="inline-block font-heading text-base font-bold uppercase tracking-wide text-white md:text-lg"
-            style="text-shadow: 0 1px 3px rgba(0,0,0,.7)"
+            class="inline-flex items-center rounded-full bg-black/60 px-4 py-1.5 font-heading text-sm font-bold uppercase tracking-wide text-white ring-1 ring-white/20 backdrop-blur-sm sm:text-base"
           >
             {hero.subheading}
           </span>
@@ -43,7 +42,7 @@ const mobileImageUrl = hasDesktopImage ? safeBgUrl.replace(/\.webp$/, "-mobile.w
       )}
       <HeadlineTag
         data-testid="hero-headline"
-        class="font-heading text-4xl font-black uppercase leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl md:text-6xl lg:text-7xl break-words text-balance lg:leading-[0.98]"
+        class="font-heading text-4xl font-black uppercase leading-none tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl break-words text-balance lg:leading-tight"
       >
         {hero.headline}
       </HeadlineTag>

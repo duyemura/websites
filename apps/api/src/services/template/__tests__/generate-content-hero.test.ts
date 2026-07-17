@@ -1,12 +1,28 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   findMirrorAssetByUrl,
   isUsableHeroImage,
   findHeroImage,
+  generateStaticPageHeadlines,
 } from "../generate-content.js";
 import { buildImageMatcher } from "../../mirror/image-matcher.js";
 import { NO_IMAGE } from "@milo/shared-types";
 import type { MirrorAsset } from "../../../types/mirror.js";
+
+vi.mock("../../../ai/llm-client", () => ({
+  chatCompletion: vi.fn(),
+}));
+import { chatCompletion } from "../../../ai/llm-client";
+const mockedChatCompletion = vi.mocked(chatCompletion);
+
+function makeConfig() {
+  return {
+    DEFAULT_LLM_MODEL: "test-model",
+    LLM_PROVIDER: "openrouter",
+    OPENROUTER_BASE_URL: "https://test",
+    OPENROUTER_API_KEY: "key",
+  } as any;
+}
 
 function photo(localPath: string, width: number, height: number, tags?: string[]): MirrorAsset {
   return {
@@ -152,5 +168,55 @@ describe("findHeroImage", () => {
         used,
       }),
     ).toBe("/_assets/gym-floor.jpg");
+  });
+});
+
+describe("generateStaticPageHeadlines", () => {
+  it("returns natural H1s from nav labels, prefixing 'Our' only when appropriate", async () => {
+    mockedChatCompletion.mockResolvedValueOnce({
+      content: JSON.stringify({
+        about: "About Us",
+        pricing: "Our Rates",
+        schedule: "Our Schedule",
+        contact: "Contact",
+        blog: "Our Blog",
+      }),
+    });
+    const logs: string[] = [];
+    const result = await generateStaticPageHeadlines({
+      config: makeConfig(),
+      businessName: "Test Gym",
+      category: "CrossFit gym",
+      city: "Torrance",
+      inputs: [
+        { pageKey: "about", navLabel: "About Us", currentHeadline: "About us" },
+        { pageKey: "pricing", navLabel: "Rates", currentHeadline: "Pricing" },
+        { pageKey: "schedule", navLabel: "Schedule", currentHeadline: "Class schedule" },
+        { pageKey: "contact", navLabel: "Contact", currentHeadline: "Get in touch" },
+        { pageKey: "blog", navLabel: "Blogs", currentHeadline: "Blog" },
+      ],
+      log: (msg) => logs.push(msg),
+    });
+    expect(result).toEqual({
+      about: "About Us",
+      pricing: "Our Rates",
+      schedule: "Our Schedule",
+      contact: "Contact",
+      blog: "Our Blog",
+    });
+  });
+
+  it("returns null after two failed attempts", async () => {
+    mockedChatCompletion.mockResolvedValue({ content: "not json" });
+    const logs: string[] = [];
+    const result = await generateStaticPageHeadlines({
+      config: makeConfig(),
+      businessName: "Test Gym",
+      category: "gym",
+      inputs: [{ pageKey: "pricing", navLabel: "Rates", currentHeadline: "Pricing" }],
+      log: (msg) => logs.push(msg),
+    });
+    expect(result).toBeNull();
+    expect(logs.some((m) => m.includes("static headlines attempt 2") && m.includes("warn"))).toBe(true);
   });
 });

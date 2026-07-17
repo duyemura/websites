@@ -29,6 +29,8 @@ export interface SiteMeta {
 export interface BusinessInfo {
   name: string;
   tagline: string;              // one-sentence entity description (feeds LocalBusiness.description + llms.txt)
+  /** User-facing category phrase, e.g. "CrossFit gym" or "yoga studio". */
+  category?: string;
   address: { street: string; city: string; state: string; zip: string };
   phone: string;
   email?: string;
@@ -131,6 +133,27 @@ export interface ProgramContent {
   richContent?: RichContentSection[];
 }
 
+export interface CtaBandContent {
+  headline?: string;
+  subtext?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  /** Optional artwork behind the CTA band. Set to `null` to remove it; omit to use the template default. */
+  artwork?: CtaArtwork | null;
+}
+
+export interface CtaArtwork {
+  kind: "svg" | "image";
+  /** Raw SVG markup for `svg`, or an image URL for `image`. */
+  value: string;
+  /** CSS background-position equivalent, e.g. "97% 60%". */
+  position?: string;
+  /** CSS background-size equivalent, e.g. "auto 169%". */
+  size?: string;
+  /** Opacity from 0 to 1. */
+  opacity?: number;
+}
+
 export interface AboutContent {
   hero: HeroContent;
   gymStory: string;                  // markdown allowed
@@ -144,6 +167,8 @@ export interface AboutContent {
   story?: StoryBandContent;
   /** Distinct bottom CTA headline on the about page. */
   ctaHeadline?: string;
+  /** Structured CTA band configuration. Takes precedence over ctaHeadline when provided. */
+  ctaBand?: CtaBandContent;
   /** About-page testimonials (fall back to home.testimonials in the renderer). */
   testimonials?: Testimonial[];
   faq?: FAQItem[];

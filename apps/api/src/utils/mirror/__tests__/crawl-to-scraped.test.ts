@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, test, expect, vi } from "vitest";
-import { buildScrapedWebsiteDataFromCrawl } from "../crawl-to-scraped";
+import { buildScrapedWebsiteDataFromCrawl, extractCrawlPageIframes } from "../crawl-to-scraped";
 import type { MirrorCrawlArtifact, MirrorPage } from "../../../types/mirror";
 
 function makeCrawl(html: string): {
@@ -45,6 +45,50 @@ function makeCrawl(html: string): {
   };
 
   return { crawl, s3, config };
+}
+
+function makeCrawlWithPages(
+  pages: { path: string; htmlKey: string; html: string; embeds?: string[]; dynamicRegions?: MirrorPage["dynamicRegions"] }[],
+): {
+  crawl: MirrorCrawlArtifact;
+  s3: { send: ReturnType<typeof vi.fn> };
+} {
+  const crawlPages: MirrorPage[] = pages.map((p) => ({
+    url: `https://example.com${p.path}`,
+    path: p.path,
+    title: "Page",
+    htmlKey: p.htmlKey,
+    forms: [],
+    dynamicRegions: p.dynamicRegions ?? [],
+    embeds: p.embeds ?? [],
+    category: "structural",
+  }));
+
+  const htmlByKey = new Map(pages.map((p) => [p.htmlKey, p.html]));
+  const s3 = {
+    send: vi.fn().mockImplementation((command: { input: { Key: string } }) => {
+      const key = command.input.Key;
+      const html = htmlByKey.get(key) ?? "";
+      return Promise.resolve({
+        Body: {
+          transformToString: vi.fn().mockResolvedValue(html),
+        },
+      });
+    }),
+  };
+
+  const crawl: MirrorCrawlArtifact = {
+    sourceUrl: "https://example.com",
+    origin: "https://example.com",
+    pages: crawlPages,
+    redirects: [],
+    sitemapXml: null,
+    robotsTxt: null,
+    failures: [],
+    ugcRegistry: [],
+  };
+
+  return { crawl, s3 };
 }
 
 describe("buildScrapedWebsiteDataFromCrawl", () => {
@@ -205,5 +249,82 @@ describe("buildScrapedWebsiteDataFromCrawl", () => {
     expect(mallory?.photoUrl).toBeUndefined();
     const sam = data.team.find((m) => m.name === "Sam");
     expect(sam?.photoUrl).toBe("https://example.com/img/safe.jpg");
+  });
+});
+
+describe("extractCrawlPageIframes", () => {
+  test("extracts schedule and form iframes from interior pages", async () => {
+    const { crawl, s3 } = makeCrawlWithPages([
+      {
+        path: "/",
+        htmlKey: "index.html",
+        html: `<html><body>
+          <section><h2>Reviews</h2>
+            <iframe src="https://widgets.trustpilot.com/reviews/123" title="Member reviews"></iframe>
+          </section>
+        </body></html>`,
+        embeds: ["widgets.trustpilot.com"],
+      },
+      {
+        path: "/schedule",
+        htmlKey: "schedule.html",
+        html: `<html><body>
+          <section><h2>Class schedule</h2>
+            <iframe src="https://fitlab.pushpress.com/open/calendar?framed=1"></iframe>
+          </section>
+        </body></html>`,
+        embeds: ["fitlab.pushpress.com"],
+        dynamicRegions: [{ kind: "schedule", selector: "body", evidence: "text: class schedule" }],
+      },
+      {
+        path: "/membership-pricing",
+        htmlKey: "pricing.html",
+        html: `<html><body>
+          <section><h2>Membership inquiry</h2>
+            <iframe src="https://api.grow.pushpress.com/widget/form/abc123"></iframe>
+          </section>
+        </body></html>`,
+        embeds: ["api.grow.pushpress.com"],
+        dynamicRegions: [{ kind: "booking-widget", selector: "iframe", evidence: "pushpress" }],
+      },
+      {
+        path: "/contact",
+        htmlKey: "contact.html",
+        html: `<html><body>
+          <iframe src="https://www.google.com/maps/embed?pb=abc" title="Find us"></iframe>
+          <iframe src="https://sidebar.bugherd.com/sidebar/embed_html?apikey=x"></iframe>
+        </body></html>`,
+        embeds: ["www.google.com", "sidebar.bugherd.com"],
+      },
+    ]);
+
+    const map = await extractCrawlPageIframes(crawl, s3, "bucket");
+
+    expect(map.get("/")).toHaveLength(1);
+    expect(map.get("/")?.[0]).toMatchObject({ src: "https://widgets.trustpilot.com/reviews/123", variant: "review" });
+
+    expect(map.get("/schedule")).toHaveLength(1);
+    expect(map.get("/schedule")?.[0]).toMatchObject({ src: "https://fitlab.pushpress.com/open/calendar?framed=1", variant: "schedule" });
+
+    expect(map.get("/membership-pricing")).toHaveLength(1);
+    expect(map.get("/membership-pricing")?.[0]).toMatchObject({ src: "https://api.grow.pushpress.com/widget/form/abc123", variant: "form" });
+
+    // Contact page map is kept; the unrelated bug-tracker iframe (default variant) is dropped.
+    expect(map.get("/contact")).toHaveLength(1);
+    expect(map.get("/contact")?.[0]).toMatchObject({ src: "https://www.google.com/maps/embed?pb=abc", variant: "map" });
+  });
+
+  test("skips pages with no widget signals", async () => {
+    const { crawl, s3 } = makeCrawlWithPages([
+      {
+        path: "/blog/article",
+        htmlKey: "blog.html",
+        html: "<html><body><p>About us</p></body></html>",
+        embeds: [],
+      },
+    ]);
+    const map = await extractCrawlPageIframes(crawl, s3, "bucket");
+    expect(map.size).toBe(0);
+    expect(s3.send).not.toHaveBeenCalled();
   });
 });

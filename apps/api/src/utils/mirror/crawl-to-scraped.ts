@@ -8,7 +8,8 @@ import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
 import type { MirrorCrawlArtifact } from "../../types/mirror";
 import type { ScrapedColor, ScrapedImage } from "@milo/shared-types";
-import { isAllowedIframeSrc } from "@milo/shared-types";
+import { isAllowedIframeSrc, inferIframeVariant, sanitizeIframe } from "@milo/shared-types";
+import type { IframeEmbed } from "@milo/shared-types";
 import type { ScrapedSection, ScrapedWebsiteData } from "../scrape-docs";
 import type { SectionVisualEvidenceRow } from "../../types/section-visual-evidence";
 import { findMostSaturatedColor, hexSaturation, isDarkNeutral } from "../site-blueprint";
@@ -42,17 +43,25 @@ function bucketFor(config: S3Config): string {
   return config.S3_DEPLOYMENTS_BUCKET ?? config.S3_ASSETS_BUCKET;
 }
 
+async function fetchHtmlFromS3ByBucket(
+  s3: S3Client,
+  bucket: string,
+  htmlKey: string,
+): Promise<string | undefined> {
+  try {
+    const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: htmlKey }));
+    return (await res.Body?.transformToString()) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function fetchHtmlFromS3(
   s3: S3Client,
   config: S3Config,
   htmlKey: string,
 ): Promise<string | undefined> {
-  try {
-    const res = await s3.send(new GetObjectCommand({ Bucket: bucketFor(config), Key: htmlKey }));
-    return (await res.Body?.transformToString()) ?? undefined;
-  } catch {
-    return undefined;
-  }
+  return fetchHtmlFromS3ByBucket(s3, bucketFor(config), htmlKey);
 }
 
 import { inferSectionType } from "./extract-image-contexts";
@@ -331,6 +340,93 @@ function extractIframeSections($: cheerio.CheerioAPI): ScrapedSection[] {
   });
 
   return sections;
+}
+
+function extractPageIframeSections($: cheerio.CheerioAPI): IframeEmbed[] {
+  const seen = new Set<string>();
+  const out: IframeEmbed[] = [];
+
+  $("iframe[src]").each((_, el) => {
+    const src = $(el).attr("src")?.trim();
+    if (!src || !isAllowedIframeSrc(src)) return;
+    if (seen.has(src)) return;
+    seen.add(src);
+
+    const $el = $(el);
+    const title = $el.attr("title")?.trim() || findNearbyHeading($el);
+    const width = $el.attr("width")?.trim();
+    const height = $el.attr("height")?.trim();
+    const sandbox = $el.attr("sandbox")?.trim();
+    const allow = $el.attr("allow")?.trim();
+    const style = $el.attr("style")?.trim();
+    const referrerpolicy = ($el.attr("referrerpolicy")?.trim() ?? undefined) as IframeEmbed["referrerpolicy"];
+    const loading = ($el.attr("loading")?.trim() ?? "lazy") as IframeEmbed["loading"];
+
+    out.push({
+      src,
+      variant: inferIframeVariant(src),
+      title,
+      width,
+      height,
+      sandbox,
+      allow,
+      style,
+      referrerpolicy,
+      loading,
+    });
+  });
+
+  return out;
+}
+
+function isWidgetEmbed(embed: IframeEmbed): boolean {
+  return (embed.variant ?? "default") !== "default";
+}
+
+function pagePathLooksImportant(path: string): boolean {
+  const normalized = path.replace(/\/$/, "") || "/";
+  if (normalized === "/") return true;
+  if (/^\/about/i.test(normalized)) return true;
+  if (/^\/contact/i.test(normalized)) return true;
+  if (/^\/pricing/i.test(normalized) || /^\/membership/i.test(normalized) || /^\/join/i.test(normalized)) return true;
+  if (/^\/schedule/i.test(normalized) || /^\/classes/i.test(normalized) || /^\/book/i.test(normalized)) return true;
+  return false;
+}
+
+/**
+ * Extract iframe widgets from every crawled page that signals a third-party
+ * widget or maps to a generated page we care about. Returns a map keyed by
+ * normalized source page path (e.g. "/schedule") with sanitized IframeEmbed
+ * entries. Non-widget/default iframes (bug trackers, analytics, CDN loaders)
+ * are dropped so they don't pollute generated pages.
+ */
+export async function extractCrawlPageIframes(
+  crawl: MirrorCrawlArtifact,
+  s3: S3Client,
+  bucket: string,
+): Promise<Map<string, IframeEmbed[]>> {
+  const result = new Map<string, IframeEmbed[]>();
+  // Only fetch pages that show signs of carrying a third-party widget.
+  const widgetHostHint = /(?:calendar|schedule|booking|form|widget|maps?|youtube|vimeo|wistia|trustpilot|reputation|birdeye|embedsocial|leadconnector)/i;
+
+  for (const page of crawl.pages) {
+    const hasWidgetHint =
+      page.embeds.some((host) => widgetHostHint.test(host)) ||
+      page.dynamicRegions.some((r) => r.kind === "booking-widget" || r.kind === "schedule");
+    if (!hasWidgetHint && !pagePathLooksImportant(page.path)) continue;
+
+    const html = await fetchHtmlFromS3ByBucket(s3, bucket, page.htmlKey);
+    if (!html) continue;
+
+    const $ = cheerio.load(html);
+    const embeds = extractPageIframeSections($).filter(isWidgetEmbed).map(sanitizeIframe);
+    if (embeds.length > 0) {
+      const key = page.path.replace(/\/$/, "") || "/";
+      result.set(key, embeds);
+    }
+  }
+
+  return result;
 }
 
 function extractTeam($: cheerio.CheerioAPI, baseUrl: string): { name: string; role?: string; bio?: string; photoUrl?: string }[] {

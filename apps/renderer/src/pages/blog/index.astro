@@ -7,21 +7,22 @@ import PageRenderer from "../../components/pages/PageRenderer.astro";
 import { content } from "../../lib/content";
 import { getRegisteredSpec } from "../../lib/template-registry";
 const { blog } = content.pages;
-const { business } = content;
+const { business, navigation } = content;
 const posts = [...blog.posts].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 const title = `Fitness Tips & News in ${business.geo.city}, ${business.geo.stateAbbr} | ${business.name}`;
 const theme = content.meta.templateTheme ?? "baseline";
 const spec = getRegisteredSpec(theme);
 const hasBlogIndexPage = !!spec?.pages?.blogIndex;
+const blogNavLabel = navigation.header.find((i) => i.href === "/blog")?.label ?? blog.heroHeadline ?? "Blog";
 ---
 <GymLayout title={title} description={`Fitness tips, nutrition advice, and gym news from ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}.`} path="/blog">
-  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: "Blog", path: "/blog" }]} /></Fragment>
+  <Fragment slot="head"><BreadcrumbSchema crumbs={[{ name: blogNavLabel, path: "/blog" }]} /></Fragment>
   {hasBlogIndexPage ? (
-    <PageRenderer pageKey="blogIndex" pageData={blog} />
+    <PageRenderer pageKey="blogIndex" pageData={blog as unknown as Record<string, unknown>} />
   ) : (
     <section class="py-16">
       <Container>
-        <h1 class="mb-10 text-center font-heading text-4xl font-bold text-primary">{blog.heroHeadline}</h1>
+        <h1 class="mb-10 text-center font-heading text-4xl font-bold text-primary">{blogNavLabel}</h1>
         <div class="mx-auto max-w-2xl space-y-10">
           {posts.map((post) => (
             <article class="overflow-hidden rounded-xl shadow">

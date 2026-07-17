@@ -14,22 +14,25 @@ const p = content.pages.pricing;
 const { business } = content;
 const title = `Membership Pricing | ${business.name} in ${business.geo.city}, ${business.geo.stateAbbr}`;
 const theme = content.meta.templateTheme ?? "baseline";
+const hasGrid = p.grid?.plans && p.grid.plans.length > 0;
+const hasForm = !!p.form;
 ---
+
 <GymLayout title={title} description={p.hero.subheading ?? `Membership pricing at ${business.name}`} path="/pricing">
   <Fragment slot="head">
     <BreadcrumbSchema crumbs={[{ name: "Pricing", path: "/pricing" }]} />
-    {p.grid?.plans && p.grid.plans.length > 0 && <OfferSchema plans={p.grid.plans} />}
+    {hasGrid && <OfferSchema plans={p.grid!.plans} />}
   </Fragment>
   {theme === "beanburito" ? (
     <PageRenderer pageKey="pricing" />
   ) : (
     <>
       <Hero hero={p.hero} />
-      {p.grid && <PricingGrid grid={p.grid} />}
-      {p.form && (
+      {hasGrid && <PricingGrid grid={p.grid!} />}
+      {hasForm && (
         <section class="bg-slate-50 py-16">
           <Container>
-            <SectionHeading title={p.form.headline} subtitle={p.form.intro} />
+            <SectionHeading title={p.form!.headline} subtitle={p.form!.intro} />
             <LeadForm formId="pricing" submitLabel="Send me the rates" includeMessage={false} />
           </Container>
         </section>

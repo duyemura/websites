@@ -185,6 +185,29 @@ describe("extractBusiness", () => {
     expect(biz.phone).toBe("(555) 867-5309");
     expect(biz.email).toBe("hello@gym.com");
   });
+
+  test("derives category from markdown Category label", () => {
+    const md = `## Classification\n- **Category**: CrossFit gym`;
+    const warnings: string[] = [];
+    const biz = extractBusiness(md, DS, warnings);
+    expect(biz.category).toBe("CrossFit gym");
+  });
+
+  test("derives category from GMB primaryType when no label", () => {
+    const enrich = {
+      listing: {
+        primaryType: "crossfit_box",
+        address: {
+          fullAddress: "23510 Telo Avenue, Torrance, CA 90505",
+        },
+      },
+    } as any;
+    const warnings: string[] = [];
+    const biz = extractBusiness("", DS, warnings, enrich);
+    expect(biz.category).toBe("CrossFit gym");
+    expect(biz.address.city).toBe("Torrance");
+    expect(biz.geo.city).toBe("Torrance");
+  });
 });
 
 describe("classifyPage", () => {
@@ -484,11 +507,16 @@ describe("extractPages", () => {
     ]);
     const biz = { name: "KSA", primaryCta: { label: "Join", url: "/contact" }, geo: { city: "Torrance", state: "California", stateAbbr: "CA" } };
     const pages = extractPages(h, biz as any, warnings);
-    expect(pages.about.hero.headline).toBe("About KSA in Torrance, CA");
-    expect(pages.pricing.hero.headline).toBe("Memberships and rates in Torrance, CA");
-    expect(pages.contact.hero.headline).toBe("Visit us in Torrance, CA");
-    expect(pages.schedule.hero.headline).toBe("Class schedule in Torrance, CA");
-    expect(pages.localGuide?.hero.headline).toBe("Your fitness guide to Torrance, CA");
+    expect(pages.about.hero.subheading).toBe("About our gym in Torrance, CA");
+    expect(pages.about.hero.headline).toBe("About us");
+    expect(pages.pricing.hero.subheading).toBe("Memberships and rates in Torrance, CA");
+    expect(pages.pricing.hero.headline).toBe("Pricing");
+    expect(pages.contact.hero.subheading).toBe("gym in Torrance, CA");
+    expect(pages.contact.hero.headline).toBe("Get in touch");
+    expect(pages.schedule.hero.subheading).toBe("gym in Torrance, CA");
+    expect(pages.schedule.hero.headline).toBe("Class schedule");
+    expect(pages.localGuide?.hero.subheading).toBe("Local fitness guide to Torrance, CA");
+    expect(pages.localGuide?.hero.headline).toBe("Local guide");
     expect(pages.about.hero.backgroundImageUrl).toBe("__NO_IMAGE__");
   });
 

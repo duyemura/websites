@@ -753,6 +753,26 @@
             }
           ]
         }
+      ],
+      "richContent": [
+        {
+          "headline": "Best parks to work out",
+          "blocks": [
+            {
+              "type": "text",
+              "html": "<p>Torrance has outstanding outdoor training spots.</p>"
+            }
+          ]
+        },
+        {
+          "headline": "Healthy restaurants near the gym",
+          "blocks": [
+            {
+              "type": "text",
+              "html": "<p>Fuel up after training with these spots within 10 minutes of Ironwood Strength.</p>"
+            }
+          ]
+        }
       ]
     },
     "legal": [
