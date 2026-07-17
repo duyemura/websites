@@ -18,13 +18,21 @@ type ChatFn = (req: {
 const PROMPT = `Compare these two screenshots of the same website section.
 Image 1 is the original design. Image 2 is the generated Astro component rendered in a browser.
 
-Score visual fidelity 0-100 (100 = pixel-perfect). List every visual difference as a specific CSS fix.
+IMPORTANT: Ignore specific text content and placeholder images — you are comparing DESIGN ONLY:
+- Layout and composition (columns, grid, alignment, proportions)
+- Background colors, gradients, and overlay opacity
+- Typography: font sizes, font weights, letter-spacing, line-height
+- Spacing: padding, margins, gaps between elements
+- Borders, border-radius, box-shadows
+- Overall visual hierarchy and structure
+
+Score visual fidelity 0-100 (100 = identical design, ignoring placeholder content). List every DESIGN difference as a specific CSS fix.
 
 Respond with JSON only:
 {
   "score": <0-100>,
   "issues": [
-    { "property": "<CSS property or element>", "expected": "<value from original>", "actual": "<value rendered>", "severity": "critical|major|minor" }
+    { "property": "<CSS property or layout element>", "expected": "<value from original>", "actual": "<value rendered>", "severity": "critical|major|minor" }
   ]
 }`;
 

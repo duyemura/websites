@@ -49,7 +49,7 @@ export async function runEvalLoop(
     await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
 
     // 2. Screenshot rendered page (returns data URI directly)
-    const renderedDataUri = await screenshotPage(target.pagePath, rendererDir);
+    const renderedDataUri = await screenshotPage(target, rendererDir);
 
     // 3. Diff — wrap loadImageFn so the rendered data URI is returned as-is
     // (visionDiff calls loadImageFn for both images; the rendered image is already
@@ -87,22 +87,27 @@ export async function runEvalLoop(
   };
 }
 
-async function screenshotPage(
-  pagePath: string,
-  rendererDir: string,
-): Promise<string> {
+async function screenshotPage(target: ComponentTarget, rendererDir: string): Promise<string> {
   const distDir = path.join(rendererDir, "dist");
-  const htmlFile =
-    pagePath === "/"
-      ? path.join(distDir, "index.html")
-      : path.join(distDir, pagePath.replace(/^\//, ""), "index.html");
+  const htmlFile = target.pagePath === "/"
+    ? path.join(distDir, "index.html")
+    : path.join(distDir, target.pagePath.replace(/^\//, ""), "index.html");
 
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`file://${htmlFile}`, { waitUntil: "networkidle" });
-    const buf = await page.screenshot({ fullPage: true });
+
+    const element = page.locator(`[data-eval-component="${target.name}"]`);
+    const count = await element.count();
+    if (count === 0) {
+      // Fallback: full-page screenshot if attribute not found (older generated components)
+      console.warn(`[eval-loop] data-eval-component="${target.name}" not found, falling back to full-page screenshot`);
+      const buf = await page.screenshot({ fullPage: true });
+      return `data:image/png;base64,${buf.toString("base64")}`;
+    }
+    const buf = await element.screenshot();
     return `data:image/png;base64,${buf.toString("base64")}`;
   } finally {
     await browser.close();
