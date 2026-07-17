@@ -1,0 +1,192 @@
+---
+export interface FeatureGridEvenFeatureGridProps {
+  headline: string;
+  subheadline: string;
+  features: {
+    iconUrl: string;
+    title: string;
+    description: string;
+  }[];
+  imageUrl: string;
+  imageAlt: string;
+}
+
+const { headline, subheadline, features = [], imageUrl, imageAlt } = Astro.props;
+---
+
+<section data-eval-component="FeatureGridEvenFeatureGrid" class="feature-grid-even-feature-grid">
+  <div class="content-wrapper">
+    <div class="text-content">
+      <h2 class="headline">{headline}</h2>
+      <p class="subheadline">{subheadline}</p>
+      <div class="features-grid">
+        {features.map((feature) => (
+          <div class="feature-item">
+            <img src={feature.iconUrl} alt={feature.title} class="feature-icon" />
+            <h3 class="feature-title">{feature.title}</h3>
+            <p class="feature-description">{feature.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+    <div class="image-content">
+      <img src={imageUrl} alt={imageAlt} class="main-image" />
+    </div>
+  </div>
+</section>
+
+<style>
+  .feature-grid-even-feature-grid {
+    padding-top: 0px;
+    padding-bottom: 0px;
+    background-color: #f7f3f0;
+  }
+
+  .content-wrapper {
+    display: flex;
+    flex-direction: column;
+    padding: 60px 20px;
+    gap: 40px;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .text-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .headline {
+    color: #1a1a1a;
+    font-size: 32px;
+    line-height: 40px;
+    font-weight: 700;
+    margin: 0;
+    text-align: center;
+  }
+
+  .subheadline {
+    color: #4a4a4a;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 400;
+    margin: 0;
+    text-align: center;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .feature-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .feature-icon {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+  }
+
+  .feature-title {
+    color: #1a1a1a;
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .feature-description {
+    color: #4a4a4a;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 400;
+    margin: 0;
+  }
+
+  .image-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .main-image {
+    width: 100%;
+    height: auto;
+    max-width: 500px; /* Adjust as needed for mobile aesthetics */
+    border-radius: 12px;
+    object-fit: cover;
+  }
+
+  @media (min-width: 1440px) {
+    .content-wrapper {
+      flex-direction: row;
+      padding: 100px 80px;
+      gap: 80px;
+      max-width: 1440px;
+    }
+
+    .text-content {
+      flex: 1;
+      gap: 32px;
+      padding-right: 40px; /* Add some spacing between text and image */
+    }
+
+    .headline {
+      font-size: 48px;
+      line-height: 60px;
+      text-align: left;
+    }
+
+    .subheadline {
+      font-size: 18px;
+      line-height: 28px;
+      text-align: left;
+    }
+
+    .features-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+
+    .feature-item {
+      align-items: flex-start;
+      text-align: left;
+      gap: 16px;
+    }
+
+    .feature-icon {
+      width: 64px;
+      height: 64px;
+    }
+
+    .feature-title {
+      font-size: 24px;
+      line-height: 32px;
+    }
+
+    .feature-description {
+      font-size: 16px;
+      line-height: 24px;
+    }
+
+    .image-content {
+      flex: 1;
+      justify-content: flex-start;
+    }
+
+    .main-image {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      border-radius: 12px;
+    }
+  }
+</style>

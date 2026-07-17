@@ -1,0 +1,202 @@
+---
+interface Props {
+  headline: string;
+  subheadline: string;
+  ctaButton1Text: string;
+  ctaButton1Link: string;
+  ctaButton2Text: string;
+  ctaButton2Link: string;
+  imageSrc: string;
+  imageAlt: string;
+}
+
+const {
+  headline,
+  subheadline,
+  ctaButton1Text,
+  ctaButton1Link,
+  ctaButton2Text,
+  ctaButton2Link,
+  imageSrc,
+  imageAlt,
+} = Astro.props;
+---
+
+<section data-eval-component="HeroCenter" class="hero-center-section">
+  <div class="container">
+    <div class="content-wrapper">
+      <h1 class="headline">{headline}</h1>
+      <p class="subheadline">{subheadline}</p>
+      <div class="button-group">
+        <a href={ctaButton1Link} class="button primary">{ctaButton1Text}</a>
+        <a href={ctaButton2Link} class="button secondary">{ctaButton2Text}</a>
+      </div>
+    </div>
+    <div class="image-wrapper">
+      <img src={imageSrc} alt={imageAlt} class="hero-image" />
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero-center-section {
+    padding-top: 0px;
+    padding-bottom: 0px;
+    background-color: rgb(241, 241, 241);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh; /* Ensure it takes full viewport height for centering */
+    text-align: center;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px; /* Space between text content and image */
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  .content-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px; /* Space between headline, subheadline, and buttons */
+  }
+
+  .headline {
+    font-family: sans-serif; /* Placeholder, adjust as needed */
+    font-size: 48px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #333;
+    margin: 0;
+  }
+
+  .subheadline {
+    font-family: sans-serif; /* Placeholder, adjust as needed */
+    font-size: 18px;
+    line-height: 1.5;
+    color: #555;
+    max-width: 700px;
+    margin: 0;
+  }
+
+  .button-group {
+    display: flex;
+    gap: 15px; /* Space between buttons */
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 12px 25px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-family: sans-serif; /* Placeholder, adjust as needed */
+    font-size: 16px;
+    font-weight: 600;
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .button.primary {
+    background-color: #007bff; /* Example primary color */
+    color: #fff;
+    border: 1px solid #007bff;
+  }
+
+  .button.primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+  }
+
+  .button.secondary {
+    background-color: transparent;
+    color: #007bff; /* Example secondary color */
+    border: 1px solid #007bff;
+  }
+
+  .button.secondary:hover {
+    background-color: #e6f2ff;
+    color: #0056b3;
+    border-color: #0056b3;
+  }
+
+  .image-wrapper {
+    width: 100%;
+    max-width: 800px; /* Adjust as needed */
+    margin-top: 20px;
+  }
+
+  .hero-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px; /* Optional: adds rounded corners to the image */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* Optional: adds a subtle shadow */
+  }
+
+  /* Mobile-first styles (375px base) */
+  @media (max-width: 375px) {
+    .container {
+      gap: 30px;
+      padding: 15px;
+    }
+
+    .headline {
+      font-size: 32px;
+    }
+
+    .subheadline {
+      font-size: 16px;
+      max-width: 100%;
+    }
+
+    .button-group {
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .button {
+      width: 100%;
+      padding: 10px 20px;
+    }
+
+    .image-wrapper {
+      margin-top: 15px;
+    }
+  }
+
+  /* Desktop styles (1440px) */
+  @media (min-width: 1440px) {
+    .container {
+      gap: 60px;
+      padding: 40px;
+    }
+
+    .headline {
+      font-size: 64px;
+    }
+
+    .subheadline {
+      font-size: 20px;
+    }
+
+    .button-group {
+      gap: 20px;
+    }
+
+    .button {
+      padding: 15px 30px;
+    }
+
+    .image-wrapper {
+      margin-top: 30px;
+    }
+  }
+</style>

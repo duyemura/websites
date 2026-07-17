@@ -1,0 +1,140 @@
+---
+export interface FeatureGridEvenProps {
+  id?: string;
+  items: Array<{
+    headline: string;
+    description: string;
+    imageUrl: string;
+    imageAlt: string;
+    ctaText?: string;
+    ctaHref?: string;
+  }>;
+}
+
+const { id, items = [] } = Astro.props;
+---
+
+<section id={id} data-eval-component="FeatureGridEven">
+  <div class="feature-grid-container">
+    {items.map((item) => (
+      <div class="feature-item">
+        <img src={item.imageUrl} alt={item.imageAlt} class="feature-image" />
+        <h3 class="feature-headline">{item.headline}</h3>
+        <p class="feature-description">{item.description}</p>
+        {item.ctaText && item.ctaHref && (
+          <a href={item.ctaHref} class="feature-cta">
+            {item.ctaText}
+          </a>
+        )}
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  section {
+    background-color: rgb(241, 241, 241);
+    padding-top: 0px;
+    padding-bottom: 0px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 270px; /* Bounding box height for desktop, adjust for mobile if needed */
+  }
+
+  .feature-grid-container {
+    display: grid;
+    gap: 20px; /* Adjust gap as needed */
+    padding: 20px; /* Padding around the grid */
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .feature-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+  }
+
+  .feature-image {
+    width: 60px; /* Example size, adjust based on design */
+    height: 60px; /* Example size, adjust based on design */
+    object-fit: contain;
+    margin-bottom: 15px;
+  }
+
+  .feature-headline {
+    font-size: 18px; /* Example font size */
+    font-weight: bold;
+    color: #333; /* Example color */
+    margin-bottom: 10px;
+  }
+
+  .feature-description {
+    font-size: 14px; /* Example font size */
+    color: #555; /* Example color */
+    line-height: 1.5;
+    margin-bottom: 15px;
+  }
+
+  .feature-cta {
+    font-size: 14px; /* Example font size */
+    color: #007bff; /* Example link color */
+    text-decoration: none;
+    font-weight: bold;
+  }
+
+  .feature-cta:hover {
+    text-decoration: underline;
+  }
+
+  /* Mobile-first styles (375px base) */
+  @media (max-width: 767px) {
+    .feature-grid-container {
+      grid-template-columns: 1fr; /* Single column on mobile */
+      width: 100%;
+    }
+
+    .feature-headline {
+      font-size: 16px;
+    }
+
+    .feature-description {
+      font-size: 13px;
+    }
+
+    .feature-image {
+      width: 50px;
+      height: 50px;
+    }
+  }
+
+  /* Desktop styles (1440px) */
+  @media (min-width: 1440px) {
+    .feature-grid-container {
+      grid-template-columns: repeat(4, 1fr); /* Four even columns on desktop */
+      gap: 40px; /* Larger gap for desktop */
+      width: 1200px; /* Max width for content area */
+    }
+
+    .feature-item {
+      padding: 20px;
+    }
+
+    .feature-image {
+      width: 70px;
+      height: 70px;
+    }
+
+    .feature-headline {
+      font-size: 20px;
+    }
+
+    .feature-description {
+      font-size: 15px;
+    }
+  }
+</style>
