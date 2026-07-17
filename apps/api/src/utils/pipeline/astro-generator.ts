@@ -26,7 +26,8 @@ REQUIREMENTS:
 3. <style> block with scoped CSS using the exact computed values above
 4. Mobile-first @media breakpoints for 375px base and 1440px desktop
 5. Prop names should be semantic: headline, subheadline, ctaText, ctaHref, imageUrl, items[], etc.
-6. Reproduce the layout exactly as shown in the attached screenshots
+6. Add \`data-eval-component="[ComponentName]"\` to the outermost HTML element (e.g. <section data-eval-component="HeroLeft"> or <div data-eval-component="CtaBand">). Use the actual component name from COMPONENT NAME above.
+7. Reproduce the layout exactly as shown in the attached screenshots
 
 Return ONLY the .astro file content, starting with ---.`;
 }
