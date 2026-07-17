@@ -27,13 +27,13 @@ IMPORTANT: Ignore specific text content and placeholder images — you are compa
 - Borders, border-radius, box-shadows
 - Overall visual hierarchy and structure
 
-Score visual fidelity 0-100 (100 = identical design, ignoring placeholder content). List every DESIGN difference as a specific CSS fix.
+Score visual fidelity 0-100 (100 = identical design, ignoring placeholder content). List up to 8 of the most important DESIGN differences as specific CSS fixes. Keep each issue description brief.
 
-Respond with JSON only:
+Respond with JSON only — no explanation, no markdown:
 {
   "score": <0-100>,
   "issues": [
-    { "property": "<CSS property or layout element>", "expected": "<value from original>", "actual": "<value rendered>", "severity": "critical|major|minor" }
+    { "property": "<CSS property>", "expected": "<value>", "actual": "<value>", "severity": "critical|major|minor" }
   ]
 }`;
 
@@ -79,7 +79,7 @@ export async function visionDiff(
   try {
     const response = await chatFn({
       messages: [{ role: "user", content }],
-      maxTokens: 1024,
+      maxTokens: 2048,
     });
     const jsonStr = response.match(/\{[\s\S]*\}/)?.[0] ?? "";
     const parsed = JSON.parse(jsonStr) as { score?: unknown; issues?: unknown };
