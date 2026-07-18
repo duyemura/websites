@@ -5,9 +5,9 @@ import "dotenv/config";
 import "./load-root-env.js";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import fs from "node:fs";
 
 import { db, config } from "../src/database";
-import { sql } from "kysely";
 import { getS3Client } from "../src/s3";
 import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageResult, StageContext } from "./stages/types";
@@ -623,25 +623,22 @@ async function runPublish(
   return runTool("publish", cmd, registry);
 }
 
+function templateSiteFile(name: string): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), `../../docs/template-review/${name}-site.json`);
+}
+
 async function runTemplateEval(
   cmd: Extract<MiloCommand, { cmd: "template-eval" }>,
 ): Promise<StageResult[]> {
-  // Find the most recent site that synthesized this template
-  const row = await db
-    .selectFrom("pipelineArtifacts")
-    .innerJoin("sites", "sites.uuid", "pipelineArtifacts.siteUuid")
-    .select(["sites.uuid as siteUuid", "sites.workspaceUuid"])
-    .where("pipelineArtifacts.stage", "=", "synthesize")
-    .where(sql`"pipelineArtifacts"."payload"->>'templateName'`, "=", cmd.name)
-    .orderBy("pipelineArtifacts.createdAt", "desc")
-    .limit(1)
-    .executeTakeFirst();
-
-  if (!row) {
-    throw new Error(`No synthesize artifact found for template "${cmd.name}". Run milo template --url <url> --name ${cmd.name} first.`);
+  const siteFile = templateSiteFile(cmd.name);
+  let siteUuid: string, workspaceUuid: string;
+  try {
+    const data = JSON.parse(fs.readFileSync(siteFile, "utf8")) as { siteUuid: string; workspaceUuid: string };
+    siteUuid = data.siteUuid;
+    workspaceUuid = data.workspaceUuid;
+  } catch {
+    throw new Error(`No site record found for template "${cmd.name}". Run milo template --url <url> --name ${cmd.name} first.`);
   }
-
-  const { siteUuid, workspaceUuid } = row;
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", awsProfile: "unicorn" });
   ctx.newTemplateName = cmd.name;
   ctx.componentFilter = cmd.component;
@@ -673,6 +670,10 @@ async function runTemplate(
     stageList = [...PIPELINES.template];
   }
   const results = await runPipeline(stageList, ctx, registry, cmd);
+  // Save site UUID so milo template-eval can find it without a DB query
+  const siteFile = templateSiteFile(cmd.name);
+  fs.mkdirSync(resolve(siteFile, ".."), { recursive: true });
+  fs.writeFileSync(siteFile, JSON.stringify({ siteUuid, workspaceUuid }, null, 2), "utf8");
   renderReport(results, Date.now() - totalStart, cmd.quiet);
   return results;
 }
