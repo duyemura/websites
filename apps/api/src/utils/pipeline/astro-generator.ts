@@ -1,5 +1,6 @@
 import type { ComponentGroup } from "./section-grouper";
 import { imageUrlToDataUri, type S3Context } from "./image-to-data-url";
+import { stripForbiddenPackages } from "./astro-sanitize";
 
 type ChatFn = (req: {
   messages: Array<{ role: "user" | "assistant"; content: unknown }>;
@@ -114,49 +115,12 @@ export function validateAstroComponent(code: string, componentName: string): str
     throw new Error(`[astro-generator] ${componentName}: <style> tag not closed — component was truncated`);
   }
 
-  // Strip forbidden third-party imports from BOTH frontmatter and <script> blocks.
-  // These packages are not installed in the renderer and break the build.
-  const FORBIDDEN_IMPORTS = ["astro-icon", "@iconify", "lucide-react", "react-icons"];
-  let cleaned = code;
-
-  // Strip from frontmatter — lines like `import { Icon } from 'astro-icon'`
-  const frontmatterClose = cleaned.indexOf("---", 3);
-  if (frontmatterClose !== -1) {
-    const fmSlice = cleaned.slice(3, frontmatterClose);
-    const fmCleaned = fmSlice
-      .split("\n")
-      .filter((line) => {
-        const matched = FORBIDDEN_IMPORTS.find(
-          (pkg) => line.includes(`"${pkg}"`) || line.includes(`'${pkg}'`),
-        );
-        if (matched) {
-          console.warn(`[astro-generator] ${componentName}: removed frontmatter import of "${matched}" — not installed in renderer`);
-        }
-        return !matched;
-      })
-      .join("\n");
-    if (fmCleaned !== fmSlice) {
-      cleaned = `---${fmCleaned}${cleaned.slice(frontmatterClose)}`;
-    }
-  }
-
-  // Strip <script> blocks that import third-party packages
-  cleaned = cleaned.replace(/<script[^>]*>([\s\S]*?)<\/script>/g, (fullMatch, scriptBody: string) => {
-    const hasForbidden = FORBIDDEN_IMPORTS.some(
-      (pkg) => scriptBody.includes(`"${pkg}"`) || scriptBody.includes(`'${pkg}'`),
-    );
-    if (hasForbidden) {
-      console.warn(`[astro-generator] ${componentName}: removed <script> block with unresolvable import — it would break the renderer build`);
-      return "";
-    }
-    return fullMatch;
-  });
-
-  // Also strip inline <Icon> JSX usages left behind after removing the import
-  if (cleaned !== code) {
-    cleaned = cleaned.replace(/<Icon\s[^/]*/g, "<!-- icon removed --> <span");
-    cleaned = cleaned.replace(/\/>(\s*<!-- icon removed -->)/g, "></span>");
-  }
+  // Strip forbidden third-party imports, <script> blocks with bad imports, and
+  // <Icon> usages. Stripping logic lives in the shared helper to avoid duplication
+  // with astro-sanitize.ts (which is also called at scaffold time and in the eval loop).
+  // Structural fixes (brace balancing, map-var defaults, eval-component injection) are
+  // intentionally NOT applied here — validateAstroComponent owns structural validation.
+  const cleaned = stripForbiddenPackages(code, componentName);
 
   if (warnings.length > 0) {
     console.warn(`[astro-generator] ${componentName}: ${warnings.join("; ")}`);
