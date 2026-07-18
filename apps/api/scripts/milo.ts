@@ -624,7 +624,7 @@ async function runPublish(
 }
 
 function templateSiteFile(name: string): string {
-  return resolve(dirname(fileURLToPath(import.meta.url)), `../../docs/template-review/${name}-site.json`);
+  return resolve(dirname(fileURLToPath(import.meta.url)), `../../../docs/template-review/${name}-site.json`);
 }
 
 async function runTemplateEval(
