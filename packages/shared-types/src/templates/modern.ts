@@ -5,7 +5,11 @@ export const modernSpec: TemplateSpec = {
   name: "modern",
   description: "Auto-generated from modern reference site.",
   headAssets: [
+    // Source site Webflow CSS — styles all Webflow class names used in adapted components
+    { tag: "link", attrs: { rel: "stylesheet", href: "https://cdn.prod.website-files.com/63caaac34d6a35f37e074c09/css/pushpress-site-modern.shared.cb137d268.min.css" } },
+    // Google Fonts used by the source template
     { tag: "link", attrs: { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800;900&family=Barlow:wght@400;600;700&display=swap" } },
+    // Brand token overrides — must come AFTER Webflow CSS to win cascade
     { tag: "link", attrs: { rel: "stylesheet", href: "/styles/modern.css" } },
   ],
   bodyClasses: ["bg-white"],
@@ -75,14 +79,13 @@ export const modernSpec: TemplateSpec = {
     "home": {
       path: "/",
       archetype: "home",
-      // Matches Beta Gym source section order
+      // Source order: hero → hero-cards → programs → testimonial → location
       components: [
         "HeroCenter",           // full-bleed hero with athlete photo + CTA
-        "FeatureGridEven",      // 3 white cards: Feel Supported / Have Fun / Varied Workouts
-        "CtaBand",              // "Every Body Is Unique. Find Something That Works For You"
-        "ProgramCardsSticky",   // 3 program cards with images (Bootcamp, PT, Strength)
-        "FeatureGridEvenFeatureGrid", // program detail: image left + text/CTA right
-        "DarkFeatureGrid",      // dark navy: "Everything You Need To Crush Your Fitness Goals"
+        "ContentBlock",         // "Feel Supported / Have Fun / Varied Workouts" cards (adapted)
+        "FeatureGridEven",      // programs: Bootcamp / Personal Training / Strength & Stretch (adapted)
+        "TestimonialBand",      // testimonials (adapted)
+        "LocationBlock",        // location/contact (adapted)
       ],
     },
     "about": {

@@ -1,94 +1,22 @@
 ---
-// Items are Feature objects: { icon: string, label: string, imageUrl?: string }
-// Default copy matches the Beta Gym modern template source (gyms override via GymSiteContent.home.features)
-const DEFAULT_FEATURES = [
-  { icon: "✊", label: "Feel Supported", description: "No matter your fitness goals, we are here to empower you along the way." },
-  { icon: "🎵", label: "Have Fun Working Out", description: "Workouts may be tough, but they will always be fun." },
-  { icon: "🔄", label: "Varied Workouts", description: "We guarantee you will never do the same workout twice. We keep things new so you never get bored." },
-];
-
-export interface FeatureGridEvenProps {
-  id?: string;
-  headline?: string;
-  items: Array<{ icon?: string; label?: string; imageUrl?: string; }>;
+export interface Props {
+  programsHeadline?: string;
 }
-const { id, headline, items } = Astro.props;
-const cards = (items && items.length > 0) ? items : DEFAULT_FEATURES;
+const { programsHeadline } = Astro.props;
 ---
 
-<section id={id} data-eval-component="FeatureGridEven" class="feature-cards-section">
-  <div class="feature-cards-grid">
-    {cards.map((item) => (
-      <div class="feature-card">
-        <div class="feature-card-icon" aria-hidden="true">
-          <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
-            <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="36">{item.icon ?? "⚡"}</text>
-          </svg>
-        </div>
-        <h3 class="feature-card-title">{item.label}</h3>
-        {"description" in item && <p class="feature-card-desc">{(item as { description?: string }).description}</p>}
-      </div>
-    ))}
-  </div>
-</section>
+<div data-eval-component="FeatureGridEven" class="programs-section"><div class="wrapper programs-section-wrap"><div class="heading-wrapper programs-section-wrap"><h2 class="heading-10">Every body is unique. <br>Find something that works for YOU</h2></div><div class="wrapper programs-container"><div class="collection-list-wrapper-3 w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="collection-item-3 w-dyn-item"><div class="wrapper programs"><div class="programs-text-container"><div style="color:var(--modern-accent, #0464fc)" class="program-cost w-dyn-bind-empty"></div><h3 class="program-name">Bootcamp</h3><div class="program-summary">The fast-paced, ever-changing circuit of strength and cardio exercises keeps bodies guessing and minds from becoming bored.</div><a style="background-color:var(--modern-accent, #0464fc)" href="https://pushpress-site-modern.webflow.io/contact" class="program-button w-condition-invisible w-button">Contact us For More Info</a><div style="background-color:var(--modern-accent, #0464fc)" class="div-block-79"><h4 class="bootcamp-modal-button">Book Your Free Intro</h4></div></div><div class="programs-slider-container"><div class="program-slider-border"></div><div class="program-image-div"><img loading="lazy" alt="Main Programs" src="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash.jpg" sizes="100vw" srcset="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-500.jpg 500w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-800.jpg 800w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-1080.jpg 1080w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-1600.jpg 1600w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-2000.jpg 2000w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-2600.jpg 2600w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash-p-3200.jpg 3200w, 63caaac34d6a3583a0074c0d/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash.jpg 5377w" class="program-image"></div></div></div><div class="wrapper programs reverse"><div class="programs-text-container"><div style="color:var(--modern-accent, #0464fc)" class="program-cost w-dyn-bind-empty"></div><h3 class="program-name">Personal Training</h3><div class="program-summary">A passionate, knowledgeable personal trainer will show you what to do and keep you on the right track.</div><a style="background-color:var(--modern-accent, #0464fc)" href="https://pushpress-site-modern.webflow.io/programs/personal-training" class="program-button w-dyn-bind-empty w-button"></a><a style="background-color:var(--modern-accent, #0464fc)" href="https://pushpress-site-modern.webflow.io/contact" class="program-button w-button">Contact us For More Info</a></div><div class="programs-slider-container"><div class="program-slider-border"></div><div class="program-image-div"><img loading="lazy" alt="Main Programs" src="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1).jpg" sizes="100vw" srcset="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1)-p-500.jpg 500w, 63caaac34d6a3583a0074c0d/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1)-p-800.jpg 800w, 63caaac34d6a3583a0074c0d/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1)-p-1080.jpg 1080w, 63caaac34d6a3583a0074c0d/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1).jpg 1440w" class="program-image"></div></div></div><div class="wrapper programs"><div class="programs-text-container"><div style="color:var(--modern-accent, #0464fc)" class="program-cost w-dyn-bind-empty"></div><h3 class="program-name">Strength and Stretch</h3><div class="program-summary">Our program is purposely segmented to allow each individual the opportunity to focus on strength, endurance, and weightlifting.</div><a style="background-color:var(--modern-accent, #0464fc)" href="https://pushpress-site-modern.webflow.io/contact" class="program-button w-condition-invisible w-button">Contact us For More Info</a><div style="background-color:var(--modern-accent, #0464fc)" class="div-block-79"><h4 class="bootcamp-modal-button">Book Your Free Intro</h4></div></div><div class="programs-slider-container"><div data-delay="4000" data-animation="slide" class="progarams-slider w-slider" data-autoplay="false" data-easing="ease" data-hide-arrows="false" data-disable-swipe="false" data-autoplay-limit="0" data-nav-spacing="3" data-duration="500" data-infinite="true" role="region" aria-label="carousel"><div class="progarms-slider-mask w-slider-mask" id="w-slider-mask-0"><div class="progarm-slide-1 w-slide" aria-label="1 of 1" role="group" style="transition: all; transform: translateX(0px); opacity: 1;"><div style="background-image:url(" 63caaac34d6a3583a0074c0d="" 6407d45e3058f15c9b76cc3f_sunday-ii-sunday-zetmqgm2n3k-unsplash.jpg")"="" class="program-slider-image"></div></div><div aria-live="off" aria-atomic="true" class="w-slider-aria-label"></div></div><div class="progarm-left-arrow w-slider-arrow-left" role="button" tabindex="0" aria-controls="w-slider-mask-0" aria-label="previous slide"><div class="w-embed"><svg width="13" height="21" viewBox="0 0 13 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M12.5203 3.04161L5.07777 10.5004L12.5203 17.9591L10.229 20.2504L0.479017 10.5004L10.229 0.750365L12.5203 3.04161Z" fill="var(--modern-accent, #0464fc)"></path>
+</svg></div></div><div class="program-right-arrow w-slider-arrow-right" role="button" tabindex="0" aria-controls="w-slider-mask-0" aria-label="next slide"><div class="w-embed"><svg width="13" height="21" viewBox="0 0 13 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M0.479736 17.9584L7.92224 10.4996L0.479736 3.04088L2.77099 0.749634L12.521 10.4996L2.77099 20.2496L0.479736 17.9584Z" fill="var(--modern-accent, #0464fc)"></path>
+</svg></div></div><div class="program-slide-nav w-slider-nav w-round"><div class="w-slider-dot w-active" aria-label="Show slide 1 of 1" aria-pressed="true" role="button" tabindex="0" style="margin-left: 3px; margin-right: 3px;"></div></div></div><div class="program-slider-border"></div><div class="program-image-div"><img loading="lazy" alt="Main Programs" src="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash.jpg" sizes="100vw" srcset="https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-500.jpg 500w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-800.jpg 800w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-1080.jpg 1080w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-1600.jpg 1600w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-2000.jpg 2000w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-2600.jpg 2600w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash-p-3200.jpg 3200w, 63caaac34d6a3583a0074c0d/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash.jpg 5387w" class="program-image"></div></div></div><div class="wrapper programs reverse w-condition-invisible"><div class="programs-text-container"><div style="color:var(--modern-accent, #0464fc)" class="program-cost w-dyn-bind-empty"></div><h3 class="program-name w-dyn-bind-empty"></h3><div class="program-summary w-dyn-bind-empty"></div><a style="background-color:var(--modern-accent, #0464fc)" href="index.html#" class="program-button w-button">Get your first class for free</a><a style="background-color:var(--modern-accent, #0464fc)" href="https://pushpress-site-modern.webflow.io/contact" class="program-button w-condition-invisible w-button">Contact us For More Info</a></div><div class="programs-slider-container"><div class="program-slider-border"></div><div style="background-image:url(" 63caaac34d6a3583a0074c0d="" 6407d4e86253ab1fc4052053_gabin-vallet-j154nekpzlq-unsplash.jpg")"="" class="program-image-div"></div></div></div></div></div></div></div></div></div>
 
 <style>
-  .feature-cards-section {
-    background-color: #fff;
-    padding: 0 20px 60px;
-  }
-
-  .feature-cards-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
-    max-width: 1200px;
-    margin: 0 auto;
-    margin-top: -80px; /* pull up into the dark hero area */
-    position: relative;
-    z-index: 10;
-  }
-
-  .feature-card {
-    background: #fff;
-    border: 1px solid rgba(0,0,0,0.07);
-    border-radius: 8px;
-    padding: 32px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .feature-card-icon {
-    width: 60px;
-    height: 60px;
-    color: var(--modern-accent, #0464fc);
-  }
-
-  .feature-card-title {
-    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: #111;
-    margin: 0;
-    line-height: 1.2;
-  }
-
-  .feature-card-desc {
-    font-family: var(--modern-font-body, 'Barlow', sans-serif);
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: #555;
-    margin: 0;
-  }
-
-  @media (min-width: 768px) {
-    .feature-cards-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  }
-
-  @media (min-width: 1440px) {
-    .feature-cards-grid { gap: 32px; transform: translateY(-80px); }
-    .feature-card { padding: 40px 36px; }
-    .feature-card-title { font-size: 1.35rem; }
-  }
+.feature-grid-even {
+  color: rgb(6, 9, 10);
+  padding: 200px 0px 0px;
+  gap: normal;
+  align-items: normal;
+  justify-content: normal;
+}
 </style>
