@@ -652,10 +652,19 @@ export interface Props {}
 // ---------------------------------------------------------------------------
 
 function buildComponentIndex(templateName: string, components: AdaptedComponent[]): string {
-  const imports = components
+  // Deduplicate by component name — multiple sections may map to the same
+  // component type (e.g. several FeatureGridEven instances on one page).
+  const seen = new Set<string>();
+  const unique = components.filter((c) => {
+    if (seen.has(c.name)) return false;
+    seen.add(c.name);
+    return true;
+  });
+
+  const imports = unique
     .map((c) => `import ${c.name} from "./${c.name}.astro";`)
     .join("\n");
-  const entries = components
+  const entries = unique
     .map((c) => `  "${c.name}": ${c.name} as unknown as AstroComponent,`)
     .join("\n");
 
