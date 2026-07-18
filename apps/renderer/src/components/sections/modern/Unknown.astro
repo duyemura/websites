@@ -1,112 +1,42 @@
 ---
-export interface Props {
-  headline?: string;
-  body?: string;
-  primaryCtaText?: string;
-  primaryCtaUrl?: string;
-  secondaryCtaText?: string;
-  secondaryCtaUrl?: string;
-}
-const {
-  headline = "",
-  body = "",
-  primaryCtaText = "",
-  primaryCtaUrl = "#",
-  secondaryCtaText = "",
-  secondaryCtaUrl = "#",
-} = Astro.props;
+export interface Props { headline?: string; body?: string; }
+const { headline = "", body = "" } = Astro.props;
 ---
 
 <section data-eval-component="Unknown" class="unknown-section">
-  <div class="unknown-section__inner">
+  <div class="inner">
     {headline && <h2>{headline}</h2>}
     {body && <p>{body}</p>}
-    {(primaryCtaText || secondaryCtaText) && (
-      <div class="unknown-section__actions">
-        {primaryCtaText && (
-          <a href={primaryCtaUrl} class="button button--primary">
-            {primaryCtaText}
-          </a>
-        )}
-        {secondaryCtaText && (
-          <a href={secondaryCtaUrl} class="button button--secondary">
-            {secondaryCtaText}
-          </a>
-        )}
-      </div>
-    )}
   </div>
 </section>
 
 <style>
   .unknown-section {
-    padding: 4rem 20px;
-    background-color: var(--color-primary, rgb(241, 241, 241));
-    color: #111;
+    background-color: #f5f5f5;
+    padding: 80px 20px;
     text-align: center;
   }
-  .unknown-section__inner {
-    max-width: 56rem;
+  .inner {
+    max-width: 800px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
+    gap: 16px;
     align-items: center;
-    gap: 1.5rem; /* Larger gap between elements inside the card */
-    padding: 2.5rem;
-    border-radius: 1rem; /* Slightly more rounded */
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
-    background-color: white; /* Card background color to white */
   }
-  .unknown-section h2 {
-    font-family: var(--font-heading, 'Montserrat', sans-serif);
-    font-size: 3.5rem; /* Larger for headline */
-    font-weight: 800; /* Bolder for headline */
-    letter-spacing: -0.05em;
-    line-height: 1.05; /* Tighter line-height for headline */
+  h2 {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2.25rem;
+    font-weight: 900;
+    color: #111;
     margin: 0;
-    color: #1a1a1a; /* Darker gray/black text color */
+    line-height: 1.1;
   }
-  .unknown-section p {
-    font-family: var(--font-body, 'Barlow', sans-serif);
-    font-size: 1.25rem; /* Larger for subheading */
-    line-height: 1.4; /* Tighter line-height for subheading */
-    color: #333; /* Darker gray/black text color */
+  p {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1.1rem;
+    color: #555;
     margin: 0;
-    max-width: 42rem;
-  }
-  .unknown-section__actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 1.5rem; /* Larger gap between cards */
-    margin-top: 2rem; /* More space between paragraph and buttons */
-  }
-  .button {
-    display: inline-flex;
-    padding: 1rem 2.5rem; /* More horizontal padding for buttons */
-    border-radius: 0.75rem; /* Slightly more rounded buttons */
-    font-size: 1.1rem; /* Slightly larger button text */
-    font-weight: 700;
-    text-decoration: none;
-    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out;
-  }
-  .button--primary {
-    background-color: var(--color-accent, #0464fc); /* Brighter red/orange */
-    color: #fff;
-    border: 2px solid var(--color-accent, #0464fc);
-  }
-  .button--primary:hover {
-    background-color: var(--color-accent, #0464fc);
-    border-color: var(--color-accent, #0464fc);
-    opacity: 0.9;
-  }
-  .button--secondary {
-    background-color: transparent;
-    color: var(--color-accent, #0464fc);
-    border: 2px solid var(--color-accent, #0464fc);
-  }
-  .button--secondary:hover {
-    background-color: var(--color-accent, #0464fc);
-    color: #fff;
+    max-width: 600px;
   }
 </style>

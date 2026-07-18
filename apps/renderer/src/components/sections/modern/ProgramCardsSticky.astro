@@ -1,14 +1,8 @@
 ---
 export interface ProgramCardsStickyProps {
   headline?: string;
-  items: Array<{
-    slug: string;
-    name: string;
-    coverImageUrl?: string;
-    shortDescription?: string;
-  }>;
+  items: Array<{ slug: string; name: string; coverImageUrl?: string; shortDescription?: string; }>;
 }
-
 const NO_IMAGE = "__NO_IMAGE__";
 const { headline, items = [] } = Astro.props as ProgramCardsStickyProps;
 ---
@@ -17,20 +11,13 @@ const { headline, items = [] } = Astro.props as ProgramCardsStickyProps;
   {headline && <h2 class="section-headline">{headline}</h2>}
   <div class="card-grid">
     {items.map((item) => {
-      const hasCover =
-        !!item.coverImageUrl &&
-        item.coverImageUrl !== NO_IMAGE &&
-        !item.coverImageUrl.includes("placehold.co");
+      const hasCover = !!item.coverImageUrl && item.coverImageUrl !== NO_IMAGE && !item.coverImageUrl.includes("placehold.co");
       return (
-        <a
-          href={`/programs/${item.slug}`}
-          class="card"
-          style={hasCover ? `background-image: url(${item.coverImageUrl})` : ""}
-        >
-          <div class="card-content">
+        <a href={`/programs/${item.slug}`} class="card" style={hasCover ? `background-image:url(${item.coverImageUrl})` : ""}>
+          <div class="card-body">
             <h3 class="card-title">{item.name}</h3>
             {item.shortDescription && <p class="card-desc">{item.shortDescription}</p>}
-            <button class="card-button">Learn More</button>
+            <span class="card-cta">Learn More</span>
           </div>
         </a>
       );
@@ -40,124 +27,84 @@ const { headline, items = [] } = Astro.props as ProgramCardsStickyProps;
 
 <style>
   .program-cards-sticky {
-    background-color: var(--color-primary, rgb(241, 241, 241));
-    padding: 100px 20px;
-    text-align: left;
+    background-color: #f5f5f5;
+    padding: 80px 20px;
   }
-
   .section-headline {
-    font-family: var(--font-heading, 'Montserrat', sans-serif);
-    font-size: 3.5rem; /* Larger for headline */
-    font-weight: 700;
-    color: #333;
-    margin: 0 auto 80px; /* Larger gap */
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2rem;
+    font-weight: 900;
+    color: #111;
+    text-align: center;
+    margin: 0 auto 48px;
     max-width: 800px;
     line-height: 1.1;
-    letter-spacing: -0.03em; /* Tighter for headline */
   }
-
   .card-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 32px; /* Larger gap */
+    gap: 24px;
     max-width: 1200px;
     margin: 0 auto;
   }
-
   .card {
-    position: relative;
     display: block;
-    min-height: 280px;
-    background-color: #ffffff;
+    position: relative;
+    min-height: 300px;
+    background-color: #d0d0d0;
     background-size: cover;
     background-position: center;
-    border-radius: 20px; /* More rounded */
+    border-radius: 12px;
     overflow: hidden;
     text-decoration: none;
     color: #fff;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); /* More prominent box-shadow */
-    transition: transform 0.2s ease-in-out;
   }
-
-  .card:hover {
-    transform: translateY(-8px);
-  }
-
   .card::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%);
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.08) 55%);
     z-index: 1;
   }
-
-  .card-content {
+  .card-body {
     position: relative;
     z-index: 2;
     padding: 24px;
+    height: 100%;
+    min-height: 300px;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
     justify-content: flex-end;
-    height: 100%;
-    min-height: 280px;
+    gap: 8px;
   }
-
   .card-title {
-    font-family: var(--font-heading, 'Montserrat', sans-serif);
-    font-size: 1.6rem;
-    font-weight: 700;
-    margin: 0 0 12px;
-    line-height: 1.2;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin: 0;
   }
-
   .card-desc {
-    font-family: var(--font-body, 'Barlow', sans-serif);
-    font-size: 1rem;
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.9rem;
     opacity: 0.9;
-    margin: 0 0 20px; /* Spacing between description and button */
-    max-width: 40ch;
+    margin: 0;
   }
-
-  .card-button {
-    background-color: var(--color-accent, #ff6600); /* Expected orange */
-    color: #ffffff;
-    padding: 14px 28px; /* More vertical padding */
-    border: none;
-    border-radius: 30px; /* More rounded */
-    font-family: var(--font-body, 'Barlow', sans-serif);
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+  .card-cta {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 8px 20px;
+    background-color: var(--modern-accent, #0464fc);
+    border-radius: 4px;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.875rem;
+    font-weight: 700;
+    align-self: flex-start;
   }
-
-  .card-button:hover {
-    background-color: color-mix(in srgb, var(--color-accent, #ff6600) 90%, black);
-  }
-
-  @media (min-width: 768px) {
-    .card-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .section-headline {
-      font-size: 4rem; /* Larger for headline */
-    }
-  }
-
+  @media (min-width: 768px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (min-width: 1024px) {
-    .card-grid {
-      grid-template-columns: repeat(3, 1fr);
-      gap: 40px; /* Larger gap */
-    }
-    .card {
-      min-height: 360px;
-    }
-    .card-content {
-      min-height: 360px;
-    }
-    .section-headline {
-      font-size: 4.5rem; /* Larger for headline */
-    }
+    .card-grid { grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    .card { min-height: 360px; }
+    .card-body { min-height: 360px; }
+    .section-headline { font-size: 2.75rem; }
   }
 </style>

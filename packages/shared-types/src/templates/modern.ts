@@ -5,17 +5,8 @@ export const modernSpec: TemplateSpec = {
   name: "modern",
   description: "Auto-generated from modern reference site.",
   headAssets: [
-    {
-      tag: "link",
-      attrs: {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500;600;700;800;900&display=swap",
-      },
-    },
-    {
-      tag: "style",
-      innerHtml: "@import url('/styles/modern.css');",
-    },
+    { tag: "link", attrs: { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800;900&family=Barlow:wght@400;600;700&display=swap" } },
+    { tag: "link", attrs: { rel: "stylesheet", href: "/styles/modern.css" } },
   ],
   bodyClasses: ["bg-white"],
   sections: {},

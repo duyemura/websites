@@ -1,6 +1,14 @@
+/* Modern template design tokens — loaded via headAssets, overrides brand defaults */
+body {
+  background-color: #fff;
+}
+
 :root {
-  /* Auto-generated design tokens for modern template */
-  --color-primary: rgb(241, 241, 241);
-  --color-text: #ffffff;
-  --font-size-body: 16px;
+  --modern-bg: #f5f5f5;
+  --modern-bg-white: #ffffff;
+  --modern-text: #111111;
+  --modern-text-secondary: #555555;
+  --modern-accent: #0464fc;
+  --modern-font-heading: 'Montserrat', sans-serif;
+  --modern-font-body: 'Barlow', sans-serif;
 }

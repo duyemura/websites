@@ -6,110 +6,86 @@ export interface Props {
   ctaHref?: string;
   backgroundImageUrl?: string;
 }
-
 const { headline, subheadline, ctaText, ctaHref, backgroundImageUrl } = Astro.props;
-const hasImage = backgroundImageUrl && backgroundImageUrl !== "__NO_IMAGE__";
+const hasImage = !!backgroundImageUrl && backgroundImageUrl !== "__NO_IMAGE__";
 ---
 
 <section
   data-eval-component="HeroCenter"
   class="hero-center"
-  style={hasImage ? `background-image: url(${backgroundImageUrl}); background-size: cover; background-position: center;` : ""}
+  style={hasImage ? `background-image:url(${backgroundImageUrl});background-size:cover;background-position:center;` : ""}
 >
   {hasImage && <div class="overlay" />}
   <div class="hero-content">
     {headline && <h1 class="headline">{headline}</h1>}
     {subheadline && <p class="subheadline">{subheadline}</p>}
-    {ctaText && ctaHref && (
-      <a href={ctaHref} class="cta-button">{ctaText}</a>
-    )}
+    {ctaText && ctaHref && <a href={ctaHref} class="cta-btn">{ctaText}</a>}
   </div>
 </section>
 
 <style>
   .hero-center {
     position: relative;
-    background-color: var(--color-primary, rgb(241, 241, 241));
+    background-color: #f5f5f5;
+    min-height: 560px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    min-height: 60vh;
-    padding: 120px 20px;
+    align-items: flex-end;
+    padding: 60px 40px;
   }
-
   .overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%);
+    background: linear-gradient(to right, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.15) 60%);
     z-index: 1;
   }
-
   .hero-content {
     position: relative;
     z-index: 2;
-    max-width: 800px;
+    max-width: 560px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 32px; /* Increased vertical space between headline and cards */
-    padding: 60px; /* More internal padding for card content */
-    border-radius: 20px; /* More rounded */
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-    background-color: rgba(255, 255, 255, 0.9);
+    gap: 20px;
   }
-
   .headline {
-    font-family: var(--font-heading, 'Montserrat', sans-serif);
-    font-size: 3.5rem; /* Larger for headline */
-    font-weight: 700; /* Expected: 700 */
-    line-height: 1.1; /* Tighter for headline */
-    letter-spacing: -0.02em;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1.05;
+    color: #111;
+    margin: 0;
+  }
+  .subheadline {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1.1rem;
+    line-height: 1.6;
     color: #333;
     margin: 0;
-    text-align: center;
   }
-
-  .subheadline {
-    font-family: var(--font-body, 'Barlow', sans-serif);
-    font-size: 1.1rem;
-    line-height: 1.5;
-    color: #555;
-    margin: 0;
-    max-width: 560px;
-    text-align: center;
-  }
-
-  .cta-button {
-    display: inline-block;
-    padding: 18px 40px; /* More padding */
-    background-color: var(--color-accent, #0464fc); /* Dark purple/black (using accent color as per design intent) */
-    color: white; /* White */
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background-color: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-weight: 700;
+    font-size: 1rem;
     text-decoration: none;
-    border-radius: 12px; /* More rounded */
-    font-family: var(--font-heading, 'Montserrat', sans-serif);
-    font-weight: bold;
-    font-size: 1.05rem;
-    transition: background-color 0.2s, transform 0.2s;
+    border-radius: 6px;
+    align-self: flex-start;
   }
-
-  .cta-button:hover {
-    background-color: color-mix(in srgb, var(--color-accent, #0464fc) 85%, black);
-    transform: translateY(-2px);
-  }
+  /* when image is present, text goes white */
+  .hero-center:has(.overlay) .headline,
+  .hero-center:has(.overlay) .subheadline { color: #fff; }
 
   @media (min-width: 768px) {
-    .headline { font-size: 4.5rem; }
-    .subheadline { font-size: 1.25rem; }
+    .hero-center { min-height: 640px; padding: 80px 60px; }
+    .headline { font-size: 4rem; }
   }
-
   @media (min-width: 1440px) {
-    .hero-center {
-      min-height: 70vh;
-      padding-bottom: 150px;
-    }
-    .headline { font-size: 5.5rem; }
-    .subheadline { font-size: 1.4rem; }
-    .cta-button { padding: 20px 45px; font-size: 1.15rem; }
+    .hero-center { min-height: 720px; padding: 100px 120px; }
+    .headline { font-size: 4.5rem; }
+    .hero-content { max-width: 640px; }
   }
 </style>
