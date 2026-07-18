@@ -153,9 +153,14 @@ export const navRebuildStage: StageRunner = {
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
     const shortId = site.uuid.slice(0, 8);
-    if (previewDomain) {
-      ctx.log(`  Preview:    https://${shortId}-preview.${previewDomain}/`);
-      ctx.log(`  Production: https://${shortId}.${previewDomain}/`);
+    const urls = previewDomain ? {
+      staging:    `https://${shortId}-preview.${previewDomain}/`,
+      production: `https://${shortId}.${previewDomain}/`,
+    } : undefined;
+
+    if (urls) {
+      ctx.log(`  Staging:    ${urls.staging}`);
+      ctx.log(`  Production: ${urls.production}`);
     }
 
     return {
@@ -168,6 +173,7 @@ export const navRebuildStage: StageRunner = {
         routes: result.routes,
       },
       warnings: capturedNav.length === 0 ? ["No nav-structure.json — template used fallback nav"] : [],
+      urls,
     };
   },
 };

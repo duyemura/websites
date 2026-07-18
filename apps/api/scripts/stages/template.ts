@@ -105,14 +105,16 @@ export const templateStage: StageRunner = {
       );
     }
 
-    if (previewDomain) {
+    const stagingUrl = previewDomain
+      ? templateName
+        ? `https://${templateName}-preview.${previewDomain}/`
+        : `https://${ctx.siteUuid.slice(0, 8)}-preview.${previewDomain}/`
+      : undefined;
+
+    if (stagingUrl) {
       const shortId = ctx.siteUuid.slice(0, 8);
-      if (templateName) {
-        ctx.log(`  Preview:    https://${templateName}-preview.${previewDomain}/`);
-        ctx.log(`  (also at):  https://${shortId}-preview.${previewDomain}/`);
-      } else {
-        ctx.log(`  Preview:    https://${shortId}-preview.${previewDomain}/`);
-      }
+      ctx.log(`  Preview:    ${stagingUrl}`);
+      if (templateName) ctx.log(`  (also at):  https://${shortId}-preview.${previewDomain}/`);
     }
 
     return {
@@ -125,6 +127,7 @@ export const templateStage: StageRunner = {
         redirects: result.redirects.length,
       },
       warnings: [],
+      urls: stagingUrl ? { staging: stagingUrl } : undefined,
     };
   },
 };

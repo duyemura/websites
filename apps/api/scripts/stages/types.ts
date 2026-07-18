@@ -38,6 +38,15 @@ export interface StageResult {
   error?: string;
   /** Estimated resource costs for this stage */
   costs?: StageCosts;
+  /**
+   * URLs produced by this stage.
+   * Always populated when a stage pushes to a staging or production bucket
+   * so they appear in the final pipeline summary regardless of verbosity.
+   */
+  urls?: {
+    staging?: string;
+    production?: string;
+  };
 }
 
 export interface StageCosts {

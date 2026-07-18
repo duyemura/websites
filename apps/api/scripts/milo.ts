@@ -195,6 +195,17 @@ function renderReport(
     });
   }
 
+  // Always surface deployed URLs — shown regardless of quiet/verbose mode
+  // so they're easy to find in CI output or terminal scrollback.
+  const urlResults = results.filter((r) => r.urls && (r.urls.staging || r.urls.production));
+  if (urlResults.length > 0) {
+    console.log("\nDeployed:");
+    for (const r of urlResults) {
+      if (r.urls?.staging)    console.log(`  Staging:    ${r.urls.staging}`);
+      if (r.urls?.production) console.log(`  Production: ${r.urls.production}`);
+    }
+  }
+
   if (!quiet) {
     const allW = results.flatMap((r) =>
       dedupeWarnings(r.warnings).map((w) => `[${r.stage}] ${w}`),

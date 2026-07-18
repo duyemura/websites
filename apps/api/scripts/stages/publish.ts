@@ -78,6 +78,7 @@ export const publishStage: StageRunner = {
         publishedAt: new Date().toISOString(),
       },
       warnings: [],
+      urls: urls ?? undefined,
     };
   },
 };
