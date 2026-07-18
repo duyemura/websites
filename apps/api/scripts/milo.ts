@@ -610,6 +610,23 @@ async function runRestore(
   return runTool("restore", cmd, registry);
 }
 
+async function resolveSiteByUrl(url: string): Promise<{ siteUuid: string; workspaceUuid: string }> {
+  // Normalise: strip trailing slash for comparison
+  const normalised = url.replace(/\/$/, "");
+  const site = await db
+    .selectFrom("sites")
+    .select(["uuid", "workspaceUuid"])
+    .where((eb) =>
+      eb.or([
+        eb("sourceUrl", "=", url),
+        eb("sourceUrl", "=", normalised),
+        eb("sourceUrl", "=", normalised + "/"),
+      ]),
+    )
+    .executeTakeFirstOrThrow();
+  return { siteUuid: site.uuid, workspaceUuid: site.workspaceUuid };
+}
+
 async function runLegacyStages(
   cmd: Extract<MiloCommand, { cmd: "stages" }>,
   registry: Record<string, StageRunner>,
@@ -620,7 +637,12 @@ async function runLegacyStages(
       process.exit(1);
     }
   }
-  const { siteUuid, workspaceUuid } = await resolveSiteByUuid(cmd.site);
+  // Resolve site: prefer explicit --site UUID, fall back to --url lookup
+  const { siteUuid, workspaceUuid } = cmd.site
+    ? await resolveSiteByUuid(cmd.site)
+    : cmd.url
+      ? await resolveSiteByUrl(cmd.url)
+      : (() => { throw new Error("milo --stages requires either --site <uuid> or --url <url>"); })();
   const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: cmd.tier, templateTheme: cmd.templateTheme });
   if (!cmd.quiet) console.log(`\nMilo pipeline — site: ${siteUuid}`);
   const totalStart = Date.now();
