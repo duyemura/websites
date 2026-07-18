@@ -39,6 +39,8 @@ export async function runEvalLoop(
   let score = 0;
   let issues: VisionIssue[] = [];
   let iterations = 0;
+  // Track the last-known-good component code so we can revert on build failure.
+  let lastGoodCode = fs.readFileSync(target.filePath, "utf8");
 
   const hybridLoadFn = (url: string): Promise<string> =>
     url.startsWith("data:") ? Promise.resolve(url) : loadImageFn(url);
@@ -46,8 +48,17 @@ export async function runEvalLoop(
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     iterations = i + 1;
 
-    // 1. Build
-    await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
+    // 1. Build — revert to last-good code and exit this component's loop on failure.
+    try {
+      await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
+    } catch (buildErr) {
+      console.warn(
+        `[eval-loop] Build failed for ${target.name} (iteration ${i + 1}), reverting to last good version:`,
+        buildErr instanceof Error ? buildErr.message : String(buildErr),
+      );
+      fs.writeFileSync(target.filePath, lastGoodCode, "utf8");
+      break;
+    }
 
     // 2. Screenshot rendered page (returns data URI directly)
     const { dataUri: renderedDataUri, foundComponent } = await screenshotPage(target, rendererDir);
@@ -76,10 +87,11 @@ export async function runEvalLoop(
       continue;
     }
 
-    // 4. Agent fix — only runs when diff succeeded, score < threshold, and component was found
-    const currentCode = fs.readFileSync(target.filePath, "utf8");
+    // 4. Agent fix — only runs when diff succeeded, score < threshold, and component was found.
+    // Snapshot current (good) code before writing the agent's attempt.
+    lastGoodCode = fs.readFileSync(target.filePath, "utf8");
     const rawFixed = await agentFix(
-      currentCode,
+      lastGoodCode,
       target.originalCropDesktop,
       renderedDataUri,
       issues,

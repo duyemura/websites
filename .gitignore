@@ -27,3 +27,4 @@ tmp_*.js
 apps/renderer/.astro/data-store.json
 apps/renderer/.astro/settings.json
 apps/api/scripts/eval/runs/
+docs/template-review/*-site.json

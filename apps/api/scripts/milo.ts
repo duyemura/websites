@@ -643,6 +643,16 @@ async function runTemplateEval(
   ctx.newTemplateName = cmd.name;
   ctx.componentFilter = cmd.component;
 
+  // Guard: if the synthesize artifact is gone (DB was reset, site re-created, etc.)
+  // fail with an actionable message instead of the cryptic checkPrerequisites error.
+  const synthesizeArtifact = await loadArtifact(ctx.db, { siteUuid, workspaceUuid }, "synthesize");
+  if (!synthesizeArtifact) {
+    throw new Error(
+      `Site file for "${cmd.name}" is stale — the synthesize artifact no longer exists in the DB. ` +
+      `Re-run: milo template --url <url> --name ${cmd.name}`,
+    );
+  }
+
   if (!cmd.quiet) {
     console.log(`\nMilo template-eval — ${cmd.name}${cmd.component ? ` (component: ${cmd.component})` : ""} (site: ${siteUuid})`);
   }
