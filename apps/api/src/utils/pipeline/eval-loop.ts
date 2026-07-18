@@ -191,8 +191,11 @@ RULES:
 - Return ONLY the corrected .astro file content starting with ---
 - Do NOT add any new import statements — this component is self-contained
 - Do NOT import astro-icon, @iconify, lucide-react, react-icons, or any other package
-- Fix ONLY CSS and layout — do not change the Props interface or template structure
-- Apply exact colors, fonts, and spacing from the original screenshot`,
+- Fix ONLY CSS values — do not change the Props interface, template HTML structure, or data-eval-component attribute
+- PRESERVE CSS custom properties: do NOT replace var(--color-primary), var(--color-accent), var(--font-heading), var(--font-body) with hardcoded values
+- If the section background appears light in the original, use var(--color-primary, rgb(241,241,241)) — do NOT darken it
+- CTA buttons should use var(--color-accent, #0464fc) for background color
+- Apply spacing, border-radius, font-size, and font-weight fixes from the issues list`,
     },
   ];
 

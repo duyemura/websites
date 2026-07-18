@@ -1,138 +1,115 @@
 ---
-interface Props {
-  headline: string;
-  subheadline: string;
-  ctaText: string;
-  ctaHref: string;
-  imageUrl: string;
-  imageAlt: string;
+export interface Props {
+  headline?: string;
+  subheadline?: string;
+  ctaText?: string;
+  ctaHref?: string;
+  backgroundImageUrl?: string;
 }
 
-const { headline, subheadline, ctaText, ctaHref, imageUrl, imageAlt } = Astro.props;
+const { headline, subheadline, ctaText, ctaHref, backgroundImageUrl } = Astro.props;
+const hasImage = backgroundImageUrl && backgroundImageUrl !== "__NO_IMAGE__";
 ---
 
-<section data-eval-component="HeroCenter" class="hero-center-section">
-  <div class="container">
-    <div class="content-wrapper">
-      <h1 class="headline">{headline}</h1>
-      <p class="subheadline">{subheadline}</p>
+<section
+  data-eval-component="HeroCenter"
+  class="hero-center"
+  style={hasImage ? `background-image: url(${backgroundImageUrl}); background-size: cover; background-position: center;` : ""}
+>
+  {hasImage && <div class="overlay" />}
+  <div class="hero-content">
+    {headline && <h1 class="headline">{headline}</h1>}
+    {subheadline && <p class="subheadline">{subheadline}</p>}
+    {ctaText && ctaHref && (
       <a href={ctaHref} class="cta-button">{ctaText}</a>
-    </div>
-    <div class="image-wrapper">
-      <img src={imageUrl} alt={imageAlt} loading="eager" class="hero-image" />
-    </div>
+    )}
   </div>
 </section>
 
 <style>
-  .hero-center-section {
-    padding-top: 100px; /* Larger padding-top */
-    padding-bottom: 100px; /* Larger padding-bottom */
-    background-color: #0d0d21; /* Darker background color */
+  .hero-center {
+    position: relative;
+    background-color: var(--color-primary, rgb(241, 241, 241));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 60vh;
+    padding: 120px 20px;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%);
+    z-index: 1;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    max-width: 800px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    text-align: left; /* Aligned left */
-    min-height: 100vh;
-    box-sizing: border-box;
-  }
-
-  .container {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start; /* Align items to the start for left alignment */
-    width: 100%;
-    max-width: 1440px;
-    padding: 40px 20px;
-    box-sizing: border-box;
-  }
-
-  .content-wrapper {
-    margin-bottom: 40px;
-    max-width: 900px; /* Constrain content width */
+    gap: 32px; /* Increased vertical space between headline and cards */
+    padding: 60px; /* More internal padding for card content */
+    border-radius: 20px; /* More rounded */
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    background-color: rgba(255, 255, 255, 0.9);
   }
 
   .headline {
-    font-size: 3.5rem; /* Larger font-size */
-    line-height: 1.1;
-    margin-bottom: 20px;
-    color: #f0f0f0; /* Darker color (closer to white but not pure white) */
-    font-weight: 800;
+    font-family: var(--font-heading, 'Montserrat', sans-serif);
+    font-size: 3.5rem; /* Larger for headline */
+    font-weight: 700; /* Expected: 700 */
+    line-height: 1.1; /* Tighter for headline */
+    letter-spacing: -0.02em;
+    color: #333;
+    margin: 0;
+    text-align: center;
   }
 
   .subheadline {
-    font-size: 20px; /* Larger font-size */
-    line-height: 1.6;
-    margin-bottom: 30px;
-    color: #b0b0b0; /* Darker color */
+    font-family: var(--font-body, 'Barlow', sans-serif);
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: #555;
+    margin: 0;
+    max-width: 560px;
+    text-align: center;
   }
 
   .cta-button {
     display: inline-block;
-    padding: 18px 40px; /* Larger padding */
-    background-color: #007bff; /* Solid blue background */
-    color: white;
+    padding: 18px 40px; /* More padding */
+    background-color: var(--color-accent, #0464fc); /* Dark purple/black (using accent color as per design intent) */
+    color: white; /* White */
     text-decoration: none;
-    border-radius: 12px; /* Larger border-radius */
-    font-weight: 700;
-    font-size: 1.1rem; /* Larger font-size */
-    transition: background-color 0.3s ease;
+    border-radius: 12px; /* More rounded */
+    font-family: var(--font-heading, 'Montserrat', sans-serif);
+    font-weight: bold;
+    font-size: 1.05rem;
+    transition: background-color 0.2s, transform 0.2s;
   }
 
   .cta-button:hover {
-    background-color: #0056b3; /* Darker blue on hover */
+    background-color: color-mix(in srgb, var(--color-accent, #0464fc) 85%, black);
+    transform: translateY(-2px);
   }
 
-  .image-wrapper {
-    width: 100%;
-    max-width: 1000px; /* Larger max-width for the image */
-    margin-top: 40px; /* Add some space above the image */
-  }
-
-  .hero-image {
-    width: 100%;
-    height: auto;
-    display: block;
-    border-radius: 16px; /* Larger border-radius */
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); /* Larger, darker shadow */
-  }
-
-  /* Mobile-first @media breakpoints */
-  @media (min-width: 375px) {
-    .headline {
-      font-size: 4rem; /* Larger font size */
-    }
-
-    .subheadline {
-      font-size: 22px; /* Larger font size */
-    }
+  @media (min-width: 768px) {
+    .headline { font-size: 4.5rem; }
+    .subheadline { font-size: 1.25rem; }
   }
 
   @media (min-width: 1440px) {
-    .container {
-      flex-direction: column;
-      justify-content: center;
-      padding: 120px 80px; /* Larger padding */
+    .hero-center {
+      min-height: 70vh;
+      padding-bottom: 150px;
     }
-
-    .content-wrapper {
-      margin-bottom: 80px; /* Larger margin */
-    }
-
-    .headline {
-      font-size: 5.5rem; /* Larger font size */
-      margin-bottom: 40px; /* Larger margin */
-    }
-
-    .subheadline {
-      font-size: 26px; /* Larger font size */
-      margin-bottom: 50px; /* Larger margin */
-      max-width: 900px;
-    }
-
-    .image-wrapper {
-      max-width: 1200px; /* Even larger max-width for the image */
-    }
+    .headline { font-size: 5.5rem; }
+    .subheadline { font-size: 1.4rem; }
+    .cta-button { padding: 20px 45px; font-size: 1.15rem; }
   }
 </style>
