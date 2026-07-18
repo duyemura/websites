@@ -36,7 +36,6 @@ const cards = (items && items.length > 0) ? items : DEFAULT_FEATURES;
   .feature-cards-section {
     background-color: #fff;
     padding: 0 20px 60px;
-    /* Sits right below the hero — cards appear to float over the dark hero edge */
   }
 
   .feature-cards-grid {
@@ -45,7 +44,9 @@ const cards = (items && items.length > 0) ? items : DEFAULT_FEATURES;
     gap: 20px;
     max-width: 1200px;
     margin: 0 auto;
-    transform: translateY(-60px); /* overlap the bottom of the hero */
+    margin-top: -80px; /* pull up into the dark hero area */
+    position: relative;
+    z-index: 10;
   }
 
   .feature-card {

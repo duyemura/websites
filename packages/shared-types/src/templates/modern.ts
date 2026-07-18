@@ -11,6 +11,23 @@ export const modernSpec: TemplateSpec = {
   bodyClasses: ["bg-white"],
   sections: {},
   components: {
+    "CtaBand": {
+      component: "CtaBand",
+      purpose: "cta-band — large centered CTA text between sections",
+      props: {
+        "headline": { purpose: "Large centered CTA headline", type: "string", required: false, guidance: "Bold outcome-focused statement", example: "Every Body Is Unique. Find Something That Works For You", source: { kind: "pageField", path: "programsHeadline" } },
+        "ctaText": { purpose: "CTA button label", type: "string", required: false, guidance: "2-4 words", example: "View All Programs", source: { kind: "pageField", path: "hero.ctaLabel" } },
+        "ctaHref": { purpose: "CTA button URL", type: "string", required: false, guidance: "Internal path", example: "/programs", source: { kind: "pageField", path: "hero.ctaUrl" } },
+      },
+    },
+    "DarkFeatureGrid": {
+      component: "DarkFeatureGrid",
+      purpose: "dark-feature-grid — dark navy section with icon cards",
+      props: {
+        "headline": { purpose: "Section headline", type: "string", required: false, guidance: "Bold feature-focused headline", example: "Everything You Need To Crush Your Fitness Goals", source: { kind: "pageField", path: "trustHeadline" } },
+        "items": { purpose: "Feature items with icon and label", type: "object", required: false, guidance: "6 items", example: "[]", source: { kind: "computed", fn: "features" } },
+      },
+    },
     "Unknown": {
       component: "Unknown",
       purpose: "unknown — unknown layout",
@@ -58,8 +75,15 @@ export const modernSpec: TemplateSpec = {
     "home": {
       path: "/",
       archetype: "home",
-      // Source order: hero → feature cards → programs → feature grid → programs detail
-      components: ["HeroCenter","FeatureGridEven","ProgramCardsSticky","FeatureGridEvenFeatureGrid"],
+      // Matches Beta Gym source section order
+      components: [
+        "HeroCenter",           // full-bleed hero with athlete photo + CTA
+        "FeatureGridEven",      // 3 white cards: Feel Supported / Have Fun / Varied Workouts
+        "CtaBand",              // "Every Body Is Unique. Find Something That Works For You"
+        "ProgramCardsSticky",   // 3 program cards with images (Bootcamp, PT, Strength)
+        "FeatureGridEvenFeatureGrid", // program detail: image left + text/CTA right
+        "DarkFeatureGrid",      // dark navy: "Everything You Need To Crush Your Fitness Goals"
+      ],
     },
     "about": {
       path: "/about",
