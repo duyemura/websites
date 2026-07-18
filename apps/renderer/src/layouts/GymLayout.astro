@@ -11,6 +11,7 @@ import HeaderImpact from "../components/chrome/HeaderImpact.astro";
 import FooterImpact from "../components/chrome/FooterImpact.astro";
 import HeaderBeanburito from "../components/chrome/HeaderBeanburito.astro";
 import FooterBeanburito from "../components/chrome/FooterBeanburito.astro";
+import HeaderModern from "../components/chrome/HeaderModern.astro";
 import CookieBannerImpact from "../components/chrome/CookieBannerImpact.astro";
 import CookieBannerBeanburito from "../components/chrome/CookieBannerBeanburito.astro";
 import StickyCTA from "../components/chrome/StickyCTA.astro";
@@ -102,7 +103,7 @@ const bodyClasses = templateSpec?.bodyClasses ?? ["bg-white"];
         ></iframe>
       </noscript>
     )}
-    {isBeanburito ? <HeaderBeanburito /> : isImpact ? <HeaderImpact /> : isModern ? null : <Header />}
+    {isBeanburito ? <HeaderBeanburito /> : isImpact ? <HeaderImpact /> : isModern ? <HeaderModern /> : <Header />}
     <main id="main-content"><slot /></main>
     {isBeanburito ? <FooterBeanburito /> : isImpact ? <FooterImpact /> : isModern ? null : <Footer />}
     <StickyCTA />

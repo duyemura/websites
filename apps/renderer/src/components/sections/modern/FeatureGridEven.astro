@@ -1,86 +1,93 @@
 ---
 // Items are Feature objects: { icon: string, label: string, imageUrl?: string }
+// Default copy matches the Beta Gym modern template source (gyms override via GymSiteContent.home.features)
+const DEFAULT_FEATURES = [
+  { icon: "✊", label: "Feel Supported", description: "No matter your fitness goals, we are here to empower you along the way." },
+  { icon: "🎵", label: "Have Fun Working Out", description: "Workouts may be tough, but they will always be fun." },
+  { icon: "🔄", label: "Varied Workouts", description: "We guarantee you will never do the same workout twice. We keep things new so you never get bored." },
+];
+
 export interface FeatureGridEvenProps {
   id?: string;
   headline?: string;
   items: Array<{ icon?: string; label?: string; imageUrl?: string; }>;
 }
-const { id, headline, items = [] } = Astro.props;
+const { id, headline, items } = Astro.props;
+const cards = (items && items.length > 0) ? items : DEFAULT_FEATURES;
 ---
 
-<section id={id} data-eval-component="FeatureGridEven" class="feature-grid-even">
-  <div class="content-wrapper">
-    {headline && <h2 class="headline">{headline}</h2>}
-    <div class="cards">
-      {items.map((item) => (
-        <div class="card">
-          {item.imageUrl && <img src={item.imageUrl} alt={item.label ?? ""} class="card-icon" />}
-          {item.icon && !item.imageUrl && <span class="card-icon-emoji">{item.icon}</span>}
-          <h3 class="card-title">{item.label}</h3>
+<section id={id} data-eval-component="FeatureGridEven" class="feature-cards-section">
+  <div class="feature-cards-grid">
+    {cards.map((item) => (
+      <div class="feature-card">
+        <div class="feature-card-icon" aria-hidden="true">
+          <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+            <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="36">{item.icon ?? "⚡"}</text>
+          </svg>
         </div>
-      ))}
-    </div>
+        <h3 class="feature-card-title">{item.label}</h3>
+        {"description" in item && <p class="feature-card-desc">{(item as { description?: string }).description}</p>}
+      </div>
+    ))}
   </div>
 </section>
 
 <style>
-  .feature-grid-even {
-    background-color: #f5f5f5;
-    padding: 80px 20px;
+  .feature-cards-section {
+    background-color: #fff;
+    padding: 0 20px 60px;
+    /* Sits right below the hero — cards appear to float over the dark hero edge */
   }
-  .content-wrapper {
+
+  .feature-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
     max-width: 1200px;
     margin: 0 auto;
+    transform: translateY(-60px); /* overlap the bottom of the hero */
+  }
+
+  .feature-card {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.07);
+    border-radius: 8px;
+    padding: 32px 28px;
     display: flex;
     flex-direction: column;
-    gap: 48px;
-    align-items: center;
-    text-align: center;
+    gap: 12px;
   }
-  .headline {
+
+  .feature-card-icon {
+    width: 60px;
+    height: 60px;
+    color: var(--modern-accent, #0464fc);
+  }
+
+  .feature-card-title {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 2.25rem;
+    font-size: 1.2rem;
     font-weight: 800;
     color: #111;
     margin: 0;
-    line-height: 1.1;
+    line-height: 1.2;
   }
-  .cards {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
-    width: 100%;
-  }
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 32px 24px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    gap: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-  }
-  .card-icon { width: 48px; height: 48px; object-fit: contain; }
-  .card-icon-emoji {
-    font-size: 2.5rem;
-    color: var(--modern-accent, #0464fc);
-  }
-  .card-title {
-    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #111;
+
+  .feature-card-desc {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #555;
     margin: 0;
   }
-  @media (min-width: 640px) { .cards { grid-template-columns: repeat(2, 1fr); } }
-  @media (min-width: 1024px) {
-    .cards { grid-template-columns: repeat(3, 1fr); gap: 32px; }
-    .headline { font-size: 2.75rem; }
+
+  @media (min-width: 768px) {
+    .feature-cards-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
   }
+
   @media (min-width: 1440px) {
-    .cards { grid-template-columns: repeat(4, 1fr); gap: 40px; }
-    .headline { font-size: 3rem; }
+    .feature-cards-grid { gap: 32px; transform: translateY(-80px); }
+    .feature-card { padding: 40px 36px; }
+    .feature-card-title { font-size: 1.35rem; }
   }
 </style>

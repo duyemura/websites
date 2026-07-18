@@ -1,78 +1,140 @@
 ---
-// Items are Feature objects: { icon: string, label: string, imageUrl?: string }
+const CDN = "https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d";
+const DEFAULT_IMAGE = `${CDN}/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1).jpg`;
+
 export interface FeatureGridEvenFeatureGridProps {
   headline?: string;
+  subheadline?: string;
+  ctaText?: string;
+  ctaHref?: string;
+  imageUrl?: string;
+  imageAlt?: string;
   items?: Array<{ icon?: string; label?: string; imageUrl?: string; }>;
 }
-const { headline, items = [] } = Astro.props;
+
+const {
+  headline,
+  subheadline,
+  ctaText,
+  ctaHref = "/contact",
+  imageUrl,
+  imageAlt = "",
+  items = [],
+} = Astro.props;
+
+const NO_IMAGE = "__NO_IMAGE__";
+const photo = (imageUrl && imageUrl !== NO_IMAGE) ? imageUrl : DEFAULT_IMAGE;
 ---
 
-<section data-eval-component="FeatureGridEvenFeatureGrid" class="feature-grid-even-feature-grid">
-  <div class="content-wrapper">
-    {headline && <h2 class="headline">{headline}</h2>}
-    <div class="cards">
-      {items.map((item) => (
-        <div class="card">
-          {item.imageUrl && <img src={item.imageUrl} alt={item.label ?? ""} class="card-icon" />}
-          {item.icon && !item.imageUrl && <span class="card-icon-emoji">{item.icon}</span>}
-          <h3 class="card-title">{item.label}</h3>
+<section data-eval-component="FeatureGridEvenFeatureGrid" class="program-section">
+  <div class="program-grid">
+    <div class="program-image-wrap">
+      <img src={photo} alt={imageAlt} class="program-image" loading="lazy" />
+    </div>
+    <div class="program-content">
+      {headline && <h2 class="program-heading">{headline}</h2>}
+      {subheadline && <p class="program-desc">{subheadline}</p>}
+      {items.map((item) => item.label && (
+        <div class="program-feature">
+          {item.icon && <span class="feature-dot">{item.icon}</span>}
+          <span>{item.label}</span>
         </div>
       ))}
+      <a href={ctaHref} class="program-cta">
+        {ctaText ?? "Contact Us For More Info"}
+      </a>
     </div>
   </div>
 </section>
 
 <style>
-  .feature-grid-even-feature-grid {
-    background-color: #f5f5f5;
-    padding: 80px 20px;
+  .program-section {
+    background-color: #fff;
+    padding: 0 20px 80px;
   }
-  .content-wrapper {
+
+  .program-grid {
     max-width: 1200px;
     margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+
+  .program-image-wrap {
+    position: relative;
+  }
+
+  .program-image {
+    width: 100%;
+    height: 420px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+    /* Source uses a subtle border/frame effect */
+    box-shadow: 12px 12px 0 0 rgba(0,0,0,0.12);
+  }
+
+  .program-content {
     display: flex;
     flex-direction: column;
-    gap: 48px;
-    align-items: flex-start;
+    gap: 20px;
   }
-  .headline {
+
+  .program-heading {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 2.25rem;
+    font-size: 2rem;
     font-weight: 900;
     color: #111;
     margin: 0;
-    line-height: 1.05;
+    line-height: 1.1;
   }
-  .cards {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
-    width: 100%;
-  }
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 28px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-  }
-  .card-icon { width: 48px; height: 48px; object-fit: contain; }
-  .card-icon-emoji {
-    font-size: 2rem;
-    color: var(--modern-accent, #0464fc);
-  }
-  .card-title {
-    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+
+  .program-desc {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
     font-size: 1rem;
-    font-weight: 700;
-    color: #111;
+    line-height: 1.7;
+    color: #444;
     margin: 0;
   }
-  @media (min-width: 640px) { .cards { grid-template-columns: repeat(2, 1fr); } }
-  @media (min-width: 1024px) {
-    .cards { grid-template-columns: repeat(4, 1fr); gap: 32px; }
-    .headline { font-size: 2.75rem; }
+
+  .program-feature {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.95rem;
+    color: #333;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .feature-dot { flex-shrink: 0; }
+
+  .program-cta {
+    display: inline-block;
+    background-color: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-weight: 700;
+    font-size: 1rem;
+    padding: 16px 32px;
+    border-radius: 6px;
+    text-decoration: none;
+    align-self: flex-start;
+  }
+
+  @media (min-width: 900px) {
+    .program-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+    }
+    .program-image { height: 480px; }
+    .program-heading { font-size: 2.5rem; }
+  }
+
+  @media (min-width: 1440px) {
+    .program-section { padding-bottom: 100px; }
+    .program-heading { font-size: 2.75rem; }
+    .program-image { height: 540px; }
   }
 </style>

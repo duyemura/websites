@@ -58,7 +58,8 @@ export const modernSpec: TemplateSpec = {
     "home": {
       path: "/",
       archetype: "home",
-      components: ["Unknown","HeroCenter","ProgramCardsSticky","Unknown","FeatureGridEven","MediaBlock","FeatureGridEven","FeatureGridEvenFeatureGrid","TestimonialBand","FeatureGridEven","FeatureGridEvenFeatureGrid","MediaBlock","LocationBlock"],
+      // Source order: hero → feature cards → programs → feature grid → programs detail
+      components: ["HeroCenter","FeatureGridEven","ProgramCardsSticky","FeatureGridEvenFeatureGrid"],
     },
     "about": {
       path: "/about",

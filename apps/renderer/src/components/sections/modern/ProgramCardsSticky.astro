@@ -1,110 +1,126 @@
 ---
+const CDN = "https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d";
+// Default template program images from the Beta Gym source
+const DEFAULT_IMAGES = [
+  `${CDN}/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash.jpg`,
+  `${CDN}/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1).jpg`,
+  `${CDN}/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash.jpg`,
+];
+
 export interface ProgramCardsStickyProps {
   headline?: string;
   items: Array<{ slug: string; name: string; coverImageUrl?: string; shortDescription?: string; }>;
 }
+
 const NO_IMAGE = "__NO_IMAGE__";
 const { headline, items = [] } = Astro.props as ProgramCardsStickyProps;
 ---
 
-<section data-eval-component="ProgramCardsSticky" class="program-cards-sticky">
-  {headline && <h2 class="section-headline">{headline}</h2>}
-  <div class="card-grid">
-    {items.map((item) => {
-      const hasCover = !!item.coverImageUrl && item.coverImageUrl !== NO_IMAGE && !item.coverImageUrl.includes("placehold.co");
-      return (
-        <a href={`/programs/${item.slug}`} class="card" style={hasCover ? `background-image:url(${item.coverImageUrl})` : ""}>
-          <div class="card-body">
-            <h3 class="card-title">{item.name}</h3>
-            {item.shortDescription && <p class="card-desc">{item.shortDescription}</p>}
-            <span class="card-cta">Learn More</span>
-          </div>
-        </a>
-      );
-    })}
+<section data-eval-component="ProgramCardsSticky" class="programs-section">
+  <div class="programs-inner">
+    {headline && <h2 class="programs-heading">{headline}</h2>}
+    <div class="programs-grid">
+      {items.map((item, i) => {
+        const hasCover = !!item.coverImageUrl && item.coverImageUrl !== NO_IMAGE && !item.coverImageUrl.includes("placehold.co");
+        const img = hasCover ? item.coverImageUrl : DEFAULT_IMAGES[i % DEFAULT_IMAGES.length];
+        return (
+          <a href={`/programs/${item.slug}`} class="program-card" style={`background-image:url(${img})`}>
+            <div class="card-overlay" />
+            <div class="card-body">
+              <h3 class="card-name">{item.name}</h3>
+              {item.shortDescription && <p class="card-desc">{item.shortDescription}</p>}
+              <span class="card-link">Details →</span>
+            </div>
+          </a>
+        );
+      })}
+    </div>
   </div>
 </section>
 
 <style>
-  .program-cards-sticky {
+  .programs-section {
     background-color: #f5f5f5;
     padding: 80px 20px;
   }
-  .section-headline {
+
+  .programs-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .programs-heading {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
     font-size: 2rem;
     font-weight: 900;
     color: #111;
-    text-align: center;
-    margin: 0 auto 48px;
-    max-width: 800px;
+    margin: 0 0 40px;
     line-height: 1.1;
   }
-  .card-grid {
+
+  .programs-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 24px;
-    max-width: 1200px;
-    margin: 0 auto;
   }
-  .card {
+
+  .program-card {
     display: block;
     position: relative;
-    min-height: 300px;
-    background-color: #d0d0d0;
+    min-height: 320px;
     background-size: cover;
     background-position: center;
-    border-radius: 12px;
+    border-radius: 8px;
     overflow: hidden;
     text-decoration: none;
     color: #fff;
   }
-  .card::before {
-    content: '';
+
+  .card-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.08) 55%);
-    z-index: 1;
+    background: linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.1) 60%);
   }
+
   .card-body {
-    position: relative;
-    z-index: 2;
-    padding: 24px;
-    height: 100%;
-    min-height: 300px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 28px;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
     gap: 8px;
   }
-  .card-title {
+
+  .card-name {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
     font-size: 1.5rem;
     font-weight: 800;
     margin: 0;
+    line-height: 1.2;
   }
+
   .card-desc {
     font-family: var(--modern-font-body, 'Barlow', sans-serif);
     font-size: 0.9rem;
     opacity: 0.9;
     margin: 0;
   }
-  .card-cta {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 8px 20px;
-    background-color: var(--modern-accent, #0464fc);
-    border-radius: 4px;
+
+  .card-link {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
     font-size: 0.875rem;
     font-weight: 700;
-    align-self: flex-start;
+    color: var(--modern-accent, #0464fc);
   }
-  @media (min-width: 768px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  @media (min-width: 768px) {
+    .programs-grid { grid-template-columns: repeat(2, 1fr); }
+  }
   @media (min-width: 1024px) {
-    .card-grid { grid-template-columns: repeat(3, 1fr); gap: 32px; }
-    .card { min-height: 360px; }
-    .card-body { min-height: 360px; }
-    .section-headline { font-size: 2.75rem; }
+    .programs-grid { grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    .program-card { min-height: 380px; }
+    .programs-heading { font-size: 2.5rem; }
   }
 </style>

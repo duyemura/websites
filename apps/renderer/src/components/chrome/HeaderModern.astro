@@ -1,0 +1,76 @@
+---
+import { content } from "../../lib/content";
+const { business, brand, navigation, meta } = content;
+const ctaLabel = business.primaryCta.label;
+const ctaUrl = business.primaryCta.url;
+const NO_IMAGE = "__NO_IMAGE__";
+const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
+---
+
+<header class="header-modern">
+  <div class="header-inner">
+    <a href="/" class="header-logo">
+      {hasLogo
+        ? <img src={brand.logoUrl} alt={brand.logoAlt} class="logo-img" />
+        : <span class="logo-text">{business.name}</span>}
+    </a>
+    <nav class="header-nav">
+      {navigation.header.map((item) => (
+        <a href={item.href} class="nav-link">{item.label}</a>
+      ))}
+    </nav>
+    <a href={ctaUrl} class="header-cta">{ctaLabel}</a>
+  </div>
+</header>
+
+<style>
+  .header-modern {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .header-inner {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 0 40px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    gap: 40px;
+  }
+  .header-logo { text-decoration: none; flex-shrink: 0; }
+  .logo-img { height: 40px; width: auto; display: block; }
+  .logo-text {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: #111;
+  }
+  .header-nav {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex: 1;
+  }
+  .nav-link {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #111;
+    text-decoration: none;
+  }
+  .nav-link:hover { color: var(--modern-accent, #0464fc); }
+  .header-cta {
+    background-color: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+</style>
