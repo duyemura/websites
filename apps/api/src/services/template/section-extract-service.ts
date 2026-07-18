@@ -142,15 +142,18 @@ async function extractPageSections(
         const scrollY = await page.evaluate(() => window.scrollY);
         const vpY = centerY - scrollY;
 
+        // Pass the function as a string to avoid TypeScript/esbuild injecting
+        // __name() helpers that don't exist in the browser context.
+        const evalArgs = JSON.stringify({
+          x: centerX,
+          y: vpY,
+          targetHeight: bbox.height,
+          props: [...COMPUTED_STYLE_PROPS],
+          maxOuterHTMLBytes: MAX_OUTER_HTML_BYTES,
+        });
         extraction = await page.evaluate(
-          domExtractAtPoint,
-          {
-            x: centerX,
-            y: vpY,
-            targetHeight: bbox.height,
-            props: [...COMPUTED_STYLE_PROPS],
-          },
-        );
+          `(${DOM_EXTRACT_FN_JS})(${evalArgs})`,
+        ) as DomExtractionResult | null;
       } catch (err) {
         console.warn(
           `[section-extract] Failed to extract section ${segSection.id} on ${pageUrl}: ` +
@@ -185,99 +188,88 @@ async function extractPageSections(
 }
 
 // ---------------------------------------------------------------------------
-// Browser-side extraction function — must be fully self-contained.
-// Playwright serialises the function body and re-evaluates it in the page
-// context, so ALL helper logic must live INSIDE this function.
-// No external references, no TypeScript annotations on inner functions.
+// Browser-side extraction function written as a raw JS string.
+//
+// IMPORTANT: This MUST be a plain JavaScript string, NOT a TypeScript function
+// reference. When TypeScript/esbuild compiles named function declarations it
+// injects a `__name()` helper at module scope. If you pass the compiled
+// function reference to page.evaluate(), Playwright serialises its body which
+// contains `__name(findSectionContainer, "findSectionContainer")` — a
+// reference that does not exist in the browser page context, causing:
+//   ReferenceError: __name is not defined
+//
+// Passing a raw string bypasses all TypeScript compilation and runs verbatim
+// in the browser with no external dependencies.
 // ---------------------------------------------------------------------------
 
-function domExtractAtPoint(args: {
-  x: number;
-  y: number;
-  targetHeight: number;
-  props: string[];
-}): {
-  outerHTML: string;
-  computedStyles: Record<string, string>;
-  images: Array<{ src: string; alt?: string; isBackground: boolean }>;
-  textNodes: Array<{ text: string; tag: string; className: string }>;
-  actualBoundingBox: { x: number; y: number; width: number; height: number };
-} | null {
-  const { x, y, targetHeight, props } = args;
+const DOM_EXTRACT_FN_JS = /* js */ `(args) => {
+  const { x, y, targetHeight, props, maxOuterHTMLBytes } = args;
 
-  // ---- findSectionContainer (inlined) ------------------------------------
-  function findSectionContainer(start: HTMLElement): HTMLElement {
+  // Walk up the DOM from elementFromPoint to find the section-level container
+  // whose height is closest to targetHeight (reject anything > 2× target).
+  const findSectionContainer = (start) => {
     let best = start;
     let bestDelta = Math.abs(start.getBoundingClientRect().height - targetHeight);
-    let current: HTMLElement | null = start;
-
-    while (current && current.tagName !== "BODY" && current.tagName !== "HTML") {
+    let current = start;
+    while (current && current.tagName !== 'BODY' && current.tagName !== 'HTML') {
       const h = current.getBoundingClientRect().height;
-      // Stop walking up if the element is more than 2× the target height
       if (h > targetHeight * 2) break;
       const delta = Math.abs(h - targetHeight);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        best = current;
-      }
+      if (delta < bestDelta) { bestDelta = delta; best = current; }
       current = current.parentElement;
     }
-
     return best;
-  }
-  // -----------------------------------------------------------------------
+  };
 
-  const probe = document.elementFromPoint(x, y) as HTMLElement | null;
+  const probe = document.elementFromPoint(x, y);
   if (!probe) return null;
 
   const target = findSectionContainer(probe);
 
-  // Outer HTML
-  const outerHTML = target.outerHTML;
-
-  // Computed styles — convert camelCase prop names to kebab-case for getPropertyValue
-  const computedStyles: Record<string, string> = {};
-  const cs = window.getComputedStyle(target);
-  for (const prop of props) {
-    const kebab = prop.replace(/([A-Z])/g, (m) => `-${m.toLowerCase()}`);
-    computedStyles[prop] = cs.getPropertyValue(kebab) ?? "";
+  // Outer HTML (truncated)
+  let outerHTML = target.outerHTML;
+  if (outerHTML.length > maxOuterHTMLBytes) {
+    outerHTML = outerHTML.slice(0, maxOuterHTMLBytes) + '<!-- truncated -->';
   }
 
-  // Images: <img> elements
-  const images: Array<{ src: string; alt?: string; isBackground: boolean }> = [];
-  const imgEls = target.querySelectorAll<HTMLImageElement>("img[src]");
-  imgEls.forEach((img) => {
-    const src = img.getAttribute("src");
-    if (src && !src.startsWith("data:")) {
+  // Computed styles
+  const computedStyles = {};
+  const cs = window.getComputedStyle(target);
+  for (const prop of props) {
+    const kebab = prop.replace(/([A-Z])/g, (m) => '-' + m.toLowerCase());
+    computedStyles[prop] = cs.getPropertyValue(kebab) || '';
+  }
+
+  // Images: <img src> elements
+  const images = [];
+  target.querySelectorAll('img[src]').forEach((img) => {
+    const src = img.getAttribute('src');
+    if (src && !src.startsWith('data:')) {
       images.push({ src, alt: img.alt || undefined, isBackground: false });
     }
   });
 
-  // Images: CSS background-image on any descendant (and self)
-  const allEls: HTMLElement[] = [target];
-  target.querySelectorAll<HTMLElement>("*").forEach((el) => allEls.push(el));
+  // Images: CSS background-image on self and descendants
+  const allEls = [target, ...target.querySelectorAll('*')];
   for (const el of allEls) {
     const bg = window.getComputedStyle(el).backgroundImage;
-    if (bg && bg !== "none") {
-      const m = /url\(["']?([^"')]+)["']?\)/.exec(bg);
-      if (m && m[1] && !m[1].startsWith("data:")) {
+    if (bg && bg !== 'none') {
+      const m = /url\\(["']?([^"')]+)["']?\\)/.exec(bg);
+      if (m && m[1] && !m[1].startsWith('data:')) {
         images.push({ src: m[1], isBackground: true });
       }
     }
   }
 
-  // Text nodes: h1-h6, p, a, button, li
-  const textNodes: Array<{ text: string; tag: string; className: string }> = [];
-  const textEls = target.querySelectorAll<HTMLElement>(
-    "h1,h2,h3,h4,h5,h6,p,a,button,li",
-  );
-  textEls.forEach((el) => {
-    const text = (el.textContent ?? "").trim();
+  // Text nodes: heading, paragraph, interactive elements
+  const textNodes = [];
+  target.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,button,li').forEach((el) => {
+    const text = (el.textContent || '').trim();
     if (text.length > 0 && text.length < 500) {
       textNodes.push({
         text,
         tag: el.tagName.toLowerCase(),
-        className: typeof el.className === "string" ? el.className : "",
+        className: typeof el.className === 'string' ? el.className : '',
       });
     }
   });
@@ -295,4 +287,4 @@ function domExtractAtPoint(args: {
       height: Math.round(rect.height),
     },
   };
-}
+}`;
