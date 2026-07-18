@@ -1,0 +1,122 @@
+---
+import type { HeroContent } from "../../../types/gym-content";
+import { content } from "../../../lib/content";
+
+const CDN = "https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d";
+const DEFAULT_DESKTOP = `${CDN}/64086ce7b78d3f0900fdd620_Untitled%20design%20(2).png`;
+const DEFAULT_MOBILE  = `${CDN}/63ce2e8f2960e9a122454347_Homepage%20at%20Beta%20Gym%20Modern%20in%20Manhattan.jpg`;
+
+const { hero } = Astro.props as { hero: HeroContent };
+const { business } = content;
+const NO_IMAGE = "__NO_IMAGE__";
+
+const desktopImg = (hero?.backgroundImageUrl && hero.backgroundImageUrl !== NO_IMAGE) ? hero.backgroundImageUrl : DEFAULT_DESKTOP;
+const mobileImg  = DEFAULT_MOBILE;
+const subheading = hero?.subheading ?? business.tagline;
+---
+
+<section data-section="hero" data-section-tag="hero" class="hero-modern">
+  <div class="hero-bg">
+    <img src={desktopImg} alt="" class="hero-img-desktop" loading="eager" fetchpriority="high" />
+    <img src={mobileImg}  alt="" class="hero-img-mobile"  loading="eager" fetchpriority="high" />
+    <div class="hero-gradient" />
+  </div>
+  <div class="hero-content">
+    {subheading && <p class="hero-eyebrow">{subheading}</p>}
+    <h1 class="hero-headline">{hero?.headline ?? business.name}</h1>
+    {hero?.intro && <p class="hero-intro">{hero.intro}</p>}
+    <div class="hero-actions">
+      <a href={hero?.ctaUrl ?? business.primaryCta.url} class="btn-primary">
+        <span>{hero?.ctaLabel ?? business.primaryCta.label}</span>
+        <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M1 1l5 5-5 5"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero-modern {
+    position: relative;
+    width: 100%;
+    min-height: 560px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+  }
+  .hero-img-desktop {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+  .hero-img-mobile { display: none; }
+  .hero-gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.05) 100%);
+  }
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    padding: 60px 40px 80px;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .hero-eyebrow {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.8);
+    margin: 0;
+  }
+  .hero-headline {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2.75rem;
+    font-weight: 900;
+    line-height: 1.05;
+    color: #fff;
+    margin: 0;
+  }
+  .hero-intro {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1rem;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.88);
+    margin: 0;
+    max-width: 480px;
+  }
+  .hero-actions { display: flex; gap: 12px; }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    background: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 6px;
+  }
+  @media (max-width: 767px) {
+    .hero-img-desktop { display: none; }
+    .hero-img-mobile  { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .hero-content { padding: 40px 20px 60px; }
+    .hero-headline { font-size: 2rem; }
+  }
+  @media (min-width: 1440px) {
+    .hero-modern { min-height: 680px; }
+    .hero-content { padding: 80px 120px 100px; max-width: 720px; }
+    .hero-headline { font-size: 3.75rem; }
+  }
+</style>

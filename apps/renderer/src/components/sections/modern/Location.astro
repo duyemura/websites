@@ -1,0 +1,133 @@
+---
+import { content } from "../../../lib/content";
+
+const { headline } = Astro.props as { headline?: string };
+const { business } = content;
+
+const addr = business.address;
+const hoursText = business.hours.map(h =>
+  `${h.days.join(", ")}: ${h.opens.replace(":00","").replace(/^0/,"")} – ${h.closes.replace(":00","").replace(/^0/,"")}`
+).join("\n");
+---
+
+<section data-section="location" data-section-tag="location-block" class="location-modern">
+  <div class="location-inner">
+    <div class="location-details">
+      <h2 class="location-headline">{headline ?? `Located in ${business.geo.city}`}</h2>
+      <address class="location-address">
+        <p>{addr.street}</p>
+        <p>{addr.city}, {addr.state} {addr.zip}</p>
+      </address>
+      {hoursText && (
+        <div class="location-hours">
+          <h3 class="hours-title">Hours</h3>
+          {business.hours.map(h => (
+            <p class="hours-row">
+              <span class="hours-days">{h.days.join(", ")}</span>
+              <span class="hours-time">{h.opens.replace(":00","").replace(/^0/,"")} – {h.closes.replace(":00","").replace(/^0/,"")}</span>
+            </p>
+          ))}
+        </div>
+      )}
+      <a href={`https://maps.google.com/?q=${encodeURIComponent(`${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`)}`} target="_blank" rel="noopener" class="directions-link">
+        Get Directions →
+      </a>
+    </div>
+    {business.mapEmbedUrl ? (
+      <div class="location-map">
+        <iframe
+          src={business.mapEmbedUrl}
+          title={`${business.name} location`}
+          width="100%"
+          height="400"
+          style="border:0"
+          allowfullscreen
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+        />
+      </div>
+    ) : (
+      <div class="location-map location-map--placeholder">
+        <p>📍 {addr.street}, {addr.city}</p>
+      </div>
+    )}
+  </div>
+</section>
+
+<style>
+  .location-modern {
+    background: #f5f5f5;
+    padding: 80px 20px;
+  }
+  .location-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .location-headline {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2rem;
+    font-weight: 900;
+    color: #111;
+    margin: 0 0 20px;
+  }
+  .location-address {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-style: normal;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #444;
+  }
+  .location-address p { margin: 0; }
+  .location-hours {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hours-title {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    margin: 0 0 8px;
+  }
+  .hours-row {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.9rem;
+    color: #444;
+    display: flex;
+    gap: 8px;
+    margin: 0;
+  }
+  .hours-days { color: #333; font-weight: 600; }
+  .directions-link {
+    display: inline-block;
+    margin-top: 24px;
+    color: var(--modern-accent, #0464fc);
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .location-map iframe { border-radius: 8px; }
+  .location-map--placeholder {
+    background: #e0e0e0;
+    border-radius: 8px;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    color: #666;
+    font-size: 1rem;
+  }
+  @media (min-width: 900px) {
+    .location-inner { grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; }
+    .location-headline { font-size: 2.5rem; }
+  }
+</style>

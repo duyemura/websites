@@ -1,0 +1,95 @@
+---
+import type { ValueProp } from "../../../types/gym-content";
+
+// Default value props matching the source template
+const DEFAULTS: (ValueProp & { svgPath: string })[] = [
+  {
+    icon: "",
+    headline: "Feel Supported",
+    body: "No matter your fitness goals, we are here to empower you along the way.",
+    svgPath: "M37.5 5C19.6 5 5 19.6 5 37.5S19.6 70 37.5 70 70 55.4 70 37.5 55.4 5 37.5 5zm0 9.3c4.8 0 8.7 3.9 8.7 8.7s-3.9 8.7-8.7 8.7-8.7-3.9-8.7-8.7 3.9-8.7 8.7-8.7zm0 47.7c-10.9 0-20.5-5.6-26.1-14 .1-8.7 17.4-13.4 26.1-13.4s26 4.7 26.1 13.4c-5.6 8.4-15.2 14-26.1 14z",
+  },
+  {
+    icon: "",
+    headline: "Have Fun Working Out",
+    body: "Workouts may be tough, but they will always be fun.",
+    svgPath: "M37.5 5C19.6 5 5 19.6 5 37.5S19.6 70 37.5 70 70 55.4 70 37.5 55.4 5 37.5 5zm-10 27.5a5 5 0 110-10 5 5 0 010 10zm20 0a5 5 0 110-10 5 5 0 010 10zm-20 15s3 10 10 10 10-10 10-10H27.5z",
+  },
+  {
+    icon: "",
+    headline: "Varied Workouts",
+    body: "We guarantee you will never do the same workout twice. We keep things new so you never get bored.",
+    svgPath: "M10 37.5h55M37.5 10v55M20 20l35 35M55 20L20 55",
+  },
+];
+
+const { items } = Astro.props as { items?: ValueProp[] };
+const values = (items && items.length > 0) ? items : DEFAULTS;
+---
+
+<section data-section="coreValues" data-section-tag="content-block" class="core-values">
+  <div class="core-values-grid">
+    {values.map((v, i) => (
+      <div class="value-card">
+        <div class="value-icon" aria-hidden="true">
+          <svg width="60" height="60" viewBox="0 0 75 75" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {"svgPath" in v
+              ? <path fill-rule="evenodd" clip-rule="evenodd" d={(v as typeof DEFAULTS[0]).svgPath} fill="var(--modern-accent, #0464fc)" />
+              : <text x="37.5" y="54" text-anchor="middle" font-size="40">{v.icon || "⚡"}</text>}
+          </svg>
+        </div>
+        <h3 class="value-title">{v.headline}</h3>
+        <p class="value-body">{v.body}</p>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  .core-values {
+    background: #fff;
+    padding: 0 20px 60px;
+  }
+  .core-values-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    /* Visually overlaps the hero section bottom */
+    transform: translateY(-72px);
+  }
+  .value-card {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.07);
+    border-radius: 8px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .value-icon { flex-shrink: 0; }
+  .value-title {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #111;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .value-body {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: #555;
+    margin: 0;
+  }
+  @media (min-width: 768px) {
+    .core-values-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  }
+  @media (min-width: 1440px) {
+    .core-values-grid { gap: 32px; transform: translateY(-80px); }
+    .value-card { padding: 40px 36px; }
+    .value-title { font-size: 1.25rem; }
+  }
+</style>

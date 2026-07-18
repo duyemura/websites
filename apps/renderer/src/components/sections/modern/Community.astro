@@ -1,0 +1,87 @@
+---
+import { content } from "../../../lib/content";
+
+const CDN = "https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d";
+const DEFAULT_IMG = `${CDN}/63ce2c0a8a1d4b999b2ecde2_Community%20at%20Beta%20Gym%20Modern%20in%20Manhattan.jpg`;
+
+const { headline, body, imageUrl } = Astro.props as { headline?: string; body?: string; imageUrl?: string };
+const { business } = content;
+const NO_IMAGE = "__NO_IMAGE__";
+const img = (imageUrl && imageUrl !== NO_IMAGE) ? imageUrl : DEFAULT_IMG;
+---
+
+<section data-section="community" data-section-tag="content-block" class="community-modern">
+  <div class="community-grid">
+    <div class="community-image-wrap">
+      <img src={img} alt={`${business.name} community`} class="community-image" loading="lazy" />
+    </div>
+    <div class="community-text">
+      <h2 class="community-headline">{headline ?? "A Community That Will Keep You Going"}</h2>
+      <p class="community-body">
+        {body ?? `At ${business.name}, we believe fitness is better together. Our members push each other further than they'd ever go alone.`}
+      </p>
+      <a href={business.primaryCta.url} class="btn-primary">
+        {business.primaryCta.label}
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .community-modern {
+    background: #fff;
+    padding: 80px 20px;
+  }
+  .community-grid {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .community-image {
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+  }
+  .community-text {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .community-headline {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2rem;
+    font-weight: 900;
+    color: #111;
+    margin: 0;
+    line-height: 1.1;
+  }
+  .community-body {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #444;
+    margin: 0;
+  }
+  .btn-primary {
+    display: inline-block;
+    padding: 14px 28px;
+    background: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-decoration: none;
+    border-radius: 6px;
+    align-self: flex-start;
+  }
+  @media (min-width: 900px) {
+    .community-grid { grid-template-columns: 1fr 1fr; gap: 80px; }
+    .community-headline { font-size: 2.5rem; }
+    .community-image { height: 480px; }
+  }
+</style>

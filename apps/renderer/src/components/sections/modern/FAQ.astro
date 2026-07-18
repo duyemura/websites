@@ -1,0 +1,88 @@
+---
+import type { FAQItem } from "../../../types/gym-content";
+
+const { headline, items } = Astro.props as { headline?: string; items: FAQItem[] };
+---
+
+<section data-section="faq" data-section-tag="faq-block" class="faq-modern">
+  <div class="faq-inner">
+    <h2 class="faq-headline">{headline ?? "Questions? We Have the Answers"}</h2>
+    <div class="faq-list">
+      {(items ?? []).map((item, i) => (
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>{item.question}</span>
+            <svg class="faq-chevron" width="16" height="10" viewBox="0 0 16 10" fill="none" aria-hidden="true">
+              <path d="M1 1l7 7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">{item.answer}</div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .faq-modern {
+    background: #fff;
+    padding: 80px 20px;
+  }
+  .faq-inner {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  .faq-headline {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2rem;
+    font-weight: 900;
+    color: #111;
+    margin: 0;
+    text-align: center;
+  }
+  .faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid #e8e8e8;
+  }
+  .faq-item {
+    border-bottom: 1px solid #e8e8e8;
+    padding: 0;
+  }
+  .faq-question {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 0;
+    cursor: pointer;
+    list-style: none;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111;
+  }
+  .faq-question::-webkit-details-marker { display: none; }
+  .faq-chevron {
+    flex-shrink: 0;
+    color: var(--modern-accent, #0464fc);
+    transition: transform 0.2s;
+  }
+  .faq-item[open] .faq-chevron {
+    transform: rotate(180deg);
+  }
+  .faq-answer {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.975rem;
+    line-height: 1.7;
+    color: #555;
+    padding: 0 0 20px;
+  }
+  @media (min-width: 768px) {
+    .faq-headline { font-size: 2.5rem; }
+  }
+</style>

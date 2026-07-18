@@ -1,63 +1,65 @@
 ---
-// "Every Body Is Unique. Find Something That Works For YOU"
-// Source: large centered CTA text band between feature cards and programs
+import { content } from "../../../lib/content";
 
-export interface Props {
+const { headline, subtext, ctaLabel, ctaUrl } = Astro.props as {
   headline?: string;
-  ctaText?: string;
-  ctaHref?: string;
-}
-
-const {
-  headline = "Every Body Is Unique. Find Something That Works For You",
-  ctaText,
-  ctaHref = "/programs",
-} = Astro.props;
+  subtext?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+};
+const { business } = content;
 ---
 
-<section data-eval-component="CtaBand" class="cta-band">
-  <div class="cta-inner">
-    <h2 class="cta-headline">{headline}</h2>
-    {ctaText && ctaHref && (
-      <a href={ctaHref} class="cta-btn">{ctaText}</a>
-    )}
+<section data-section="ctaBand" data-section-tag="cta-band" class="cta-band-modern">
+  <div class="cta-band-inner">
+    <h2 class="cta-headline">{headline ?? `Your fitness journey doesn't have to feel long. Be a ${business.name} member today.`}</h2>
+    {subtext && <p class="cta-subtext">{subtext}</p>}
+    <a href={ctaUrl ?? business.primaryCta.url} class="cta-btn">
+      {ctaLabel ?? business.primaryCta.label}
+    </a>
   </div>
 </section>
 
 <style>
-  .cta-band {
-    background-color: #f5f5f5;
+  .cta-band-modern {
+    background: #111;
     padding: 80px 20px;
     text-align: center;
   }
-  .cta-inner {
-    max-width: 900px;
+  .cta-band-inner {
+    max-width: 720px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
+    gap: 24px;
     align-items: center;
-    gap: 32px;
   }
   .cta-headline {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 2.5rem;
+    font-size: 2rem;
     font-weight: 900;
-    color: #111;
+    color: #fff;
     margin: 0;
     line-height: 1.1;
   }
+  .cta-subtext {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1rem;
+    color: rgba(255,255,255,0.75);
+    margin: 0;
+  }
   .cta-btn {
     display: inline-block;
-    background-color: var(--modern-accent, #0464fc);
+    padding: 16px 36px;
+    background: var(--modern-accent, #0464fc);
     color: #fff;
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-weight: 700;
     font-size: 1rem;
-    padding: 14px 32px;
-    border-radius: 6px;
+    font-weight: 700;
     text-decoration: none;
+    border-radius: 6px;
   }
-  @media (min-width: 1024px) {
-    .cta-headline { font-size: 3.5rem; }
+  @media (min-width: 768px) {
+    .cta-headline { font-size: 2.5rem; }
   }
 </style>

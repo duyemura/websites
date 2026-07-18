@@ -1,0 +1,125 @@
+---
+import { content, programBySlug } from "../../../lib/content";
+import type { ProgramContent } from "../../../types/gym-content";
+
+const CDN = "https://cdn.prod.website-files.com/63caaac34d6a3583a0074c0d";
+const FALLBACK_IMAGES = [
+  `${CDN}/6407d4e86253ab1fc4052053_gabin-vallet-J154nEkpzlQ-unsplash.jpg`,
+  `${CDN}/63ce24d71a2c8435a88b4325_Personal%20Training%20at%20Beta%20Gym%20Modern%20in%20Manhattan%20(1).jpg`,
+  `${CDN}/6407d45e3058f15c9b76cc3f_sunday-ii-sunday-ZeTmQgm2N3k-unsplash.jpg`,
+];
+
+const {
+  headline,
+  subheadline,
+  slugs,
+} = Astro.props as { headline?: string; subheadline?: string; slugs: string[] };
+
+const { business } = content;
+const programs: ProgramContent[] = (slugs ?? []).map(programBySlug).filter(Boolean) as ProgramContent[];
+const NO_IMAGE = "__NO_IMAGE__";
+
+function coverFor(p: ProgramContent, i: number): string {
+  if (p.coverImageUrl && p.coverImageUrl !== NO_IMAGE) return p.coverImageUrl;
+  return FALLBACK_IMAGES[i % FALLBACK_IMAGES.length]!;
+}
+---
+
+<section data-section="programs" data-section-tag="content-block" class="programs-modern">
+  <div class="programs-inner">
+    {headline && <h2 class="programs-eyebrow">{headline}</h2>}
+    {programs.map((p, i) => (
+      <div class={`program-row ${i % 2 === 1 ? "program-row--reverse" : ""}`}>
+        <div class="program-image-wrap">
+          <img src={coverFor(p, i)} alt={p.name} class="program-image" loading="lazy" />
+        </div>
+        <div class="program-text">
+          <h3 class="program-name">{p.name}</h3>
+          <p class="program-desc">{p.shortDescription}</p>
+          <a href={`/programs/${p.slug}`} class="btn-outline">Contact Us For More Info</a>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  .programs-modern {
+    background: #fff;
+    padding: 20px 20px 80px;
+  }
+  .programs-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 80px;
+  }
+  .programs-eyebrow {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.75rem;
+    font-weight: 900;
+    color: #111;
+    text-align: center;
+    margin: 0 0 20px;
+  }
+  .program-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+  .program-image-wrap {
+    position: relative;
+  }
+  .program-image {
+    width: 100%;
+    height: 380px;
+    object-fit: cover;
+    display: block;
+    border-radius: 4px;
+    /* Source uses a subtle offset frame border */
+    box-shadow: 12px 12px 0 0 rgba(4,100,252,0.15);
+  }
+  .program-text {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .program-name {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 2rem;
+    font-weight: 900;
+    color: #111;
+    margin: 0;
+    line-height: 1.05;
+  }
+  .program-desc {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #444;
+    margin: 0;
+  }
+  .btn-outline {
+    display: inline-block;
+    padding: 14px 28px;
+    background: var(--modern-accent, #0464fc);
+    color: #fff;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 6px;
+    align-self: flex-start;
+  }
+  @media (min-width: 900px) {
+    .program-row {
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+    }
+    .program-row--reverse .program-image-wrap { order: 2; }
+    .program-row--reverse .program-text { order: 1; }
+    .program-name { font-size: 2.5rem; }
+  }
+</style>
