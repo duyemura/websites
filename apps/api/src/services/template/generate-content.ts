@@ -71,7 +71,7 @@ export interface GenerateContentInput {
   workspaceUuid: string;
   apiBaseUrl: string;
   siteUrl: string;
-  templateTheme?: "baseline" | "impact" | "beanburito";
+  templateTheme?: import("@milo/shared-types").TemplateTheme;
   log?: (msg: string) => void;
 }
 

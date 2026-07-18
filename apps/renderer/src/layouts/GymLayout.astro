@@ -33,6 +33,7 @@ const { title, description, path, canonicalPath, image } = Astro.props;
 const { meta, business, brand } = content;
 const isImpact = meta.templateTheme === "impact";
 const isBeanburito = meta.templateTheme === "beanburito";
+const isModern = meta.templateTheme === "modern";
 const gtmId = safeTrackingId(meta.googleTagManagerId);
 
 const pageTitle = title ?? meta.defaultTitle;
@@ -101,9 +102,9 @@ const bodyClasses = templateSpec?.bodyClasses ?? ["bg-white"];
         ></iframe>
       </noscript>
     )}
-    {isBeanburito ? <HeaderBeanburito /> : isImpact ? <HeaderImpact /> : <Header />}
+    {isBeanburito ? <HeaderBeanburito /> : isImpact ? <HeaderImpact /> : isModern ? null : <Header />}
     <main id="main-content"><slot /></main>
-    {isBeanburito ? <FooterBeanburito /> : isImpact ? <FooterImpact /> : <Footer />}
+    {isBeanburito ? <FooterBeanburito /> : isImpact ? <FooterImpact /> : isModern ? null : <Footer />}
     <StickyCTA />
     {isBeanburito && <CookieBannerBeanburito />}
       {isImpact && <CookieBannerImpact />}

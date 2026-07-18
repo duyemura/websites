@@ -19,23 +19,25 @@ type ChatFn = (req: {
 const PROMPT = `Compare these two screenshots of the same website section.
 Image 1 is the original design. Image 2 is the generated Astro component rendered in a browser.
 
-SCORING RULES (read carefully before scoring):
-1. IGNORE all background images — sections that use a hero image in the original should be compared
-   as if both have the same solid color/gradient background. A missing hero photo is NOT a design
-   difference; focus only on layout, typography, and spacing that exists independent of the image.
-2. IGNORE text content differences (placeholder text vs real copy).
-3. DO compare:
-   - Section layout: columns, rows, grid structure, element alignment and proportions
-   - Typography: approximate font sizes, font weights, letter-spacing, line-height
-   - Spacing: padding, margins, gaps between elements
-   - Color treatment of UI elements: card backgrounds, button colors, text colors
-   - Borders, border-radius, box-shadows on cards, buttons, and UI elements
-   - Number and arrangement of visual blocks (how many cards, columns, rows)
+SCORING RULES:
+1. IGNORE placeholder text (e.g. "Placeholder headline", "Gym Name") vs real copy — content differs by design.
+2. IGNORE missing photos inside cards or as hero backgrounds — these are data-dependent, not design flaws.
+   HOWEVER: if the original section has a light background and the generated one is dark (or vice versa),
+   that IS a design difference and should lower the score significantly.
+3. DO score these accurately:
+   - Background color of the section (light vs dark — this matters even when background images are absent)
+   - CTA button color, shape, and prominence
+   - Typography: font sizes, font weights, letter-spacing, line-height
+   - Section layout: columns, grid, alignment, proportions
+   - Spacing: padding, margins, gaps
+   - Card/element borders, border-radius, box-shadows
+   - Overall light vs dark theme treatment
 
-A score of 85+ means the layout structure, typography hierarchy, and spacing are a close match,
-even if the exact pixel values differ slightly.
-A score of 65 means major layout or typography differences exist.
-A score below 50 means the section type or structure is fundamentally different.
+CALIBRATION:
+- 90+: Near-identical design — same background tone, same button color, same typography scale
+- 75-89: Close match — minor spacing or size differences, same overall theme
+- 50-74: Partial match — layout is similar but theme (light/dark) or accent color is wrong
+- below 50: Section type or fundamental design is different
 
 Score visual fidelity 0-100. List up to 8 DESIGN differences as specific CSS fixes.
 

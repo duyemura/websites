@@ -4,6 +4,20 @@ import type { TemplateSpec } from "./types.js";
 export const modernSpec: TemplateSpec = {
   name: "modern",
   description: "Auto-generated from modern reference site.",
+  headAssets: [
+    {
+      tag: "link",
+      attrs: {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500;600;700;800;900&display=swap",
+      },
+    },
+    {
+      tag: "style",
+      innerHtml: "@import url('/styles/modern.css');",
+    },
+  ],
+  bodyClasses: ["bg-white"],
   sections: {},
   components: {
     "Unknown": {

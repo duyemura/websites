@@ -8,13 +8,35 @@ type ChatFn = (req: {
 }) => Promise<string>;
 
 export function buildAstroPromptText(group: ComponentGroup, siteCSS: string): string {
+  const contract = group.exemplar.contract;
+  const bgColor: string = (contract.layout as Record<string, unknown> | undefined)?.background
+    ? ((contract.layout as Record<string, unknown>).background as Record<string, unknown>).color as string ?? ""
+    : "";
+  const headlineColor: string = (contract.typography as Record<string, unknown> | undefined)?.headline
+    ? ((contract.typography as Record<string, unknown>).headline as Record<string, unknown>).color as string ?? ""
+    : "";
+
   return `You are an expert Astro developer. Reproduce this website section as a production-ready Astro component.
 
 SECTION: ${group.tag} / ${group.archetype}
 COMPONENT NAME: ${group.name}
 
-COMPUTED STYLES (use these exact values):
-${JSON.stringify(group.exemplar.contract, null, 2)}
+COMPUTED STYLES — these are the actual CSS property values measured from the live site:
+${JSON.stringify(contract, null, 2)}
+
+CRITICAL COLOR RULES:
+- The section background-color is: "${bgColor || "inherit"}"
+  → Use this EXACT value in CSS. Do NOT make it darker based on screenshots.
+  → Many sections look visually dark in screenshots because they have a background IMAGE overlaid.
+    The underlying background-color CSS property is still the value above.
+  → If the section accepts a backgroundImageUrl prop, apply the image via inline style; without an
+    image the section should show the background-color above.
+- Use CSS custom properties for brand-dependent values so deployed sites apply their brand:
+    colors: var(--color-primary), var(--color-secondary), var(--color-accent)
+    fonts:  var(--font-heading), var(--font-body)
+  Fall back to the computed values as the default: e.g. background-color: var(--color-primary, ${bgColor || "#f5f5f5"})
+- CTA buttons should use var(--color-accent) for background color
+- Heading text: ${headlineColor ? `"${headlineColor}" — use var(--color-primary, ${headlineColor}) or the appropriate variable` : "use var(--color-primary)"}
 
 SITE CSS (font-face and custom properties — preserve these):
 \`\`\`css
@@ -24,12 +46,13 @@ ${siteCSS.slice(0, 6000)}
 REQUIREMENTS:
 1. Complete .astro file starting with ---
 2. TypeScript Props interface — every visible text, image, and link must be a typed prop (never hardcoded)
-3. <style> block with scoped CSS using the exact computed values above
+3. <style> block: use computed values from above, prefer CSS custom properties for colors/fonts
 4. Mobile-first @media breakpoints for 375px base and 1440px desktop
 5. Prop names should be semantic: headline, subheadline, ctaText, ctaHref, imageUrl, items[], etc.
-6. Add \`data-eval-component="[ComponentName]"\` to the outermost HTML element (e.g. <section data-eval-component="HeroLeft"> or <div data-eval-component="CtaBand">). Use the actual component name from COMPONENT NAME above.
+6. Add \`data-eval-component="[ComponentName]"\` to the outermost HTML element. Use the actual component name from COMPONENT NAME above.
 7. Reproduce the layout exactly as shown in the attached screenshots
 8. NEVER use React/Preact hooks or JSX-style functions — Astro components are static frontmatter + template HTML only
+9. NEVER import external packages — no astro-icon, @iconify, lucide-react, or any other package
 
 Return ONLY the .astro file content, starting with ---. Do not wrap the code in markdown fences.`;
 }

@@ -58,7 +58,7 @@ export interface TemplateLocalBuildInput {
   gymJson?: unknown;
   siteUuid?: string;
   workspaceUuid?: string;
-  templateTheme?: "baseline" | "impact" | "beanburito";
+  templateTheme?: import("@milo/shared-types").TemplateTheme;
   log?: { info: (o: object, m: string) => void; warn?: (o: object, m: string) => void };
 }
 
@@ -71,7 +71,7 @@ export interface DeployTemplateDistInput {
   /** Absolute path to apps/renderer/dist (already built). */
   distDir: string;
   /** Optional override for the theme. If omitted, uses whatever was built into gym.json. */
-  templateTheme?: "baseline" | "impact" | "beanburito";
+  templateTheme?: import("@milo/shared-types").TemplateTheme;
   label?: string;
   log: { info: (o: object, m: string) => void; warn?: (o: object, m: string) => void };
 }
@@ -85,7 +85,7 @@ export interface DeployTemplateInput {
   /** The validated GymSiteContent object to build with. If omitted, buildGymJson is called automatically. */
   content?: unknown;
   /** Override the Astro template theme. Defaults to auto-detected baseline/impact. */
-  templateTheme?: "baseline" | "impact" | "beanburito";
+  templateTheme?: import("@milo/shared-types").TemplateTheme;
   /** API base URL forwarded to the content mapper (e.g. CDN_BASE_URL). */
   apiBaseUrl?: string;
   /** Public site URL forwarded to the content mapper. */
