@@ -648,7 +648,7 @@ async function runTemplateEval(
   }
 
   const registry = await loadRegistry();
-  return runPipeline(["component-eval"], ctx, registry, { quiet: cmd.quiet });
+  return runPipeline(["component-eval"], ctx, registry, { force: false, quiet: cmd.quiet });
 }
 
 async function runTemplate(
