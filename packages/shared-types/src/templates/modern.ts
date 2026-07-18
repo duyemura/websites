@@ -5,11 +5,9 @@ export const modernSpec: TemplateSpec = {
   name: "modern",
   description: "Auto-generated from modern reference site.",
   headAssets: [
-    // Source site Webflow CSS — styles all Webflow class names used in adapted components
-    { tag: "link", attrs: { rel: "stylesheet", href: "https://cdn.prod.website-files.com/63caaac34d6a35f37e074c09/css/pushpress-site-modern.shared.cb137d268.min.css" } },
     // Google Fonts used by the source template
     { tag: "link", attrs: { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800;900&family=Barlow:wght@400;600;700&display=swap" } },
-    // Brand token overrides — must come AFTER Webflow CSS to win cascade
+    // Brand token overrides
     { tag: "link", attrs: { rel: "stylesheet", href: "/styles/modern.css" } },
   ],
   bodyClasses: ["bg-white"],
@@ -79,13 +77,11 @@ export const modernSpec: TemplateSpec = {
     "home": {
       path: "/",
       archetype: "home",
-      // Source order: hero → hero-cards → programs → testimonial → location
+      // Source homepage is simple: nav (HeaderModern) + hero + 3 feature cards.
+      // Programs are on /programs/* subpages. ContentBlock = hero-cards section.
       components: [
-        "HeroCenter",           // full-bleed hero with athlete photo + CTA
-        "ContentBlock",         // "Feel Supported / Have Fun / Varied Workouts" cards (adapted)
-        "FeatureGridEven",      // programs: Bootcamp / Personal Training / Strength & Stretch (adapted)
-        "TestimonialBand",      // testimonials (adapted)
-        "LocationBlock",        // location/contact (adapted)
+        "HeroCenter",   // full-bleed hero with athlete photo + CTA
+        "ContentBlock", // "Feel Supported / Have Fun / Varied Workouts" hero cards
       ],
     },
     "about": {

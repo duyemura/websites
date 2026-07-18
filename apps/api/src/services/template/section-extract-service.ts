@@ -48,6 +48,7 @@ interface DomExtractionResult {
   computedStyles: Record<string, string>;
   images: SectionImageRef[];
   textNodes: SectionTextNode[];
+  cssRules: string[];
   actualBoundingBox: BBox;
 }
 
@@ -104,9 +105,38 @@ async function extractPageSections(
 ): Promise<SectionExtractEntry[]> {
   const page = await browser.newPage();
 
+  // Intercept all CSS responses before the page loads.
+  // This is necessary because cross-origin stylesheets (CDN, frameworks, etc.)
+  // throw a CORS security error when accessed via document.styleSheets in the
+  // browser. By capturing their content here (in Node.js, where CORS doesn't
+  // apply) and re-injecting as inline <style> tags after load, we make ALL
+  // CSS same-origin and accessible for rule extraction. This approach is
+  // completely source-site-agnostic — it works for any framework or CDN.
+  const capturedCSS: string[] = [];
+  await page.route(/\.css(\?.*)?$/, async (route) => {
+    try {
+      const response = await route.fetch();
+      const text = await response.text();
+      if (text.trim().length > 0) capturedCSS.push(text);
+      await route.fulfill({ response });
+    } catch {
+      await route.continue();
+    }
+  });
+
   try {
     await page.setViewportSize({ width: VIEWPORT_WIDTH, height: 900 });
     await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 60_000 });
+
+    // Inject all captured CSS as inline <style> tags so they become same-origin
+    // and accessible via document.styleSheets for rule matching below.
+    // We inject AFTER load so inline styles don't conflict with the page's own
+    // cascade during rendering.
+    for (const css of capturedCSS) {
+      try {
+        await page.addStyleTag({ content: css });
+      } catch { /* ignore parse errors in individual sheets */ }
+    }
 
     // Disable animations to get stable layout
     await page.addStyleTag({
@@ -177,6 +207,7 @@ async function extractPageSections(
         computedStyles: extraction.computedStyles,
         images: extraction.images,
         textNodes: extraction.textNodes,
+        cssRules: extraction.cssRules,
         boundingBox: extraction.actualBoundingBox,
       });
     }
@@ -274,12 +305,77 @@ const DOM_EXTRACT_FN_JS = /* js */ `(args) => {
     }
   });
 
+  // CSS rule extraction — generic, works for any source site.
+  //
+  // Because we injected all external stylesheets as inline <style> tags before
+  // calling this function, document.styleSheets now contains ALL rules including
+  // those from CDN-hosted frameworks, without CORS restrictions.
+  //
+  // We walk every rule in every sheet and keep only those whose selector
+  // matches at least one element inside this section (or the section itself).
+  // @media and @supports rules are recursively checked. @font-face and
+  // @keyframes are kept unconditionally (they're referenced by matched rules).
+  const cssRules = [];
+  const seen = new Set();
+
+  const extractRulesFromList = (ruleList) => {
+    for (const rule of ruleList) {
+      const text = rule.cssText;
+      if (seen.has(text)) continue;
+
+      if (rule.type === 1 /* CSSStyleRule */) {
+        let matches = false;
+        try {
+          matches = target.matches(rule.selectorText) ||
+                    !!target.querySelector(rule.selectorText);
+        } catch (e) { /* invalid selector — skip */ }
+        if (matches) { seen.add(text); cssRules.push(text); }
+
+      } else if (rule.type === 4 /* CSSMediaRule */ ||
+                 rule.type === 12 /* CSSSupportsRule */) {
+        const innerMatched = [];
+        for (const inner of rule.cssRules || []) {
+          if (inner.type !== 1) continue;
+          let m = false;
+          try {
+            m = target.matches(inner.selectorText) ||
+                !!target.querySelector(inner.selectorText);
+          } catch (e) { /* skip */ }
+          if (m && !seen.has(inner.cssText)) {
+            seen.add(inner.cssText);
+            innerMatched.push(inner.cssText);
+          }
+        }
+        if (innerMatched.length > 0) {
+          const wrapped = rule.type === 4
+            ? '@media ' + rule.conditionText + ' { ' + innerMatched.join(' ') + ' }'
+            : '@supports ' + rule.conditionText + ' { ' + innerMatched.join(' ') + ' }';
+          if (!seen.has(wrapped)) { seen.add(wrapped); cssRules.push(wrapped); }
+        }
+
+      } else if (rule.type === 5  /* CSSFontFaceRule */ ||
+                 rule.type === 7  /* CSSKeyframesRule */) {
+        // Always include — may be referenced by matched style rules
+        if (!seen.has(text)) { seen.add(text); cssRules.push(text); }
+      }
+    }
+  };
+
+  for (const sheet of document.styleSheets) {
+    try {
+      extractRulesFromList(sheet.cssRules);
+    } catch (e) {
+      // Still cross-origin (e.g. data: URL sheet) — skip silently
+    }
+  }
+
   const rect = target.getBoundingClientRect();
   return {
     outerHTML,
     computedStyles,
     images,
     textNodes,
+    cssRules,
     actualBoundingBox: {
       x: Math.round(rect.left),
       y: Math.round(rect.top + window.scrollY),

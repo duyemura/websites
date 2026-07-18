@@ -515,50 +515,114 @@ function addEvalAttribute(html: string, componentName: string): string {
   return html.replace(/^(\s*<[a-zA-Z][^\s>/]*)/, `$1 data-eval-component="${componentName}"`);
 }
 
+/**
+ * Build the Astro <style> block for a component.
+ *
+ * Preferred: use the cssRules extracted by section-extract (all rules whose
+ * selectors match elements inside this section, from every stylesheet on the
+ * source page — including CDN-hosted ones captured via network interception).
+ * Each rule is scoped to [data-eval-component="ComponentName"] so it doesn't
+ * bleed into other sections. @font-face and @keyframes are kept global (they
+ * must be at the document root to work).
+ *
+ * Fallback: if cssRules is absent (old artifact), synthesise a minimal style
+ * block from the computed root styles.
+ *
+ * This approach is source-site-agnostic — it works for Webflow, Bootstrap,
+ * Tailwind (inline styles), plain CSS, or any other framework.
+ */
 function buildStyleBlock(componentName: string, section: SectionExtractEntry): string {
+  const scope = `[data-eval-component="${componentName}"]`;
+
+  // ── Preferred path: use extracted CSS rules ──────────────────────────────
+  if (section.cssRules && section.cssRules.length > 0) {
+    const scoped: string[] = [];
+
+    for (const rule of section.cssRules) {
+      scoped.push(scopeCSSRule(rule, scope));
+    }
+
+    return `<style is:global>\n${scoped.join("\n")}\n</style>`;
+  }
+
+  // ── Fallback: synthesise from computed styles on section root ────────────
   const cs = section.computedStyles;
-  const rules: string[] = [];
+  const decls: string[] = [];
 
-  const selectorClass = componentName.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, "");
+  if (cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)") decls.push(`  background-color: ${cs.backgroundColor};`);
+  if (cs.backgroundImage && cs.backgroundImage !== "none")             decls.push(`  background-image: ${cs.backgroundImage};`);
+  if (cs.color)                                                          decls.push(`  color: ${cs.color};`);
+  if (cs.padding)                                                        decls.push(`  padding: ${cs.padding};`);
+  if (cs.display && cs.display !== "block")                              decls.push(`  display: ${cs.display};`);
+  if (cs.flexDirection && cs.display === "flex")                         decls.push(`  flex-direction: ${cs.flexDirection};`);
+  if (cs.gap)                                                            decls.push(`  gap: ${cs.gap};`);
+  if (cs.textAlign && cs.textAlign !== "start")                          decls.push(`  text-align: ${cs.textAlign};`);
+  if (cs.alignItems)                                                     decls.push(`  align-items: ${cs.alignItems};`);
+  if (cs.justifyContent)                                                 decls.push(`  justify-content: ${cs.justifyContent};`);
 
-  if (cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)") {
-    rules.push(`  background-color: ${cs.backgroundColor};`);
-  }
-  if (cs.backgroundImage && cs.backgroundImage !== "none") {
-    rules.push(`  background-image: ${cs.backgroundImage};`);
-  }
-  if (cs.color) {
-    rules.push(`  color: ${cs.color};`);
-  }
-  if (cs.padding) {
-    rules.push(`  padding: ${cs.padding};`);
-  }
-  if (cs.display && cs.display !== "block") {
-    rules.push(`  display: ${cs.display};`);
-  }
-  if (cs.flexDirection && cs.display === "flex") {
-    rules.push(`  flex-direction: ${cs.flexDirection};`);
-  }
-  if (cs.gap) {
-    rules.push(`  gap: ${cs.gap};`);
-  }
-  if (cs.textAlign && cs.textAlign !== "start") {
-    rules.push(`  text-align: ${cs.textAlign};`);
-  }
-  if (cs.alignItems) {
-    rules.push(`  align-items: ${cs.alignItems};`);
-  }
-  if (cs.justifyContent) {
-    rules.push(`  justify-content: ${cs.justifyContent};`);
-  }
+  if (decls.length === 0) return "";
 
-  if (rules.length === 0) return "";
-
-  return `<style>
-.${selectorClass} {
-${rules.join("\n")}
+  return `<style is:global>\n${scope} {\n${decls.join("\n")}\n}\n</style>`;
 }
-</style>`;
+
+/**
+ * Scope a single CSS rule text to a parent selector.
+ *
+ * Rules that must stay global (@font-face, @keyframes, @charset, @import)
+ * are returned unchanged. Regular style rules and @media/@supports blocks
+ * have their selectors prefixed with the scope attribute selector.
+ */
+function scopeCSSRule(rule: string, scope: string): string {
+  const trimmed = rule.trimStart();
+
+  // @font-face and @keyframes must be at document root — don't scope them.
+  if (/^@font-face\b/i.test(trimmed) || /^@(-\w+-)?keyframes\b/i.test(trimmed) ||
+      /^@charset\b/i.test(trimmed) || /^@import\b/i.test(trimmed)) {
+    return rule;
+  }
+
+  // @media and @supports — scope the inner style rules recursively.
+  const atBlockMatch = trimmed.match(/^@(media|supports)([^{]*)\{([\s\S]*)\}\s*$/i);
+  if (atBlockMatch) {
+    const atKeyword = atBlockMatch[1] ?? "media";
+    const condition = atBlockMatch[2] ?? "";
+    const innerBlock = atBlockMatch[3] ?? "";
+    const innerScoped = scopeInnerRules(innerBlock, scope);
+    return `@${atKeyword}${condition}{\n${innerScoped}\n}`;
+  }
+
+  // Regular style rule: scope the selector list.
+  const braceIdx = rule.indexOf("{");
+  if (braceIdx === -1) return rule;
+  const selectorText = rule.slice(0, braceIdx);
+  const rest = rule.slice(braceIdx);
+  return `${scopeSelectorList(selectorText, scope)}${rest}`;
+}
+
+/** Scope a comma-separated selector list. */
+function scopeSelectorList(selectors: string, scope: string): string {
+  return selectors
+    .split(",")
+    .map((s) => {
+      const t = s.trim();
+      if (!t) return "";
+      // :root, html, body stay unscoped but constrained to descendant context.
+      if (t === ":root" || t === "html" || t === "body") return scope;
+      return `${scope} ${t}`;
+    })
+    .filter(Boolean)
+    .join(",\n");
+}
+
+/** Scope all style rules found inside a @media/@supports block. */
+function scopeInnerRules(block: string, scope: string): string {
+  // Match pairs of "selector { declarations }" — handles simple cases.
+  // This is intentionally conservative: complex nested CSS (e.g. @layer inside
+  // @media) is passed through unchanged to avoid mangling.
+  return block.replace(
+    /([^{}@]+)\{([^{}]*)\}/g,
+    (_, sel: string, decls: string) => `${scopeSelectorList(sel, scope)} {${decls}}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -386,6 +386,10 @@ export interface SectionExtractEntry {
   computedStyles: Record<string, string>;
   images: SectionImageRef[];
   textNodes: SectionTextNode[];
+  /** CSS rules whose selectors match elements inside this section, extracted
+   *  from all stylesheets (including CDN-hosted ones, injected inline to
+   *  bypass CORS). Includes @media, @supports, @font-face, @keyframes. */
+  cssRules: string[];
   boundingBox: BBox;
 }
 
