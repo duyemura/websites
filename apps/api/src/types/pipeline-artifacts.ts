@@ -361,5 +361,60 @@ export type ContentStage = (typeof CONTENT_STAGES)[number];
 export const VISION_STAGES = ["extract", "segment", "contract", "synthesize"] as const;
 export type VisionStage = (typeof VISION_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize"] as const;
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize", "section-extract", "adapt"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+// ---------- section-extract ----------
+
+export interface SectionImageRef {
+  src: string;
+  alt?: string;
+  isBackground: boolean;
+}
+
+export interface SectionTextNode {
+  text: string;
+  tag: string;
+  className: string;
+}
+
+export interface SectionExtractEntry {
+  id: string;
+  tag: string;
+  archetype: string;
+  outerHTML: string;
+  computedStyles: Record<string, string>;
+  images: SectionImageRef[];
+  textNodes: SectionTextNode[];
+  boundingBox: BBox;
+}
+
+export interface SectionExtractPage {
+  path: string;
+  url: string;
+  sections: SectionExtractEntry[];
+}
+
+export interface SectionExtractArtifact {
+  siteUuid: string;
+  sourceUrl: string;
+  capturedAt: string;
+  pages: SectionExtractPage[];
+}
+
+// ---------- adapt ----------
+
+export interface AdaptedComponent {
+  name: string;
+  filePath: string;
+  tag: string;
+  archetype: string;
+  boundProps: string[];
+  staticTextCount: number;
+}
+
+export interface AdaptArtifact {
+  templateName: string;
+  components: AdaptedComponent[];
+  pageMap: Record<string, string[]>;
+}
