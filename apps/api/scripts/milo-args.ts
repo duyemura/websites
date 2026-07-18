@@ -15,7 +15,7 @@ export type MiloCommand =
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "template"; url: string; name: string; stages?: string[]; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "template"; url: string; name: string; theme?: TemplateTheme; stages?: string[]; awsProfile?: string; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean };
 
 export const PIPELINES = {
@@ -24,7 +24,7 @@ export const PIPELINES = {
   new:     ["enrich", "crawl", "docgen", "content", "generate", "template", "template-eval", "eval"] as const,
   upgrade: ["generate", "template", "template-eval", "eval"] as const,
   rebuild: ["generate", "template", "template-eval", "eval"] as const,
-  template: ["extract", "segment", "contract", "synthesize", "component-eval"] as const,
+  template: ["extract", "segment", "contract", "synthesize", "component-eval", "generate", "template"] as const,
 } as const;
 
 export function parseArgs(): MiloCommand {
@@ -130,7 +130,7 @@ export function parseArgs(): MiloCommand {
     }
     const stagesStr = get("stages");
     const stages = stagesStr ? stagesStr.split(",").map((s) => s.trim()) : undefined;
-    return { cmd: "template", url, name, stages, ...bool };
+    return { cmd: "template", url, name, theme: get("theme") as TemplateTheme | undefined, stages, awsProfile: get("aws-profile"), ...bool };
   }
 
   if (subcommand === "template-eval") {

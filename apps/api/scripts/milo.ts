@@ -666,7 +666,7 @@ async function runTemplate(
   registry: Record<string, StageRunner>,
 ): Promise<StageResult[]> {
   const { siteUuid, workspaceUuid } = await createNewSite(cmd.url, cmd.force);
-  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", awsProfile: "unicorn" });
+  const ctx = buildCtx(siteUuid, workspaceUuid, { verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", templateTheme: cmd.theme, awsProfile: cmd.awsProfile });
   ctx.newTemplateName = cmd.name;
   if (!cmd.quiet) console.log(`\nMilo template — ${cmd.url} (site: ${siteUuid}, name: ${cmd.name})`);
   const totalStart = Date.now();
