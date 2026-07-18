@@ -5,6 +5,7 @@ import { invalidatePreviewCache } from "../../src/services/mirror/cloudfront";
 import { loadArtifact } from "../../src/utils/pipeline/artifact-store";
 import { getTemplateSpec } from "@milo/shared-types";
 import { validateContentPlaceholders } from "../../src/services/template/placeholder-validator.js";
+import { registerTemplateRouting } from "../../src/services/site-versions.js";
 import type { StageRunner, StageContext, StageResult } from "./types";
 
 export const templateStage: StageRunner = {
@@ -90,9 +91,28 @@ export const templateStage: StageRunner = {
     }
 
     const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
-    const shortId = ctx.siteUuid.slice(0, 8);
+    const templateName = ctx.newTemplateName;
+
+    // Register human-readable routing when building a named template
+    // e.g. modern-preview.mygymseo.com → sites/{uuid}/staging
+    if (templateName && previewDomain) {
+      await registerTemplateRouting(
+        templateName,
+        ctx.siteUuid,
+        ctx.config.CLOUDFRONT_KVS_ARN,
+        previewDomain,
+        ctx.config,
+      );
+    }
+
     if (previewDomain) {
-      ctx.log(`  Preview:    https://${shortId}-preview.${previewDomain}/`);
+      const shortId = ctx.siteUuid.slice(0, 8);
+      if (templateName) {
+        ctx.log(`  Preview:    https://${templateName}-preview.${previewDomain}/`);
+        ctx.log(`  (also at):  https://${shortId}-preview.${previewDomain}/`);
+      } else {
+        ctx.log(`  Preview:    https://${shortId}-preview.${previewDomain}/`);
+      }
     }
 
     return {

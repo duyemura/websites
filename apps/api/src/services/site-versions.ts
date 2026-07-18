@@ -106,6 +106,43 @@ async function registerDefaultRouting(
   }
 }
 
+/**
+ * Register a human-readable template name → S3 path mapping in the KVS so
+ * e.g. `modern-preview.mygymseo.com` routes to the right staging build.
+ * Called by the template stage when ctx.newTemplateName is set.
+ */
+export async function registerTemplateRouting(
+  templateName: string,
+  siteUuid: string,
+  kvsArn: string | undefined,
+  previewDomain: string | undefined,
+  config: CloudFrontConfig,
+): Promise<void> {
+  if (!kvsArn || !previewDomain) return;
+  try {
+    const cfInput = cloudFrontClientInputFromConfig(config);
+    const credentials = await getCloudFrontClient(cfInput).then((c) => c.config.credentials());
+    const kvsClient = new CloudFrontKeyValueStoreClient({
+      region: cfInput.region ?? "us-east-1",
+      credentials,
+    });
+
+    const entries: [string, string][] = [
+      [`${templateName}-preview.${previewDomain}`, `sites/${siteUuid}/staging`],
+      [`${templateName}.${previewDomain}`,         `sites/${siteUuid}/production`],
+    ];
+
+    for (const [key, value] of entries) {
+      const desc = await kvsClient.send(new DescribeKeyValueStoreCommand({ KvsARN: kvsArn }));
+      await kvsClient.send(new PutKeyCommand({ KvsARN: kvsArn, IfMatch: desc.ETag, Key: key, Value: value }));
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.warn(`[cloudfront] template routing registration failed: ${message}`);
+  }
+}
+
 export interface RecordVersionInput {
   siteUuid: string;
   workspaceUuid: string;
