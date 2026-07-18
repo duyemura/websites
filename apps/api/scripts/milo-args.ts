@@ -2,17 +2,19 @@
 // Exported separately so tests can import without triggering milo.ts's top-level main() call.
 import { TEMPLATE_THEMES } from "@milo/shared-types";
 
+export type TemplateTheme = (typeof TEMPLATE_THEMES)[number];
+
 export type MiloCommand =
-  | { cmd: "new"; url: string; theme?: "baseline" | "impact" | "beanburito"; tier: "free" | "paid"; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "upgrade"; site: string; theme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "rebuild"; site: string; theme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "new"; url: string; theme?: TemplateTheme; tier: "free" | "paid"; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "upgrade"; site: string; theme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "rebuild"; site: string; theme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "page"; site: string; path: string; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "eval"; site: string; path?: string; url?: string; keywords?: string[]; verbose: boolean; quiet: boolean }
   | { cmd: "eval-fix"; site?: string; evalUuid?: string; path?: string; url?: string; keywords?: string[]; verbose: boolean; quiet: boolean; scoreThreshold?: number; maxLoops?: number }
   | { cmd: "publish"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
-  | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: "baseline" | "impact" | "beanburito"; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template"; url: string; name: string; stages?: string[]; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean };
 
@@ -39,18 +41,18 @@ export function parseArgs(): MiloCommand {
     const url = get("url");
     if (!url) throw new Error("milo new requires --url <url>");
     // Default new sites to the beanburito template; override with --theme.
-    return { cmd: "new", url, theme: (get("theme") ?? "beanburito") as "baseline" | "impact" | "beanburito", tier: (get("tier") ?? "free") as "free" | "paid", ...bool };
+    return { cmd: "new", url, theme: (get("theme") ?? "beanburito") as TemplateTheme, tier: (get("tier") ?? "free") as "free" | "paid", ...bool };
   }
   if (subcommand === "upgrade") {
     const site = get("site");
     if (!site) throw new Error("milo upgrade requires --site <uuid>");
     // Default upgrades to beanburito unless an explicit theme is requested.
-    return { cmd: "upgrade", site, theme: (get("theme") ?? "beanburito") as "baseline" | "impact" | "beanburito", ...bool };
+    return { cmd: "upgrade", site, theme: (get("theme") ?? "beanburito") as TemplateTheme, ...bool };
   }
   if (subcommand === "rebuild") {
     const site = get("site");
     if (!site) throw new Error("milo rebuild requires --site <uuid>");
-    return { cmd: "rebuild", site, theme: get("theme") as "baseline" | "impact" | "beanburito" | undefined, ...bool };
+    return { cmd: "rebuild", site, theme: get("theme") as TemplateTheme | undefined, ...bool };
   }
   if (subcommand === "page") {
     const site = get("site");
@@ -147,7 +149,7 @@ export function parseArgs(): MiloCommand {
       stages: stagesStr.split(",").map((s) => s.trim()),
       url, site,
       tier: (get("tier") ?? "free") as "free" | "paid",
-      templateTheme: get("theme") as "baseline" | "impact" | "beanburito" | undefined,
+      templateTheme: get("theme") as TemplateTheme | undefined,
       ...bool,
     };
   }
