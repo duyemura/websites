@@ -1,29 +1,57 @@
 ---
 import type { Feature } from "../../../types/gym-content";
 
-const { headline, items } = Astro.props as { headline?: string; items: Feature[] };
+const { headline, items } = Astro.props as { headline?: string; items?: Feature[] };
 
-// Source site icons (blue SVGs from Beta Gym template)
-const DEFAULT_ICONS = ["🏋️","💻","⚡","🔒","🤸","💧"];
+// Source template SVG icons — part of the template visual design.
+// The icon paths come from the Beta Gym Modern source site (Webflow).
+// `label` from GymSiteContent.features is substituted per gym; icons are fixed.
+const SOURCE_ICONS = [
+  // Weekend Workout Classes — calendar with clock
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M63.0144 12.4897V16.2346H73.7449V59.9792H73.7441C73.7109 68.2675 66.9586 75 58.6627 75C54.8606 75 51.383 73.5852 48.7275 71.2551H0V16.2346H10.7305V12.4897C10.7305 8.35986 14.0903 5 18.2202 5C22.35 5 25.7099 8.35986 25.7099 12.4897V16.2346H48.035V12.4897C48.035 8.35986 51.3948 5 55.5247 5C59.6545 5 63.0144 8.35986 63.0144 12.4897ZM55.5247 9.32099C53.7774 9.32099 52.356 10.7424 52.356 12.4897V16.2346H58.6934V12.4897C58.6934 10.7424 57.272 9.32099 55.5247 9.32099ZM18.2202 9.32099C16.4729 9.32099 15.0514 10.7424 15.0514 12.4897V16.2346H21.3889V12.4897C21.3889 10.7424 19.9674 9.32099 18.2202 9.32099ZM47.9015 59.9179C47.9015 65.8516 52.7289 70.679 58.6626 70.679C64.5963 70.679 69.4239 65.8516 69.4239 59.9179C69.4239 54.7239 65.725 50.3777 60.8231 49.3747V57.7368H65.1029V62.0578H56.5021V49.3747C51.6002 50.3777 47.9015 54.7239 47.9015 59.9179ZM43.5805 59.9179C43.5805 51.6016 50.3463 44.8356 58.6626 44.8356C62.873 44.8356 66.6851 46.5705 69.4239 49.362V20.5556H4.32099V66.9342H45.3154C44.2085 64.837 43.5805 62.4495 43.5805 59.9179Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+  // Virtual Fitness Programming — monitor with barbell
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M0 5H70.0085V63.9637H43.8327L44.1127 64.7101C45.5007 68.4113 49.0891 70.8979 53.0419 70.8979V75H16.9667V70.8979H17.1413C21.094 70.8979 24.6825 68.4113 26.0705 64.7103L26.3505 63.9637H0V5ZM65.9064 51.5768V9.10206H4.10206V51.5768H65.9064ZM43.3072 70.8979C41.9976 69.567 40.9506 67.9605 40.2718 66.1506L39.4516 63.9637H30.7315L29.9114 66.1506C29.2326 67.9605 28.1855 69.567 26.8759 70.8979H43.3072ZM4.10206 55.6789V59.8616H65.9064V55.6789H4.10206ZM17.9388 45.4245C14.4173 45.4245 11.5523 42.5596 11.5523 39.0381V32.1971H7.97217V28.095H11.5523V21.254C11.5523 17.7326 14.4172 14.8677 17.9387 14.8677C21.4601 14.8677 24.3252 17.7326 24.3252 21.254V24.2662H45.6831V21.254C45.6831 17.7326 48.548 14.8677 52.0694 14.8677C55.5909 14.8677 58.4558 17.7326 58.4558 21.254V28.095H62.0361V32.1971H58.4558V39.0381C58.4558 42.5596 55.5909 45.4245 52.0694 45.4245C48.548 45.4245 45.6831 42.5596 45.6831 39.0381V36.026H24.3253V39.0381C24.3253 42.5596 21.4603 45.4245 17.9388 45.4245Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+  // Top Equipment — weight/barbell rack icon
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M64.022 5H8.72027C3.91192 5 0 8.91192 0 13.7203V43.6804H12.9897V19.433H4.3299V13.7203C4.3299 11.2994 6.29942 9.3299 8.72027 9.3299H34.2062V19.2887H32.3745C27.6545 19.2887 23.8144 23.4474 23.8144 28.5593V53.3505H15.8041V66.3402H34.2062V70.6701H27.4227V75H45.3196V70.6701H38.5361V66.3402H56.9381V53.3505H48.9278V28.5593C48.9278 23.4474 45.0878 19.2887 40.3678 19.2887H38.5361V9.3299H64.022C66.4428 9.3299 68.4124 11.2994 68.4124 13.7203V19.433H59.7526V43.6804H72.7423V13.7203C72.7423 8.91192 68.8303 5 64.022 5V5Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+  // Lockers — grid/locker pattern
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M0 76V4H71.8197V76H67.6005V72.0639H38.0194V76H33.8003V72.0639H4.21918V76H0ZM33.8003 8.21918H4.21918V35.9223H33.8003V8.21918ZM4.21918 40.1416V67.8448H33.8003V40.1416H4.21918ZM38.0194 67.8448H67.6005V40.1416H38.0194V67.8448ZM38.0194 8.21918V35.9223H67.6005V8.21918H38.0194ZM8.21973 11.8169H29.7998V16.0361H8.21973V11.8169ZM8.21973 19.512H29.7998V23.7311H8.21973V19.512ZM63.6 11.8169H42.02V16.0361H63.6V11.8169ZM42.02 19.512H63.6V23.7311H42.02V19.512ZM8.21973 43.7393H29.7998V47.9584H8.21973V43.7393ZM29.7998 51.4343H8.21973V55.6535H29.7998V51.4343ZM42.02 43.7393H63.6V47.9584H42.02V43.7393ZM63.6 51.4343H42.02V55.6535H63.6V51.4343Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+  // Personal Training — flexing arm
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M37.5 5C19.551 5 5 19.551 5 37.5C5 55.449 19.551 70 37.5 70C55.449 70 70 55.449 70 37.5C70 19.551 55.449 5 37.5 5ZM37.5 20C30.596 20 25 25.596 25 32.5V45H50V32.5C50 25.596 44.404 20 37.5 20ZM25 50V55H50V50H25Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+  // Water Dispenser — bottle/water icon
+  `<svg width="75" height="75" viewBox="0 0 75 75" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M27.5 5H47.5V15H55V70H20V15H27.5V5ZM32.5 10V15H42.5V10H32.5ZM25 20V65H50V20H25ZM30 30H45V35H30V30ZM30 40H45V45H30V40Z" fill="var(--modern-accent,#0464fc)"/></svg>`,
+];
+
+// Default amenity labels matching the source template
+const DEFAULT_LABELS = [
+  "Weekend Workout Classes",
+  "Virtual Fitness Programming",
+  "Top of the Line Workout Equipment",
+  "Lockers",
+  "Personal Training Sessions",
+  "Purified Water Dispenser",
+];
 ---
 
 <section data-section="amenities" data-section-tag="content-block" class="amenities-modern">
   <div class="amenities-inner">
     <h2 class="amenities-headline">{headline ?? "Everything You Need To Crush Your Fitness Goals"}</h2>
     <div class="amenities-grid">
-      {(items ?? []).map((f, i) => (
-        <div class="amenity-card">
-          <span class="amenity-icon">{f.icon || DEFAULT_ICONS[i % DEFAULT_ICONS.length]}</span>
-          <h3 class="amenity-name">{f.label}</h3>
-        </div>
-      ))}
+      {SOURCE_ICONS.map((svg, i) => {
+        const label = items?.[i]?.label ?? DEFAULT_LABELS[i] ?? "";
+        return (
+          <div class="amenity-card">
+            <div class="amenity-icon" set:html={svg} />
+            <h3 class="amenity-name">{label}</h3>
+          </div>
+        );
+      })}
     </div>
   </div>
 </section>
 
 <style>
   .amenities-modern {
-    background: #f5f5f5;
+    background: #0d1b2a;
     padding: 80px 20px;
   }
   .amenities-inner {
@@ -31,7 +59,7 @@ const DEFAULT_ICONS = ["🏋️","💻","⚡","🔒","🤸","💧"];
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 48px;
+    gap: 56px;
     align-items: center;
     text-align: center;
   }
@@ -39,9 +67,10 @@ const DEFAULT_ICONS = ["🏋️","💻","⚡","🔒","🤸","💧"];
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
     font-size: 2rem;
     font-weight: 900;
-    color: #111;
+    color: #fff;
     margin: 0;
     max-width: 700px;
+    line-height: 1.1;
   }
   .amenities-grid {
     display: grid;
@@ -50,33 +79,29 @@ const DEFAULT_ICONS = ["🏋️","💻","⚡","🔒","🤸","💧"];
     width: 100%;
   }
   .amenity-card {
-    background: #fff;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 8px;
-    padding: 28px 20px;
+    padding: 36px 24px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    border: 1px solid rgba(0,0,0,0.06);
+    align-items: flex-start;
+    gap: 20px;
   }
-  .amenity-icon {
-    font-size: 2.5rem;
-    color: var(--modern-accent, #0464fc);
-  }
+  .amenity-icon { flex-shrink: 0; }
   .amenity-name {
     font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
-    font-size: 0.975rem;
+    font-size: 1rem;
     font-weight: 700;
-    color: #111;
+    color: #fff;
     margin: 0;
-    text-align: center;
+    text-align: left;
     line-height: 1.3;
   }
   @media (min-width: 640px) {
     .amenities-grid { grid-template-columns: repeat(3, 1fr); }
   }
   @media (min-width: 1024px) {
-    .amenities-grid { grid-template-columns: repeat(6, 1fr); gap: 24px; }
     .amenities-headline { font-size: 2.5rem; }
   }
 </style>

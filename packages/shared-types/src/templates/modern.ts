@@ -127,16 +127,11 @@ export const modernSpec: TemplateSpec = {
 
     amenities: {
       component: "Amenities",
-      purpose: "6-card grid of gym amenities/features with icons.",
+      purpose: "6-card grid of gym amenities/features with icons. Dark navy background — a template design element.",
       props: {
-        headline: {
-          purpose: "Section headline.",
-          type: "string",
-          required: false,
-          guidance: "Bold outcome statement about what the gym provides.",
-          example: "Everything You Need To Crush Your Fitness Goals",
-          source: { kind: "pageField", path: "trustHeadline" },
-        },
+        // headline intentionally has no source — component defaults to the template's
+        // "Everything You Need To Crush Your Fitness Goals" text, which is a fixed
+        // design element of this template (separate from the trust/testimonials headline).
         items: {
           purpose: "Array of Feature objects (icon, label).",
           type: "object",
