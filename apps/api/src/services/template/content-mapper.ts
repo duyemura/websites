@@ -1215,6 +1215,40 @@ export async function buildGymJson(
 
   let business = extractBusiness(bizDoc?.content ?? "", ds, warnings, enrichArtifact?.payload ?? null);
 
+  // If the extracted business name looks like an SEO title (h1 from the page) rather
+  // than the brand name, try to recover the real name from:
+  //   1. The homepage metaTitle — "Brand Name - Tagline" → strip after " - " or " | "
+  //   2. The logo image alt text stored in the first media-block section
+  // This handles sites where the h1 is an SEO phrase ("Strength and Conditioning Gym
+  // in Manhattan") while the brand name ("Beta Gym Modern") is in the <title> tag.
+  const DEFAULT_NAME_PLACEHOLDER = "Your Gym Name";
+  const businessNameLooksSeoish =
+    !enrichArtifact?.payload?.listing?.name &&
+    business.name !== DEFAULT_NAME_PLACEHOLDER &&
+    // Longer names with "in [City]" or "near" are SEO phrases, not brand names
+    (/\bin\b/i.test(business.name) || /\bnear\b/i.test(business.name) || business.name.length > 40);
+
+  if (businessNameLooksSeoish) {
+    // Try homepage metaTitle — "Beta Gym Modern - Achieve Fast Fitness Goals" → "Beta Gym Modern"
+    const homePage = hierarchy.pages?.find((p) => p.isHomePage);
+    const metaTitle = homePage?.metaTitle;
+    if (metaTitle) {
+      const brandFromMeta = stripSeoSuffix(metaTitle);
+      if (brandFromMeta && brandFromMeta.length < business.name.length && !brandFromMeta.match(/\bin\b/i)) {
+        business = { ...business, name: brandFromMeta };
+        warnings.push(`business.name recovered from metaTitle: "${brandFromMeta}"`);
+      }
+    }
+    // Fallback: logo image alt text from first section (often the nav logo — clearest brand signal)
+    if (businessNameLooksSeoish) {
+      const logoAlt = homePage?.sections?.[0]?.content?.images?.[0]?.alt;
+      if (logoAlt && logoAlt.length > 1 && logoAlt.toLowerCase() !== "logo" && logoAlt.toLowerCase() !== "images") {
+        business = { ...business, name: logoAlt };
+        warnings.push(`business.name recovered from logo alt text: "${logoAlt}"`);
+      }
+    }
+  }
+
   // If the service area is still just the fallback city-only seed, try to infer
   // nearby neighborhoods via LLM so that `areaServed` in LocalBusiness schema
   // covers the realistic travel-from area rather than a single city name.
@@ -1253,7 +1287,7 @@ export async function buildGymJson(
     };
   }
 
-  const navigation = extractNavigation(hierarchy, warnings);
+  let navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
 
   // ── Phase 2: merge page briefs from content artifact ──────────────────────
@@ -1273,6 +1307,63 @@ export async function buildGymJson(
     ).catch(() => null),
   ]);
 
+
+  // Supplement sparse navigation from the crawl artifact.
+  // When the hierarchy only knows a few pages (e.g. a small GitHub Pages site), the
+  // nav may be missing standard gym pages. The crawl captures all homepage links —
+  // use them to add any missing pages to the header nav.
+  if (crawlArtifact?.payload) {
+    const crawlHomePage = crawlArtifact.payload.pages.find(
+      (p) => p.path === "/" || p.path === "" || (p as Record<string, unknown>).isHomePage,
+    );
+    if (crawlHomePage) {
+      const existingHrefs = new Set(navigation.header.map((n) => n.href));
+      const siteOriginRe = /^https?:\/\/[^/]+/;
+      const crawlLinks: NavItem[] = [];
+      for (const rawLink of crawlHomePage.links ?? []) {
+        try {
+          const u = new URL(rawLink);
+          const path = u.pathname.replace(/\/$/, "") || "/";
+          // Skip index.html redirects, already-included hrefs, assets, and anchor-only links
+          if (existingHrefs.has(path)) continue;
+          if (path === "/" || path.endsWith(".html") || path.startsWith("/#")) continue;
+          const segments = path.replace(/^\//, "").split("/");
+          if (segments.length > 2) continue; // skip deep paths (geo pages etc.)
+          // Derive a human-readable label from the path segment
+          const slug = segments[segments.length - 1] ?? "";
+          const label = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          if (!label) continue;
+          crawlLinks.push({ label, href: path });
+          existingHrefs.add(path);
+        } catch {
+          continue;
+        }
+      }
+      if (crawlLinks.length > 0) {
+        // Insert supplemental nav items before the last item (usually CTA)
+        navigation = { ...navigation, header: [...navigation.header, ...crawlLinks] };
+        warnings.push(`nav supplemented with ${crawlLinks.length} links from crawl artifact`);
+      }
+    }
+  }
+
+  // Use crawl homepage title as a final business-name fallback.
+  // The crawl captures <title> which contains the real brand name ("Beta Gym Modern - ...").
+  // This runs after the hierarchy-based recovery above, acting as a belt-and-suspenders check.
+  const crawlHomeTitle = crawlArtifact?.payload?.pages.find(
+    (p) => p.path === "/" || p.path === "" || p.isHomePage,
+  )?.title;
+  const businessNameIsStillSeoish =
+    !enrichArtifact?.payload?.listing?.name &&
+    business.name !== DEFAULT_NAME_PLACEHOLDER &&
+    (/\bin\b/i.test(business.name) || business.name.length > 40);
+  if (businessNameIsStillSeoish && crawlHomeTitle) {
+    const fromCrawlTitle = stripSeoSuffix(crawlHomeTitle);
+    if (fromCrawlTitle && fromCrawlTitle.length < business.name.length && !fromCrawlTitle.match(/\bin\b/i)) {
+      business = { ...business, name: fromCrawlTitle };
+      warnings.push(`business.name recovered from crawl title: "${fromCrawlTitle}"`);
+    }
+  }
 
   if (contentArtifact?.payload?.pages?.length) {
     const byPath = new Map(contentArtifact.payload.pages.map(p => [p.path, p]));
