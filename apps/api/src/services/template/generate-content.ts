@@ -1649,7 +1649,37 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // Build navigation — prefer captured nav from original site (real labels + hierarchy),
   // fall back to inferring from crawl pages when nav-structure.json isn't available yet.
   const contentBriefs: Array<{ path: string; pageType: string }> = contentArtifact?.pages ?? [];
-  const navigation = buildNavigation(capturedNav, baseContent.pages.programs, contentBriefs);
+  let navigation = buildNavigation(capturedNav, baseContent.pages.programs, contentBriefs);
+
+  // Supplement from template spec: add any pages defined in the spec that are
+  // missing from the captured nav. The spec is the authoritative list of pages
+  // this template has — this ensures nav is complete even when the source site's
+  // nav-structure.json didn't capture all links.
+  if (theme && theme !== "beanburito") {
+    const { getTemplateSpec } = await import("@milo/shared-types");
+    const specForNav = getTemplateSpec(theme as import("@milo/shared-types").TemplateTheme);
+    if (specForNav) {
+      const existingHrefs = new Set(navigation.header.map((n) => n.href));
+      const SKIP_NAV_KEYS = new Set(["home", "legal", "blog"]);
+      const specItems: import("@milo/shared-types").NavItem[] = [];
+      for (const [pageKey, pageSpec] of Object.entries(specForNav.pages)) {
+        if (SKIP_NAV_KEYS.has(pageKey)) continue;
+        if (pageSpec.path.includes(":")) continue;
+        if (existingHrefs.has(pageSpec.path)) continue;
+        const label = pageKey
+          .replace(/Index$/, "")
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (c) => c.toUpperCase())
+          .trim();
+        specItems.push({ label, href: pageSpec.path });
+        existingHrefs.add(pageSpec.path);
+      }
+      if (specItems.length > 0) {
+        navigation = { ...navigation, header: [...navigation.header, ...specItems] };
+        log(`  Nav spec supplement: ${specItems.map((i) => i.href).join(", ")}`);
+      }
+    }
+  }
 
   log(`  Nav: ${navigation.header.map(i => i.label).join(", ")}`);
 
