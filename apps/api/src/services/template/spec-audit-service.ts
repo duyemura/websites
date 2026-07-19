@@ -153,18 +153,6 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
       };
     }
 
-    // Track both the raw key (e.g. "Hero") and the camelCase spec key (e.g. "hero")
-    // so the unused-components diff doesn't false-positive on PascalCase mismatches.
-    coveredComponentKeys.add(matchedKey);
-    coveredComponentKeys.add(matchedKey.charAt(0).toLowerCase() + matchedKey.slice(1));
-    if (compSpec) {
-      // Also mark whichever key in spec.components resolves to this component
-      const specKey = Object.keys(spec.components).find(
-        (k) => spec.components[k] === compSpec,
-      );
-      if (specKey) coveredComponentKeys.add(specKey);
-    }
-
     // sectionMapping values may be PascalCase component names (e.g. "Hero")
     // while spec.components keys are camelCase (e.g. "hero"). Find the spec
     // entry by: (1) exact key match, (2) case-insensitive key match, (3)
@@ -174,8 +162,17 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
       spec.components[matchedKey.charAt(0).toLowerCase() + matchedKey.slice(1)] ??
       Object.values(spec.components).find((c) => c.component === matchedKey);
 
-    // If no spec entry, the mapping points to an Astro file that exists on disk
-    // but isn't formally registered in spec.components — treat as covered.
+    // Track the matched key in both forms so the unused-components diff doesn't
+    // false-positive on PascalCase vs camelCase mismatches.
+    coveredComponentKeys.add(matchedKey);
+    coveredComponentKeys.add(matchedKey.charAt(0).toLowerCase() + matchedKey.slice(1));
+    if (compSpec) {
+      const specKey = Object.keys(spec.components).find((k) => spec.components[k] === compSpec);
+      if (specKey) coveredComponentKeys.add(specKey);
+    }
+
+    // If no spec entry, the mapping points to an Astro file on disk but isn't
+    // formally registered in spec.components — treat as covered.
     const componentName = compSpec?.component ?? matchedKey;
     const filePath = path.join(componentsDir, `${componentName}.astro`);
     const fileExists = fs.existsSync(filePath);
