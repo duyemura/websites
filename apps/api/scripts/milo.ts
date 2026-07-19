@@ -663,6 +663,73 @@ function templateSiteFile(name: string): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), `../../../docs/template-review/${name}-site.json`);
 }
 
+async function runTemplateFix(
+  cmd: Extract<MiloCommand, { cmd: "template-fix" }>,
+): Promise<StageResult[]> {
+  const { runTemplateFix: fixService } = await import("../src/services/template/template-fix-service.js");
+  const start = Date.now();
+
+  // Resolve site from URL
+  const { siteUuid, workspaceUuid } = await resolveSiteByUrl(cmd.url).catch(() => ({ siteUuid: "", workspaceUuid: "" }));
+
+  const ctx = buildCtx(siteUuid || "00000000-0000-0000-0000-000000000000", workspaceUuid || "00000000-0000-0000-0000-000000000000", {
+    verbose: cmd.verbose,
+    quiet: cmd.quiet,
+    tier: "free",
+    templateTheme: cmd.theme,
+    awsProfile: cmd.awsProfile,
+  });
+  ctx.newTemplateName = cmd.name;
+
+  // Derive deployed URL from preview domain config
+  const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
+  const deployedUrl = previewDomain
+    ? `https://${cmd.name}-preview.${previewDomain}/`
+    : cmd.url;
+
+  if (!cmd.quiet) {
+    console.log(`\nMilo template-fix — "${cmd.fix}"`);
+    console.log(`  Template: ${cmd.name} | Source: ${cmd.url}`);
+    console.log(`  Deployed: ${deployedUrl}`);
+    console.log(`  Identifying affected component...`);
+  }
+
+  const result = await fixService({
+    fixDescription: cmd.fix,
+    templateName: cmd.name,
+    sourceUrl: cmd.url,
+    deployedUrl,
+    rendererDir: ctx.rendererDir,
+    config: ctx.config,
+    maxIterations: 3,
+  });
+
+  if (!cmd.quiet) {
+    console.log(`  ✅ Fixed: ${result.componentName} (${result.iterations} iteration(s))`);
+    console.log(`  File: ${result.componentFile}`);
+  }
+
+  // Optionally deploy after fixing
+  if (cmd.deploy) {
+    if (!cmd.quiet) console.log(`  Deploying fixed template...`);
+    const deployStageList = ["template"];
+    await runPipeline(deployStageList, ctx, await loadRegistry(), cmd);
+  } else if (!cmd.quiet) {
+    console.log(`  Run "milo template --stages template --force" to deploy the fix.`);
+  }
+
+  const stageResult: StageResult = {
+    stage: "template-fix",
+    status: "pass",
+    durationMs: Date.now() - start,
+    metrics: { component: result.componentName, iterations: result.iterations },
+    warnings: [],
+  };
+
+  renderReport([stageResult], Date.now() - start, cmd.quiet);
+  return [stageResult];
+}
+
 async function runTemplateEval(
   cmd: Extract<MiloCommand, { cmd: "template-eval" }>,
 ): Promise<StageResult[]> {
@@ -755,7 +822,8 @@ async function main() {
     case "eval-fix": results = await runEvalFix(cmd); break;
     case "nav":     results = await runTool("nav-rebuild", cmd, registry); break;
     case "restore":  results = await runRestore(cmd, registry); break;
-    case "template": results = await runTemplate(cmd, registry); break;
+    case "template":     results = await runTemplate(cmd, registry); break;
+    case "template-fix": results = await runTemplateFix(cmd); break;
     case "template-eval": results = await runTemplateEval(cmd); break;
     default: {
       const c = cmd as MiloCommand;

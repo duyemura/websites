@@ -16,7 +16,8 @@ export type MiloCommand =
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template"; url: string; name: string; theme?: TemplateTheme; group?: "content" | "design"; stages?: string[]; awsProfile?: string; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean };
+  | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean }
+  | { cmd: "template-fix"; url: string; name: string; fix: string; theme?: TemplateTheme; awsProfile?: string; deploy: boolean; verbose: boolean; quiet: boolean };
 
 export const PIPELINES = {
   // Build pipelines stage to staging only. Publishing to production is a
@@ -163,6 +164,25 @@ export function parseArgs(): MiloCommand {
     return { cmd: "template-eval", name, component: get("component"), ...bool };
   }
 
+  if (subcommand === "template-fix") {
+    const url = get("url");
+    const name = get("name");
+    const fix = get("fix");
+    if (!url)  throw new Error("milo template-fix requires --url <url>");
+    if (!name) throw new Error("milo template-fix requires --name <templatename>");
+    if (!fix)  throw new Error("milo template-fix requires --fix \"description of what to fix\"");
+    return {
+      cmd: "template-fix",
+      url,
+      name,
+      fix,
+      theme: get("theme") as TemplateTheme | undefined,
+      awsProfile: get("aws-profile"),
+      deploy: has("deploy"),
+      ...bool,
+    };
+  }
+
   // Legacy --stages escape hatch
   const stagesStr = get("stages");
   const url = get("url");
@@ -194,6 +214,7 @@ export function parseArgs(): MiloCommand {
     `  milo template content --url <url> --name <name> [--theme x]           refresh gym data only\n` +
     `  milo template design  --url <url> --name <name> [--theme x]           rebuild visual template only\n` +
     `  milo template         --url <url> --name <name> --stages s1,s2        surgical: specific stages\n` +
+    `  milo template-fix     --url <url> --name <name> --fix \"description\" [--deploy]  AI-targeted component fix\n` +
     `  milo template-eval    --name <name> [--component <ComponentName>]\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,
   );
