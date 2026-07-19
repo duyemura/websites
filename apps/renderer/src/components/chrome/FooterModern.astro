@@ -1,0 +1,169 @@
+---
+import { content } from "../../lib/content";
+
+const { business, brand, navigation } = content;
+const NO_IMAGE = "__NO_IMAGE__";
+const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
+
+const year = new Date().getFullYear();
+
+// Flatten footer groups for rendering
+const programLinks = navigation.footer.find(g => g.label.toLowerCase().includes("program"))?.links ?? [];
+const companyLinks = navigation.footer.find(g => g.label.toLowerCase().includes("company") || g.label.toLowerCase().includes("quick"))?.links ?? [];
+const legalLinks   = navigation.footer.find(g => g.label.toLowerCase().includes("legal"))?.links ?? [];
+
+const social = business.social ?? {};
+---
+
+<footer class="footer-modern">
+  <div class="footer-inner">
+    <!-- Brand column -->
+    <div class="footer-brand">
+      <a href="/" class="footer-logo">
+        {hasLogo
+          ? <img src={brand.logoUrl} alt={brand.logoAlt || business.name} class="footer-logo-img" />
+          : <span class="footer-logo-text">{business.name}</span>}
+      </a>
+      <p class="footer-tagline">{business.tagline}</p>
+      <!-- Social icons -->
+      {Object.keys(social).length > 0 && (
+        <div class="footer-social">
+          {social.facebook    && <a href={social.facebook}    target="_blank" rel="noopener" class="social-link" aria-label="Facebook">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>
+          </a>}
+          {social.instagram   && <a href={social.instagram}   target="_blank" rel="noopener" class="social-link" aria-label="Instagram">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </a>}
+          {social.twitter     && <a href={social.twitter}     target="_blank" rel="noopener" class="social-link" aria-label="Twitter/X">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2c9 5 20 0 20-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"/></svg>
+          </a>}
+          {social.youtube     && <a href={social.youtube}     target="_blank" rel="noopener" class="social-link" aria-label="YouTube">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22.54 6.42a2.78 2.78 0 00-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 00-1.94 1.96A29 29 0 001 12a29 29 0 00.46 5.58A2.78 2.78 0 003.4 19.54C5.12 20 12 20 12 20s6.88 0 8.6-.46a2.78 2.78 0 001.94-1.96A29 29 0 0023 12a29 29 0 00-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="white"/></svg>
+          </a>}
+        </div>
+      )}
+    </div>
+
+    <!-- Programs column -->
+    {(programLinks.length > 0) && (
+      <div class="footer-col">
+        <h4 class="footer-col-title">Programs</h4>
+        <ul class="footer-links">
+          {programLinks.map(link => <li><a href={link.href}>{link.label}</a></li>)}
+        </ul>
+      </div>
+    )}
+
+    <!-- Company / Quick links -->
+    {(companyLinks.length > 0) && (
+      <div class="footer-col">
+        <h4 class="footer-col-title">Company</h4>
+        <ul class="footer-links">
+          {companyLinks.map(link => <li><a href={link.href}>{link.label}</a></li>)}
+        </ul>
+      </div>
+    )}
+
+    <!-- Hours + Address column -->
+    <div class="footer-col">
+      <h4 class="footer-col-title">Visit Us</h4>
+      <address class="footer-address">
+        <p>{business.address.street}</p>
+        <p>{business.address.city}, {business.address.state} {business.address.zip}</p>
+      </address>
+      {business.hours.length > 0 && (
+        <div class="footer-hours">
+          {business.hours.map(h => (
+            <p><span class="hours-days">{h.days.join(", ")}</span><span class="hours-time">{h.opens.replace(":00","").replace(/^0/,"")}–{h.closes.replace(":00","").replace(/^0/,"")}</span></p>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="footer-bottom">
+    <p class="footer-copy">&copy; {year} {business.name}. All rights reserved.</p>
+    {legalLinks.length > 0 && (
+      <nav class="footer-legal" aria-label="Legal">
+        {legalLinks.map(link => <a href={link.href}>{link.label}</a>)}
+      </nav>
+    )}
+    <p class="footer-powered">Powered by <a href="https://pushpress.com" target="_blank" rel="noopener">PushPress</a></p>
+  </div>
+</footer>
+
+<style>
+  .footer-modern {
+    background: #0d1b2a;
+    color: rgba(255,255,255,0.75);
+    padding: 64px 20px 0;
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+  }
+  .footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  /* Brand */
+  .footer-brand { display: flex; flex-direction: column; gap: 16px; }
+  .footer-logo { text-decoration: none; }
+  .footer-logo-img { height: 36px; width: auto; display: block; filter: brightness(0) invert(1); }
+  .footer-logo-text {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: #fff;
+  }
+  .footer-tagline { font-size: 0.875rem; line-height: 1.6; margin: 0; max-width: 280px; }
+  .footer-social { display: flex; gap: 12px; }
+  .social-link { color: rgba(255,255,255,0.6); transition: color 0.2s; }
+  .social-link:hover { color: var(--modern-accent, #0464fc); }
+  /* Columns */
+  .footer-col { display: flex; flex-direction: column; gap: 12px; }
+  .footer-col-title {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    margin: 0;
+  }
+  .footer-links { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .footer-links a { color: rgba(255,255,255,0.75); text-decoration: none; font-size: 0.9rem; }
+  .footer-links a:hover { color: #fff; }
+  .footer-address { font-style: normal; font-size: 0.875rem; line-height: 1.7; }
+  .footer-address p { margin: 0; }
+  .footer-hours { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .footer-hours p { font-size: 0.8rem; margin: 0; display: flex; gap: 8px; }
+  .hours-days { color: rgba(255,255,255,0.5); font-size: 0.75rem; }
+  .hours-time { color: rgba(255,255,255,0.75); }
+  /* Bottom */
+  .footer-bottom {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 0 32px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    align-items: center;
+    font-size: 0.8rem;
+  }
+  .footer-copy { margin: 0; }
+  .footer-legal { display: flex; gap: 16px; }
+  .footer-legal a { color: rgba(255,255,255,0.5); text-decoration: none; }
+  .footer-legal a:hover { color: #fff; }
+  .footer-powered { margin: 0; margin-left: auto; }
+  .footer-powered a { color: var(--modern-accent, #0464fc); text-decoration: none; }
+  @media (min-width: 640px) {
+    .footer-inner { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 1024px) {
+    .footer-inner { grid-template-columns: 2fr 1fr 1fr 1fr; gap: 60px; }
+  }
+</style>

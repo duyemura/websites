@@ -1,9 +1,28 @@
 ---
 import { content } from "../../lib/content";
+import type { NavItem } from "../../../types/gym-content";
 
 const { business, brand, navigation } = content;
 const NO_IMAGE = "__NO_IMAGE__";
 const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
+
+// Template-canonical nav for the modern theme.
+// When the content pipeline produces a sparse nav (e.g. only Home + Programs),
+// supplement with the standard gym nav this template is designed around.
+const TEMPLATE_NAV: NavItem[] = [
+  { label: "Programs", href: "/programs", children: [] },
+  { label: "Drop In",  href: "/contact" },
+  { label: "Schedule", href: "/schedule" },
+  { label: "Pricing",  href: "/pricing" },
+  { label: "About Us", href: "/about" },
+  { label: "Blog",     href: "/blog" },
+  { label: "Contact",  href: "/contact" },
+];
+
+// Merge: use content-pipeline nav items when they exist, fill gaps from template canonical nav
+const existingHrefs = new Set(navigation.header.map((n) => n.href));
+const supplemental = TEMPLATE_NAV.filter((n) => !existingHrefs.has(n.href));
+const navItems: NavItem[] = [...navigation.header, ...supplemental];
 ---
 
 <header class="header-modern">
@@ -15,7 +34,7 @@ const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
     </a>
 
     <nav class="header-nav" aria-label="Main navigation">
-      {navigation.header.slice(0, 6).map((item) =>
+      {navItems.slice(0, 7).map((item) =>
         item.children?.length
           ? (
             <div class="nav-dropdown">
