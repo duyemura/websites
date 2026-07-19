@@ -33,6 +33,8 @@ export const modernSpec: TemplateSpec = {
     "faq-block/faq-accordion":             "FAQ",
     "cta-band/cta-band":                   "CTABand",
     "cta-band/cta-simple":                 "CTABand",
+    // Contact sections with unknown archetype map to Location (address + hours + map)
+    "contact/unknown":                     "Location",
   },
 
   headAssets: [

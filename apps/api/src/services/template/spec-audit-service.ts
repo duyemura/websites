@@ -111,6 +111,18 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
   const specComponentKeys = spec ? Object.keys(spec.components) : [];
   const coveredComponentKeys = new Set<string>();
 
+  // Pre-mark all components referenced in spec.pages as covered.
+  // These are used directly via the page component list, not via sectionMapping,
+  // so they should never appear as "unused" in the report.
+  if (spec) {
+    for (const page of Object.values(spec.pages)) {
+      for (const compId of page.components) {
+        coveredComponentKeys.add(compId);
+        coveredComponentKeys.add(compId.charAt(0).toLowerCase() + compId.slice(1));
+      }
+    }
+  }
+
   const coverage: CoverageRow[] = detectedSections.map((section) => {
     // Skip chrome sections — they don't need coverage in the sections/ dir
     if (!spec || CHROME_TAGS.has(section.tag)) {
@@ -141,7 +153,17 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
       };
     }
 
+    // Track both the raw key (e.g. "Hero") and the camelCase spec key (e.g. "hero")
+    // so the unused-components diff doesn't false-positive on PascalCase mismatches.
     coveredComponentKeys.add(matchedKey);
+    coveredComponentKeys.add(matchedKey.charAt(0).toLowerCase() + matchedKey.slice(1));
+    if (compSpec) {
+      // Also mark whichever key in spec.components resolves to this component
+      const specKey = Object.keys(spec.components).find(
+        (k) => spec.components[k] === compSpec,
+      );
+      if (specKey) coveredComponentKeys.add(specKey);
+    }
 
     // sectionMapping values may be PascalCase component names (e.g. "Hero")
     // while spec.components keys are camelCase (e.g. "hero"). Find the spec
@@ -247,11 +269,14 @@ export function writeAuditReport(result: SpecAuditResult, repoRoot: string): str
 
   if (summary.uncovered > 0) {
     lines.push(``, `## What to do about uncovered sections`);
-    lines.push(``, `For each ❌ row:`);
-    lines.push(`1. Add a component entry to \`modernSpec.components\` with the section's tag`);
-    lines.push(`2. Create \`apps/renderer/src/components/sections/${result.templateName}/{ComponentName}.astro\``);
-    lines.push(`3. Add it to \`TAG_TO_COMPONENTS\` in \`spec-audit-service.ts\``);
-    lines.push(`4. Re-run \`milo template --stages spec-audit\` to verify coverage`);
+    lines.push(``, `For each ❌ row, run the add-component workflow:`);
+    lines.push(`\`\`\``);
+    lines.push(`pnpm milo template add-component \\`);
+    lines.push(`  --url <source-url> --name ${result.templateName} \\`);
+    lines.push(`  --component <tag>/<archetype>`);
+    lines.push(`\`\`\``);
+    lines.push(``, `This extracts the section HTML+CSS, generates a draft component for review,`);
+    lines.push(`then add the mapping to \`${result.templateName}Spec.sectionMapping\` and commit.`);
   } else {
     lines.push(``, `## All sections covered 🎉`);
     lines.push(`Every detected section type has a matching component with prop sources.`);
