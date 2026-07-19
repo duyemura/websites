@@ -216,6 +216,99 @@ export function contentFocus(category?: string | null): BusinessContentFocus {
   };
 }
 
+// ── Default programs ─────────────────────────────────────────────────────────
+
+/**
+ * Default program slugs/names when none are extracted from the source site.
+ * Returns EMPTY ARRAY for unknown types — we never invent programs for a
+ * business type we don't recognise. Better to show nothing than wrong names.
+ */
+export function defaultProgramSlugs(
+  category?: string | null,
+): Array<{ slug: string; name: string; shortDescription: string }> {
+  const c = normaliseCategory(category);
+
+  if (/yoga/i.test(c)) return [
+    { slug: "hatha-yoga",  name: "Hatha Yoga",  shortDescription: "Foundational postures and breathwork for all levels." },
+    { slug: "vinyasa",     name: "Vinyasa Flow", shortDescription: "Dynamic, flowing sequences linked to breath." },
+    { slug: "yin-yoga",    name: "Yin Yoga",     shortDescription: "Long-held, passive stretches for deep tissue release." },
+  ];
+
+  if (/pilates/i.test(c)) return [
+    { slug: "mat-pilates",      name: "Mat Pilates",     shortDescription: "Classical Pilates on the mat — core, posture, control." },
+    { slug: "reformer-pilates", name: "Reformer Pilates", shortDescription: "Spring-resistance apparatus for full-body conditioning." },
+  ];
+
+  if (/barre/i.test(c)) return [
+    { slug: "barre-class",   name: "Barre Class",   shortDescription: "Ballet-inspired training for lean muscle and flexibility." },
+    { slug: "barre-express", name: "Barre Express", shortDescription: "30-minute targeted burn — perfect for busy schedules." },
+  ];
+
+  if (/dance|ballet|hip.hop|salsa/i.test(c)) return [
+    { slug: "beginner-dance",     name: "Beginner Dance",     shortDescription: "Learn the fundamentals in a welcoming, fun environment." },
+    { slug: "intermediate-dance", name: "Intermediate Dance", shortDescription: "Build technique and repertoire with structured coaching." },
+    { slug: "private-lessons",    name: "Private Lessons",    shortDescription: "One-on-one instruction tailored to your goals." },
+  ];
+
+  if (/martial.art|karate|jiu.jitsu|bjj/i.test(c)) return [
+    { slug: "fundamentals",   name: "Fundamentals",    shortDescription: "Core techniques and principles for beginners." },
+    { slug: "advanced-class", name: "Advanced Class",  shortDescription: "Technical drilling and live rolling for experienced practitioners." },
+    { slug: "kids-class",     name: "Kids Class",      shortDescription: "Discipline, confidence, and technique for young athletes." },
+  ];
+
+  if (/boxing|muay.thai/i.test(c)) return [
+    { slug: "boxing-fundamentals", name: "Boxing Fundamentals", shortDescription: "Learn stance, footwork, and combinations from scratch." },
+    { slug: "conditioning",        name: "Conditioning",         shortDescription: "High-intensity bag work and fitness training." },
+    { slug: "sparring",            name: "Sparring",             shortDescription: "Controlled partner work to sharpen your skills." },
+  ];
+
+  if (/crossfit|cross.fit/i.test(c)) return [
+    { slug: "crossfit",         name: "CrossFit",       shortDescription: "Constantly varied, high-intensity functional fitness." },
+    { slug: "olympic-lifting",  name: "Olympic Lifting", shortDescription: "Snatch and clean & jerk technique and strength work." },
+    { slug: "open-gym",         name: "Open Gym",        shortDescription: "Access all equipment on your own schedule." },
+  ];
+
+  if (/hiit|bootcamp/i.test(c)) return [
+    { slug: "hiit-class",    name: "HIIT Class",    shortDescription: "High-intensity intervals that maximise calorie burn." },
+    { slug: "bootcamp",      name: "Bootcamp",       shortDescription: "Military-inspired group training for all fitness levels." },
+  ];
+
+  if (/cycling|spin/i.test(c)) return [
+    { slug: "ride",            name: "Ride",             shortDescription: "Energising group cycling class for all abilities." },
+    { slug: "interval-ride",   name: "Interval Ride",    shortDescription: "Power-focused intervals to build speed and stamina." },
+    { slug: "recovery-ride",   name: "Recovery Ride",    shortDescription: "Low-intensity active recovery for sore legs." },
+  ];
+
+  if (/swim/i.test(c)) return [
+    { slug: "stroke-technique", name: "Stroke Technique", shortDescription: "Develop efficient, powerful swimming technique." },
+    { slug: "open-water",       name: "Open Water Prep",  shortDescription: "Prepare for outdoor swims, triathlons, and events." },
+  ];
+
+  if (/climb/i.test(c)) return [
+    { slug: "top-rope",    name: "Top Rope",    shortDescription: "Learn to climb safely with an experienced guide." },
+    { slug: "bouldering",  name: "Bouldering",  shortDescription: "Short, powerful problems without ropes." },
+    { slug: "lead-climbing", name: "Lead Climbing", shortDescription: "Clip your way up the wall with confidence." },
+  ];
+
+  if (/personal.train/i.test(c)) return [
+    { slug: "personal-training",    name: "Personal Training",    shortDescription: "One-on-one sessions tailored entirely to your goals." },
+    { slug: "semi-private-training", name: "Semi-Private Training", shortDescription: "Small-group coaching that keeps costs down without sacrificing attention." },
+  ];
+
+  if (/wellness|holistic/i.test(c)) return [
+    { slug: "wellness-program", name: "Wellness Program", shortDescription: "A holistic approach to mind, body, and lifestyle balance." },
+  ];
+
+  if (/gym|fitness|strength|conditioning/i.test(c)) return [
+    { slug: "group-training",    name: "Group Training",    shortDescription: "Coach-led group sessions for all fitness levels." },
+    { slug: "personal-training", name: "Personal Training", shortDescription: "One-on-one coaching built around your goals." },
+    { slug: "open-gym",          name: "Open Gym",          shortDescription: "Full equipment access on your own schedule." },
+  ];
+
+  // Unknown type — return empty so we never make up programs
+  return [];
+}
+
 // ── Convenience helpers ───────────────────────────────────────────────────────
 
 /** Replace "gym" references in a prompt template with the correct business type. */

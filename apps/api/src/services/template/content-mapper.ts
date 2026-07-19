@@ -1,6 +1,6 @@
 import type { Kysely } from "kysely";
 import type { DB, Json } from "../../types/db";
-import { businessTypeLabel, staffRoleTitle, contentFocus } from "../../utils/business-type.js";
+import { businessTypeLabel, staffRoleTitle, contentFocus, defaultProgramSlugs } from "../../utils/business-type.js";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage, HierarchySection } from "../../types/site-hierarchy";
 import {
@@ -47,7 +47,7 @@ export const STATIC_PAGE_FALLBACK_HEADLINES: Record<
   about: "About us",
   pricing: "Pricing",
   contact: "Get in touch",
-  schedule: "Class schedule",
+  schedule: "Schedule",
   localGuide: "Local guide",
   blog: "Blog",
 };
@@ -694,11 +694,18 @@ export function extractPages(
 
   const programPages = byClass("program");
   const hasProgramPages = programPages.length > 0;
+  // Use category-aware defaults — never fall back to gym-specific programs for
+  // a yoga studio, dance school, etc. Returns [] for unknown business types.
+  const categoryDefaults = defaultProgramSlugs(business.category);
   const featuredPrograms = hasProgramPages
     ? programPages.slice(0, 6).map((p) => p.slug)
-    : DEFAULT_PROGRAMS.map((p) => p.slug);
+    : categoryDefaults.map((p) => p.slug);
   if (!hasProgramPages) {
-    warnings.push("no program pages found in hierarchy — using default program set and featuring them on homepage");
+    if (categoryDefaults.length > 0) {
+      warnings.push(`no program pages found in hierarchy — using category-aware defaults for "${businessTypeLabel(business.category)}"`);
+    } else {
+      warnings.push("no program pages found in hierarchy — no defaults for this business type, programs will be empty");
+    }
   }
 
   const contractHomeSections = contract?.pages.find((p) => p.path === (homePage?.path ?? "/"))?.sections ?? [];
@@ -764,9 +771,9 @@ export function extractPages(
         "Members looking for a supportive training environment.",
       ],
       gettingStarted: [
-        { number: 1, headline: "Book a free intro", body: "Schedule a time to meet a coach and see the gym." },
-        { number: 2, headline: "Meet your coach", body: "We'll discuss your goals and recommend the right starting point." },
-        { number: 3, headline: "Start training", body: "Show up for your first session and begin building momentum." },
+        { number: 1, headline: business.primaryCta.label, body: `Schedule a time to meet a ${staffRoleTitle(business.category)} and see what we offer.` },
+        { number: 2, headline: `Meet your ${staffRoleTitle(business.category)}`, body: "We'll discuss your goals and find the right starting point." },
+        { number: 3, headline: `Start your first ${contentFocus(business.category).sessionWord}`, body: "Show up, give it your best, and begin building momentum." },
       ],
     };
   }
@@ -776,16 +783,17 @@ export function extractPages(
   const location = city ? (stateAbbr ? `${city}, ${stateAbbr}` : city) : "";
   const categoryPhrase = businessTypeLabel(business.category);
 
-  const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
+  const focus = contentFocus(business.category);
+  const defaultPrograms: ProgramContent[] = categoryDefaults.map((p) => ({
     slug: p.slug,
     name: p.name,
-    shortDescription: programDescriptions[p.slug] ?? `Coach-led ${p.name.toLowerCase()} sessions designed for real results.`,
+    shortDescription: p.shortDescription,
     coverImageUrl: NO_IMAGE,
     hero: {
-      headline: `Try our ${p.name}`,
-      subheading: location ? `${p.name} classes in ${location}` : `${p.name} classes`,
-      ctaLabel: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.label,
-      ctaUrl: DEFAULT_BUSINESS_PLACEHOLDER.primaryCta.url,
+      headline: `${p.name}`,
+      subheading: location ? `${p.name} in ${location}` : p.name,
+      ctaLabel: business.primaryCta.label,
+      ctaUrl: business.primaryCta.url,
       backgroundImageUrl: NO_IMAGE,
     },
     ...defaultProgramContent(p.name),
@@ -1109,7 +1117,7 @@ async function inferServiceArea(
   config: Config,
 ): Promise<string[]> {
   const safeCategory = (category || businessTypeLabel(undefined)).replace(/[^\w\s-]/g, "").slice(0, 60) || "business";
-  const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${safeCategory} (gym/fitness business). Include only real place names, no commentary.
+  const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${safeCategory}. Include only real place names, no commentary.
 
 Return a JSON array of strings only, e.g.: ["Round Rock", "Cedar Park", "Pflugerville", "Buda"]`;
 
