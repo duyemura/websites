@@ -143,15 +143,25 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
 
     coveredComponentKeys.add(matchedKey);
 
-    const compSpec = spec.components[matchedKey]!;
-    const componentName = compSpec.component ?? matchedKey;
+    // sectionMapping values may be PascalCase component names (e.g. "Hero")
+    // while spec.components keys are camelCase (e.g. "hero"). Find the spec
+    // entry by: (1) exact key match, (2) case-insensitive key match, (3)
+    // matching the .component field of any entry.
+    const compSpec =
+      spec.components[matchedKey] ??
+      spec.components[matchedKey.charAt(0).toLowerCase() + matchedKey.slice(1)] ??
+      Object.values(spec.components).find((c) => c.component === matchedKey);
+
+    // If no spec entry, the mapping points to an Astro file that exists on disk
+    // but isn't formally registered in spec.components — treat as covered.
+    const componentName = compSpec?.component ?? matchedKey;
     const filePath = path.join(componentsDir, `${componentName}.astro`);
     const fileExists = fs.existsSync(filePath);
     const relFile = fileExists
       ? `apps/renderer/src/components/sections/${templateName}/${componentName}.astro`
       : null;
 
-    const props = Object.values(compSpec.props);
+    const props = compSpec ? Object.values(compSpec.props) : [];
     const propsMapped = props.filter((p) => p.source).length;
     const propsTotal = props.length;
 
