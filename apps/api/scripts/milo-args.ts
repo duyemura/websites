@@ -17,7 +17,7 @@ export type MiloCommand =
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template"; url: string; name: string; theme?: TemplateTheme; group?: "content" | "design"; stages?: string[]; awsProfile?: string; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean }
-  | { cmd: "template-fix"; url: string; name: string; fix: string; theme?: TemplateTheme; awsProfile?: string; deploy: boolean; verbose: boolean; quiet: boolean };
+  | { cmd: "template-fix"; url: string; name: string; fix?: string; auto: boolean; maxLoops: number; theme?: TemplateTheme; awsProfile?: string; deploy: boolean; verbose: boolean; quiet: boolean };
 
 export const PIPELINES = {
   // Build pipelines stage to staging only. Publishing to production is a
@@ -170,12 +170,16 @@ export function parseArgs(): MiloCommand {
     const fix = get("fix");
     if (!url)  throw new Error("milo template-fix requires --url <url>");
     if (!name) throw new Error("milo template-fix requires --name <templatename>");
-    if (!fix)  throw new Error("milo template-fix requires --fix \"description of what to fix\"");
+    const auto = has("auto");
+    if (!fix && !auto) throw new Error("milo template-fix requires --fix \"description\" or --auto");
+    const maxLoopsStr = get("max-loops");
     return {
       cmd: "template-fix",
       url,
       name,
-      fix,
+      fix: fix ?? undefined,
+      auto,
+      maxLoops: maxLoopsStr ? parseInt(maxLoopsStr, 10) : 5,
       theme: get("theme") as TemplateTheme | undefined,
       awsProfile: get("aws-profile"),
       deploy: has("deploy"),
@@ -214,7 +218,8 @@ export function parseArgs(): MiloCommand {
     `  milo template content --url <url> --name <name> [--theme x]           refresh gym data only\n` +
     `  milo template design  --url <url> --name <name> [--theme x]           rebuild visual template only\n` +
     `  milo template         --url <url> --name <name> --stages s1,s2        surgical: specific stages\n` +
-    `  milo template-fix     --url <url> --name <name> --fix \"description\" [--deploy]  AI-targeted component fix\n` +
+    `  milo template-fix     --url <url> --name <name> --fix \"description\" [--deploy]       targeted fix\n` +
+    `  milo template-fix     --url <url> --name <name> --auto [--max-loops 5] [--deploy]  auto diagnose+fix loop\n` +
     `  milo template-eval    --name <name> [--component <ComponentName>]\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,
   );

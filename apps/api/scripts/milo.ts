@@ -666,63 +666,93 @@ function templateSiteFile(name: string): string {
 async function runTemplateFix(
   cmd: Extract<MiloCommand, { cmd: "template-fix" }>,
 ): Promise<StageResult[]> {
-  const { runTemplateFix: fixService } = await import("../src/services/template/template-fix-service.js");
+  const { runTemplateFix: fixService, runTemplateAutoFix } = await import("../src/services/template/template-fix-service.js");
   const start = Date.now();
 
-  // Resolve site from URL
   const { siteUuid, workspaceUuid } = await resolveSiteByUrl(cmd.url).catch(() => ({ siteUuid: "", workspaceUuid: "" }));
-
   const ctx = buildCtx(siteUuid || "00000000-0000-0000-0000-000000000000", workspaceUuid || "00000000-0000-0000-0000-000000000000", {
-    verbose: cmd.verbose,
-    quiet: cmd.quiet,
-    tier: "free",
-    templateTheme: cmd.theme,
-    awsProfile: cmd.awsProfile,
+    verbose: cmd.verbose, quiet: cmd.quiet, tier: "free", templateTheme: cmd.theme, awsProfile: cmd.awsProfile,
   });
   ctx.newTemplateName = cmd.name;
 
-  // Derive deployed URL from preview domain config
   const previewDomain = ctx.config.MILO_PREVIEW_DOMAIN;
-  const deployedUrl = previewDomain
-    ? `https://${cmd.name}-preview.${previewDomain}/`
-    : cmd.url;
+  const deployedUrl = previewDomain ? `https://${cmd.name}-preview.${previewDomain}/` : cmd.url;
 
-  if (!cmd.quiet) {
-    console.log(`\nMilo template-fix — "${cmd.fix}"`);
-    console.log(`  Template: ${cmd.name} | Source: ${cmd.url}`);
-    console.log(`  Deployed: ${deployedUrl}`);
-    console.log(`  Identifying affected component...`);
-  }
+  const deployFn = cmd.deploy
+    ? async () => {
+        await runPipeline(["template"], ctx, await loadRegistry(), cmd);
+      }
+    : undefined;
 
-  const result = await fixService({
-    fixDescription: cmd.fix,
-    templateName: cmd.name,
-    sourceUrl: cmd.url,
-    deployedUrl,
-    rendererDir: ctx.rendererDir,
-    config: ctx.config,
-    maxIterations: 3,
-  });
+  let metrics: Record<string, number | string>;
 
-  if (!cmd.quiet) {
-    console.log(`  ✅ Fixed: ${result.componentName} (${result.iterations} iteration(s))`);
-    console.log(`  File: ${result.componentFile}`);
-  }
+  if (cmd.auto) {
+    // ── Auto mode: diagnose → fix → deploy → loop ──
+    if (!cmd.quiet) {
+      console.log(`\nMilo template-fix (auto) — ${cmd.name}`);
+      console.log(`  Source: ${cmd.url}`);
+      console.log(`  Deployed: ${deployedUrl}`);
+      console.log(`  Max loops: ${cmd.maxLoops}`);
+    }
 
-  // Optionally deploy after fixing
-  if (cmd.deploy) {
-    if (!cmd.quiet) console.log(`  Deploying fixed template...`);
-    const deployStageList = ["template"];
-    await runPipeline(deployStageList, ctx, await loadRegistry(), cmd);
-  } else if (!cmd.quiet) {
-    console.log(`  Run "milo template --stages template --force" to deploy the fix.`);
+    const result = await runTemplateAutoFix({
+      templateName: cmd.name,
+      sourceUrl: cmd.url,
+      deployedUrl,
+      rendererDir: ctx.rendererDir,
+      config: ctx.config,
+      maxLoops: cmd.maxLoops,
+      maxFixesPerLoop: 2,
+      onDeploy: deployFn,
+      onProgress: (loop, issues, fixed) => {
+        if (!cmd.quiet) console.log(`  Loop ${loop}: ${fixed.length} fixed, ${issues.length} issue(s) remaining`);
+      },
+    });
+
+    if (!cmd.quiet) {
+      console.log(`\n  Done: ${result.totalFixesApplied} fix(es) in ${result.loops} loop(s)`);
+      if (result.remainingIssues.length > 0) {
+        console.log(`  Remaining issues:`);
+        result.remainingIssues.forEach((i) => console.log(`    [${i.priority}] ${i.description}`));
+      }
+    }
+
+    metrics = { loops: result.loops, fixes: result.totalFixesApplied, remaining: result.remainingIssues.length };
+
+  } else {
+    // ── Directed mode: single --fix description ──
+    if (!cmd.quiet) {
+      console.log(`\nMilo template-fix — "${cmd.fix}"`);
+      console.log(`  Template: ${cmd.name} | Source: ${cmd.url} | Deployed: ${deployedUrl}`);
+    }
+
+    const result = await fixService({
+      fixDescription: cmd.fix!,
+      templateName: cmd.name,
+      sourceUrl: cmd.url,
+      deployedUrl,
+      rendererDir: ctx.rendererDir,
+      config: ctx.config,
+      maxIterations: 3,
+    });
+
+    if (!cmd.quiet) console.log(`  ✅ Fixed: ${result.componentName} (${result.iterations} iteration(s))`);
+
+    if (deployFn) {
+      if (!cmd.quiet) console.log(`  Deploying...`);
+      await deployFn();
+    } else if (!cmd.quiet) {
+      console.log(`  Run "milo template --stages template --force" to deploy.`);
+    }
+
+    metrics = { component: result.componentName, iterations: result.iterations };
   }
 
   const stageResult: StageResult = {
     stage: "template-fix",
     status: "pass",
     durationMs: Date.now() - start,
-    metrics: { component: result.componentName, iterations: result.iterations },
+    metrics,
     warnings: [],
   };
 

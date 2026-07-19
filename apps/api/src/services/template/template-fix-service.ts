@@ -263,3 +263,194 @@ export async function runTemplateFix(input: TemplateFix): Promise<TemplateFixRes
     summary: `Applied fix to ${componentName} in ${iterations} iteration(s). Run "milo template --stages template --force" to deploy.`,
   };
 }
+
+// ── Auto-fix: diagnose + fix + deploy loop ────────────────────────────────────
+
+export interface DiagnosedIssue {
+  description: string;   // e.g. "Nav menu is missing Drop In, Schedule, Pricing links"
+  componentHint: string; // e.g. "HeaderModern" — helps identifyComponent skip the LLM call
+  priority: "critical" | "major" | "minor";
+}
+
+export interface TemplateAutoFix {
+  templateName: string;
+  sourceUrl: string;
+  deployedUrl: string;
+  rendererDir: string;
+  config: Config;
+  /** Max diagnosis→fix→deploy outer loops. Default 5. */
+  maxLoops?: number;
+  /** Max issues fixed per loop. Default 2 (avoid changing too many files at once). */
+  maxFixesPerLoop?: number;
+  /** Called before each deploy so the caller can run the deploy step. */
+  onDeploy?: () => Promise<void>;
+  /** Called after each loop with progress info. */
+  onProgress?: (loop: number, issues: DiagnosedIssue[], fixed: string[]) => void;
+}
+
+export interface TemplateAutoFixResult {
+  loops: number;
+  totalFixesApplied: number;
+  fixedComponents: string[];
+  remainingIssues: DiagnosedIssue[];
+}
+
+/**
+ * Diagnose differences between source and deployed by comparing screenshots.
+ * Returns a prioritised list of issues with actionable descriptions.
+ */
+async function diagnoseIssues(
+  sourcePng: Buffer,
+  deployedPng: Buffer,
+  config: Config,
+): Promise<DiagnosedIssue[]> {
+  const model = modelForTask("vision", config);
+
+  const content: unknown[] = [
+    {
+      type: "text",
+      text: `You are auditing a gym website template. Compare the SOURCE (Image 1) and the DEPLOYED version (Image 2).
+
+Identify the most important visual differences that need to be fixed to make the deployed version match the source.
+Focus on structural differences (missing sections, wrong layout, broken nav, missing footer) not minor pixel differences.
+
+Respond with a JSON array of issues, most critical first:
+[
+  {
+    "description": "one sentence describing exactly what is wrong and what it should be",
+    "componentHint": "which component is affected (HeaderModern, FooterModern, Hero, Programs, Testimonials, FAQ, Location, Amenities, CoreValues, HowItWorks, CTABand)",
+    "priority": "critical|major|minor"
+  }
+]
+
+Return at most 5 issues. If the pages look the same, return [].
+Return JSON only, no explanation.`,
+    },
+    {
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: sourcePng.toString("base64") },
+    },
+    { type: "text", text: "↑ Source template. ↓ Current deployed version." },
+    {
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: deployedPng.toString("base64") },
+    },
+  ];
+
+  const resp = await chatCompletion(
+    { model, messages: [{ role: "user", content }], maxTokens: 1024 },
+    config,
+  );
+
+  try {
+    const json = resp.content.match(/\[[\s\S]*\]/)?.[0] ?? "[]";
+    return JSON.parse(json) as DiagnosedIssue[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Auto-fix loop: diagnose → fix → deploy → re-diagnose until clean or max loops.
+ *
+ * Each loop:
+ *  1. Screenshot source + deployed
+ *  2. Claude diagnoses the differences and returns prioritised issues
+ *  3. For each top issue: identify component → apply fix → build
+ *  4. Call onDeploy() to push changes live
+ *  5. Repeat until no issues remain or maxLoops reached
+ */
+export async function runTemplateAutoFix(input: TemplateAutoFix): Promise<TemplateAutoFixResult> {
+  const {
+    templateName,
+    sourceUrl,
+    deployedUrl,
+    rendererDir,
+    config,
+    maxLoops = 5,
+    maxFixesPerLoop = 2,
+    onDeploy,
+    onProgress,
+  } = input;
+
+  let loops = 0;
+  let totalFixesApplied = 0;
+  const fixedComponents: string[] = [];
+  let remainingIssues: DiagnosedIssue[] = [];
+
+  while (loops < maxLoops) {
+    loops++;
+
+    // 1. Screenshot both
+    const { sourcePng, deployedPng } = await screenshotUrls(sourceUrl, deployedUrl);
+
+    // 2. Diagnose
+    const issues = await diagnoseIssues(sourcePng, deployedPng, config);
+    remainingIssues = issues;
+
+    if (issues.length === 0) {
+      console.log(`[template-auto-fix] Loop ${loops}: no issues detected — done ✅`);
+      break;
+    }
+
+    const topIssues = issues.slice(0, maxFixesPerLoop);
+    const fixedThisLoop: string[] = [];
+
+    console.log(`[template-auto-fix] Loop ${loops}: ${issues.length} issue(s) found, fixing top ${topIssues.length}:`);
+    topIssues.forEach((i, n) => console.log(`  ${n + 1}. [${i.priority}] ${i.description}`));
+
+    // 3. Fix each top issue
+    for (const issue of topIssues) {
+      try {
+        // identifyComponent will use the hint directly when possible
+        const { componentName, filePath } = await identifyComponent(
+          issue.description,
+          templateName,
+          rendererDir,
+          config,
+        );
+
+        const currentCode = fs.readFileSync(filePath, "utf8");
+        const fixedCode = await generateFix(
+          issue.description,
+          componentName,
+          currentCode,
+          sourcePng,
+          deployedPng,
+          config,
+        );
+
+        if (!fixedCode.startsWith("---")) continue;
+
+        fs.writeFileSync(filePath, fixedCode, "utf8");
+
+        try {
+          await execAsync("pnpm build", { cwd: rendererDir, timeout: 120_000 });
+          fixedThisLoop.push(componentName);
+          fixedComponents.push(componentName);
+          totalFixesApplied++;
+          console.log(`  ✅ Fixed ${componentName}`);
+        } catch {
+          // Revert if build fails
+          fs.writeFileSync(filePath, currentCode, "utf8");
+          console.warn(`  ❌ Fix for ${componentName} failed to build — reverted`);
+        }
+      } catch (err) {
+        console.warn(`  ⚠️  Could not apply fix: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    onProgress?.(loops, issues, fixedThisLoop);
+
+    // 4. Deploy after each loop if we fixed anything
+    if (fixedThisLoop.length > 0 && onDeploy) {
+      console.log(`[template-auto-fix] Deploying ${fixedThisLoop.length} fix(es)...`);
+      await onDeploy();
+    } else if (fixedThisLoop.length === 0) {
+      console.log(`[template-auto-fix] No fixes applied this loop — stopping to avoid infinite loop`);
+      break;
+    }
+  }
+
+  return { loops, totalFixesApplied, fixedComponents, remainingIssues };
+}
