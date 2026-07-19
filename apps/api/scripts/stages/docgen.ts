@@ -87,21 +87,13 @@ function mergeGmbIntoScraped(
 
 export const docgenStage: StageRunner = {
   label: "docgen",
-  requires: ["enrich", "crawl"],
+  // enrich is optional — template builds don't run it (template sources are not real businesses).
+  // When the enrich artifact is present (real gym sign-up), GMB data enhances the docs.
+  // When absent, docgen works from the crawled HTML alone.
+  requires: ["crawl"],
   produces: "docgen",
 
   async run(ctx: StageContext): Promise<StageResult> {
-    ctx.log("  Building docs from clone + GMB enrichment");
-
-    const enrichStored = await loadArtifact<EnrichArtifact>(
-      ctx.db,
-      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
-      "enrich",
-    );
-    if (!enrichStored) {
-      throw new Error("No enrich artifact found — run the enrich stage first");
-    }
-
     const crawlStored = await loadArtifact<MirrorCrawlArtifact>(
       ctx.db,
       { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
@@ -111,9 +103,18 @@ export const docgenStage: StageRunner = {
       throw new Error("No crawl artifact found — run the crawl stage first");
     }
 
-    const gmb = enrichStored.payload.listing;
+    // Enrich (GMB) is optional — only present for real gym sign-ups, never for template builds
+    const enrichStored = await loadArtifact<EnrichArtifact>(
+      ctx.db,
+      { siteUuid: ctx.siteUuid, workspaceUuid: ctx.workspaceUuid },
+      "enrich",
+    ).catch(() => null);
+
+    const gmb = enrichStored?.payload.listing;
     if (gmb) {
-      ctx.log(`  GMB source: ${gmb.name}`);
+      ctx.log(`  Building docs from crawl + GMB (${gmb.name})`);
+    } else {
+      ctx.log("  Building docs from crawl (no GMB data — template source)");
     }
 
     const scrapedFromCrawl = await buildScrapedWebsiteDataFromCrawl(
