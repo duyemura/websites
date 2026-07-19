@@ -1287,6 +1287,24 @@ export async function buildGymJson(
     };
   }
 
+  // If extractBrand produced no logo URL (design-system doc had no image logo),
+  // recover from the site-hierarchy: the first section of the home page is typically
+  // the nav, and its images[0] is the logo. Webflow relative paths (no scheme) are
+  // prefixed with the Webflow CDN base so the URL is usable immediately.
+  if (!brand.logoUrl || brand.logoUrl === NO_IMAGE) {
+    const homePg = hierarchy.pages?.find((p) => p.isHomePage);
+    const logoImgUrl = homePg?.sections?.[0]?.content?.images?.[0]?.url;
+    const logoImgAlt = homePg?.sections?.[0]?.content?.images?.[0]?.alt;
+    if (logoImgUrl) {
+      const absoluteUrl = logoImgUrl.startsWith("http")
+        ? logoImgUrl
+        : `https://cdn.prod.website-files.com/${logoImgUrl}`;
+      brand = { ...brand, logoUrl: absoluteUrl };
+      if (logoImgAlt && !brand.logoAlt) brand = { ...brand, logoAlt: logoImgAlt };
+      warnings.push(`brand.logoUrl recovered from site-hierarchy nav section: ${absoluteUrl}`);
+    }
+  }
+
   let navigation = extractNavigation(hierarchy, warnings);
   const pages = extractPages(hierarchy, business, warnings, contract);
 
