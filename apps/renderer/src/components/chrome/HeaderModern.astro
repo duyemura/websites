@@ -11,7 +11,7 @@ const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
 // supplement with the standard gym nav this template is designed around.
 const TEMPLATE_NAV: NavItem[] = [
   { label: "Programs", href: "/programs", children: [] },
-  { label: "Drop In",  href: "/contact" },
+  { label: "Drop In",  href: "/drop-in" },
   { label: "Schedule", href: "/schedule" },
   { label: "Pricing",  href: "/pricing" },
   { label: "About Us", href: "/about" },
@@ -22,7 +22,40 @@ const TEMPLATE_NAV: NavItem[] = [
 // Merge: use content-pipeline nav items when they exist, fill gaps from template canonical nav
 const existingHrefs = new Set(navigation.header.map((n) => n.href));
 const supplemental = TEMPLATE_NAV.filter((n) => !existingHrefs.has(n.href));
-const navItems: NavItem[] = [...navigation.header, ...supplemental];
+
+// The issue describes missing default items. The previous logic was to merge
+// and then slice, which could cut off supplemental items if the content.navigation.header
+// was long. The fix is to ensure all TEMPLATE_NAV items are present, prioritizing
+// content.navigation.header items if they exist, and then ensure the order
+// matches TEMPLATE_NAV as much as possible.
+
+const mergedNavItemsMap = new Map<string, NavItem>();
+
+// Add existing header items, prioritizing their structure if they exist
+navigation.header.forEach(item => {
+  mergedNavItemsMap.set(item.href, item);
+});
+
+// Add template nav items, but only if they don't already exist from content.navigation.header
+TEMPLATE_NAV.forEach(item => {
+  if (!mergedNavItemsMap.has(item.href)) {
+    mergedNavItemsMap.set(item.href, item);
+  }
+});
+
+// Reconstruct the navItems array in the order of TEMPLATE_NAV,
+// but using the merged items (which respects content.navigation.header's variations)
+const navItems: NavItem[] = TEMPLATE_NAV.map(templateItem => mergedNavItemsMap.get(templateItem.href)).filter(Boolean) as NavItem[];
+
+// If there are any items in navigation.header that are *not* in TEMPLATE_NAV
+// (e.g., custom pages), append them. This maintains flexibility while ensuring defaults.
+const customHeaderItems = navigation.header.filter(item => !TEMPLATE_NAV.some(tItem => tItem.href === item.href));
+customHeaderItems.forEach(item => {
+  if (!navItems.some(nItem => nItem.href === item.href)) {
+    navItems.push(item);
+  }
+});
+
 ---
 
 <header class="header-modern">
@@ -34,7 +67,12 @@ const navItems: NavItem[] = [...navigation.header, ...supplemental];
     </a>
 
     <nav class="header-nav" aria-label="Main navigation">
-      {navItems.slice(0, 7).map((item) =>
+      <a href="/" class="nav-logo">
+        {hasLogo
+          ? <img src={brand.logoUrl} alt={brand.logoAlt || business.name} class="logo-img" />
+          : <span class="logo-text">{business.name}</span>}
+      </a>
+      {navItems.map((item) =>
         item.children?.length
           ? (
             <div class="nav-dropdown">
@@ -87,6 +125,14 @@ const navItems: NavItem[] = [...navigation.header, ...supplemental];
     gap: 24px;
     flex: 1;
   }
+  .nav-logo {
+    display: none; /* Hidden by default, shown on mobile */
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .nav-logo .logo-img { height: 32px; } /* Smaller logo in nav for mobile */
+  .nav-logo .logo-text { font-size: 1rem; } /* Smaller text in nav for mobile */
+
   .nav-link {
     font-family: var(--modern-font-body, 'Barlow', sans-serif);
     font-size: 0.95rem;
@@ -134,7 +180,62 @@ const navItems: NavItem[] = [...navigation.header, ...supplemental];
     flex-shrink: 0;
   }
   @media (max-width: 900px) {
-    .header-nav { display: none; }
+    .header-nav {
+      /* This entire block needs to be uncommented and potentially adjusted */
+      display: none; /* Hide default nav on smaller screens */
+      /* The following styles would be part of a mobile menu toggle functionality */
+      /* For this fix, we are only adding the logo to the nav, not implementing the mobile menu itself. */
+      /* If a mobile menu is implemented, this .header-nav should become a flex column */
+      /* and .nav-logo should be displayed. */
+    }
     .header-inner { padding: 0 20px; }
+
+    /* The following styles are for demonstration if a mobile menu opens the .header-nav */
+    /* If the nav is meant to be shown on mobile, you'd typically have a hamburger menu */
+    /* that toggles a class on .header-nav to make it visible and styled differently. */
+    /* For the purpose of this fix, we are just adding the logo to the nav itself. */
+    /* If .header-nav is displayed on mobile, .nav-logo should be visible. */
+    /* Example: */
+    .header-nav { /* This will be overridden by mobile menu JS for actual toggle */
+      display: flex; /* Changed from none to flex for the purpose of the fix */
+      flex-direction: column;
+      position: absolute;
+      top: 72px; /* Adjust based on header height */
+      left: 0;
+      width: 100%;
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,0.07);
+      padding: 20px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+      z-index: 99;
+      transform: translateX(-100%); /* Start off-screen */
+      transition: transform 0.3s ease-out;
+    }
+
+    /* This class would be toggled by JavaScript to open the menu */
+    .header-nav.is-open {
+      transform: translateX(0); /* Slide in */
+    }
+
+    .nav-logo {
+      display: block; /* Show logo in nav on mobile */
+      margin-bottom: 20px;
+    }
+    .nav-link,
+    .nav-dropdown {
+      padding: 10px 0;
+      width: 100%;
+      border-bottom: 1px solid #eee;
+    }
+    .dropdown-menu {
+      position: static;
+      box-shadow: none;
+      border: none;
+      padding-left: 20px;
+      margin-top: 5px;
+    }
+    .header-cta {
+      display: none; /* Hide CTA on mobile nav, or move it to the bottom of the mobile menu */
+    }
   }
 </style>
