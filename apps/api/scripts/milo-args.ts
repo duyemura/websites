@@ -40,10 +40,13 @@ export const PIPELINES = {
  *
  * (no group) — full rebuild: content then design.
  */
+// Template sources are design fixtures (fake demo sites), not real businesses.
+// enrich (GMB lookup) only belongs in the join/upgrade/rebuild pipelines for
+// actual gym sign-ups — never in the template pipeline.
 export const TEMPLATE_GROUPS = {
-  content: ["enrich", "crawl", "docgen", "content", "generate"],
+  content: ["crawl", "docgen", "content", "generate"],
   design:  ["extract", "segment", "contract", "section-extract", "adapt", "template"],
-  full:    ["enrich", "crawl", "docgen", "content", "generate", "extract", "segment", "contract", "section-extract", "adapt", "template"],
+  full:    ["crawl", "docgen", "content", "generate", "extract", "segment", "contract", "section-extract", "adapt", "template"],
 } as const;
 
 export function parseArgs(): MiloCommand {
