@@ -15,7 +15,7 @@ export type MiloCommand =
   | { cmd: "nav"; site: string; verbose: boolean; quiet: boolean }
   | { cmd: "restore"; site: string; version: number; verbose: boolean; quiet: boolean }
   | { cmd: "stages"; url?: string; site?: string; stages: string[]; tier: "free" | "paid"; templateTheme?: TemplateTheme; verbose: boolean; force: boolean; quiet: boolean }
-  | { cmd: "template"; url: string; name: string; theme?: TemplateTheme; stages?: string[]; awsProfile?: string; verbose: boolean; force: boolean; quiet: boolean }
+  | { cmd: "template"; url: string; name: string; theme?: TemplateTheme; group?: "content" | "design"; stages?: string[]; awsProfile?: string; verbose: boolean; force: boolean; quiet: boolean }
   | { cmd: "template-eval"; name: string; component?: string; verbose: boolean; quiet: boolean };
 
 export const PIPELINES = {
@@ -25,6 +25,24 @@ export const PIPELINES = {
   upgrade: ["generate", "template", "template-eval", "eval"] as const,
   rebuild: ["generate", "template", "template-eval", "eval"] as const,
   template: ["extract", "segment", "contract", "spec-audit", "synthesize", "section-extract", "adapt", "component-eval", "generate", "template"] as const,
+} as const;
+
+/**
+ * Named stage groups for `milo template <group>`.
+ *
+ * content  — refresh gym data from the source site (crawl → docgen → generate).
+ *            Use when the source site's content has changed.
+ *
+ * design   — rebuild the visual template (extract → segment → contract →
+ *            section-extract → adapt → template). Use when you've changed
+ *            Astro components or want fresh component extraction from the source.
+ *
+ * (no group) — full rebuild: content then design.
+ */
+export const TEMPLATE_GROUPS = {
+  content: ["enrich", "crawl", "docgen", "content", "generate"],
+  design:  ["extract", "segment", "contract", "section-extract", "adapt", "template"],
+  full:    ["enrich", "crawl", "docgen", "content", "generate", "extract", "segment", "contract", "section-extract", "adapt", "template"],
 } as const;
 
 export function parseArgs(): MiloCommand {
@@ -118,6 +136,12 @@ export function parseArgs(): MiloCommand {
   }
 
   if (subcommand === "template") {
+    // Optional positional group: `milo template content` or `milo template design`
+    // The group word sits at argv[1] (before any flags).
+    const GROUPS = ["content", "design"] as const;
+    const groupArg = argv[1] && !argv[1].startsWith("--") ? argv[1] : undefined;
+    const group = GROUPS.includes(groupArg as typeof GROUPS[number]) ? groupArg as "content" | "design" : undefined;
+
     const url = get("url");
     const name = get("name");
     if (!url) throw new Error("milo template requires --url <url>");
@@ -130,7 +154,7 @@ export function parseArgs(): MiloCommand {
     }
     const stagesStr = get("stages");
     const stages = stagesStr ? stagesStr.split(",").map((s) => s.trim()) : undefined;
-    return { cmd: "template", url, name, theme: get("theme") as TemplateTheme | undefined, stages, awsProfile: get("aws-profile"), ...bool };
+    return { cmd: "template", url, name, theme: get("theme") as TemplateTheme | undefined, group, stages, awsProfile: get("aws-profile"), ...bool };
   }
 
   if (subcommand === "template-eval") {
@@ -166,8 +190,11 @@ export function parseArgs(): MiloCommand {
     `  milo eval-fix --site <uuid> [--eval-uuid <uuid>] [--path /slug] [--url <url>] [--keywords k1,k2] [--score-threshold 70] [--max-loops 10]\n` +
     `  milo nav      --site <uuid>\n` +
     `  milo restore  --site <uuid> --version <n>\n` +
-    `  milo template      --url <url> --name <templatename>\n` +
-    `  milo template-eval --name <templatename> [--component <ComponentName>]\n` +
+    `  milo template         --url <url> --name <name> [--theme x]           full rebuild (content + design)\n` +
+    `  milo template content --url <url> --name <name> [--theme x]           refresh gym data only\n` +
+    `  milo template design  --url <url> --name <name> [--theme x]           rebuild visual template only\n` +
+    `  milo template         --url <url> --name <name> --stages s1,s2        surgical: specific stages\n` +
+    `  milo template-eval    --name <name> [--component <ComponentName>]\n` +
     `  milo --url <url> --stages s1,s2  (legacy)`,
   );
 }

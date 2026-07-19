@@ -13,7 +13,7 @@ import { loadArtifact } from "../src/utils/pipeline/artifact-store";
 import type { StageRunner, StageResult, StageContext } from "./stages/types";
 import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
-import { parseArgs, PIPELINES } from "./milo-args.js";
+import { parseArgs, PIPELINES, TEMPLATE_GROUPS } from "./milo-args.js";
 import type { MiloCommand } from "./milo-args.js";
 import { perPageEvalStage } from "./stages/per-page-eval.js";
 import { evalFixStage } from "./stages/eval-fix.js";
@@ -707,18 +707,24 @@ async function runTemplate(
   if (!cmd.quiet) console.log(`\nMilo template — ${cmd.url} (site: ${siteUuid}, name: ${cmd.name})`);
   const totalStart = Date.now();
   let stageList: string[];
+
   if (cmd.stages?.length) {
+    // Surgical: explicit --stages list (for targeted work)
     const validSet = new Set<string>(PIPELINES.template);
     const unknown = cmd.stages.filter((s) => !validSet.has(s));
     if (unknown.length > 0) console.warn(`[template] Unknown stages ignored: ${unknown.join(", ")}. Valid: ${[...validSet].join(", ")}`);
     stageList = (PIPELINES.template as readonly string[]).filter((s) => cmd.stages!.includes(s));
+  } else if (cmd.group) {
+    // Named group shortcut: `milo template content` or `milo template design`
+    stageList = [...TEMPLATE_GROUPS[cmd.group]];
+    if (!cmd.quiet) console.log(`  Group: ${cmd.group} (${stageList.join(" → ")})`);
   } else {
-    stageList = [...PIPELINES.template];
+    // Full rebuild (no group, no explicit stages): content + design
+    stageList = [...TEMPLATE_GROUPS.full];
+    if (!cmd.quiet) console.log(`  Full rebuild: ${stageList.join(" → ")}`);
   }
 
-  // spec-audit always runs after contract — it is a read-only verification step that
-  // produces a coverage report without blocking other stages or requiring explicit inclusion.
-  // Insert it right after "contract" if contract is in the stage list and spec-audit is not.
+  // spec-audit always runs after contract — read-only verification, no explicit inclusion needed.
   const contractIdx = stageList.indexOf("contract");
   if (contractIdx !== -1 && !stageList.includes("spec-audit")) {
     stageList.splice(contractIdx + 1, 0, "spec-audit");
