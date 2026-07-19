@@ -1537,7 +1537,11 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   const generatedFeatures: Feature[] = (generated.features ?? [])
     .slice(0, 6)
     .map((f, i) => {
-      const query = `${f.label ?? ""} ${i < 3 ? "amenity facility" : "feature service"}`.trim();
+      // Use business-type focus as image context so vision tags match correctly.
+      // "amenity facility" only makes sense for gyms — a yoga studio's features
+      // are "yoga practice" items, a dance school's are "dance technique" items.
+      const bizFocus = contentFocus(mergedContent.business.category);
+      const query = `${f.label ?? ""} ${bizFocus.primaryFocus}`.trim();
       const matched = imageMatcher.match({
         query,
         exclude: usedFeatureImages,
@@ -1919,7 +1923,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     aboutPage.team = aboutPage.team.map((member) => {
       if (member.photoUrl && member.photoUrl !== NO_IMAGE) return member;
       const matched = imageMatcher.match({
-        query: `${member.name} ${member.title} coach`,
+        query: `${member.name} ${member.title} ${staffRoleTitle(mergedContent.business.category)}`,
         exclude: usedTeamPhotos,
         preferredSectionType: "content-block",
       });

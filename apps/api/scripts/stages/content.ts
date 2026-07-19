@@ -65,12 +65,21 @@ export function classifyPageType(
 ): "home" | "program" | "about" | "contact" | "pricing" | "schedule" | "other" {
   if (path === "/" || path === "") return "home";
   const s = path.toLowerCase();
-  // Match program-related keywords with or without leading slash (handles /crossfit, /crossfit-classes, /personal-training)
-  if (/\/programs\/|\/classes\/|crossfit|bootcamp|personal-training|strength-training/.test(s)) return "program";
-  if (/\/about|about-us/.test(s)) return "about";
-  if (/\/contact|contact-us/.test(s)) return "contact";
-  if (/\/pricing|\/membership|\/rates/.test(s)) return "pricing";
-  if (/\/schedule|class-schedule/.test(s)) return "schedule";
+
+  // Generic pass first — works for any business type regardless of terminology.
+  // A dance school's /our-classes, a yoga studio's /sessions, a consulting
+  // firm's /services all resolve to "program" without gym-specific keywords.
+  if (/\/programs?\/|\/classes\/|\/sessions\/|\/services\/|\/offerings\/|\/courses\/|\/treatments\//.test(s)) return "program";
+  if (/\/about|about-us|our-story|who-we-are/.test(s)) return "about";
+  if (/\/contact|contact-us|get-in-touch|reach-us/.test(s)) return "contact";
+  if (/\/pricing|\/membership|\/rates|\/plans|\/packages|\/fees/.test(s)) return "pricing";
+  if (/\/schedule|\/timetable|\/calendar|class-schedule|session-times/.test(s)) return "schedule";
+
+  // Gym-specific overrides — more specific patterns for fitness businesses.
+  // These intentionally sit AFTER the generic pass so they don't shadow
+  // non-gym sites that happen to have similar-sounding slugs.
+  if (/crossfit|bootcamp|personal-training|strength-training|muay.thai|jiu.jitsu|hiit|pilates/.test(s)) return "program";
+
   return "other";
 }
 
