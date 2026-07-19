@@ -9,6 +9,32 @@ export const modernSpec: TemplateSpec = {
   name: "modern",
   description: "Clean, modern gym template. Light backgrounds, bold Montserrat headings, blue CTAs. Programs section with alternating image+text.",
 
+  /**
+   * Detected section type → component that renders it.
+   * Human-maintained. Add new entries via `milo template add-component`.
+   * spec-audit will report any source sections not covered here.
+   */
+  sectionMapping: {
+    "hero/hero-center":                    "Hero",
+    "hero/hero-left":                      "Hero",
+    "hero/hero-right":                     "Hero",
+    "content-block/feature-grid-even":     "CoreValues",
+    "feature-grid/feature-grid-even":      "CoreValues",
+    "feature-grid/program-cards-sticky":   "Programs",
+    "content-block/content-media":         "Programs",
+    "media-block/content-media":           "Programs",
+    "steps-band/steps-numbered":           "HowItWorks",
+    "testimonial-band/testimonial-scroll": "Testimonials",
+    "social-proof-band/testimonial-scroll":"Testimonials",
+    "content-block/amenities":             "Amenities",
+    "feature-grid/feature-grid-bento":     "Amenities",
+    "content-block/community":             "Community",
+    "location-block/location-split":       "Location",
+    "faq-block/faq-accordion":             "FAQ",
+    "cta-band/cta-band":                   "CTABand",
+    "cta-band/cta-simple":                 "CTABand",
+  },
+
   headAssets: [
     {
       tag: "link",

@@ -222,18 +222,42 @@ const ARCHETYPE_METADATA: Record<string, {
   },
 };
 
-const CANONICAL_PAGES: Record<string, { key: string; archetype: string; fallbackComponents: string[] }> = {
+/**
+ * Minimal universal fallback — only home is guaranteed for every site.
+ * All other pages are derived from the template spec (authoritative) or
+ * the site hierarchy (discovered). This replaces the old hardcoded gym-specific
+ * page list so non-gym templates don't inherit paths they don't have.
+ */
+const MINIMAL_CANONICAL_PAGES: Record<string, { key: string; archetype: string; fallbackComponents: string[] }> = {
   "/": { key: "home", archetype: "home", fallbackComponents: ["Unknown"] },
-  "/about": { key: "about", archetype: "about", fallbackComponents: ["Unknown"] },
-  "/contact": { key: "contact", archetype: "contact", fallbackComponents: ["Unknown"] },
-  "/pricing": { key: "pricing", archetype: "pricing", fallbackComponents: ["Unknown"] },
-  "/schedule": { key: "schedule", archetype: "schedule", fallbackComponents: ["Unknown"] },
-  "/drop-in": { key: "dropIn", archetype: "landingPage", fallbackComponents: ["Unknown"] },
-  "/programs": { key: "programIndex", archetype: "programIndex", fallbackComponents: ["Unknown"] },
-  "/programs/:slug": { key: "program", archetype: "program", fallbackComponents: ["Unknown"] },
-  "/blog": { key: "blog", archetype: "blogIndex", fallbackComponents: ["Unknown"] },
-  "/legal": { key: "legal", archetype: "content", fallbackComponents: ["Unknown"] },
 };
+
+/**
+ * Build the effective canonical page map for a given template.
+ * Priority: spec pages (human-defined) > site hierarchy (discovered) > minimal fallback.
+ * This means each template owns its page set — no global gym-specific defaults.
+ */
+function buildCanonicalPages(
+  templateName: string,
+): Record<string, { key: string; archetype: string; fallbackComponents: string[] }> {
+  // Try to load the template spec to get its human-defined pages
+  try {
+    const { getTemplateSpec } = require("@milo/shared-types") as typeof import("@milo/shared-types");
+    const spec = getTemplateSpec(templateName as import("@milo/shared-types").TemplateTheme);
+    if (spec?.pages) {
+      const fromSpec: Record<string, { key: string; archetype: string; fallbackComponents: string[] }> = {};
+      for (const [pageKey, pageSpec] of Object.entries(spec.pages)) {
+        fromSpec[pageSpec.path] = {
+          key: pageKey,
+          archetype: pageSpec.archetype,
+          fallbackComponents: ["Unknown"],
+        };
+      }
+      return { ...MINIMAL_CANONICAL_PAGES, ...fromSpec };
+    }
+  } catch { /* spec not available — fall through */ }
+  return MINIMAL_CANONICAL_PAGES;
+}
 
 export function generateTemplateSpecSource(
   name: string,
@@ -250,10 +274,10 @@ export function generateTemplateSpecSource(
     )
     .join(",\n");
 
-  // Ensure every canonical renderer page exists in the spec, even if the
-  // reference site did not include it. Use discovered components when
-  // available; otherwise fall back to a generic placeholder so the eval build
-  // can render all routes.
+  // Build the canonical page set from the template spec (human-defined pages)
+  // rather than a global hardcoded list. New templates get their own page set.
+  const CANONICAL_PAGES = buildCanonicalPages(name);
+
   const mergedPageMap: Record<string, string[]> = { ...pageMap };
   for (const [path, { fallbackComponents }] of Object.entries(CANONICAL_PAGES)) {
     if (!mergedPageMap[path] || mergedPageMap[path].length === 0) {

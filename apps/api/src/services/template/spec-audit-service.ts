@@ -39,37 +39,34 @@ export interface SpecAuditResult {
   };
 }
 
-// ─── Section tag → likely spec component(s) ──────────────────────────────────
-// Maps Milo's canonical section tag (from the contract/segment pipeline) to the
-// component keys that typically handle it in a gym template. This is the bridge
-// between the vision-extraction taxonomy and the template spec taxonomy.
+// ─── Chrome sections never need a sections/ component ─────────────────────────
+const CHROME_TAGS = new Set(["footer", "header", "nav", "unknown"]);
 
-const TAG_TO_COMPONENTS: Record<string, string[]> = {
-  "hero":                  ["hero", "HeroCenter"],
-  "hero-center":           ["hero", "HeroCenter"],
-  "hero-left":             ["hero", "HeroCenter"],
-  "hero-right":            ["hero", "HeroCenter"],
-  "feature-grid":          ["coreValues", "CoreValues", "amenities", "Amenities"],
-  "feature-grid-even":     ["coreValues", "CoreValues", "programs", "Programs"],
-  "feature-grid-bento":    ["coreValues", "CoreValues", "amenities", "Amenities"],
-  "content-block":         ["programs", "Programs", "community", "Community", "coreValues"],
-  "content-media":         ["programs", "Programs", "community", "Community"],
-  "program-cards-sticky":  ["programs", "Programs", "ProgramCardsSticky"],
-  "steps-numbered":        ["howItWorks", "HowItWorks"],
-  "steps-band":            ["howItWorks", "HowItWorks"],
-  "testimonial-scroll":    ["testimonials", "Testimonials"],
-  "testimonial-band":      ["testimonials", "Testimonials"],
-  "faq-accordion":         ["faq", "FAQ"],
-  "faq-block":             ["faq", "FAQ"],
-  "location-split":        ["location", "Location"],
-  "location-block":        ["location", "Location"],
-  "cta-band":              ["ctaBand", "CTABand"],
-  "social-proof-band":     ["testimonials", "Testimonials"],
-  "footer":                [],   // handled by chrome, not section components
-  "header":                [],   // handled by chrome
-  "nav":                   [],
-  "unknown":               [],   // placeholder sections — expected to be uncovered
-};
+/**
+ * Look up which component handles a given section type.
+ *
+ * Priority order:
+ *  1. spec.sectionMapping["{tag}/{archetype}"] — human-maintained per-template
+ *  2. spec.sectionMapping["{archetype}"]        — archetype-level fallback
+ *  3. spec.sectionMapping["{tag}"]              — tag-level fallback
+ *
+ * Returns the component key (e.g. "Hero", "FAQ") or null when uncovered.
+ * Uncovered sections are GAPS — they should be addressed via
+ * `milo template add-component`, not by adding to a global hardcoded table.
+ */
+function resolveComponentFromSpec(
+  tag: string,
+  archetype: string,
+  spec: TemplateSpec,
+): string | null {
+  const mapping = spec.sectionMapping ?? {};
+  return (
+    mapping[`${tag}/${archetype}`] ??
+    mapping[archetype] ??
+    mapping[tag] ??
+    null
+  );
+}
 
 // ─── Core service ─────────────────────────────────────────────────────────────
 
@@ -116,7 +113,7 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
 
   const coverage: CoverageRow[] = detectedSections.map((section) => {
     // Skip chrome sections — they don't need coverage in the sections/ dir
-    if (!spec || section.tag === "footer" || section.tag === "header" || section.tag === "nav") {
+    if (!spec || CHROME_TAGS.has(section.tag)) {
       return {
         tag: section.tag,
         archetype: section.archetype,
@@ -128,15 +125,9 @@ export function runSpecAudit(input: SpecAuditInput): SpecAuditResult {
       };
     }
 
-    // Find which spec component(s) handle this section tag.
-    // Archetype is more specific than tag — check archetype first so e.g.
-    // feature-grid/program-cards-sticky matches "programs" not "coreValues".
-    const archetypeCandidates = TAG_TO_COMPONENTS[section.archetype] ?? [];
-    const tagCandidates       = TAG_TO_COMPONENTS[section.tag] ?? [];
-
-    const matchedKey =
-      specComponentKeys.find((k) => archetypeCandidates.includes(k)) ??
-      specComponentKeys.find((k) => tagCandidates.includes(k));
+    // Look up which component handles this section using the spec's sectionMapping.
+    // This is human-maintained per template — uncovered sections are real gaps.
+    const matchedKey = resolveComponentFromSpec(section.tag, section.archetype, spec);
 
     if (!matchedKey) {
       return {

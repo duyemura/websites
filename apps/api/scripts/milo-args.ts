@@ -25,7 +25,7 @@ export const PIPELINES = {
   new:     ["enrich", "crawl", "docgen", "content", "generate", "template", "template-eval", "eval"] as const,
   upgrade: ["generate", "template", "template-eval", "eval"] as const,
   rebuild: ["generate", "template", "template-eval", "eval"] as const,
-  template: ["extract", "segment", "contract", "spec-audit", "synthesize", "section-extract", "adapt", "component-eval", "generate", "template"] as const,
+  template: ["extract", "segment", "contract", "spec-audit", "synthesize", "section-extract", "adapt", "add-component", "component-eval", "generate", "template"] as const,
 } as const;
 
 /**

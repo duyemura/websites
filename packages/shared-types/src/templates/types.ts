@@ -130,6 +130,21 @@ export interface TemplateSpec {
   headAssets?: HeadAsset[];
   /** CSS classes to apply to <body> for this template. */
   bodyClasses?: string[];
+  /**
+   * Maps detected section types to the component that renders them.
+   * Key format: "{tag}/{archetype}" (e.g. "hero/hero-center", "faq-block/faq-accordion").
+   * Values are component keys from `components` (e.g. "Hero", "FAQ").
+   *
+   * This is the human-maintained source of truth for which Astro component
+   * handles each section type detected from template source sites. It is
+   * intentionally NOT auto-generated — new mappings are added through the
+   * `milo template add-component` workflow which extracts the section,
+   * produces a draft component, and asks for human review before registering.
+   *
+   * The spec-audit stage reads this map and reports any detected section
+   * types that are missing — those are gaps that need human attention.
+   */
+  sectionMapping?: Record<string, string>;
 }
 
 export type TemplateTheme = "baseline" | "impact" | "beanburito" | "modern";
