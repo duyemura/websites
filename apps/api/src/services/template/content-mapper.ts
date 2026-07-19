@@ -246,7 +246,9 @@ function friendlyCategory(primaryType: string | undefined): string | undefined {
   if (!primaryType) return undefined;
   const lower = primaryType.toLowerCase();
   if (CATEGORY_TYPE_LABELS[lower]) return CATEGORY_TYPE_LABELS[lower];
-  return lower.replace(/_/g, " ");
+  // businessTypeLabel handles types not in the static map via pattern matching
+  // ("dance_studio" → "dance studio", "swim_school" → "swim club", etc.)
+  return businessTypeLabel(lower.replace(/_/g, " "));
 }
 
 function mergeHero(base: HeroContent, generated: Partial<HeroContent> | undefined): HeroContent {
