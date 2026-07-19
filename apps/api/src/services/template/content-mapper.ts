@@ -1272,7 +1272,7 @@ export async function buildGymJson(
     }
   }
 
-  const brand = extractBrand(ds, warnings, business.name);
+  let brand = extractBrand(ds, warnings, business.name);
 
   // Build a Google Maps embed URL from the business name + address. We use the
   // classic output=embed endpoint because the Maps Embed API requires a separate
