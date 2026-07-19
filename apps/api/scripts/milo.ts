@@ -715,6 +715,15 @@ async function runTemplate(
   } else {
     stageList = [...PIPELINES.template];
   }
+
+  // spec-audit always runs after contract — it is a read-only verification step that
+  // produces a coverage report without blocking other stages or requiring explicit inclusion.
+  // Insert it right after "contract" if contract is in the stage list and spec-audit is not.
+  const contractIdx = stageList.indexOf("contract");
+  if (contractIdx !== -1 && !stageList.includes("spec-audit")) {
+    stageList.splice(contractIdx + 1, 0, "spec-audit");
+  }
+
   const results = await runPipeline(stageList, ctx, registry, cmd);
   // Save site UUID so milo template-eval can find it without a DB query
   const siteFile = templateSiteFile(cmd.name);
