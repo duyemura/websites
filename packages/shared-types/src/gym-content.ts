@@ -79,6 +79,46 @@ export interface PageContent {
   blog: BlogContent;
   localGuide?: LocalGuideContent;
   legal: LegalPage[];
+  /**
+   * Drop-in / landing page — high-conversion, single-goal.
+   * Supports all three closure patterns; use whichever the gym's booking
+   * infrastructure supports. The ClosureBlock component renders the best
+   * available option and hides itself when none are configured.
+   */
+  dropIn?: DropInContent;
+}
+
+/**
+ * Three closure patterns for conversion landing pages, in priority order:
+ *  1. iframe  — booking widget embedded directly (no page exit, highest conversion)
+ *  2. external — link out to booking system (Mindbody, PushPress Pay, Shopify, etc.)
+ *  3. internal — link to /contact or /pricing (lightest ask, fallback)
+ */
+export interface LandingPageClosure {
+  /** Embedded booking widget, calendar, payment form, or sales page */
+  iframe?: IframeEmbed;
+  /** Link out to an external booking or purchase page */
+  externalUrl?: string;
+  externalLabel?: string;
+  /** Internal CTA (falls back to business.primaryCta when omitted) */
+  internalUrl?: string;
+  internalLabel?: string;
+}
+
+export interface DropInContent {
+  hero: HeroContent;
+  /** What the visitor gets and what it costs — no ambiguity */
+  offer?: {
+    headline: string;           // "Drop In Anytime — $30/class"
+    description?: string;
+    priceDisplay?: string;      // "$30" or "Free first class"
+    includes?: string[];        // ["Full class access", "Coach-led session", "No commitment"]
+  };
+  /** 3-step "how it works" specific to the drop-in flow */
+  steps?: Step[];
+  testimonials?: Testimonial[];
+  faq?: FAQItem[];
+  closure: LandingPageClosure;
 }
 
 export interface IframeEmbed {

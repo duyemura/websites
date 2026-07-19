@@ -93,6 +93,7 @@ const VALID_ARCHETYPES = new Set([
   "content",
   "team",
   "form",
+  "landingPage",
 ]);
 
 const KNOWN_ARCHETYPES: Record<string, string> = {
@@ -197,6 +198,19 @@ const ARCHETYPE_METADATA: Record<string, {
     evidenceTypes: ["expert articles", "coach bylines", "local relevance"],
     seoPrimaryQuery: "fitness tips [city]",
   },
+  landingPage: {
+    goal: "Close a warm, ready-to-act visitor with a single frictionless action — no distractions, no exits.",
+    idealAction: "Complete a booking, drop-in purchase, or trial sign-up right now",
+    visitorStage: "conversion",
+    searchIntent: "transactional",
+    objectionsToOvercome: [
+      "How much does it cost?",
+      "Can I just try it once without committing?",
+      "How do I book / what happens next?",
+    ],
+    evidenceTypes: ["pricing", "booking widget or purchase link", "one-click social proof", "guarantee or risk-reversal"],
+    seoPrimaryQuery: "drop in gym [city] | [offer] fitness class [city]",
+  },
   content: {
     goal: "Fulfil a legal or informational obligation without interrupting the conversion path.",
     idealAction: "Return to the main site",
@@ -214,6 +228,7 @@ const CANONICAL_PAGES: Record<string, { key: string; archetype: string; fallback
   "/contact": { key: "contact", archetype: "contact", fallbackComponents: ["Unknown"] },
   "/pricing": { key: "pricing", archetype: "pricing", fallbackComponents: ["Unknown"] },
   "/schedule": { key: "schedule", archetype: "schedule", fallbackComponents: ["Unknown"] },
+  "/drop-in": { key: "dropIn", archetype: "landingPage", fallbackComponents: ["Unknown"] },
   "/programs": { key: "programIndex", archetype: "programIndex", fallbackComponents: ["Unknown"] },
   "/programs/:slug": { key: "program", archetype: "program", fallbackComponents: ["Unknown"] },
   "/blog": { key: "blog", archetype: "blogIndex", fallbackComponents: ["Unknown"] },

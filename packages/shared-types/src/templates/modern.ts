@@ -196,6 +196,29 @@ export const modernSpec: TemplateSpec = {
       },
     },
 
+    closureBlock: {
+      component: "ClosureBlock",
+      purpose: "Landing-page conversion closer. Renders the best available closure method (iframe embed → external link → internal CTA). Renders nothing when no closure is configured.",
+      props: {
+        heading: {
+          purpose: "Optional heading above the closure widget.",
+          type: "string",
+          required: false,
+          guidance: "Short, action-oriented. E.g. 'Reserve your spot'.",
+          example: "Ready to Drop In?",
+          source: { kind: "pageField", path: "hero.ctaLabel" },
+        },
+        closure: {
+          purpose: "The closure configuration — iframe, external URL, or internal CTA.",
+          type: "object",
+          required: false,
+          guidance: "At least one closure method should be configured. All are optional; the component picks the best available.",
+          example: "{}",
+          source: { kind: "computed", fn: "closure" },
+        },
+      },
+    },
+
     ctaBand: {
       component: "CTABand",
       purpose: "Dark bottom CTA band — final conversion prompt before the footer.",
@@ -278,6 +301,21 @@ export const modernSpec: TemplateSpec = {
         "testimonials",
         "location",
         "ctaBand",
+      ],
+    },
+
+    dropIn: {
+      path: "/drop-in",
+      archetype: "landingPage",
+      // Conversion-only page — no distracting nav links, single goal.
+      // closureBlock renders the best available booking method and hides
+      // itself when none are configured.
+      components: [
+        "hero",          // short, punchy — "Drop In Today. $30/class."
+        "howItWorks",    // 3 steps: "Pick a class → Show up → Pay on arrival"
+        "closureBlock",  // iframe widget | external booking link | internal CTA
+        "testimonials",  // remove final hesitation
+        "faq",           // address "how does this work?" before they bail
       ],
     },
 

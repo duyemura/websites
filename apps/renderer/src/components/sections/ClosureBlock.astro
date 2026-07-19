@@ -1,0 +1,145 @@
+---
+/**
+ * ClosureBlock — shared conversion-closing component for landing pages.
+ *
+ * Handles all three closure patterns, in priority order:
+ *   1. iframe embed  — booking widget / payment form stays on-page (highest conversion)
+ *   2. external link — links out to booking system (Mindbody, PushPress Pay, Shopify…)
+ *   3. internal CTA  — links to /contact or /pricing (lightest ask, fallback)
+ *
+ * Renders NOTHING if no closure is configured — the component is fully optional.
+ * Templates do not need to guard against missing data.
+ */
+
+import type { LandingPageClosure } from "../../types/gym-content";
+import { content } from "../../lib/content";
+
+interface Props {
+  closure?: LandingPageClosure;
+  heading?: string;
+}
+
+const { closure, heading } = Astro.props;
+const { business } = content;
+
+// Determine which closure pattern to use
+const hasIframe    = !!closure?.iframe?.src;
+const hasExternal  = !!closure?.externalUrl;
+const hasInternal  = !!(closure?.internalUrl ?? closure?.internalLabel ?? business.primaryCta?.url);
+
+// If nothing configured, render nothing — component is invisible
+if (!hasIframe && !hasExternal && !hasInternal) return;
+
+const iframeEmbed  = closure?.iframe;
+const externalUrl  = closure?.externalUrl;
+const externalLabel = closure?.externalLabel ?? "Book Now";
+const internalUrl  = closure?.internalUrl ?? business.primaryCta?.url ?? "/contact";
+const internalLabel = closure?.internalLabel ?? business.primaryCta?.label ?? "Get Started";
+---
+
+<section data-section="closure" data-section-tag="cta-band" class="closure-block">
+  {heading && <h2 class="closure-heading">{heading}</h2>}
+
+  {/* Priority 1: embedded widget — user never leaves the page */}
+  {hasIframe && iframeEmbed && (
+    <div class="closure-iframe-wrap">
+      {iframeEmbed.title && <p class="closure-iframe-label">{iframeEmbed.title}</p>}
+      <iframe
+        src={iframeEmbed.src}
+        title={iframeEmbed.title ?? "Booking"}
+        width={iframeEmbed.width ?? "100%"}
+        height={iframeEmbed.height ?? "600px"}
+        style={`border:0;${iframeEmbed.style ?? ""}`}
+        loading={iframeEmbed.loading ?? "lazy"}
+        sandbox={iframeEmbed.sandbox}
+        allow={iframeEmbed.allow}
+        referrerpolicy={iframeEmbed.referrerpolicy as ReferrerPolicy | undefined}
+      />
+    </div>
+  )}
+
+  {/* Priority 2: external booking link — links out to booking/payment system */}
+  {!hasIframe && hasExternal && (
+    <div class="closure-cta">
+      <a href={externalUrl} target="_blank" rel="noopener noreferrer" class="closure-btn closure-btn--primary">
+        {externalLabel}
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M1 7h12M7 1l6 6-6 6"/>
+        </svg>
+      </a>
+      <p class="closure-disclaimer">You'll be taken to our booking partner's secure page.</p>
+    </div>
+  )}
+
+  {/* Priority 3: internal CTA — fallback to contact/pricing page */}
+  {!hasIframe && !hasExternal && hasInternal && (
+    <div class="closure-cta">
+      <a href={internalUrl} class="closure-btn closure-btn--primary">
+        {internalLabel}
+      </a>
+    </div>
+  )}
+</section>
+
+<style>
+  .closure-block {
+    padding: 60px 20px;
+    background: #f5f5f5;
+    text-align: center;
+  }
+  .closure-heading {
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.75rem;
+    font-weight: 900;
+    color: #111;
+    margin: 0 0 32px;
+  }
+  .closure-iframe-wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .closure-iframe-wrap iframe {
+    display: block;
+    width: 100%;
+  }
+  .closure-iframe-label {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.875rem;
+    color: #666;
+    text-align: center;
+    padding: 12px;
+    margin: 0;
+    border-bottom: 1px solid #eee;
+  }
+  .closure-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .closure-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 40px;
+    font-family: var(--modern-font-heading, 'Montserrat', sans-serif);
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 6px;
+  }
+  .closure-btn--primary {
+    background: var(--modern-accent, #0464fc);
+    color: #fff;
+  }
+  .closure-disclaimer {
+    font-family: var(--modern-font-body, 'Barlow', sans-serif);
+    font-size: 0.8rem;
+    color: #888;
+    margin: 0;
+  }
+</style>

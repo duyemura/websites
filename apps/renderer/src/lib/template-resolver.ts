@@ -86,6 +86,12 @@ function resolveComputed(
     }
     case "serviceArea":
       return content.business.serviceArea ?? [];
+    case "closure":
+      // LandingPageClosure object — iframe, external link, or internal CTA.
+      // Falls back to empty object (ClosureBlock renders nothing when empty).
+      return (pageData as Record<string, unknown> | undefined)?.closure
+        ?? content.pages.dropIn?.closure
+        ?? {};
     default:
       return undefined;
   }

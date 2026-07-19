@@ -12,7 +12,7 @@ export type ComponentPropSource =
   | { kind: "field"; path: string }
   /** Relative path on the current page object, e.g. "hero" resolves to pages.{pageKey}.hero. */
   | { kind: "pageField"; path: string }
-  | { kind: "computed"; fn: "programs" | "testimonials" | "faq" | "features" | "valueProps" | "howItWorks" | "serviceArea" };
+  | { kind: "computed"; fn: "programs" | "testimonials" | "faq" | "features" | "valueProps" | "howItWorks" | "serviceArea" | "closure" };
 
 export interface SlotSpec {
   purpose: string;
@@ -59,7 +59,8 @@ export type PageArchetype =
   | "blogPost"
   | "content"
   | "team"
-  | "form";
+  | "form"
+  | "landingPage";  // conversion-focused, single goal (drop-in, trial, promo)
 
 export interface PageSpec {
   /** Canonical path ("/" for home, "/about", etc.). */
