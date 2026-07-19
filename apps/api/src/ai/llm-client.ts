@@ -1,4 +1,5 @@
 import type { Config } from "../plugins/env";
+import { llmCostAccumulator } from "./llm-cost-tracker.js";
 
 export type ChatContentPart =
   | { type: "text"; text: string }
@@ -212,6 +213,15 @@ export async function chatCompletion(
     });
 
     response = await parseResponse(fetchResponse);
+  }
+
+  // Track token usage for cost reporting — accumulates across all calls in a stage.
+  if (response.usage) {
+    llmCostAccumulator.track(
+      response.usage.promptTokens,
+      response.usage.completionTokens,
+      options.model,
+    );
   }
 
   return {

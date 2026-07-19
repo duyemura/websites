@@ -14,6 +14,7 @@ import type { StageRunner, StageResult, StageContext } from "./stages/types";
 import { dedupeWarnings } from "./stages/types";
 import type { PipelineStage } from "../src/types/pipeline-artifacts";
 import { parseArgs, PIPELINES, TEMPLATE_GROUPS } from "./milo-args.js";
+import { llmCostAccumulator } from "../src/ai/llm-cost-tracker.js";
 import type { MiloCommand } from "./milo-args.js";
 import { perPageEvalStage } from "./stages/per-page-eval.js";
 import { evalFixStage } from "./stages/eval-fix.js";
@@ -225,22 +226,57 @@ function renderReport(
     if (hasCosts) {
       const total = results.reduce(
         (acc, r) => ({
-          s3Puts: acc.s3Puts + (r.costs?.s3Puts ?? 0),
-          s3Gets: acc.s3Gets + (r.costs?.s3Gets ?? 0),
-          bytes: acc.bytes + (r.costs?.s3BytesUploaded ?? 0),
-          onetime: acc.onetime + (r.costs?.estimatedUsd ?? 0),
-          monthly: acc.monthly + (r.costs?.monthlyStorageUsd ?? 0),
+          s3Puts:       acc.s3Puts       + (r.costs?.s3Puts ?? 0),
+          s3Gets:       acc.s3Gets       + (r.costs?.s3Gets ?? 0),
+          bytes:        acc.bytes        + (r.costs?.s3BytesUploaded ?? 0),
+          s3Usd:        acc.s3Usd        + (r.costs?.estimatedUsd ?? 0),
+          monthly:      acc.monthly      + (r.costs?.monthlyStorageUsd ?? 0),
+          llmInput:     acc.llmInput     + (r.costs?.llmInputTokens ?? 0),
+          llmOutput:    acc.llmOutput    + (r.costs?.llmOutputTokens ?? 0),
+          llmCalls:     acc.llmCalls     + (r.costs?.llmCalls ?? 0),
+          llmUsd:       acc.llmUsd       + (r.costs?.llmEstimatedUsd ?? 0),
         }),
-        { s3Puts: 0, s3Gets: 0, bytes: 0, onetime: 0, monthly: 0 },
+        { s3Puts: 0, s3Gets: 0, bytes: 0, s3Usd: 0, monthly: 0, llmInput: 0, llmOutput: 0, llmCalls: 0, llmUsd: 0 },
       );
+
       const mb = (total.bytes / (1024 * 1024)).toFixed(1);
-      console.log("\nEstimated resource costs (AWS us-east-1 pricing):");
-      console.log(
-        `  S3 ops:          ${total.s3Puts.toLocaleString()} PUTs + ${total.s3Gets.toLocaleString()} GETs`,
-      );
-      console.log(`  Data uploaded:   ${mb} MB`);
-      console.log(`  One-time cost:   $${total.onetime.toFixed(4)}`);
-      console.log(`  Monthly storage: $${total.monthly.toFixed(4)}/mo`);
+      const totalUsd = total.s3Usd + total.llmUsd;
+
+      console.log("\nEstimated build costs:");
+
+      if (total.llmCalls > 0) {
+        console.log(
+          `  LLM:   ${total.llmCalls} calls | ` +
+          `${(total.llmInput / 1000).toFixed(1)}k in + ${(total.llmOutput / 1000).toFixed(1)}k out tokens | ` +
+          `$${total.llmUsd.toFixed(4)}`,
+        );
+        // Per-model breakdown when multiple models were used
+        const allModels = results.flatMap((r) => Object.entries(r.costs?.llmByModel ?? {}));
+        const modelTotals = new Map<string, { inputTokens: number; outputTokens: number; calls: number; estimatedUsd: number }>();
+        for (const [model, usage] of allModels) {
+          const existing = modelTotals.get(model) ?? { inputTokens: 0, outputTokens: 0, calls: 0, estimatedUsd: 0 };
+          modelTotals.set(model, {
+            inputTokens: existing.inputTokens + usage.inputTokens,
+            outputTokens: existing.outputTokens + usage.outputTokens,
+            calls: existing.calls + usage.calls,
+            estimatedUsd: existing.estimatedUsd + usage.estimatedUsd,
+          });
+        }
+        if (modelTotals.size > 1) {
+          for (const [model, usage] of modelTotals.entries()) {
+            console.log(`    ${model}: ${usage.calls} calls | $${usage.estimatedUsd.toFixed(4)}`);
+          }
+        }
+      }
+
+      if (total.s3Puts > 0 || total.bytes > 0) {
+        console.log(
+          `  S3:    ${total.s3Puts.toLocaleString()} PUTs + ${total.s3Gets.toLocaleString()} GETs | ` +
+          `${mb} MB | $${total.s3Usd.toFixed(4)} one-time + $${total.monthly.toFixed(4)}/mo storage`,
+        );
+      }
+
+      console.log(`  Total: $${totalUsd.toFixed(4)} this run`);
     }
   }
 }
@@ -282,6 +318,8 @@ async function runPipeline(
     }
 
     const start = Date.now();
+    // Reset LLM accumulator before each stage so we get per-stage costs.
+    llmCostAccumulator.getAndReset();
     let result: StageResult;
     try {
       result = await runner.run(ctx);
@@ -292,6 +330,24 @@ async function runPipeline(
       };
     }
     if (!result.durationMs) result.durationMs = Date.now() - start;
+
+    // Attach LLM costs accumulated during this stage run.
+    const llmUsage = llmCostAccumulator.getAndReset();
+    if (llmUsage.calls > 0) {
+      result.costs = {
+        s3Puts: result.costs?.s3Puts ?? 0,
+        s3Gets: result.costs?.s3Gets ?? 0,
+        s3BytesUploaded: result.costs?.s3BytesUploaded ?? 0,
+        estimatedUsd: result.costs?.estimatedUsd ?? 0,
+        monthlyStorageUsd: result.costs?.monthlyStorageUsd ?? 0,
+        llmInputTokens: llmUsage.inputTokens,
+        llmOutputTokens: llmUsage.outputTokens,
+        llmCalls: llmUsage.calls,
+        llmEstimatedUsd: llmUsage.estimatedUsd,
+        llmByModel: llmUsage.byModel,
+      };
+    }
+
     results.push(result);
 
     if (result.status === "fail") {
