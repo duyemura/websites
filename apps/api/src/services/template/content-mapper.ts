@@ -1,5 +1,6 @@
 import type { Kysely } from "kysely";
 import type { DB, Json } from "../../types/db";
+import { businessTypeLabel, staffRoleTitle, contentFocus } from "../../utils/business-type.js";
 import type { DesignSystemV2 } from "../../types/design-system-v2";
 import type { SiteHierarchy, HierarchyPage, HierarchySection } from "../../types/site-hierarchy";
 import {
@@ -773,7 +774,7 @@ export function extractPages(
   const city = business.geo?.city ?? "";
   const stateAbbr = business.geo?.stateAbbr ?? "";
   const location = city ? (stateAbbr ? `${city}, ${stateAbbr}` : city) : "";
-  const categoryPhrase = business.category || "gym";
+  const categoryPhrase = businessTypeLabel(business.category);
 
   const defaultPrograms: ProgramContent[] = DEFAULT_PROGRAMS.map((p) => ({
     slug: p.slug,
@@ -925,7 +926,7 @@ function buildDefaultDescription(business: BusinessInfo, home: HomeContent): str
   const base =
     home.hero.intro ||
     business.tagline ||
-    `${business.name} is a gym in ${business.geo.city}, ${business.geo.stateAbbr}.`;
+    `${business.name} is a ${businessTypeLabel(business.category)} in ${business.geo.city}, ${business.geo.stateAbbr}.`;
   const suffix = ` Join ${business.name} in ${business.geo.city} for personalized training and a supportive community.`;
   let combined = `${base}${suffix}`;
   if (combined.length > 160) {
@@ -1107,7 +1108,7 @@ async function inferServiceArea(
   category: string,
   config: Config,
 ): Promise<string[]> {
-  const safeCategory = category.replace(/[^\w\s-]/g, "").slice(0, 60) || "gym";
+  const safeCategory = (category || businessTypeLabel(undefined)).replace(/[^\w\s-]/g, "").slice(0, 60) || "business";
   const prompt = `List 4-6 nearby neighborhoods, suburbs, or districts that residents of ${city}, ${state} would commonly travel from to visit a ${safeCategory} (gym/fitness business). Include only real place names, no commentary.
 
 Return a JSON array of strings only, e.g.: ["Round Rock", "Cedar Park", "Pflugerville", "Buda"]`;
@@ -1275,7 +1276,7 @@ export async function buildGymJson(
     const neighborhoods = await inferServiceArea(
       business.geo.city,
       business.geo.state,
-      business.category ?? "gym",
+      business.category ?? businessTypeLabel(undefined),
       config.appConfig,
     );
     if (neighborhoods.length > 0) {

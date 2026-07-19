@@ -19,6 +19,7 @@ import type { Config } from "../../plugins/env";
 import type { GymSiteContent, HomeContent, HeroContent, ValueProp, Step, Feature, FAQItem, Testimonial, IframeEmbed, ProgramContent, AboutContent, TemplateSpec, PageSpec, PageBrief, ContentArtifact } from "@milo/shared-types";
 import { NO_IMAGE } from "@milo/shared-types";
 import { buildNavigation } from "./nav-slots.js";
+import { businessTypeLabel, staffRoleTitle, contentFocus } from "../../utils/business-type.js";
 import {
   getTemplateSpec,
   buildSpecPrompt,
@@ -586,6 +587,7 @@ function buildProgramPrompt(ctx: {
   businessInfo: string;
   brandGuidelines: string;
   siteStrategy: string;
+  businessType?: string;
   siteHierarchy: string;
   artifactContext: string;
   sitePlaybook: string;
@@ -595,7 +597,10 @@ function buildProgramPrompt(ctx: {
   const programSpecPrompt = buildPageSpecPrompt(spec, "program");
   const briefContext = brief ? buildProgramBriefContext(brief) : "(no extracted content found for this program page)";
 
-  return `You are writing content for a specific program page on a gym website. Use ONLY the gym's real information from the docs below. Be specific, but never invent facts.
+  const bizType = ctx.businessType ?? "gym";
+  const role = staffRoleTitle(bizType);
+  const focus = contentFocus(bizType);
+  return `You are writing content for a specific ${focus.programWord} page on a ${businessTypeLabel(bizType)} website. Use ONLY the business's real information from the docs below. Be specific, but never invent facts.
 
 ## PROGRAM
 
@@ -709,6 +714,7 @@ function buildAboutPrompt(ctx: {
   brandGuidelines: string;
   siteStrategy: string;
   siteHierarchy: string;
+  businessType?: string;
   artifactContext: string;
   briefContext: string;
   sitePlaybook: string;
@@ -716,10 +722,13 @@ function buildAboutPrompt(ctx: {
 }): string {
   const { spec, businessInfo, brandGuidelines, siteStrategy, siteHierarchy, artifactContext, briefContext, sitePlaybook, conversionBrief } = ctx;
   const aboutSpecPrompt = buildPageSpecPrompt(spec, "about");
+  const bizType = ctx.businessType ?? "gym";
+  const role = staffRoleTitle(bizType);
+  const roles = staffRoleTitle(bizType, { plural: true });
 
-  return `You are writing content for the About page of a gym website. Use ONLY the gym's real information from the docs below. Be specific, but never invent facts.
+  return `You are writing content for the About page of a ${businessTypeLabel(bizType)} website. Use ONLY the business's real information from the docs below. Be specific, but never invent facts.
 
-## GYM DOCS
+## BUSINESS DOCS
 
 ### Business Info
 ${businessInfo || "(not available)"}
@@ -758,12 +767,12 @@ ${aboutSpecPrompt}
 
 ## HARD RULES
 
-- Only state specific facts (founding year, coach names, credentials, member count, location history) if they appear in the gym docs or extracted page content above.
-- If a specific fact is unknown, describe the gym's identity in general terms or omit the field. NEVER invent years, prices, schedules, numbers, or guarantees.
+- Only state specific facts (founding year, ${role} names, credentials, member count, location history) if they appear in the docs or extracted page content above.
+- If a specific fact is unknown, describe the business's identity in general terms or omit the field. NEVER invent years, prices, schedules, numbers, or guarantees.
 - Keep every field within the max word count in the spec.
-- For team members, only include people documented in the gym docs. Do not invent coaches.
+- For team members, only include people documented in the docs. Do not invent ${roles}.
 - ctaBand.headline is REQUIRED. It must be a real, action-oriented headline (4-8 words) that matches the page's conversion goal. Never leave it empty.
-- Story headline: prefer warm, narrative labels such as "Our story", "How we began", "Why we built this gym", "The gym we imagined", or "Where it all started". Avoid dry, formulaic phrases like "How {Gym Name} started".
+- Story headline: prefer warm, narrative labels such as "Our story", "How we began", "Why we started", "The vision behind it", or "Where it all started". Avoid dry, formulaic phrases.
 
 ---
 
@@ -801,7 +810,7 @@ Return ONLY valid JSON with this exact shape. No markdown, no explanation:
   }
 }
 
-Guidance for team members: only include coaches/owners/founders documented in the gym docs. Use a real captured image path for photoUrl when available; otherwise leave it empty. Do not invent people.`;
+Guidance for team members: only include ${roles}/owners/founders documented in the docs. Use a real captured image path for photoUrl when available; otherwise leave it empty. Do not invent people.`;
 }
 
 /** Build a prompt that generates 10 long-tail local SEO FAQs for any page archetype. */
@@ -818,14 +827,17 @@ function buildPageFaqPrompt(ctx: {
   artifactContext: string;
   sitePlaybook: string;
   conversionBrief: string;
+  businessType?: string;
 }): string {
   const { spec, pageKey, pageTitle, pagePath, existingFaq, businessInfo, brandGuidelines, siteStrategy, siteHierarchy, artifactContext, sitePlaybook, conversionBrief } = ctx;
   const faqSpecPrompt = buildPageSpecPrompt(spec, "faq");
+  const bizType = ctx.businessType ?? "gym";
+  const focus = contentFocus(bizType);
   const existingLines = existingFaq.length
     ? existingFaq.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n")
     : "(no FAQ extracted for this page)";
 
-  return `You are writing 10 FAQ items for the "${pageTitle}" page (${pagePath}) on a gym website. These FAQs must be unique to this page and biased toward long-tail local search queries that someone in the gym's area would actually type.
+  return `You are writing 10 FAQ items for the "${pageTitle}" page (${pagePath}) on a ${businessTypeLabel(bizType)} website. These FAQs must be unique to this page and biased toward long-tail local search queries that someone in the area would actually type. Relevant topics for this business type: ${focus.blogTopics.join(", ")}.
 
 ## PAGE
 
@@ -900,6 +912,7 @@ async function generatePageFaq(ctx: {
   pageTitle: string;
   pagePath: string;
   existingFaq: FAQItem[];
+  businessType?: string;
   businessInfo: string;
   brandGuidelines: string;
   siteStrategy: string;
@@ -1042,13 +1055,13 @@ function buildStaticHeadlinesPrompt(ctx: {
   inputs: StaticHeadlineInput[];
 }): string {
   const lines = [
-    `You are writing concise H1 headlines for a gym website called ${ctx.businessName}.`,
+    `You are writing concise H1 headlines for ${businessTypeLabel(ctx.category)} called ${ctx.businessName}.`,
     "",
-    "Use the gym's actual navigation labels to decide each H1. You may prefix with \"Our \" only when it reads naturally as something the gym owns or offers.",
+    `Use the ${businessTypeLabel(ctx.category)}'s actual navigation labels to decide each H1. You may prefix with "Our " only when it reads naturally as something they own or offer.`,
     "",
     "Rules:",
-    "- Prefer \"Our [label]\" for collection-style pages the gym provides: Rates, Schedule, Programs, Blog, Memberships, Classes, Timetable.",
-    "- Do NOT use \"Our\" for About, Contact, or labels that already feel like a page type (e.g. \"About Us\", \"Contact\", \"Get in Touch\").",
+    `- Prefer "Our [label]" for collection-style pages they provide: Rates, Schedule, ${ctx.category?.match(/dance|yoga|pilates/i) ? "Classes, Timetable, Courses" : "Programs, Blog, Memberships, Classes, Timetable"}.`,
+    `- Do NOT use "Our" for About, Contact, or labels that already feel like a page type (e.g. "About Us", "Contact", "Get in Touch").`,
     "- Do NOT use \"Our\" for specific program names (e.g. \"CrossFit Classes\" stays \"CrossFit Classes\", not \"Our CrossFit Classes\").",
     "- Keep H1s short: 1–4 words, title case.",
     "- If a label is already a natural H1, use it as-is.",
@@ -1322,9 +1335,11 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   // Build the LLM prompt
   const specPrompt = buildSpecPrompt(spec);
-  const prompt = `You are writing homepage content for a gym website. Use ONLY the gym's real information from the docs below. Be specific — use their actual name, city, programs, and story. Never use placeholder text.
+  const bizType = theme !== "beanburito" ? businessTypeLabel(mergedContent.business.category) : "gym";
+  const focus = contentFocus(mergedContent.business.category);
+  const prompt = `You are writing homepage content for a ${bizType} website. Use ONLY the business's real information from the docs below. Be specific — use their actual name, city, ${focus.programWord}s, and story. Never use placeholder text.
 
-## GYM DOCS
+## BUSINESS DOCS
 
 ### Business Info
 ${businessInfoTrimmed || "(not available)"}
@@ -1725,7 +1740,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   const staticHeadlines = await generateStaticPageHeadlines({
     config,
     businessName: baseContent.business.name,
-    category: baseContent.business.category || "gym",
+    category: baseContent.business.category || businessTypeLabel(undefined),
     city: baseContent.business.geo?.city,
     inputs: staticHeadlineInputs,
     log,
@@ -2087,8 +2102,8 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
         slug: "welcome",
         title: `What to expect from the ${blogName} blog`,
         publishedAt: today,
-        excerpt: `Workouts, nutrition tips, and gym news for ${blogCity ? `${blogCity} and ` : ""}the ${mergedContent.business.category || "fitness"} community.`,
-        body: `<p>This blog is where our coaches share practical training advice, nutrition notes, and gym updates for the ${blogName} community${blogCity ? ` in ${blogCity}` : ""}. New articles are added regularly — bookmark this page or stop by to see what's new.</p>`,
+        excerpt: `${contentFocus(mergedContent.business.category).blogTopics.slice(0, 3).join(", ")}, and more — for ${blogCity ? `${blogCity} and ` : ""}the ${businessTypeLabel(mergedContent.business.category)} community.`,
+        body: `<p>This blog is where our ${staffRoleTitle(mergedContent.business.category, { plural: true })} share practical advice on ${contentFocus(mergedContent.business.category).blogTopics.slice(0, 2).join(", ")}, and ${contentFocus(mergedContent.business.category).primaryFocus} for the ${blogName} community${blogCity ? ` in ${blogCity}` : ""}. New articles are added regularly — bookmark this page or stop by to see what's new.</p>`,
         category: "News",
       },
     ];
