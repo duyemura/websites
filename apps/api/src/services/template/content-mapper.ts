@@ -588,9 +588,10 @@ export function extractNavigation(hierarchy: SiteHierarchy, warnings: string[]):
   const isLegal = (p: HierarchyPage) => classifyPage(p) === "legal";
   const isBlog = (p: HierarchyPage) => classifyPage(p) === "blog";
 
+  // Home is never a nav item — the logo links back to home by convention.
   const header: NavItem[] = pages
-    .filter((p) => !isLegal(p) && !isBlog(p))
-    .map((p) => ({ label: p.title, href: p.isHomePage ? "/" : `/${p.slug}` }));
+    .filter((p) => !p.isHomePage && !isLegal(p) && !isBlog(p))
+    .map((p) => ({ label: p.title, href: `/${p.slug}` }));
 
   const footerGroups: FooterGroup[] = [
     {

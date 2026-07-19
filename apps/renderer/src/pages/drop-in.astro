@@ -1,0 +1,23 @@
+---
+import GymLayout from "../layouts/GymLayout.astro";
+import PageRenderer from "../components/pages/PageRenderer.astro";
+import { content } from "../lib/content";
+import { getRegisteredSpec } from "../lib/template-registry";
+const { business } = content;
+const theme = content.meta.templateTheme ?? "baseline";
+const spec = getRegisteredSpec(theme);
+const hasDropInPage = !!spec?.pages?.dropIn;
+const title = `Drop In | ${business.name} in ${business.geo.city}`;
+const description = `Drop in to ${business.name} in ${business.geo.city}. ${business.primaryCta.label}.`;
+---
+<GymLayout title={title} description={description} path="/drop-in">
+  {hasDropInPage ? (
+    <PageRenderer pageKey="dropIn" />
+  ) : (
+    <section style="padding:6rem 1.5rem;text-align:center">
+      <h1>Drop In</h1>
+      <p>{business.primaryCta.label}</p>
+      <a href={business.primaryCta.url}>{business.primaryCta.label}</a>
+    </section>
+  )}
+</GymLayout>

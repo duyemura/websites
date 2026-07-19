@@ -1652,9 +1652,8 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   let navigation = buildNavigation(capturedNav, baseContent.pages.programs, contentBriefs);
 
   // Supplement from template spec: add any pages defined in the spec that are
-  // missing from the captured nav. The spec is the authoritative list of pages
-  // this template has — this ensures nav is complete even when the source site's
-  // nav-structure.json didn't capture all links.
+  // missing from the captured nav. Only add a nav link if the renderer actually
+  // has a page file for it — prevents 404s from spec pages without routes.
   if (theme && theme !== "beanburito") {
     const { getTemplateSpec } = await import("@milo/shared-types");
     const specForNav = getTemplateSpec(theme as import("@milo/shared-types").TemplateTheme);
@@ -1662,10 +1661,28 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       const existingHrefs = new Set(navigation.header.map((n) => n.href));
       const SKIP_NAV_KEYS = new Set(["home", "legal", "blog"]);
       const specItems: import("@milo/shared-types").NavItem[] = [];
+
+      // Resolve renderer pages directory to check route existence
+      const { default: nodePath } = await import("node:path");
+      const { default: nodeFs } = await import("node:fs");
+      const rendererPagesDir = nodePath.resolve(
+        nodePath.dirname(new URL(import.meta.url).pathname),
+        "../../../../renderer/src/pages",
+      );
+
       for (const [pageKey, pageSpec] of Object.entries(specForNav.pages)) {
         if (SKIP_NAV_KEYS.has(pageKey)) continue;
         if (pageSpec.path.includes(":")) continue;
         if (existingHrefs.has(pageSpec.path)) continue;
+
+        // Check renderer has an actual page file — no file = no nav link = no 404
+        const slug = pageSpec.path.replace(/^\//, "") || "index";
+        const pageFile = nodePath.join(rendererPagesDir, `${slug}.astro`);
+        if (!nodeFs.existsSync(pageFile)) {
+          log(`  Nav: skipping ${pageSpec.path} — no renderer page file (${slug}.astro)`);
+          continue;
+        }
+
         const label = pageKey
           .replace(/Index$/, "")
           .replace(/([A-Z])/g, " $1")

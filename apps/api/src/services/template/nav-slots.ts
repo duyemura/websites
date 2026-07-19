@@ -285,10 +285,13 @@ export function buildNavigation(
     // Use the gym's real nav structure — labels, hierarchy, and order preserved exactly.
     // Then normalize: merge duplicate hrefs and reconcile program links so every
     // dropdown entry points to a generated page.
-    header = reconcileProgramLinks(dedupeNavItems(convertNavItems(capturedNav)), programs);
+    // Filter "/" (home) from captured nav — logo is always the home link.
+    header = reconcileProgramLinks(dedupeNavItems(convertNavItems(capturedNav)), programs)
+      .filter((i) => i.href !== "/");
   } else {
-    // Fallback: infer from content page types, labels from original path slugs
-    header = [{ label: "Home", href: "/" }];
+    // Fallback: infer from content page types, labels from original path slugs.
+    // Never add a "Home" item — the logo is always the home link.
+    header = [];
     if (programs.length > 0) {
       header.push({
         label: "Programs",
