@@ -1,61 +1,14 @@
 ---
 import { content } from "../../lib/content";
-import type { NavItem } from "../../../types/gym-content";
 
 const { business, brand, navigation } = content;
 const NO_IMAGE = "__NO_IMAGE__";
 const hasLogo = brand.logoUrl && brand.logoUrl !== NO_IMAGE;
 
-// Template-canonical nav for the modern theme.
-// When the content pipeline produces a sparse nav (e.g. only Home + Programs),
-// supplement with the standard gym nav this template is designed around.
-const TEMPLATE_NAV: NavItem[] = [
-  { label: "Programs", href: "/programs", children: [] },
-  { label: "Drop In",  href: "/drop-in" },
-  { label: "Schedule", href: "/schedule" },
-  { label: "Pricing",  href: "/pricing" },
-  { label: "About Us", href: "/about" },
-  { label: "Blog",     href: "/blog" },
-  { label: "Contact",  href: "/contact" },
-];
-
-// Merge: use content-pipeline nav items when they exist, fill gaps from template canonical nav
-const existingHrefs = new Set(navigation.header.map((n) => n.href));
-const supplemental = TEMPLATE_NAV.filter((n) => !existingHrefs.has(n.href));
-
-// The issue describes missing default items. The previous logic was to merge
-// and then slice, which could cut off supplemental items if the content.navigation.header
-// was long. The fix is to ensure all TEMPLATE_NAV items are present, prioritizing
-// content.navigation.header items if they exist, and then ensure the order
-// matches TEMPLATE_NAV as much as possible.
-
-const mergedNavItemsMap = new Map<string, NavItem>();
-
-// Add existing header items, prioritizing their structure if they exist
-navigation.header.forEach(item => {
-  mergedNavItemsMap.set(item.href, item);
-});
-
-// Add template nav items, but only if they don't already exist from content.navigation.header
-TEMPLATE_NAV.forEach(item => {
-  if (!mergedNavItemsMap.has(item.href)) {
-    mergedNavItemsMap.set(item.href, item);
-  }
-});
-
-// Reconstruct the navItems array in the order of TEMPLATE_NAV,
-// but using the merged items (which respects content.navigation.header's variations)
-const navItems: NavItem[] = TEMPLATE_NAV.map(templateItem => mergedNavItemsMap.get(templateItem.href)).filter(Boolean) as NavItem[];
-
-// If there are any items in navigation.header that are *not* in TEMPLATE_NAV
-// (e.g., custom pages), append them. This maintains flexibility while ensuring defaults.
-const customHeaderItems = navigation.header.filter(item => !TEMPLATE_NAV.some(tItem => tItem.href === item.href));
-customHeaderItems.forEach(item => {
-  if (!navItems.some(nItem => nItem.href === item.href)) {
-    navItems.push(item);
-  }
-});
-
+// Nav comes entirely from GymSiteContent.navigation.header, which is built
+// by the content pipeline (content-mapper.ts) by merging the crawl-discovered
+// pages with the template spec's canonical page list. No hardcoding here.
+const navItems = navigation.header;
 ---
 
 <header class="header-modern">

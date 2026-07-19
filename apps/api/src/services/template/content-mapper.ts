@@ -16,6 +16,7 @@ import {
   isAllowedIframeSrc,
   sanitizeIframe,
   TEMPLATE_THEMES,
+  getTemplateSpec,
 } from "@milo/shared-types";
 
 import type {
@@ -1306,6 +1307,38 @@ export async function buildGymJson(
   }
 
   let navigation = extractNavigation(hierarchy, warnings);
+
+  // Supplement navigation from the template spec.
+  // The spec defines which pages this template has — it is the authoritative
+  // source of nav structure. When the crawl only found a few pages the
+  // hierarchy-based nav is sparse; the spec fills the gaps so nav.header is
+  // always complete without any hardcoding inside Astro components.
+  const specForNav = explicitTemplateTheme ? getTemplateSpec(explicitTemplateTheme as import("@milo/shared-types").TemplateTheme) : null;
+  if (specForNav) {
+    const existingHrefs = new Set(navigation.header.map((n) => n.href));
+    // Build nav items from spec pages, preserving spec page order.
+    // Skip dynamic routes (:slug), home (/), and purely utility pages (legal).
+    const SKIP_KEYS = new Set(["home", "legal", "blog"]);
+    const specItems: import("@milo/shared-types").NavItem[] = [];
+    for (const [pageKey, pageSpec] of Object.entries(specForNav.pages)) {
+      if (SKIP_KEYS.has(pageKey)) continue;
+      if (pageSpec.path.includes(":")) continue; // dynamic route
+      if (existingHrefs.has(pageSpec.path)) continue; // already in nav
+      // Derive readable label: "dropIn" → "Drop In", "programIndex" → "Programs"
+      const label = pageKey
+        .replace(/Index$/, "") // "programIndex" → "program"
+        .replace(/([A-Z])/g, " $1") // camelCase → words
+        .replace(/^./, (c) => c.toUpperCase())
+        .trim();
+      specItems.push({ label, href: pageSpec.path });
+      existingHrefs.add(pageSpec.path);
+    }
+    if (specItems.length > 0) {
+      navigation = { ...navigation, header: [...navigation.header, ...specItems] };
+      warnings.push(`nav supplemented from template spec: ${specItems.map((i) => i.href).join(", ")}`);
+    }
+  }
+
   const pages = extractPages(hierarchy, business, warnings, contract);
 
   // ── Phase 2: merge page briefs from content artifact ──────────────────────
