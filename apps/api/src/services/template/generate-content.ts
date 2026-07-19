@@ -1335,8 +1335,8 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
 
   // Build the LLM prompt
   const specPrompt = buildSpecPrompt(spec);
-  const bizType = theme !== "beanburito" ? businessTypeLabel(mergedContent.business.category) : "gym";
-  const focus = contentFocus(mergedContent.business.category);
+  const bizType = theme !== "beanburito" ? businessTypeLabel(baseContent.business.category) : "gym";
+  const focus = contentFocus(baseContent.business.category);
   const prompt = `You are writing homepage content for a ${bizType} website. Use ONLY the business's real information from the docs below. Be specific — use their actual name, city, ${focus.programWord}s, and story. Never use placeholder text.
 
 ## BUSINESS DOCS
@@ -1540,7 +1540,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
       // Use business-type focus as image context so vision tags match correctly.
       // "amenity facility" only makes sense for gyms — a yoga studio's features
       // are "yoga practice" items, a dance school's are "dance technique" items.
-      const bizFocus = contentFocus(mergedContent.business.category);
+      const bizFocus = contentFocus(baseContent.business.category);
       const query = `${f.label ?? ""} ${bizFocus.primaryFocus}`.trim();
       const matched = imageMatcher.match({
         query,
@@ -1923,7 +1923,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     aboutPage.team = aboutPage.team.map((member) => {
       if (member.photoUrl && member.photoUrl !== NO_IMAGE) return member;
       const matched = imageMatcher.match({
-        query: `${member.name} ${member.title} ${staffRoleTitle(mergedContent.business.category)}`,
+        query: `${member.name} ${member.title} ${staffRoleTitle(baseContent.business.category)}`,
         exclude: usedTeamPhotos,
         preferredSectionType: "content-block",
       });
@@ -2043,7 +2043,7 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
   // with a dark hero + grid + CTA band. If the source site had no blog content,
   // publish a welcome post so the page is never empty.
   const blog = mergedContent.pages.blog;
-  const blogCategory = mergedContent.business.category || "fitness";
+  const blogCategory = baseContent.business.category || "fitness";
   const blogCity = mergedContent.business.geo?.city;
   const blogState = mergedContent.business.geo?.stateAbbr;
   const blogLocation = blogCity ? (blogState ? `${blogCity}, ${blogState}` : blogCity) : "";
@@ -2106,8 +2106,8 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
         slug: "welcome",
         title: `What to expect from the ${blogName} blog`,
         publishedAt: today,
-        excerpt: `${contentFocus(mergedContent.business.category).blogTopics.slice(0, 3).join(", ")}, and more — for ${blogCity ? `${blogCity} and ` : ""}the ${businessTypeLabel(mergedContent.business.category)} community.`,
-        body: `<p>This blog is where our ${staffRoleTitle(mergedContent.business.category, { plural: true })} share practical advice on ${contentFocus(mergedContent.business.category).blogTopics.slice(0, 2).join(", ")}, and ${contentFocus(mergedContent.business.category).primaryFocus} for the ${blogName} community${blogCity ? ` in ${blogCity}` : ""}. New articles are added regularly — bookmark this page or stop by to see what's new.</p>`,
+        excerpt: `${contentFocus(baseContent.business.category).blogTopics.slice(0, 3).join(", ")}, and more — for ${blogCity ? `${blogCity} and ` : ""}the ${businessTypeLabel(baseContent.business.category)} community.`,
+        body: `<p>This blog is where our ${staffRoleTitle(baseContent.business.category, { plural: true })} share practical advice on ${contentFocus(baseContent.business.category).blogTopics.slice(0, 2).join(", ")}, and ${contentFocus(baseContent.business.category).primaryFocus} for the ${blogName} community${blogCity ? ` in ${blogCity}` : ""}. New articles are added regularly — bookmark this page or stop by to see what's new.</p>`,
         category: "News",
       },
     ];
