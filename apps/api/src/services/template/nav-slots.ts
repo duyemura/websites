@@ -158,179 +158,116 @@ function dedupeNavItems(items: NavItem[]): NavItem[] {
   return result;
 }
 
-function isProgramsParent(item: NavItem): boolean {
-  return normalizeHref(item.href) === "/programs" || normalizeHref(item.label) === "programs";
-}
-
-function programSlugFromHref(href: string): string | null {
-  if (!href.startsWith("/programs/")) return null;
-  const slug = href.slice("/programs/".length).split("/")[0];
-  return slug || null;
-}
-
 /**
- * Drop captured program links that have no generated program page.
- * Preserves owner-defined structure — never inserts a new Programs dropdown.
+ * Remove nav links whose paths are not in the allowed set.
+ * Generic — works for any link type, not just programs.
+ * Children are filtered recursively; a parent with zero valid children is kept
+ * only if its own href is valid.
  */
-function dropStaleProgramLinks(
-  items: NavItem[],
-  programSlugs: Set<string>,
-): NavItem[] {
-  const cleaned: NavItem[] = [];
+function dropInvalidLinks(items: NavItem[], allowedPaths: Set<string>): NavItem[] {
+  const result: NavItem[] = [];
   for (const item of items) {
-    const slug = programSlugFromHref(item.href);
-    if (slug && !programSlugs.has(slug)) continue; // stale /programs/* link
-
-    cleaned.push({
-      ...item,
-      children: item.children ? dropStaleProgramLinks(item.children, programSlugs) : undefined,
-    });
+    if (isExternalOrAnchor(item.href)) { result.push(item); continue; }
+    const path = normalizedPath(item.href);
+    const children = item.children ? dropInvalidLinks(item.children, allowedPaths) : undefined;
+    // Keep the item if its own href is valid OR it has valid children (it's a dropdown parent)
+    if (allowedPaths.has(path) || (children && children.length > 0)) {
+      result.push({ ...item, ...(children ? { children } : {}) });
+    }
+    // Otherwise: drop — avoids 404s for links whose pages weren't generated
   }
-  return cleaned;
+  return result;
 }
 
 /**
- * Reconcile captured program links against the generated program pages.
+ * Build Navigation from captured nav + generated program slugs.
  *
- * The generated site only has Astro pages for slugs that exist in `programs`,
- * so any captured `/programs/{slug}` link whose slug isn't generated would 404.
- * This keeps owner labels when they map to a real program slug, drops stale links,
- * and ensures the Programs dropdown contains only pages that actually exist.
- */
-function reconcileProgramLinks(
-  items: NavItem[],
-  programs: Array<{ slug: string; name: string }>,
-): NavItem[] {
-  if (programs.length === 0) {
-    return items.filter((i) => !i.href.startsWith("/programs/"));
-  }
-
-  const programSlugs = new Set(programs.map((p) => p.slug));
-
-  // Collect owner labels that actually match a generated program slug.
-  const capturedLabels = new Map<string, string>();
-  function collectLabels(list: NavItem[]) {
-    for (const item of list) {
-      const slug = programSlugFromHref(item.href);
-      if (slug && programSlugs.has(slug)) {
-        capturedLabels.set(slug, item.label);
-      }
-      if (item.children) collectLabels(item.children);
-    }
-  }
-  collectLabels(items);
-
-  const programChildren = programs.map((p) => ({
-    label: capturedLabels.get(p.slug) ?? p.name,
-    href: `/programs/${p.slug}`,
-  }));
-
-  let firstProgramIndex = -1;
-  const cleaned: NavItem[] = [];
-  let hasProgramsParent = false;
-
-  for (const item of items) {
-    if (item.href.startsWith("/programs/")) {
-      if (firstProgramIndex === -1) firstProgramIndex = cleaned.length;
-      continue; // drop stale /programs/* links that have no generated page
-    }
-
-    if (isProgramsParent(item)) {
-      hasProgramsParent = true;
-      // Owner explicitly created a Programs dropdown — preserve their structure,
-      // just remove any stale children that would 404.
-      cleaned.push({
-        ...item,
-        children: item.children ? dropStaleProgramLinks(item.children, programSlugs) : programChildren,
-      });
-    } else {
-      cleaned.push({
-        ...item,
-        children: item.children ? reconcileProgramLinks(item.children, programs) : undefined,
-      });
-    }
-  }
-
-  if (!hasProgramsParent && firstProgramIndex !== -1) {
-    cleaned.splice(firstProgramIndex, 0, {
-      label: "Programs",
-      href: "/programs",
-      children: programChildren,
-    });
-  }
-
-  return cleaned;
-}
-
-/**
- * Build Navigation from captured nav + program list.
+ * Core principle: the gym's captured nav is the source of truth for labels,
+ * hierarchy, and structure. We only sanitize hrefs to prevent 404s —
+ * we never rename their items, never assume what their sections are called,
+ * and never insert hardcoded labels like "Programs".
  *
- * If capturedNav is provided (from nav-structure.json), those labels and hierarchy
- * are used as-is — the owner's words, their structure.
+ * A gym that calls their section "Services", "Plans", or "Classes" will see
+ * exactly those labels. Dropdowns are preserved as-is. The logo is always
+ * the home link — no "Home" nav item.
  *
- * If capturedNav is empty (first run before clone), infers from content page types.
- * Never hardcodes page names — derives labels from original path slugs.
+ * allowedPaths: set of paths the Astro renderer will actually build. Any nav
+ * link not in this set is dropped. Callers should pass the full set of
+ * rendered page paths so nav never contains a link that would 404.
  */
 export function buildNavigation(
   capturedNav: CapturedNavItem[],
   programs: Array<{ slug: string; name: string }>,
   contentBriefs: Array<{ path: string; pageType: string }> = [],
+  allowedPaths?: Set<string>,
 ): Navigation {
-  const types = new Set(contentBriefs.map((b) => b.pageType));
+
+  // Build the set of valid paths from programs + content briefs if caller
+  // didn't supply an explicit set. This keeps backward compatibility.
+  const validPaths = allowedPaths ?? (() => {
+    const paths = new Set<string>(["/", "/about", "/contact", "/pricing", "/schedule", "/programs", "/blog", "/drop-in", "/local-guide"]);
+    programs.forEach((p) => paths.add(`/programs/${p.slug}`));
+    contentBriefs.forEach((b) => { if (b.path) paths.add(b.path.startsWith("/") ? b.path : `/${b.path}`); });
+    return paths;
+  })();
 
   // ── Header ──────────────────────────────────────────────────────────────────
   let header: NavItem[];
 
   if (capturedNav.length > 0) {
-    // Use the gym's real nav structure — labels, hierarchy, and order preserved exactly.
-    // Then normalize: merge duplicate hrefs and reconcile program links so every
-    // dropdown entry points to a generated page.
-    // Filter "/" (home) from captured nav — logo is always the home link.
-    header = reconcileProgramLinks(dedupeNavItems(convertNavItems(capturedNav)), programs)
-      .filter((i) => i.href !== "/");
+    // Use the gym's real nav — labels, hierarchy, and structure preserved exactly.
+    // Convert hrefs to template routes, dedupe, then drop any link that would 404.
+    header = dropInvalidLinks(
+      dedupeNavItems(convertNavItems(capturedNav)),
+      validPaths,
+    ).filter((i) => i.href !== "/"); // logo is home
   } else {
-    // Fallback: infer from content page types, labels from original path slugs.
-    // Never add a "Home" item — the logo is always the home link.
+    // No captured nav — build a minimal fallback from what we know was generated.
+    // Use path slugs as labels, never insert hardcoded section names.
     header = [];
-    if (programs.length > 0) {
-      header.push({
-        label: "Programs",
-        href: "/programs",
-        children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-      });
-    }
-    for (const { type, templateHref } of [
-      { type: "schedule", templateHref: "/schedule" },
-      { type: "pricing", templateHref: "/pricing" },
-      { type: "about", templateHref: "/about" },
-      { type: "contact", templateHref: "/contact" },
-    ]) {
-      if (!types.has(type)) continue;
-      const originalPath = contentBriefs.find((b) => b.pageType === type)?.path ?? templateHref;
-      const slug = originalPath.replace(/^\//, "").split("/")[0] ?? type;
+    for (const brief of contentBriefs) {
+      if (!brief.path || brief.path === "/" || !validPaths.has(brief.path)) continue;
+      if (/legal|privacy|terms/i.test(brief.path)) continue;
+      const slug = brief.path.replace(/^\//, "").split("/")[0] ?? "";
+      if (!slug) continue;
       const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      header.push({ label, href: templateHref });
+      header.push({ label, href: brief.path });
     }
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
-  // Derive footer links from the header — labels always match what the gym calls their pages.
-  const footerCompanyLinks = header
-    .filter((i) => i.href !== "/") // skip Home
+  // Flatten header (top-level only, no duplicates) for the company link group.
+  const companyLinks = header
+    .filter((i) => i.href !== "/" && validPaths.has(i.href))
     .map((i) => ({ label: i.label, href: i.href }));
 
-  // Privacy and terms are always generated as fallbacks, so always link them in
-  // the footer so the cookie banner and any compliance reference resolve.
-  footerCompanyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
-  footerCompanyLinks.push({ label: "Terms of Service", href: "/legal/terms-of-service" });
+  companyLinks.push({ label: "Privacy Policy", href: "/legal/privacy-policy" });
+  companyLinks.push({ label: "Terms of Service", href: "/legal/terms-of-service" });
 
-  const footer: FooterGroup[] = [
-    {
-      label: "Programs",
-      links: programs.slice(0, 4).map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-    },
-    { label: "Company", links: footerCompanyLinks },
-  ];
+  // Program links for footer — use whatever label the gym used in their nav,
+  // or fall back to the generated program name if no nav label was captured.
+  const capturedProgramLabels = new Map<string, string>();
+  function collectCapturedLabels(items: NavItem[]) {
+    for (const item of items) {
+      const m = item.href.match(/^\/programs\/([^/]+)/);
+      if (m?.[1]) capturedProgramLabels.set(m[1], item.label);
+      if (item.children) collectCapturedLabels(item.children);
+    }
+  }
+  collectCapturedLabels(header);
+
+  const programLinks = programs.slice(0, 4).map((p) => ({
+    label: capturedProgramLabels.get(p.slug) ?? p.name,
+    href: `/programs/${p.slug}`,
+  }));
+
+  const footer: FooterGroup[] = [];
+  if (programLinks.length > 0) {
+    // Use the label from the captured nav's programs parent (whatever they call it)
+    const programsParent = header.find((i) => normalizedPath(i.href) === "/programs");
+    footer.push({ label: programsParent?.label ?? "Programs", links: programLinks });
+  }
+  footer.push({ label: "Company", links: companyLinks });
 
   return { header, footer };
 }
