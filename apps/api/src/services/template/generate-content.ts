@@ -1244,6 +1244,7 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
       siteUrl,
       googleMapsApiKey: config.GOOGLE_PLACES_API_KEY,
       appConfig: config,
+      templateTheme: input.templateTheme,  // propagate --theme flag for spec-based nav
     }, workspaceUuid,
   );
   if (mapperWarnings.length > 0) {

@@ -1135,6 +1135,12 @@ export interface MapperConfig {
   /** Optional app config passed through for LLM-backed features such as
    *  service-area neighborhood inference. When omitted, those features are skipped. */
   appConfig?: Config;
+  /**
+   * Explicit template theme passed from the caller (e.g. --theme modern).
+   * Takes precedence over the DB-joined templateKey so the spec-based nav
+   * supplement works even when the site is not yet linked to a theme row.
+   */
+  templateTheme?: string;
 }
 
 const VALID_TEMPLATE_THEMES = new Set<string>(TEMPLATE_THEMES);
@@ -1154,10 +1160,18 @@ export async function buildGymJson(
     .where("sites.uuid", "=", siteUuid)
     .executeTakeFirst();
 
-  const explicitTemplateTheme =
-    siteRow?.templateKey && VALID_TEMPLATE_THEMES.has(siteRow.templateKey)
-      ? (siteRow.templateKey as SiteMeta["templateTheme"])
+  // Prefer DB-linked theme, fall back to caller-supplied config.templateTheme
+  // (e.g. --theme modern from the CLI). The fallback ensures the spec-based
+  // nav supplement fires even when the site is not yet linked to a theme row.
+  const explicitTemplateTheme = (() => {
+    const fromDb = siteRow?.templateKey && VALID_TEMPLATE_THEMES.has(siteRow.templateKey)
+      ? siteRow.templateKey
       : undefined;
+    const fromConfig = config.templateTheme && VALID_TEMPLATE_THEMES.has(config.templateTheme)
+      ? config.templateTheme
+      : undefined;
+    return (fromDb ?? fromConfig) as SiteMeta["templateTheme"] | undefined;
+  })();
 
   const [dsDoc, bizDoc, hierDoc] = await Promise.all([
     loadDoc(db, siteUuid, "design-system"),

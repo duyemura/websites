@@ -115,6 +115,7 @@ async function resolveGymJson(
       siteUrl: input.siteUrl ?? "",
       googleMapsApiKey: input.googleMapsApiKey,
       appConfig: input.appConfig,
+      templateTheme: input.templateTheme,  // propagate --theme flag for spec-based nav
     }, workspaceUuid);
     if (warnings.length > 0) {
       (log?.warn ?? log?.info ?? (() => undefined))({ siteUuid, warnings }, "content mapper used defaults");
