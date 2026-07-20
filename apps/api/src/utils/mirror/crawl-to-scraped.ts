@@ -244,19 +244,19 @@ export function buildNavHierarchy(
     } catch { /* ignore */ }
   }
 
-  // Normalize an href to a root-relative path (e.g. "/programs/bootcamp")
+  // Normalize an href to a root-relative path (e.g. "/programs/bootcamp").
+  // Nav links in the source HTML may point to the original host (e.g. the
+  // Webflow domain) even when the site is served from GitHub Pages — we strip
+  // the host entirely and only keep the path.
   function toPath(href: string): string {
-    // Absolute URL on same origin
     if (href.startsWith("http://") || href.startsWith("https://")) {
       try {
         const u = new URL(href);
-        if (origin && u.origin !== origin) return ""; // external — skip
         let path = u.pathname;
         if (basePath && path.startsWith(basePath)) path = path.slice(basePath.length);
         return path.replace(/\/$/, "") || "/";
       } catch { return ""; }
     }
-    // Root-relative path: strip basePath prefix if present
     if (href.startsWith("/") && basePath && href.startsWith(basePath)) {
       return href.slice(basePath.length).replace(/\/$/, "") || "/";
     }
