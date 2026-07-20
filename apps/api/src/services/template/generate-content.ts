@@ -1264,6 +1264,46 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
     log(`  [mapper] ${mapperWarnings.slice(0, 3).join(", ")}${mapperWarnings.length > 3 ? ` (+${mapperWarnings.length - 3} more)` : ""}`);
   }
 
+  // Seed programs from capturedNav when available.
+  // The captured nav is the authoritative source of what the business sells —
+  // children of the primary offerings dropdown are the actual programs/services/classes.
+  // Without this, the content-mapper invents programs from docs, producing mismatched
+  // slugs (e.g. "group-training") that don't match what the source nav links to
+  // (e.g. "/programs/bootcamp"), causing dropInvalidLinks to gut the Programs dropdown.
+  if (capturedNav.length > 0) {
+    const offeringsParent = capturedNav.find(
+      (i) => i.children && i.children.length > 0 && (i.href === "/programs" || i.href.startsWith("/programs/")),
+    );
+    if (offeringsParent?.children && offeringsParent.children.length > 0) {
+      const navPrograms = offeringsParent.children
+        .filter((c) => c.href.startsWith("/programs/"))
+        .map((c) => {
+          const slug = c.href.replace("/programs/", "");
+          // Keep existing baseContent program if slug matches — preserves any already-generated content.
+          const existing = baseContent.pages.programs.find((p) => p.slug === slug);
+          return existing ?? {
+            slug,
+            name: c.label,
+            shortDescription: "",
+            hero: { ...baseContent.pages.programs[0]?.hero, headline: c.label },
+            whatIsIt: { headline: `What is ${c.label.toLowerCase()}?`, body: "" },
+            whoIsItFor: [],
+            whatToExpect: { headline: "What to expect", steps: [] },
+            gettingStarted: [],
+            whatMakesUsDifferent: [],
+            coverImageUrl: baseContent.pages.programs[0]?.coverImageUrl ?? "",
+            testimonials: [],
+            faq: [],
+          };
+        });
+      if (navPrograms.length > 0) {
+        log(`  Programs seeded from nav: ${navPrograms.map((p) => p.slug).join(", ")}`);
+        // @ts-expect-error — programs array shape is compatible; type mismatch is cosmetic
+        baseContent.pages.programs = navPrograms;
+      }
+    }
+  }
+
   // Pick spec based on theme from the registry.
   const spec = getTemplateSpec(theme);
   if (!spec) {
