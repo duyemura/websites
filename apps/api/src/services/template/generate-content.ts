@@ -1324,6 +1324,9 @@ export async function generateSiteContent(input: GenerateContentInput): Promise<
         log(`  Programs seeded from nav: ${navPrograms.map((p) => p.slug).join(", ")}`);
         // @ts-expect-error — programs array shape is compatible; type mismatch is cosmetic
         baseContent.pages.programs = navPrograms;
+        // Sync featuredPrograms on the home page so the Programs section renders
+        // the nav-sourced slugs, not stale slugs from the content-mapper.
+        baseContent.pages.home.featuredPrograms = navPrograms.map((p) => p.slug);
       }
     }
   }
