@@ -222,23 +222,48 @@ export function buildNavigation(
       validPaths,
     ).filter((i) => i.href !== "/"); // logo is home
   } else {
-    // No captured nav — build from content briefs whose pageType is a recognised
-    // structural page type. Skip "other" and "home" — those include GitHub Pages
-    // subfolder paths (/pushpress-site-modern/) that look like nav items but aren't.
-    const NAV_WORTHY_TYPES = new Set(["program", "about", "contact", "pricing", "schedule", "blog", "localGuide"]);
+    // No captured nav — build from what we know was generated.
+    // Rule: the business's primary offerings (programs/services/classes) are ALWAYS
+    // included as a dropdown — they are what the business sells.
     header = [];
+
+    // 1. Primary offerings dropdown — whatever the business sells, shown first.
+    if (programs.length > 0) {
+      header.push({
+        label: "Programs",
+        href: "/programs",
+        children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
+      });
+    }
+
+    // 2. Structural pages from content briefs (about, contact, pricing, schedule).
+    //    Skip "other" and "home" — those include GitHub Pages subfolder paths
+    //    (/pushpress-site-modern/) that look like nav items but aren't.
+    const NAV_WORTHY_TYPES = new Set(["about", "contact", "pricing", "schedule", "blog", "localGuide"]);
     for (const brief of contentBriefs) {
       if (!brief.path || brief.path === "/" || !validPaths.has(brief.path)) continue;
-      if (brief.path.endsWith("/index.html")) continue; // index.html redirects
+      if (brief.path.endsWith("/index.html")) continue;
       if (/legal|privacy|terms/i.test(brief.path)) continue;
-      // Only add pages whose type is structurally meaningful — avoids GitHub Pages
-      // subfolder paths (classified "other") appearing as nav items.
       if (!NAV_WORTHY_TYPES.has(brief.pageType)) continue;
       const slug = brief.path.replace(/^\//, "").split("/")[0] ?? "";
       if (!slug) continue;
       const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      header.push({ label, href: brief.path });
+      if (!header.some((i) => i.href === brief.path)) {
+        header.push({ label, href: brief.path });
+      }
     }
+  }
+
+  // After building the header (both capturedNav and fallback paths):
+  // If programs exist but no programs parent item appears in the nav, inject one.
+  // This handles cases where capturedNav was captured but had no programs section,
+  // or where the captured nav's program links were all dropped as invalid.
+  if (programs.length > 0 && !header.some((i) => normalizedPath(i.href) === "/programs" || i.children?.some((c) => c.href.startsWith("/programs/")))) {
+    header.unshift({
+      label: "Programs",
+      href: "/programs",
+      children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
+    });
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
