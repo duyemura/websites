@@ -58,6 +58,8 @@ export interface ScrapedWebsiteData {
   paragraphs: string[];
   buttons: string[];
   navLinks: { label: string; href: string }[];
+  /** Full nav hierarchy extracted from source HTML — dropdowns preserved as children arrays. */
+  navHierarchy?: { label: string; href: string; children?: { label: string; href: string }[] }[];
   colors: ScrapedColor[];
   fonts: ScrapedFont[];
   fontSizes: ScrapedTextStyle[];

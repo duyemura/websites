@@ -12,6 +12,7 @@ import { buildScrapedWebsiteDataFromCrawl } from "../../src/utils/mirror/crawl-t
 import type { MirrorCrawlArtifact } from "../../src/types/mirror";
 import type { EnrichArtifact } from "./enrich";
 import type { StageRunner, StageContext, StageResult } from "./types";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 
 function formatGmbAddress(listing: GmbListing): string | undefined {
   if (!listing.address) return undefined;
@@ -122,6 +123,23 @@ export const docgenStage: StageRunner = {
       ctx.s3Client,
       ctx.config,
     );
+
+    // Persist nav hierarchy to S3 so the generate stage can load it as capturedNav.
+    // Written to sites/{uuid}/config/nav-structure.json — the highest-priority path
+    // that generate checks first. Labels come directly from the source site HTML
+    // (never hardcoded), so "Programs", "Our Beans", "Services", etc. all flow through.
+    if (scrapedFromCrawl.navHierarchy && scrapedFromCrawl.navHierarchy.length > 0) {
+      const navBucket = ctx.config.S3_DEPLOYMENTS_BUCKET ?? ctx.config.S3_ASSETS_BUCKET;
+      const navKey = `sites/${ctx.siteUuid}/config/nav-structure.json`;
+      await ctx.s3Client.send(new PutObjectCommand({
+        Bucket: navBucket,
+        Key: navKey,
+        Body: Buffer.from(JSON.stringify(scrapedFromCrawl.navHierarchy, null, 2), "utf8"),
+        ContentType: "application/json; charset=utf-8",
+      }));
+      const topLabels = scrapedFromCrawl.navHierarchy.map(i => i.label).join(", ");
+      ctx.log(`  Nav captured: ${topLabels}`);
+    }
 
     // If the enrich stage produced a more complete ScrapedWebsiteData (it does
     // when GMB is applied), layer that on top of the cheerio parse so we keep

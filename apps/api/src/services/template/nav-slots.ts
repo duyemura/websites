@@ -182,18 +182,17 @@ function dropInvalidLinks(items: NavItem[], allowedPaths: Set<string>): NavItem[
 /**
  * Build Navigation from captured nav + generated program slugs.
  *
- * Core principle: the gym's captured nav is the source of truth for labels,
- * hierarchy, and structure. We only sanitize hrefs to prevent 404s —
- * we never rename their items, never assume what their sections are called,
- * and never insert hardcoded labels like "Programs".
+ * Core principle: the captured nav from the source site's HTML is the source
+ * of truth for labels, hierarchy, and structure. The docgen stage extracts
+ * this via buildNavHierarchy() and writes it to S3 as nav-structure.json,
+ * which the generate stage loads as capturedNav before calling here.
  *
- * A gym that calls their section "Services", "Plans", or "Classes" will see
- * exactly those labels. Dropdowns are preserved as-is. The logo is always
- * the home link — no "Home" nav item.
+ * Nothing about what the business sells is hardcoded. A site that calls its
+ * offerings "Programs", "Services", "Our Beans", or "Widgets" will see
+ * exactly those labels. The logo is always the home link — no "Home" item.
  *
- * allowedPaths: set of paths the Astro renderer will actually build. Any nav
- * link not in this set is dropped. Callers should pass the full set of
- * rendered page paths so nav never contains a link that would 404.
+ * allowedPaths: set of paths the Astro renderer will build. Any nav link not
+ * in this set is dropped so nav never contains a link that would 404.
  */
 export function buildNavigation(
   capturedNav: CapturedNavItem[],
@@ -215,30 +214,19 @@ export function buildNavigation(
   let header: NavItem[];
 
   if (capturedNav.length > 0) {
-    // Use the gym's real nav — labels, hierarchy, and structure preserved exactly.
+    // Use the source site's real nav — labels, hierarchy, and structure preserved exactly.
     // Convert hrefs to template routes, dedupe, then drop any link that would 404.
+    // The label for each item ("Programs", "Our Beans", "Services") comes from
+    // the source site's HTML — nothing is hardcoded here.
     header = dropInvalidLinks(
       dedupeNavItems(convertNavItems(capturedNav)),
       validPaths,
-    ).filter((i) => i.href !== "/"); // logo is home
+    ).filter((i) => i.href !== "/"); // logo is always the home link
   } else {
-    // No captured nav — build from what we know was generated.
-    // Rule: the business's primary offerings (programs/services/classes) are ALWAYS
-    // included as a dropdown — they are what the business sells.
+    // capturedNav is empty — docgen should have written nav-structure.json to S3
+    // so generate can populate it. If we still have nothing, build a minimal nav
+    // from structural pages only (no guessed labels for offerings).
     header = [];
-
-    // 1. Primary offerings dropdown — whatever the business sells, shown first.
-    if (programs.length > 0) {
-      header.push({
-        label: "Programs",
-        href: "/programs",
-        children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-      });
-    }
-
-    // 2. Structural pages from content briefs (about, contact, pricing, schedule).
-    //    Skip "other" and "home" — those include GitHub Pages subfolder paths
-    //    (/pushpress-site-modern/) that look like nav items but aren't.
     const NAV_WORTHY_TYPES = new Set(["about", "contact", "pricing", "schedule", "blog", "localGuide"]);
     for (const brief of contentBriefs) {
       if (!brief.path || brief.path === "/" || !validPaths.has(brief.path)) continue;
@@ -252,18 +240,6 @@ export function buildNavigation(
         header.push({ label, href: brief.path });
       }
     }
-  }
-
-  // After building the header (both capturedNav and fallback paths):
-  // If programs exist but no programs parent item appears in the nav, inject one.
-  // This handles cases where capturedNav was captured but had no programs section,
-  // or where the captured nav's program links were all dropped as invalid.
-  if (programs.length > 0 && !header.some((i) => normalizedPath(i.href) === "/programs" || i.children?.some((c) => c.href.startsWith("/programs/")))) {
-    header.unshift({
-      label: "Programs",
-      href: "/programs",
-      children: programs.map((p) => ({ label: p.name, href: `/programs/${p.slug}` })),
-    });
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
