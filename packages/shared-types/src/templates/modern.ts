@@ -35,6 +35,12 @@ export const modernSpec: TemplateSpec = {
     "cta-band/cta-simple":                 "CTABand",
     // Contact sections with unknown archetype map to Location (address + hours + map)
     "contact/unknown":                     "Location",
+    // Program cards in a content-block context (same visual treatment as feature-grid variant)
+    "content-block/program-cards-sticky":  "Programs",
+    // Scheduling embed — renders the booking widget iframe
+    "schedule/unknown":                    "ScheduleEmbed",
+    // Team roster on about page
+    "team/unknown":                        "Team",
   },
 
   headAssets: [

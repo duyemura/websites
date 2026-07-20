@@ -39,7 +39,7 @@ export function mapToTemplateRoute(href: string): string {
   // Program detail pages must keep their full path even if the slug contains
   // words like "class" or "schedule" that would otherwise map to /schedule.
   if (lower.startsWith("/programs/")) return lower;
-  if (lower.includes("pricing") || lower.includes("membership")) return "/pricing";
+  if (lower.includes("pricing") || lower.includes("membership") || lower.includes("plans") || lower.includes("cost")) return "/pricing";
   if (lower.includes("about")) return "/about";
   if (lower.includes("contact")) return "/contact";
   if (lower.includes("schedule") || lower.includes("class")) return "/schedule";

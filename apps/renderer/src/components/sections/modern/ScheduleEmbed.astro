@@ -1,0 +1,60 @@
+---
+import { content } from "../../../lib/content";
+
+const { headline } = Astro.props as { headline?: string };
+
+const scheduleIframe = content.pages.schedule?.iframes?.[0];
+---
+
+<section data-section="schedule" data-section-tag="schedule" class="schedule-modern">
+  <div class="schedule-inner">
+    <h2 class="schedule-headline">{headline ?? "Book a Class"}</h2>
+    {scheduleIframe ? (
+      <div class="schedule-embed">
+        <iframe
+          src={scheduleIframe.src}
+          title={scheduleIframe.title ?? "Schedule"}
+          width="100%"
+          height={scheduleIframe.height ?? "700"}
+          frameborder="0"
+          loading="lazy"
+          allow="payment; camera; microphone"
+        />
+      </div>
+    ) : (
+      <p class="schedule-fallback">Scheduling widget coming soon.</p>
+    )}
+  </div>
+</section>
+
+<style>
+.schedule-modern {
+  padding: 4rem 1.5rem;
+  background: #fff;
+}
+.schedule-inner {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.schedule-headline {
+  font-family: var(--modern-font-heading, "Montserrat", sans-serif);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 800;
+  color: var(--modern-color-heading, #1a1a1a);
+  margin-bottom: 2rem;
+  text-align: center;
+}
+.schedule-embed {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,.08);
+}
+.schedule-embed iframe {
+  display: block;
+  border: none;
+}
+.schedule-fallback {
+  text-align: center;
+  color: #666;
+}
+</style>

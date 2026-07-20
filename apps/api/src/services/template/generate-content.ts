@@ -1760,7 +1760,12 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     const { getTemplateSpec } = await import("@milo/shared-types");
     const specForNav = getTemplateSpec(theme as import("@milo/shared-types").TemplateTheme);
     if (specForNav) {
-      const existingHrefs = new Set(navigation.header.map((n) => n.href));
+      // Include children so dropdown items (e.g. /drop-in inside Programs) aren't
+      // re-added as top-level items by the spec supplement.
+      const existingHrefs = new Set([
+        ...navigation.header.map((n) => n.href),
+        ...navigation.header.flatMap((n) => n.children?.map((c) => c.href) ?? []),
+      ]);
       const SKIP_NAV_KEYS = new Set(["home", "legal", "blog"]);
       const specItems: import("@milo/shared-types").NavItem[] = [];
 

@@ -126,7 +126,9 @@ async function extractPageSections(
 
   try {
     await page.setViewportSize({ width: VIEWPORT_WIDTH, height: 900 });
-    await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 60_000 });
+    // Use "load" rather than "networkidle" — Webflow sites with booking widgets
+    // and analytics scripts never reach networkidle within any reasonable timeout.
+    await page.goto(pageUrl, { waitUntil: "load", timeout: 90_000 });
 
     // Inject all captured CSS as inline <style> tags so they become same-origin
     // and accessible via document.styleSheets for rule matching below.
