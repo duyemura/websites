@@ -1763,12 +1763,14 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     const { getTemplateSpec } = await import("@milo/shared-types");
     const specForNav = getTemplateSpec(theme as import("@milo/shared-types").TemplateTheme);
     if (specForNav) {
-      // Include children so dropdown items (e.g. /drop-in inside Programs) aren't
-      // re-added as top-level items by the spec supplement.
-      const existingHrefs = new Set([
+      // Build a set of existing paths AND their last slug segment so that
+      // /programs/drop-in blocks the supplement from adding /drop-in top-level.
+      const allNavPaths = [
         ...navigation.header.map((n) => n.href),
         ...navigation.header.flatMap((n) => n.children?.map((c) => c.href) ?? []),
-      ]);
+      ];
+      const existingHrefs = new Set(allNavPaths);
+      const existingSlugs = new Set(allNavPaths.map((h) => h.split("/").filter(Boolean).pop() ?? ""));
       const SKIP_NAV_KEYS = new Set(["home", "legal", "blog"]);
       const specItems: import("@milo/shared-types").NavItem[] = [];
 
@@ -1784,6 +1786,10 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
         if (SKIP_NAV_KEYS.has(pageKey)) continue;
         if (pageSpec.path.includes(":")) continue;
         if (existingHrefs.has(pageSpec.path)) continue;
+        // Skip if a dropdown child already covers this slug (e.g. /programs/drop-in
+        // covers /drop-in so we don't add "Drop In" as a redundant top-level item).
+        const specSlug = pageSpec.path.split("/").filter(Boolean).pop() ?? "";
+        if (specSlug && existingSlugs.has(specSlug)) continue;
 
         // Check renderer has an actual page file — no file = no nav link = no 404
         const slug = pageSpec.path.replace(/^\//, "") || "index";
