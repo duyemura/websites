@@ -13,6 +13,7 @@ import type { MirrorCrawlArtifact } from "../../src/types/mirror";
 import type { EnrichArtifact } from "./enrich";
 import type { StageRunner, StageContext, StageResult } from "./types";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
+import * as cheerio from "cheerio";
 
 function formatGmbAddress(listing: GmbListing): string | undefined {
   if (!listing.address) return undefined;
@@ -141,14 +142,79 @@ export const docgenStage: StageRunner = {
       ctx.log(`  Nav captured: ${topLabels}`);
     }
 
+    // Fetch every page listed in the nav hierarchy directly from the source URL.
+    // The crawl only captures the homepage because Webflow HTML links point to the
+    // original Webflow domain, which the crawler treats as external. This step uses
+    // the extracted nav as a URL list and fetches each page, saving content extracts
+    // (iframes, headings, text) so the generate stage has real per-page data instead
+    // of hallucinating content for pages it has never seen.
+    {
+      type PageExtract = {
+        path: string;
+        iframes: { src: string; height?: string; title?: string }[];
+        headings: string[];
+        paragraphs: string[];
+      };
+      const sourceBase = crawlStored.payload.sourceUrl.replace(/\/$/, "");
+      const navItems = scrapedFromCrawl.navHierarchy ?? [];
+      const allPaths = new Set<string>();
+      for (const item of navItems) {
+        if (item.href && item.href !== "/") allPaths.add(item.href);
+        for (const child of (item.children ?? [])) {
+          if (child.href && child.href !== "/") allPaths.add(child.href);
+        }
+      }
+
+      if (allPaths.size > 0) {
+        const extracts: Record<string, PageExtract> = {};
+        for (const path of allPaths) {
+          const url = `${sourceBase}${path}`;
+          try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+            if (!res.ok) { ctx.log(`  [page-fetch] ${path}: ${res.status}`); continue; }
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            $("script, style, noscript").remove();
+
+            const iframes = $("iframe[src]").map((_, el) => ({
+              src: $(el).attr("src") ?? "",
+              height: $(el).attr("height"),
+              title: $(el).attr("title"),
+            })).get().filter(i => i.src && !i.src.startsWith("javascript:"));
+
+            const headings = $("h1, h2, h3").map((_, el) => $(el).text().trim()).get()
+              .filter(Boolean).slice(0, 10);
+            const paragraphs = $("p").map((_, el) => $(el).text().trim()).get()
+              .filter(t => t.length > 30).slice(0, 8);
+
+            extracts[path] = { path, iframes, headings, paragraphs };
+            ctx.log(`  [page-fetch] ${path}: ${iframes.length} iframes, ${headings.length} headings`);
+          } catch {
+            ctx.log(`  [page-fetch] ${path}: fetch failed`);
+          }
+        }
+
+        if (Object.keys(extracts).length > 0) {
+          const bucket = ctx.config.S3_DEPLOYMENTS_BUCKET ?? ctx.config.S3_ASSETS_BUCKET;
+          await ctx.s3Client.send(new PutObjectCommand({
+            Bucket: bucket,
+            Key: `sites/${ctx.siteUuid}/config/page-extracts.json`,
+            Body: Buffer.from(JSON.stringify(extracts, null, 2), "utf8"),
+            ContentType: "application/json; charset=utf-8",
+          }));
+          ctx.log(`  Page extracts saved for: ${Object.keys(extracts).join(", ")}`);
+        }
+      }
+    }
+
     // If the enrich stage produced a more complete ScrapedWebsiteData (it does
     // when GMB is applied), layer that on top of the cheerio parse so we keep
     // GMB facts but still have homepage headings/sections.
-    const enrichedBase = enrichStored.payload.data;
-    const merged: ScrapedWebsiteData = {
+    // enrichStored is null for template builds — fall back to crawl data alone.
+    const enrichedBase = enrichStored?.payload.data;
+    const merged: ScrapedWebsiteData = enrichedBase ? {
       ...scrapedFromCrawl,
       ...enrichedBase,
-      // Preserve parsed arrays when the enrich data left them empty.
       headings: scrapedFromCrawl.headings.length > 0 ? scrapedFromCrawl.headings : enrichedBase.headings,
       paragraphs: scrapedFromCrawl.paragraphs.length > 0 ? scrapedFromCrawl.paragraphs : enrichedBase.paragraphs,
       navLinks: scrapedFromCrawl.navLinks.length > 0 ? scrapedFromCrawl.navLinks : enrichedBase.navLinks,
@@ -157,8 +223,7 @@ export const docgenStage: StageRunner = {
       fonts: scrapedFromCrawl.fonts.length > 0 ? scrapedFromCrawl.fonts : enrichedBase.fonts,
       fontSizes: scrapedFromCrawl.fontSizes.length > 0 ? scrapedFromCrawl.fontSizes : enrichedBase.fontSizes,
       sections: scrapedFromCrawl.sections && scrapedFromCrawl.sections.length > 0
-        ? scrapedFromCrawl.sections
-        : enrichedBase.sections,
+        ? scrapedFromCrawl.sections : enrichedBase.sections,
       contact: { ...scrapedFromCrawl.contact, ...enrichedBase.contact },
       locations: enrichedBase.locations.length > 0 ? enrichedBase.locations : scrapedFromCrawl.locations,
       testimonials: enrichedBase.testimonials.length > 0 ? enrichedBase.testimonials : scrapedFromCrawl.testimonials,
@@ -166,7 +231,7 @@ export const docgenStage: StageRunner = {
       team: enrichedBase.team.length > 0 ? enrichedBase.team : scrapedFromCrawl.team,
       faqs: enrichedBase.faqs.length > 0 ? enrichedBase.faqs : scrapedFromCrawl.faqs,
       layoutRules: scrapedFromCrawl.layoutRules.length > 0 ? scrapedFromCrawl.layoutRules : enrichedBase.layoutRules,
-    };
+    } : scrapedFromCrawl;
 
     const data = mergeGmbIntoScraped(merged, gmb);
 

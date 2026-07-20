@@ -184,6 +184,30 @@ async function loadCrawlArtifact(db: Kysely<DB>, siteUuid: string, workspaceUuid
   return artifact?.payload ?? null;
 }
 
+/** Per-page content extracted by docgen's page-fetch step. */
+interface PageExtract {
+  path: string;
+  iframes: { src: string; height?: string; title?: string }[];
+  headings: string[];
+  paragraphs: string[];
+}
+
+async function loadPageExtracts(
+  s3Client: S3Client,
+  bucket: string,
+  siteUuid: string,
+): Promise<Record<string, PageExtract>> {
+  try {
+    const obj = await s3Client.send(new GetObjectCommand({
+      Bucket: bucket,
+      Key: `sites/${siteUuid}/config/page-extracts.json`,
+    }));
+    return JSON.parse(await obj.Body?.transformToString() ?? "{}") as Record<string, PageExtract>;
+  } catch {
+    return {};
+  }
+}
+
 interface IframeConfigFile {
   iframes?: IframeEmbed[];
 }
@@ -1629,18 +1653,37 @@ For serviceArea: list 4 real nearby cities/neighborhoods that people actually dr
     ? await extractCrawlPageIframes(crawlArtifact, input.s3Client, bucket)
     : new Map<string, IframeEmbed[]>();
 
+  // Iframes from docgen's page-fetch step — this covers pages the crawl never
+  // visited (schedule, about, pricing, program pages) because the source HTML's
+  // links point to the original host rather than to the crawled domain.
+  const pageExtracts = await loadPageExtracts(input.s3Client, bucket, siteUuid);
+  const pageExtractIframes = new Map<string, IframeEmbed[]>();
+  for (const [path, extract] of Object.entries(pageExtracts)) {
+    const embeds = extract.iframes
+      .filter((f) => isAllowedIframeSrc(f.src))
+      .map((f) => sanitizeIframe({
+        src: f.src,
+        variant: inferIframeVariant(f.src),
+        title: f.title,
+        height: f.height,
+      }));
+    if (embeds.length > 0) pageExtractIframes.set(normalizePath(path), embeds);
+  }
+  if (pageExtractIframes.size > 0) {
+    log(`  Page-extract iframes: ${[...pageExtractIframes.keys()].join(", ")}`);
+  }
+
   const allIframesByPath = new Map<string, IframeEmbed[]>(extractIframes);
-  for (const [path, embeds] of crawlIframes) {
-    const existing = allIframesByPath.get(path) ?? [];
-    const seen = new Set(existing.map((e) => e.src));
-    const merged = [...existing];
-    for (const e of embeds) {
-      if (!seen.has(e.src)) {
-        seen.add(e.src);
-        merged.push(e);
+  for (const sourceMap of [crawlIframes, pageExtractIframes]) {
+    for (const [path, embeds] of sourceMap) {
+      const existing = allIframesByPath.get(path) ?? [];
+      const seen = new Set(existing.map((e) => e.src));
+      const deduped = [...existing];
+      for (const e of embeds) {
+        if (!seen.has(e.src)) { seen.add(e.src); deduped.push(e); }
       }
+      allIframesByPath.set(path, deduped);
     }
-    allIframesByPath.set(path, merged);
   }
 
   const safeConfiguredIframes = configuredIframes
