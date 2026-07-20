@@ -1404,9 +1404,16 @@ export async function buildGymJson(
           // Skip index.html redirects, already-included hrefs, assets, and anchor-only links
           if (existingHrefs.has(path)) continue;
           if (path === "/" || path.endsWith(".html") || path.startsWith("/#")) continue;
-          // Skip GitHub Pages-style subfolder paths that are just the canonical home
-          // (e.g. /pushpress-site-modern/ is index.html, not a real nav page)
-          if (path === crawlHomePage.path?.replace(/\/$/, "") || path === crawlHomePage.path) continue;
+          // Skip GitHub Pages-style subfolder paths that are the canonical home
+          // (e.g. /pushpress-site-modern/ is the index, not a real interior page)
+          const homePath = crawlHomePage.path?.replace(/\/$/, "") ?? "";
+          if (path === homePath || path === `${homePath}/`) continue;
+          // Also skip single-segment paths that look like a repo name (no meaningful slug)
+          const segments = path.replace(/^\//, "").split("/").filter(Boolean);
+          if (segments.length === 1 && /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(segments[0] ?? "")) {
+            // Looks like a GitHub Pages repo slug (e.g. pushpress-site-modern) — skip
+            if (path === homePath || homePath.includes(segments[0] ?? "")) continue;
+          }
           const segments = path.replace(/^\//, "").split("/");
           if (segments.length > 2) continue; // skip deep paths (geo pages etc.)
           // Derive a human-readable label from the path segment

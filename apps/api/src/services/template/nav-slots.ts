@@ -222,12 +222,18 @@ export function buildNavigation(
       validPaths,
     ).filter((i) => i.href !== "/"); // logo is home
   } else {
-    // No captured nav — build a minimal fallback from what we know was generated.
-    // Use path slugs as labels, never insert hardcoded section names.
+    // No captured nav — build from content briefs whose pageType is a recognised
+    // structural page type. Skip "other" and "home" — those include GitHub Pages
+    // subfolder paths (/pushpress-site-modern/) that look like nav items but aren't.
+    const NAV_WORTHY_TYPES = new Set(["program", "about", "contact", "pricing", "schedule", "blog", "localGuide"]);
     header = [];
     for (const brief of contentBriefs) {
       if (!brief.path || brief.path === "/" || !validPaths.has(brief.path)) continue;
+      if (brief.path.endsWith("/index.html")) continue; // index.html redirects
       if (/legal|privacy|terms/i.test(brief.path)) continue;
+      // Only add pages whose type is structurally meaningful — avoids GitHub Pages
+      // subfolder paths (classified "other") appearing as nav items.
+      if (!NAV_WORTHY_TYPES.has(brief.pageType)) continue;
       const slug = brief.path.replace(/^\//, "").split("/")[0] ?? "";
       if (!slug) continue;
       const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
