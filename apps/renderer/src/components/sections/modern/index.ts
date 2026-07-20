@@ -6,6 +6,7 @@ import CTABand from "./CTABand.astro";
 import Community from "./Community.astro";
 import Contact from "./Contact.astro";
 import ContentBlock from "./ContentBlock.astro";
+import ContentMedia from "./ContentMedia.astro";
 import CoreValues from "./CoreValues.astro";
 import FAQ from "./FAQ.astro";
 import FaqAccordion from "./FaqAccordion.astro";
@@ -21,12 +22,14 @@ import LocationSplit from "./LocationSplit.astro";
 import MediaBlock from "./MediaBlock.astro";
 import ProgramCardsSticky from "./ProgramCardsSticky.astro";
 import Programs from "./Programs.astro";
+import Schedule from "./Schedule.astro";
 import ScheduleEmbed from "./ScheduleEmbed.astro";
 import Team from "./Team.astro";
 import TestimonialBand from "./TestimonialBand.astro";
 import TestimonialScroll from "./TestimonialScroll.astro";
 import Testimonials from "./Testimonials.astro";
 import Unknown from "./Unknown.astro";
+import CtaBand from "./CtaBand.astro";
 
 export const COMPONENT_MAP: Record<string, AstroComponent> = {
   "Amenities": Amenities as unknown as AstroComponent,
@@ -34,6 +37,7 @@ export const COMPONENT_MAP: Record<string, AstroComponent> = {
   "Community": Community as unknown as AstroComponent,
   "Contact": Contact as unknown as AstroComponent,
   "ContentBlock": ContentBlock as unknown as AstroComponent,
+  "ContentMedia": ContentMedia as unknown as AstroComponent,
   "CoreValues": CoreValues as unknown as AstroComponent,
   "FAQ": FAQ as unknown as AstroComponent,
   "FaqAccordion": FaqAccordion as unknown as AstroComponent,
@@ -49,10 +53,12 @@ export const COMPONENT_MAP: Record<string, AstroComponent> = {
   "MediaBlock": MediaBlock as unknown as AstroComponent,
   "ProgramCardsSticky": ProgramCardsSticky as unknown as AstroComponent,
   "Programs": Programs as unknown as AstroComponent,
+  "Schedule": Schedule as unknown as AstroComponent,
   "ScheduleEmbed": ScheduleEmbed as unknown as AstroComponent,
   "Team": Team as unknown as AstroComponent,
   "TestimonialBand": TestimonialBand as unknown as AstroComponent,
   "TestimonialScroll": TestimonialScroll as unknown as AstroComponent,
   "Testimonials": Testimonials as unknown as AstroComponent,
   "Unknown": Unknown as unknown as AstroComponent,
+  "CtaBand": CtaBand as unknown as AstroComponent,
 };

@@ -361,8 +361,57 @@ export type ContentStage = (typeof CONTENT_STAGES)[number];
 export const VISION_STAGES = ["extract", "segment", "contract", "synthesize"] as const;
 export type VisionStage = (typeof VISION_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize", "section-extract", "adapt"] as const;
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize", "section-extract", "adapt", "page-extract", "page-adapt"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+// ---------- page-extract ----------
+
+export interface PageExtractImage {
+  originalUrl: string;
+  s3Key: string;
+  s3Url: string;
+  mimeType: string;
+}
+
+export interface PageExtractPage {
+  path: string;
+  url: string;
+  /** Complete outerHTML of <html> element (images already replaced with S3 URLs) */
+  html: string;
+  /** All CSS rules extracted from every stylesheet on the page */
+  cssText: string;
+  images: PageExtractImage[];
+  title?: string;
+}
+
+export interface PageExtractArtifact {
+  siteUuid: string;
+  sourceUrl: string;
+  templateName: string;
+  capturedAt: string;
+  pages: PageExtractPage[];
+}
+
+// ---------- page-adapt ----------
+
+export interface PageAdaptProp {
+  name: string;
+  contentPath: string;
+  defaultValue: string;
+}
+
+export interface PageAdaptedPage {
+  pageKey: string;
+  pagePath: string;
+  componentName: string;
+  filePath: string;
+  props: PageAdaptProp[];
+}
+
+export interface PageAdaptArtifact {
+  templateName: string;
+  pages: PageAdaptedPage[];
+}
 
 // ---------- section-extract ----------
 
