@@ -173,6 +173,9 @@ doc types — no new machinery.
 - **Own form system**: form defined as a doc, rendered by template components
   (`lead-form`, `contact-form`), POSTs to our `/leads` endpoint → stored →
   forwarded (email / webhook / GHL API).
+- **Attribution**: UTM params + referrer + landing page captured as hidden
+  fields on every form submit, stored with the lead. Gyms (and our own AI
+  content loop later) need to know which page/campaign produced each lead.
 - **External form preservation**:
   - Native HTML forms: rehost markup, route submit through our proxy — we store
     a copy, then forward the original POST. Client's automation unbroken; we
@@ -182,6 +185,50 @@ doc types — no new machinery.
     see those leads) and flag. Real fix, offered per-client: recreate the form
     natively with our form system pushing into GHL via API/webhook so both
     sides get the lead (~10-minute setup per client).
+
+## Cutover — going live on the gym's domain
+
+With the clone tier gone, the migration moment is sharper and needs its own
+machinery:
+
+1. **Domain attach**: ACM certificate issuance/validation, CloudFront alias for
+   the gym's domain (apex + www), DNS instructions for the gym (or Route53 if we
+   manage). A site is not "live" until its domain resolves to our CloudFront.
+2. **301 redirect map — hard requirement.** The gym's old URLs (captured during
+   intake from nav + key pages) are diffed against the new template routes; every
+   orphaned old URL gets a 301 to its nearest new page, served at the CloudFront
+   layer. Dropping the clone does NOT drop this — it's what preserves their
+   existing SEO equity at cutover.
+3. **Go-live sequence**: intake → build → staging preview → gym approves → DNS
+   switch → publish + redirects live → sitemap submitted / IndexNow pinged →
+   gym cancels old host only after we verify resolution.
+
+## Media pipeline
+
+- Images from GMB + homepage are downloaded, rehosted to S3/CDN, and optimized
+  (sizing, modern formats) into the client's media-library doc. Client sites
+  never hotlink source-site assets.
+- The existing **AI image generation API** in `apps/api` is kept: it fills gaps
+  when a gym has few/poor photos (hero backgrounds, program imagery), routed
+  through the same media library so generated assets are reviewable like any
+  other. (Remaining hardening items tracked in
+  `.claude/docs/asset-generation-todos.md`.)
+
+## Persistence
+
+Ported from v1: Postgres + Kysely doc storage, site/version tables (immutable
+deploy prefixes ↔ `site_versions` pointer), and the artifact store. v2 trims
+tables that only served the dead pipelines (clone assets, extraction artifacts).
+
+## Deferred (explicitly out of v1 scope, not forgotten)
+
+- **GSC integration**: programmatic property ownership at go-live + Search
+  Analytics ingestion feeding the AI content loop.
+- **Content wells** (/local-guide, locally-targeted blog) default-on.
+- **PushPress platform API integration** (live schedule/pricing instead of
+  scraped).
+- **Multi-location gyms.**
+- **Delta preview** (show prospect their would-be template site before signup).
 
 ## Repo shape (fresh start, port the keepers)
 
@@ -195,8 +242,47 @@ milo/
   apps/api/               # Fastify: docs CRUD, intake, build orchestration, leads, assistant
 ```
 
-**Ported from v1:** GMB enrich, S3/CloudFront deploy + publish swap, renderer
-bones, doc-schema ideas, milo CLI skeleton.
+**Ported from v1:** GMB enrich, renderer bones, doc-schema ideas, and the three
+proven subsystems below, which carry over intact.
+
+### Ported subsystem 1 — Publishing / staging / production (S3 + CloudFront)
+
+This work is good and is kept as-is:
+- **S3 layout**: immutable deploy prefixes per build; staging deploys never touch
+  production.
+- **CloudFront**: distribution + viewer-request function that rewrites request
+  paths to the current deploy prefix (`/current/` pointer via KVS). Publish is a
+  pointer swap; rollback is repointing to a prior prefix.
+- **Semantics**: every build stages only. Production publish is always an
+  explicit, human-approved action (`milo publish` / publish endpoint).
+- **Ops convention**: all Milo AWS access uses the `unicorn` profile
+  (S3 `pushpress-marketing-dev`, CloudFront, KVS).
+
+### Ported subsystem 2 — OpenRouter LLM layer
+
+The LLM access layer (`llm-client.ts`) is kept as-is: OpenRouter-backed,
+env-configured (`OPENROUTER_BASE_URL`, `OPENROUTER_API_KEY`), per-call model
+selection, and build cost tracking (LLM tokens + S3 in one summary). All v2 LLM
+usage (intake extraction, generative copy gaps) goes through this client. No
+direct provider SDKs.
+
+### Ported subsystem 3 — milo CLI
+
+The CLI remains the operator interface for the whole system. The v1 skeleton
+(`milo.ts` arg parsing, stage runner, stage groups) is ported; v2 commands map
+to the new pipeline:
+
+```
+milo intake  --url <gym-url>          # GMB + crawl → doc drafts
+milo build   --site <uuid>            # docs → GymSiteContent → render → staging
+milo preview --site <uuid>            # staging URL
+milo publish --site <uuid>            # explicit prod swap (approval-gated)
+milo reskin  --site <uuid> --template <name>
+milo studio  --url <reference-url>    # Template Studio session entry point
+```
+
+The existing v1 CLI keeps functioning untouched in the current repo during the
+transition — nothing breaks while v2 is stood up.
 
 **Deleted (not ported):** section-extract, adapt, spec-audit, template-eval,
 template-fix auto-loop, BFS clone, asset rehosting, clone-edit HTML transforms,
