@@ -214,39 +214,76 @@ function extractNavLinks($: cheerio.CheerioAPI): { label: string; href: string }
 /**
  * Build a nav hierarchy from flat links using path-prefix grouping.
  *
- * Pass the flat links from extractNavLinks. Items at /a/b automatically
- * nest under /a — the parent label comes from the /a link if present, or
- * is title-cased from the path slug. Deduplication ensures each path
- * appears once. Utility links (login, cart, etc.) are filtered.
+ * Normalizes absolute URLs to root-relative paths using the site's source URL
+ * (so GitHub Pages absolute hrefs like https://beanburito.github.io/pushpress-site-modern/programs
+ * become /programs, not "https:" as a parent segment).
+ *
+ * Items at /a/b automatically nest under /a — the parent label comes from
+ * the /a link if present in the source HTML, otherwise title-cased from the slug.
+ * Nothing about what the business sells is assumed or hardcoded.
  */
-export function buildNavHierarchy(flatLinks: { label: string; href: string }[]): NavItem[] {
+export function buildNavHierarchy(
+  flatLinks: { label: string; href: string }[],
+  sourceUrl?: string,
+): NavItem[] {
   const UTILITY = /login|sign in|sign up|my account|account|search|cart/i;
+
+  // Determine origin + base path to strip from absolute URLs.
+  // e.g. sourceUrl = "https://beanburito.github.io/pushpress-site-modern/"
+  //   → origin = "https://beanburito.github.io"
+  //   → basePath = "/pushpress-site-modern"
+  let origin = "";
+  let basePath = "";
+  if (sourceUrl) {
+    try {
+      const u = new URL(sourceUrl);
+      origin = u.origin;
+      // Strip trailing slash; keep base sub-path (e.g. /pushpress-site-modern)
+      basePath = u.pathname.replace(/\/$/, "").split("/").slice(0, -1).join("") ||
+        u.pathname.replace(/\/$/, "");
+    } catch { /* ignore */ }
+  }
+
+  // Normalize an href to a root-relative path (e.g. "/programs/bootcamp")
+  function toPath(href: string): string {
+    // Absolute URL on same origin
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      try {
+        const u = new URL(href);
+        if (origin && u.origin !== origin) return ""; // external — skip
+        let path = u.pathname;
+        if (basePath && path.startsWith(basePath)) path = path.slice(basePath.length);
+        return path.replace(/\/$/, "") || "/";
+      } catch { return ""; }
+    }
+    // Root-relative path: strip basePath prefix if present
+    if (href.startsWith("/") && basePath && href.startsWith(basePath)) {
+      return href.slice(basePath.length).replace(/\/$/, "") || "/";
+    }
+    return href.startsWith("/") ? href.replace(/\/$/, "") : `/${href}`;
+  }
+
   const items: NavItem[] = [];
   const byHref = new Map<string, NavItem>();
 
   for (const link of flatLinks) {
-    const href = link.href.startsWith("/") ? link.href : `/${link.href}`;
-    if (!link.label || UTILITY.test(link.label) || href === "/") continue;
+    if (!link.label || UTILITY.test(link.label)) continue;
+    const href = toPath(link.href);
+    if (!href || href === "/") continue;
 
     const parts = href.split("/").filter(Boolean);
 
     if (parts.length <= 1) {
-      // Top-level link
       if (!byHref.has(href)) {
         const item: NavItem = { label: link.label, href };
         items.push(item);
         byHref.set(href, item);
       }
     } else {
-      // Nested link (e.g. /programs/bootcamp)
       const parentHref = `/${parts[0]}`;
       let parent = byHref.get(parentHref);
 
       if (!parent) {
-        // Parent not seen yet — create implied parent with title-cased slug as label.
-        // If the source nav later provides the real label for /parentSlug, it wins
-        // because the flat links are ordered: top-level links appear before their children
-        // in most nav DOMs.
         const impliedLabel = parts[0].split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
         parent = { label: impliedLabel, href: parentHref, children: [] };
         items.push(parent);
@@ -693,7 +730,7 @@ export async function buildScrapedWebsiteDataFromCrawl(
 
   const contact = extractContact($);
   const navLinks = extractNavLinks($);
-  const navHierarchy = buildNavHierarchy(navLinks);
+  const navHierarchy = buildNavHierarchy(navLinks, crawl.sourceUrl);
 
   return {
     url: crawl.sourceUrl,
