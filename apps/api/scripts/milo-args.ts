@@ -21,7 +21,7 @@ export const PIPELINES = {
   new:     ["enrich", "crawl", "docgen", "content", "generate", "template", "template-eval", "eval"] as const,
   upgrade: ["generate", "template", "template-eval", "eval"] as const,
   rebuild: ["generate", "template", "template-eval", "eval"] as const,
-  template: ["extract", "segment", "contract", "synthesize", "component-eval"] as const,
+  template: ["extract", "segment", "contract", "synthesize", "section-extract", "adapt", "component-eval"] as const,
 } as const;
 
 export function parseArgs(): MiloCommand {

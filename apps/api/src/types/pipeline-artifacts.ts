@@ -346,6 +346,79 @@ export const VerifyArtifactSchema = z.object({
 });
 export type VerifyArtifact = z.infer<typeof VerifyArtifactSchema>;
 
+// ---------- section-extract ----------
+
+/** One image reference found within a section — either an <img> or a CSS background-image. */
+export interface SectionImageRef {
+  src: string;
+  alt?: string;
+  /** true when the image comes from a CSS background-image property rather than an <img> element */
+  isBackground: boolean;
+}
+
+/** One text node found within a section, with its tag and class context. */
+export interface SectionTextNode {
+  text: string;
+  /** The HTML element tag name: h1–h6, p, a, button, span, li, etc. */
+  tag: string;
+  className: string;
+}
+
+/** Extracted HTML + computed styles for one section on one page. */
+export interface SectionExtractEntry {
+  id: string;
+  tag: string;
+  archetype: string;
+  /** The full outer HTML of the section element (truncated to 100 KB) */
+  outerHTML: string;
+  /**
+   * Key CSS properties read via getComputedStyle on the section root element.
+   * Keys: backgroundColor, backgroundImage, color, fontFamily, fontSize,
+   * fontWeight, padding, margin, display, flexDirection, gridTemplateColumns,
+   * gap, textAlign, alignItems, justifyContent, borderRadius, boxShadow.
+   */
+  computedStyles: Record<string, string>;
+  images: SectionImageRef[];
+  textNodes: SectionTextNode[];
+  boundingBox: BBox;
+}
+
+export interface SectionExtractPage {
+  path: string;
+  url: string;
+  sections: SectionExtractEntry[];
+}
+
+export interface SectionExtractArtifact {
+  siteUuid: string;
+  sourceUrl: string;
+  capturedAt: string;
+  pages: SectionExtractPage[];
+}
+
+// ---------- adapt ----------
+
+/** Metadata about one Astro component written by the adapt stage. */
+export interface AdaptedComponent {
+  /** PascalCase component name, e.g. "HeroCenter" */
+  name: string;
+  /** Source file path relative to the renderer root */
+  filePath: string;
+  tag: string;
+  archetype: string;
+  /** GymSiteContent field paths bound to props in this component */
+  boundProps: string[];
+  /** Text nodes left as static content (STATIC classification) */
+  staticTextCount: number;
+}
+
+export interface AdaptArtifact {
+  templateName: string;
+  components: AdaptedComponent[];
+  /** path → ordered component name array (same shape as SynthesizeArtifact.pageMap) */
+  pageMap: Record<string, string[]>;
+}
+
 export const REBUILD_STAGES = ["extract", "segment", "contract", "docgen", "build", "verify"] as const;
 export type RebuildStage = (typeof REBUILD_STAGES)[number];
 
@@ -361,5 +434,8 @@ export type ContentStage = (typeof CONTENT_STAGES)[number];
 export const VISION_STAGES = ["extract", "segment", "contract", "synthesize"] as const;
 export type VisionStage = (typeof VISION_STAGES)[number];
 
-export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, "synthesize"] as const;
+export const SECTION_EXTRACT_STAGES = ["section-extract", "adapt"] as const;
+export type SectionExtractStage = (typeof SECTION_EXTRACT_STAGES)[number];
+
+export const PIPELINE_STAGES = [...REBUILD_STAGES, ...MIRROR_STAGES, ...ENRICHMENT_STAGES, ...CONTENT_STAGES, ...SECTION_EXTRACT_STAGES, "synthesize"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
