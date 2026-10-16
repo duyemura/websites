@@ -444,12 +444,11 @@ describe("verify stage", () => {
   );
 
   it(
-    "replays extract-page interactions and passes when the clone honors them",
+    "records an interaction-health check when the clone honors interactive patterns",
     async () => {
-      // Clone has an accordion (<details>). The extract records a click
-      // interaction on the accordion summary. Replaying it must flip
-      // `open` on the parent <details>, changing computed style — this is
-      // exactly what the interactions runner asserts.
+      // Clone has an accordion (<details/summary>). The extract records one
+      // interaction; the semantic interaction checker discovers the summary
+      // and verifies the pattern is functional.
       const accordion =
         `<details id="faq-1"><summary class="faq-summary">Question</summary><p>Answer</p></details>`;
       const clone = await serveClone({
@@ -493,9 +492,9 @@ describe("verify stage", () => {
           ...home.mechanical.failed,
         ].filter((c) => c.id.startsWith("interaction-"));
         expect(interactionChecks).toHaveLength(1);
-        // With the accordion present the interaction must pass.
+        // With the accordion present the interaction-health check must pass.
         const passedIds = home.mechanical.passed.map((c) => c.id);
-        expect(passedIds).toContain("interaction-int-faq-1");
+        expect(passedIds).toContain("interaction-health");
       } finally {
         await clone.close();
       }
@@ -504,11 +503,11 @@ describe("verify stage", () => {
   );
 
   it(
-    "fails interaction replay critically when the clone omits the target element",
+    "fails interaction-health critically when the clone omits interactive patterns",
     async () => {
-      // Same extract interaction, but the clone does NOT contain the
-      // accordion. Replay must record a critical failure and route an
-      // actionable entry to the build stage.
+      // Same extract interaction, but the clone does NOT contain any
+      // interactive elements. The semantic checker records a critical failure
+      // and routes an actionable entry to the build stage.
       const clone = await serveClone({
         sectionIds: ["hero", "features"],
       });
@@ -545,7 +544,7 @@ describe("verify stage", () => {
         });
         const home = artifact.pages[0]!;
         const failed = home.mechanical.failed.find(
-          (c) => c.id === "interaction-int-faq-missing",
+          (c) => c.id === "interaction-health",
         );
         expect(failed).toBeDefined();
         expect(failed?.critical).toBe(true);
