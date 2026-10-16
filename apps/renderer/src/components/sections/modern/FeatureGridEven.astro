@@ -1,0 +1,180 @@
+---
+export interface Props {
+  id?: string;
+  headline?: string;
+  subheadline?: string;
+  items: {
+    iconUrl: string;
+    title: string;
+    description: string;
+  }[];
+}
+
+const { id = "index-seg-1",
+  headline,
+  subheadline,
+  items = [], } = Astro.props;
+---
+
+<section data-eval-component="FeatureGridEven" id={id} class="feature-grid-even">
+  <div class="content-wrapper">
+    {headline && <h2 class="headline">{headline}</h2>}
+    {subheadline && <p class="subheadline">{subheadline}</p>}
+    <div class="items-grid">
+      {items.map((item) => (
+        <div class="grid-item">
+          <img src={item.iconUrl} alt={item.title} class="item-icon" />
+          <h3 class="item-title">{item.title}</h3>
+          <p class="item-description">{item.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .feature-grid-even {
+    background-color: #111111;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 270px;
+  }
+
+  .content-wrapper {
+    max-width: 1440px;
+    width: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .headline {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #ffffff;
+  }
+
+  .subheadline {
+    font-size: 16px;
+    margin-bottom: 30px;
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 80%;
+  }
+
+  .items-grid {
+    display: grid;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .grid-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px;
+    background-color: #1a1a1a;
+    border-radius: 8px;
+  }
+
+  .item-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 15px;
+    object-fit: contain;
+  }
+
+  .item-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #ffffff;
+  }
+
+  .item-description {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.5;
+  }
+
+  /* Mobile-first: 375px base */
+  @media (min-width: 375px) {
+    .content-wrapper {
+      padding: 30px 20px;
+    }
+
+    .headline {
+      font-size: 1.75rem;
+    }
+
+    .subheadline {
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+
+    .items-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .item-icon {
+      width: 56px;
+      height: 56px;
+    }
+
+    .item-title {
+      font-size: 20px;
+    }
+
+    .item-description {
+      font-size: 15px;
+    }
+  }
+
+  /* Desktop: 1440px */
+  @media (min-width: 1440px) {
+    .content-wrapper {
+      padding: 40px 80px;
+    }
+
+    .headline {
+      font-size: 2rem;
+      margin-bottom: 15px;
+    }
+
+    .subheadline {
+      font-size: 20px;
+      margin-bottom: 50px;
+      max-width: 900px;
+    }
+
+    .items-grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .grid-item {
+      padding: 24px;
+    }
+
+    .item-icon {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 20px;
+    }
+
+    .item-title {
+      font-size: 22px;
+    }
+
+    .item-description {
+      font-size: 16px;
+    }
+  }
+</style>

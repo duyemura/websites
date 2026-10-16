@@ -1,0 +1,135 @@
+---
+interface ProgramCardItem {
+  title: string;
+  imageUrl: string;
+  col: number;
+  row: number;
+}
+
+export interface ProgramCardsStickyProps {
+  items: ProgramCardItem[];
+}
+
+const { items = [] } = Astro.props;
+---
+
+<section data-eval-component="ProgramCardsSticky" class="program-cards-sticky">
+  <div class="program-cards-sticky__grid">
+    {items.map((item) => (
+      <div
+        class="program-cards-sticky__card"
+        style={{
+          gridColumn: item.col,
+          gridRow: item.row,
+        }}
+      >
+        <img src={item.imageUrl} alt={item.title} class="program-cards-sticky__card-image" />
+        <h3 class="program-cards-sticky__card-title">{item.title}</h3>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  .program-cards-sticky {
+    padding-top: 0px;
+    padding-bottom: 0px;
+    background: linear-gradient(to right, #0a0a0a, #1a1a1a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 939px;
+  }
+
+  .program-cards-sticky__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    width: 100%;
+    max-width: 345px;
+    padding: 32px 20px;
+  }
+
+  .program-cards-sticky__card {
+    position: relative;
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding: 24px 28px;
+    color: white;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.7);
+  }
+
+  .program-cards-sticky__card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, transparent 60%);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .program-cards-sticky__card-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  .program-cards-sticky__card-title {
+    position: relative;
+    z-index: 2;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+    color: #ffffff;
+  }
+
+  @media (min-width: 1440px) {
+    .program-cards-sticky__grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 30px;
+      max-width: 1200px;
+      height: 939px;
+      position: relative;
+      padding: 0;
+    }
+
+    .program-cards-sticky__card {
+      position: sticky;
+      top: var(--program-card-sticky-top-offset, 0px);
+      padding: 32px 36px;
+      min-height: unset;
+      height: 100%;
+    }
+
+    .program-cards-sticky__card:nth-child(1) {
+      grid-row: 1 / span 1;
+      grid-column: 1 / span 1;
+      --program-card-sticky-top-offset: 0px;
+    }
+
+    .program-cards-sticky__card:nth-child(2) {
+      grid-row: 2 / span 1;
+      grid-column: 2 / span 1;
+      --program-card-sticky-top-offset: 30px;
+    }
+
+    .program-cards-sticky__card:nth-child(3) {
+      grid-row: 3 / span 1;
+      grid-column: 1 / span 1;
+      --program-card-sticky-top-offset: 60px;
+    }
+  }
+</style>

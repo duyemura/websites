@@ -1,0 +1,136 @@
+---
+interface Props {
+  headline: string;
+  subheadline: string;
+  ctaText: string;
+  ctaHref: string;
+  imageUrl: string;
+  imageAlt: string;
+}
+
+const { headline, subheadline, ctaText, ctaHref, imageUrl, imageAlt } = Astro.props;
+---
+
+<section data-eval-component="HeroCenter" class="hero-center-section">
+  <div class="container">
+    <div class="content-wrapper">
+      <h1 class="headline">{headline}</h1>
+      <p class="subheadline">{subheadline}</p>
+      <a href={ctaHref} class="cta-button">{ctaText}</a>
+    </div>
+    <div class="image-wrapper">
+      <img src={imageUrl} alt={imageAlt} loading="eager" class="hero-image" />
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero-center-section {
+    padding-top: 0px;
+    padding-bottom: 80px;
+    background-color: #0a0a2a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 1440px;
+    padding: 40px 20px;
+    box-sizing: border-box;
+  }
+
+  .content-wrapper {
+    margin-bottom: 40px;
+  }
+
+  .headline {
+    font-size: 2.5rem;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    color: #ffffff;
+    font-weight: 800;
+  }
+
+  .subheadline {
+    font-size: 18px;
+    line-height: 1.6;
+    margin-bottom: 30px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .cta-button {
+    display: inline-block;
+    padding: 16px 36px;
+    background-color: #f76c00;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    transition: background-color 0.3s ease;
+  }
+
+  .cta-button:hover {
+    background-color: #d45a00;
+  }
+
+  .image-wrapper {
+    width: 100%;
+    max-width: 800px;
+  }
+
+  .hero-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Mobile-first @media breakpoints */
+  @media (min-width: 375px) {
+    .headline {
+      font-size: 3rem;
+    }
+
+    .subheadline {
+      font-size: 20px;
+    }
+  }
+
+  @media (min-width: 1440px) {
+    .container {
+      flex-direction: column;
+      justify-content: center;
+      padding: 80px 40px;
+    }
+
+    .content-wrapper {
+      margin-bottom: 60px;
+    }
+
+    .headline {
+      font-size: 4rem;
+      margin-bottom: 30px;
+    }
+
+    .subheadline {
+      font-size: 24px;
+      margin-bottom: 40px;
+      max-width: 800px;
+    }
+
+    .image-wrapper {
+      max-width: 1000px;
+    }
+  }
+</style>

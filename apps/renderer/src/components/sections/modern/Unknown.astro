@@ -1,0 +1,41 @@
+---
+export interface Props {
+  headline?: string;
+  body?: string;
+}
+const { headline = "", body = "" } = Astro.props;
+---
+
+<section data-eval-component="Unknown" class="unknown-section">
+  <div class="unknown-section__inner">
+    {headline && <h2>{headline}</h2>}
+    {body && <p>{body}</p>}
+  </div>
+</section>
+
+<style>
+.unknown-section {
+  padding: 5rem 2rem;
+  background-color: #111111;
+  color: #ffffff;
+}
+.unknown-section__inner {
+  max-width: 56rem;
+  margin: 0 auto;
+  text-align: center;
+}
+.unknown-section h2 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 1.25rem;
+  color: #ffffff;
+  line-height: 1.15;
+}
+.unknown-section p {
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+  max-width: 42rem;
+  margin: 0 auto;
+}
+</style>
